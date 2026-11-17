@@ -18,4 +18,4 @@ rm -f "$OUT/logcat_full.txt"
 adb pull /sdcard/Android/data/com.elad.faceblur/files/results "$OUT/" || \
   adb shell "run-as com.elad.faceblur ls -la" || true
 ls -la "$OUT" "$OUT/results" || true
-exit 0
+grep -q "^OK (1 test)" "$OUT/instrument.txt"

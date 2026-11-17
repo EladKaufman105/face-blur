@@ -33,6 +33,11 @@ object OpenCv {
  */
 class FaceAnalyzer(context: Context, sensitive: Boolean, private val fps: Float) : Closeable {
 
+    // Must run before any Mat field below is constructed (initializers run in declaration order).
+    init {
+        OpenCv.ensureLoaded()
+    }
+
     /** Long side of the frames handed to [onFrame]. */
     val maxSide = if (sensitive) 1920 else 1280
 
@@ -54,7 +59,6 @@ class FaceAnalyzer(context: Context, sensitive: Boolean, private val fps: Float)
     private val detectEvery = if (fps > 35f) 2 else 1
 
     init {
-        OpenCv.ensureLoaded()
         val file = File(context.filesDir, MODEL)
         if (!file.exists() || file.length() == 0L) {
             context.assets.open(MODEL).use { input -> file.outputStream().use { input.copyTo(it) } }

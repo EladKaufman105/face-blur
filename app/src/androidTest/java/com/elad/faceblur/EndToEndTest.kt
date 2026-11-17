@@ -15,6 +15,7 @@ import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -33,6 +34,7 @@ class EndToEndTest {
         val assets = inst.context.assets
         val outDir = File(ctx.getExternalFilesDir(null), "results").apply { deleteRecursively(); mkdirs() }
         val log = StringBuilder()
+        val failures = ArrayList<String>()
         val names = (assets.list("samples") ?: emptyArray()).filter { it.endsWith(".mp4") }.sorted()
         log.appendLine("samples: $names")
 
@@ -64,6 +66,7 @@ class EndToEndTest {
                     Outcome.NoFaces -> log.appendLine("   NO FACES")
                 }
             } catch (e: Throwable) {
+                failures += tag
                 log.appendLine("   FAILED: $e")
                 e.stackTrace.take(12).forEach { log.appendLine("      at $it") }
                 var c = e.cause
@@ -76,6 +79,8 @@ class EndToEndTest {
             File(outDir, "log.txt").writeText(log.toString())
         }
         File(outDir, "log.txt").writeText(log.toString())
+        if (names.isEmpty()) fail("no sample videos in androidTest assets")
+        if (failures.isNotEmpty()) fail("failed: $failures")
     }
 
     /** Original | processed, at 6 evenly spaced times. */

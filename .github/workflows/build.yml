@@ -9,7 +9,9 @@ permissions:
   contents: write
 
 jobs:
+  # Release only what passed the emulator end-to-end test.
   build:
+    needs: e2e
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
