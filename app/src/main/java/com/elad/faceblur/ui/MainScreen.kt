@@ -263,12 +263,12 @@ private fun SettingsCard(vm: MainViewModel) {
             if (vm.mode != BlurMode.SOLID) {
                 SliderRow("עוצמה", "עדין", "חזק", vm.strength, 0f..1f) { vm.strength = it }
             }
-            SliderRow("גודל האזור סביב הפנים", "צמוד", "רחב", vm.padding, 1.1f..2.0f) { vm.padding = it }
+            SliderRow("גודל האזור סביב הפנים", "צמוד", "רחב", vm.padding, 1.0f..1.8f) { vm.padding = it }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("זיהוי מורחב", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "מוצא גם פנים קטנות ורחוקות (קהל, צילום רחב). איטי יותר.",
+                        "מנתח ברזולוציה גבוהה יותר כדי למצוא גם פנים זעירות (קהל, צילום רחב). איטי יותר.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

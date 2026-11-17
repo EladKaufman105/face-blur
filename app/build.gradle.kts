@@ -19,7 +19,10 @@ android {
         versionCode = buildNumber
         versionName = "1.0.$buildNumber"
         // vivo X300 Pro (Dimensity 9500) is arm64 only: keep just that ABI to slim the APK.
-        ndk { abiFilters += "arm64-v8a" }
+        // CI's emulator test overrides this with -PabiFilters=x86_64.
+        val abis = (project.findProperty("abiFilters") as String?) ?: "arm64-v8a"
+        ndk { abiFilters += abis.split(",") }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -55,6 +58,11 @@ android {
 
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        jniLibs { useLegacyPackaging = false }
+    }
+
+    androidResources {
+        noCompress += "onnx"
     }
 }
 
@@ -70,8 +78,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-ui:$media3")
 
-    // Bundled model: runs fully offline, no Play Services download.
-    implementation("com.google.mlkit:face-detection:16.1.7")
+    // Face detection (YuNet via OpenCV DNN) + optical-flow tracking, fully on-device.
+    implementation("org.opencv:opencv:4.10.0")
 
     implementation(platform("androidx.compose:compose-bom:2025.05.00"))
     implementation("androidx.compose.ui:ui")
@@ -84,4 +92,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("junit:junit:4.13.2")
 }

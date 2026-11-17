@@ -49,8 +49,6 @@ jobs:
         shell: bash
         run: |
           [ -f build.log ] || exit 0
-          msg=$(grep -E "^e: |error:|What went wrong|Could not|> |FAILURE|Unresolved|Exception" build.log | grep -v "^> Task" | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
-          echo "::error title=Build failed::${msg}"
           git config user.name "ci"
           git config user.email "ci@users.noreply.github.com"
           git checkout --orphan ci-log
@@ -58,3 +56,63 @@ jobs:
           git add -f build.log
           git commit -m "build log ${{ github.run_number }}" > /dev/null
           git push -f origin ci-log
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch test media
+        shell: bash
+        run: |
+          git fetch --depth 1 origin test-media
+          mkdir -p app/src/androidTest/assets/samples
+          git archive FETCH_HEAD | tar -x -C app/src/androidTest/assets/samples
+          ls -la app/src/androidTest/assets/samples
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build test APKs (x86_64)
+        shell: bash
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew assembleDebug assembleDebugAndroidTest -PabiFilters=x86_64 --no-daemon --stacktrace 2>&1 | tee e2e-build.log
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          target: google_apis
+          cores: 4
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: bash ci/e2e.sh
+
+      - name: Publish results
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p e2e-results
+          cp e2e-build.log e2e-results/ 2>/dev/null || true
+          cd e2e-results
+          git init -q
+          git checkout -q -b ci-results
+          git add -A
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "e2e results ${{ github.run_number }} (${{ github.sha }})"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ci-results

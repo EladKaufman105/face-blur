@@ -1,167 +1,174 @@
 package com.elad.faceblur.track
 
-import com.elad.faceblur.effects.FrameDetections
+import com.elad.faceblur.analysis.Box
+import com.elad.faceblur.analysis.Kind
+import com.elad.faceblur.analysis.Track
+import com.elad.faceblur.analysis.TrackPoint
+import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.sqrt
-
-/** One detection: normalized center + size, top-left origin. */
-class Det(val t: Long, val cx: Float, val cy: Float, val w: Float, val h: Float)
-
-class Track(val dets: MutableList<Det>) {
-    val first get() = dets.first()
-    val last get() = dets.last()
-}
-
-/** A face region to cover in one frame: normalized ellipse, top-left origin. */
-class FaceShape(val cx: Float, val cy: Float, val rx: Float, val ry: Float)
 
 /**
- * Links per-frame detections into tracks, then answers "where are the faces at time t"
- * with interpolation across missed frames and a safety margin before/after each track,
- * so a face isn't exposed in the frames the detector missed.
+ * A face region to cover in one frame, in the pipeline frame's own orientation:
+ * center normalized to width/height (top-left origin); half-axes as a fraction of the frame
+ * WIDTH; roll angle in radians (image coordinates, y down).
  */
-class FaceTimeline(private val tracks: List<Track>, private val padding: Float) {
+class FaceShape(val cx: Float, val cy: Float, val rx: Float, val ry: Float, val angle: Float)
 
-    val trackCount get() = tracks.size
+private class TrackSeries(
+    val t: LongArray,
+    val cx: FloatArray,
+    val cy: FloatArray,
+    val rx: FloatArray,
+    val ry: FloatArray,
+    val angle: FloatArray,
+)
+
+/** Smoothed per-track face positions over time, looked up by presentation timestamp. */
+class FaceTimeline private constructor(
+    private val series: List<TrackSeries>,
+    private val frameUs: Long,
+) {
+    val trackCount get() = series.size
 
     fun facesAt(tUs: Long): List<FaceShape> {
         val out = ArrayList<FaceShape>()
-        for (tr in tracks) {
-            val first = tr.first.t
-            val last = tr.last.t
-            if (tUs < first - LEAD_US || tUs > last + TAIL_US) continue
-
-            val d: Det
-            val gap: Long
+        val tol = frameUs / 2
+        for (s in series) {
+            val n = s.t.size
+            val first = s.t[0]
+            val last = s.t[n - 1]
+            if (tUs < first - EDGE_FRAMES * frameUs - tol || tUs > last + EDGE_FRAMES * frameUs + tol) continue
             when {
-                tUs <= first -> { d = tr.first; gap = first - tUs }
-                tUs >= last -> { d = tr.last; gap = tUs - last }
+                tUs <= first -> out += shape(s, 0)
+                tUs >= last -> out += shape(s, n - 1)
                 else -> {
-                    val i = floorIndex(tr.dets, tUs)
-                    val a = tr.dets[i]
-                    val b = tr.dets[i + 1]
-                    val f = (tUs - a.t).toFloat() / max(1L, b.t - a.t)
-                    d = Det(
-                        tUs,
-                        a.cx + (b.cx - a.cx) * f,
-                        a.cy + (b.cy - a.cy) * f,
-                        a.w + (b.w - a.w) * f,
-                        a.h + (b.h - a.h) * f,
-                    )
-                    gap = min(tUs - a.t, b.t - tUs)
+                    var lo = 0
+                    var hi = n - 1
+                    while (hi - lo > 1) {
+                        val mid = (lo + hi) ushr 1
+                        if (s.t[mid] <= tUs) lo = mid else hi = mid
+                    }
+                    when {
+                        abs(s.t[lo] - tUs) <= tol -> out += shape(s, lo)
+                        abs(s.t[hi] - tUs) <= tol -> out += shape(s, hi)
+                        s.t[hi] - s.t[lo] <= MAX_INTERP_FRAMES * frameUs -> {
+                            val f = (tUs - s.t[lo]).toFloat() / (s.t[hi] - s.t[lo])
+                            out += FaceShape(
+                                lerp(s.cx[lo], s.cx[hi], f),
+                                lerp(s.cy[lo], s.cy[hi], f),
+                                lerp(s.rx[lo], s.rx[hi], f),
+                                lerp(s.ry[lo], s.ry[hi], f),
+                                lerp(s.angle[lo], s.angle[hi], f),
+                            )
+                        }
+                    }
                 }
             }
-            // The further from a real detection, the less sure we are where the face is.
-            val uncertainty = 1f + 0.6f * min(1f, gap / 500_000f)
-            val w = d.w * padding * uncertainty
-            val h = d.h * padding * uncertainty
-            out += FaceShape(
-                cx = d.cx,
-                cy = d.cy - 0.08f * d.h, // shift up to cover forehead / hair
-                rx = w / 2f,
-                ry = h / 2f * 1.15f,
-            )
         }
         return out
     }
 
-    private fun floorIndex(list: List<Det>, t: Long): Int {
-        var lo = 0
-        var hi = list.size - 2
-        while (lo < hi) {
-            val mid = (lo + hi + 1) ushr 1
-            if (list[mid].t <= t) lo = mid else hi = mid - 1
-        }
-        return lo
-    }
+    private fun shape(s: TrackSeries, i: Int) = FaceShape(s.cx[i], s.cy[i], s.rx[i], s.ry[i], s.angle[i])
 
     companion object {
-        const val LEAD_US = 300_000L
-        const val TAIL_US = 400_000L
-        private const val MAX_GAP_US = 1_000_000L
+        private const val EDGE_FRAMES = 3
+        private const val MAX_INTERP_FRAMES = 6
+
+        private fun lerp(a: Float, b: Float, f: Float) = a + (b - a) * f
 
         /**
-         * Greedy nearest-neighbour association between consecutive analyzed frames.
-         * [aspect] = frame width / height, so distances are measured in square units.
+         * @param times presentation time of each analysis frame index.
+         * @param uprightW / uprightH size of the (upright) analysis frames the boxes refer to.
+         * @param rotation clockwise degrees that were applied to make analysis frames upright.
          */
-        fun build(frames: List<FrameDetections>, aspect: Float, padding: Float): FaceTimeline {
-            val all = ArrayList<Track>()
-            val active = ArrayList<Track>()
+        fun build(
+            tracks: List<Track>,
+            times: LongArray,
+            uprightW: Int,
+            uprightH: Int,
+            rotation: Int,
+            padding: Float,
+        ): FaceTimeline {
+            val diffs = (1 until times.size).map { times[it] - times[it - 1] }.filter { it > 0 }.sorted()
+            val frameUs = if (diffs.isEmpty()) 33_333L else diffs[diffs.size / 2]
+            val pipelineW = if (rotation == 90 || rotation == 270) uprightH else uprightW
+            val rad = (rotation * PI / 180.0).toFloat()
 
-            for (frame in frames) {
-                active.removeAll { frame.timeUs - it.last.t > MAX_GAP_US }
-                val dets = frame.boxes.map {
-                    Det(frame.timeUs, it.centerX(), it.centerY(), it.width(), it.height())
+            val series = tracks.mapNotNull { tr ->
+                val pts = smooth(tr.points)
+                if (pts.isEmpty()) return@mapNotNull null
+                val keys = pts.keys.filter { it < times.size }
+                if (keys.isEmpty()) return@mapNotNull null
+                val n = keys.size
+                val ts = LongArray(n)
+                val cx = FloatArray(n)
+                val cy = FloatArray(n)
+                val rx = FloatArray(n)
+                val ry = FloatArray(n)
+                val an = FloatArray(n)
+                keys.forEachIndexed { i, k ->
+                    val b = pts[k]!!.box
+                    // Shift up a little to take in the forehead / hairline.
+                    val ux = b.cx
+                    val uy = b.cy - 0.06f * b.h
+                    val (px, py) = unrotate(ux, uy, rotation)
+                    ts[i] = times[k]
+                    cx[i] = px
+                    cy[i] = py
+                    rx[i] = b.w * uprightW / 2f * padding / pipelineW
+                    ry[i] = b.h * uprightH / 2f * padding * 1.18f / pipelineW
+                    an[i] = b.angle - rad
                 }
-                val pairs = ArrayList<Triple<Int, Int, Float>>()
-                for (di in dets.indices) for (ti in active.indices) {
-                    val d = dets[di]
-                    val l = active[ti].last
-                    if (l.t == d.t) continue
-                    val dx = (d.cx - l.cx) * aspect
-                    val dy = d.cy - l.cy
-                    val dist = sqrt(dx * dx + dy * dy)
-                    val size = max(max(d.w * aspect, d.h), max(l.w * aspect, l.h))
-                    val gapSec = (frame.timeUs - l.t) / 1_000_000f
-                    val allowed = size * (0.8f + 2f * gapSec)
-                    val ratio = max(d.w, l.w) / max(1e-6f, min(d.w, l.w))
-                    if (dist < allowed && ratio < 2.2f) pairs += Triple(di, ti, dist / max(size, 1e-6f))
-                }
-                pairs.sortBy { it.third }
-                val usedD = HashSet<Int>()
-                val usedT = HashSet<Int>()
-                for ((di, ti, _) in pairs) {
-                    if (di in usedD || ti in usedT) continue
-                    usedD += di
-                    usedT += ti
-                    active[ti].dets += dets[di]
-                }
-                for (di in dets.indices) {
-                    if (di in usedD) continue
-                    val t = Track(mutableListOf(dets[di]))
-                    all += t
-                    active += t
-                }
+                TrackSeries(ts, cx, cy, rx, ry, an)
             }
-            return FaceTimeline(all.map(::smooth), padding)
+            return FaceTimeline(series, frameUs)
         }
 
-        /** Light smoothing: centers by moving average, sizes by moving max (never shrink-flicker). */
-        private fun smooth(track: Track): Track {
-            val src = track.dets
-            if (src.size < 3) return track
-            val out = ArrayList<Det>(src.size)
-            for (i in src.indices) {
-                val a = max(0, i - 1)
-                val b = min(src.lastIndex, i + 1)
-                var cx = 0f
-                var cy = 0f
-                for (j in a..b) {
-                    cx += src[j].cx
-                    cy += src[j].cy
+        /** Maps a normalized point from the upright frame back to the pipeline frame. */
+        private fun unrotate(u: Float, v: Float, rotation: Int): Pair<Float, Float> = when (rotation) {
+            90 -> v to (1f - u)
+            180 -> (1f - u) to (1f - v)
+            270 -> (1f - v) to u
+            else -> u to v
+        }
+
+        /** Centered 5-tap smoothing (no lag, offline) + interpolation of short holes. */
+        private fun smooth(src: java.util.TreeMap<Int, TrackPoint>): java.util.TreeMap<Int, TrackPoint> {
+            val out = java.util.TreeMap<Int, TrackPoint>()
+            if (src.isEmpty()) return out
+            val weights = floatArrayOf(1f, 2f, 3f, 2f, 1f)
+            for ((i, p) in src) {
+                var cx = 0f; var cy = 0f; var w = 0f; var h = 0f; var a = 0f; var tw = 0f
+                for (k in -2..2) {
+                    val q = src[i + k] ?: continue
+                    val wt = weights[k + 2]
+                    cx += q.box.cx * wt; cy += q.box.cy * wt
+                    w += q.box.w * wt; h += q.box.h * wt
+                    a += q.box.angle * wt
+                    tw += wt
                 }
-                val n = (b - a + 1).toFloat()
-                var w = 0f
-                var h = 0f
-                for (j in max(0, i - 2)..min(src.lastIndex, i + 2)) {
-                    w = max(w, src[j].w)
-                    h = max(h, src[j].h)
-                }
-                // Keep fast motion responsive: blend toward the raw center when it moved a lot.
-                val raw = src[i]
-                val moved = abs(raw.cx - cx / n) + abs(raw.cy - cy / n)
-                val k = if (moved > raw.w * 0.5f) 0.7f else 0f
-                out += Det(
-                    raw.t,
-                    cx / n * (1 - k) + raw.cx * k,
-                    cy / n * (1 - k) + raw.cy * k,
-                    w,
-                    h,
-                )
+                out[i] = TrackPoint(Box(cx / tw, cy / tw, w / tw, h / tw, a / tw), p.kind)
             }
-            return Track(out)
+            val keys = out.keys.toList()
+            for (j in 0 until keys.size - 1) {
+                val a = keys[j]
+                val c = keys[j + 1]
+                if (c - a <= 1 || c - a > MAX_INTERP_FRAMES) continue
+                val ba = out[a]!!.box
+                val bc = out[c]!!.box
+                for (i in a + 1 until c) {
+                    val f = (i - a).toFloat() / (c - a)
+                    out[i] = TrackPoint(
+                        Box(
+                            lerp(ba.cx, bc.cx, f), lerp(ba.cy, bc.cy, f),
+                            lerp(ba.w, bc.w, f), lerp(ba.h, bc.h, f),
+                            lerp(ba.angle, bc.angle, f),
+                        ),
+                        Kind.INTERPOLATED,
+                    )
+                }
+            }
+            return out
         }
     }
 }
