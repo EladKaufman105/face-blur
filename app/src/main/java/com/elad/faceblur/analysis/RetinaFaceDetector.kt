@@ -36,7 +36,8 @@ class RetinaFaceDetector(modelPath: String) : Closeable {
     private val net: Net = Dnn.readNetFromONNX(modelPath)
     private val priorCache = HashMap<Long, FloatArray>()
     private val resized = Mat()
-    private val outNames = listOf("loc", "conf", "landmarks")
+    // OpenCV's JNI layer calls java.util.ArrayList methods on this: must be a real ArrayList.
+    private val outNames = arrayListOf("loc", "conf", "landmarks")
 
     fun detect(bgr: Mat): List<Det> {
         val w = bgr.cols()
