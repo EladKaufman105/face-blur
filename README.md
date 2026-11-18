@@ -8,3 +8,4 @@ Short clips cut from Intel's IoT DevKit sample videos
 - classroom.mp4: classroom.mp4, 0:03-0:07
 - classroom60.mp4: classroom.mp4, 0:03-0:06, resampled to 60 fps
 - portrait_rot90.mp4: head-pose clip cropped to portrait and stored sideways with -90 display rotation (like a phone recording)
+- stress_cuts.mp4: portrait 720x1280 montage of the clips above with hard cuts, handheld-style shake and zoom (tests drift and cut handling)
