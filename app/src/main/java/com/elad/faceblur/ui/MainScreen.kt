@@ -263,7 +263,7 @@ private fun SettingsCard(vm: MainViewModel) {
             if (vm.mode != BlurMode.SOLID) {
                 SliderRow("עוצמה", "עדין", "חזק", vm.strength, 0f..1f) { vm.strength = it }
             }
-            SliderRow("גודל האזור סביב הפנים", "צמוד", "רחב", vm.padding, 1.0f..1.8f) { vm.padding = it }
+            SliderRow("גודל האזור סביב הפנים", "צמוד", "רחב", vm.padding, 1.1f..1.9f) { vm.padding = it }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("זיהוי מורחב", style = MaterialTheme.typography.titleSmall)

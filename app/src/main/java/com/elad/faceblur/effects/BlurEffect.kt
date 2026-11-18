@@ -72,6 +72,7 @@ private class BlurProgram(
     private val faceArr = FloatArray(CHUNK * 4)
     private val rotArr = FloatArray(CHUNK * 4)
     private val slotArr = FloatArray(CHUNK * 4)
+    private val alphaArr = FloatArray(CHUNK)
 
     override fun configure(inputWidth: Int, inputHeight: Int): Size {
         if (compProg == 0) {
@@ -128,9 +129,11 @@ private class BlurProgram(
         val co = FloatArray(n); val si = FloatArray(n)
         val roiR = FloatArray(n); val sigma = FloatArray(n); val block = FloatArray(n)
         val level = IntArray(n)
+        val alpha = FloatArray(n)
         var maxLevel = 0
         for (i in 0 until n) {
             val f = faces[i]
+            alpha[i] = f.alpha
             cx[i] = f.cx * w
             cy[i] = (1f - f.cy) * h
             rx[i] = max(2f, f.rx * w)
@@ -151,7 +154,7 @@ private class BlurProgram(
                     sigma[i] = 0f; block[i] = 0f
                 }
             }
-            roiR[i] = max(rx[i], ry[i]) * (1f + 0.4f * FEATHER) + 3f * sigma[i] + 2f
+            roiR[i] = max(rx[i], ry[i]) * MASK_OUTER + 3f * sigma[i] + 2f
             val s = 2f * roiR[i] / SLOT
             level[i] = if (s <= 1f) 0 else min(MAX_LEVELS, floor(log2(s)).toInt())
             maxLevel = max(maxLevel, level[i])
@@ -239,6 +242,7 @@ private class BlurProgram(
                 val (u0, v0, u1, v1) = slotUv(j)
                 slotArr[j * 4] = u0; slotArr[j * 4 + 1] = v0
                 slotArr[j * 4 + 2] = u1; slotArr[j * 4 + 3] = v1
+                alphaArr[j] = alpha[i]
             }
             GLES20.glUseProgram(compProg)
             Gl.bindTexture(0, base)
@@ -248,7 +252,8 @@ private class BlurProgram(
             GLES20.glUniform2f(compU["uSize"], w.toFloat(), h.toFloat())
             GLES20.glUniform1i(compU["uCount"], count)
             GLES20.glUniform1i(compU["uMode"], mode.ordinal)
-            GLES20.glUniform1f(compU["uFeather"], FEATHER)
+            GLES20.glUniform2f(compU["uMask"], MASK_INNER, MASK_OUTER)
+            GLES20.glUniform1fv(compU["uAlpha"], count, alphaArr, 0)
             GLES20.glUniform4fv(compU["uFace"], count, faceArr, 0)
             GLES20.glUniform4fv(compU["uRot"], count, rotArr, 0)
             GLES20.glUniform4fv(compU["uSlot"], count, slotArr, 0)
@@ -301,7 +306,9 @@ private class BlurProgram(
         private const val COLS = 4
         private const val CHUNK = 16
         private const val ATLAS = SLOT * COLS // 4x4 slots
-        private const val FEATHER = 0.22f
+        // Soft mask: full effect inside 0.7 of the ellipse radius, fading out to 1.15.
+        private const val MASK_INNER = 0.7f
+        private const val MASK_OUTER = 1.15f
         private const val MAX_SIGMA = 8f
 
         private fun log2(v: Float) = (ln(v.toDouble()) / ln(2.0)).toFloat()
@@ -377,7 +384,8 @@ uniform sampler2D uAtlas;
 uniform vec2 uSize;
 uniform int uCount;
 uniform int uMode;
-uniform float uFeather;
+uniform vec2 uMask;
+uniform float uAlpha[16];
 uniform vec4 uFace[16];
 uniform vec4 uRot[16];
 uniform vec4 uSlot[16];
@@ -402,16 +410,17 @@ void main() {
         vec4 r = uRot[i];
         vec2 d = p - f.xy;
         if (abs(d.x) > r.z || abs(d.y) > r.z) continue;
+        float fade = uAlpha[i];
         if (uMode == 1) {
             // Mosaic: blocks anchored on the face center; a block is in if its center is.
             vec2 bd = (floor(d / r.w) + 0.5) * r.w;
-            if (ellipseDist(bd, f, r) <= 1.0) col = atlasAt(bd, r, uSlot[i]);
+            if (ellipseDist(bd, f, r) <= 1.0) col = mix(col, atlasAt(bd, r, uSlot[i]), fade);
         } else if (uMode == 2) {
             float a = 1.0 - smoothstep(0.96, 1.02, ellipseDist(d, f, r));
-            col = mix(col, vec3(0.0), a);
+            col = mix(col, vec3(0.0), a * fade);
         } else {
-            float a = 1.0 - smoothstep(1.0 - uFeather, 1.0 + 0.4 * uFeather, ellipseDist(d, f, r));
-            if (a > 0.0) col = mix(col, atlasAt(d, r, uSlot[i]), a);
+            float a = 1.0 - smoothstep(uMask.x, uMask.y, ellipseDist(d, f, r));
+            if (a > 0.0) col = mix(col, atlasAt(d, r, uSlot[i]), a * fade);
         }
     }
     gl_FragColor = vec4(col, base.a);

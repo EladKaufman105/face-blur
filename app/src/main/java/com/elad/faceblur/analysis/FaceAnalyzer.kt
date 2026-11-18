@@ -39,10 +39,10 @@ class FaceAnalyzer(context: Context, sensitive: Boolean, private val fps: Float)
     }
 
     /** Long side of the frames handed to [onFrame]. */
-    val maxSide = if (sensitive) 1920 else 1280
+    val maxSide = if (sensitive) 1280 else 960
 
     private val modelPath: String
-    private var detector: YuNetDetector? = null
+    private var detector: RetinaFaceDetector? = null
     private var tracker: FaceTracker? = null
     private val times = ArrayList<Long>()
     private var uprightW = 0
@@ -55,8 +55,8 @@ class FaceAnalyzer(context: Context, sensitive: Boolean, private val fps: Float)
     private val bgr = Mat()
     private val small = Mat()
 
-    // At high frame rates detection runs on every other frame; tracking still runs on all.
-    private val detectEvery = if (fps > 35f) 2 else 1
+    // Detection ~30 times per second of video; tracking still runs on every frame.
+    private val detectEvery = max(1, (fps / 30f).roundToInt())
 
     init {
         val file = File(context.filesDir, MODEL)
@@ -72,7 +72,7 @@ class FaceAnalyzer(context: Context, sensitive: Boolean, private val fps: Float)
         tracker?.release()
         tracker = FaceTracker(fps.coerceIn(5f, 240f))
         detector?.close()
-        detector = YuNetDetector(modelPath)
+        detector = RetinaFaceDetector(modelPath)
         times.clear()
     }
 
@@ -142,7 +142,7 @@ class FaceAnalyzer(context: Context, sensitive: Boolean, private val fps: Float)
     }
 
     companion object {
-        const val MODEL = "face_detection_yunet_2023mar.onnx"
+        const val MODEL = RetinaFaceDetector.MODEL
         private const val TRACK_SIDE = 640
     }
 }

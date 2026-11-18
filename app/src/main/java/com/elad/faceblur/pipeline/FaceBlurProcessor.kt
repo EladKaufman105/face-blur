@@ -56,7 +56,7 @@ sealed interface Outcome {
 
 /**
  * Two passes, both through Media3 Transformer (hardware decode/encode, GPU effects):
- *  1. Analysis: detect (YuNet) and track (median flow) faces on every frame (output discarded).
+ *  1. Analysis: detect (RetinaFace) and track (median flow) faces on every frame (output discarded).
  *  2. Render: blur/pixelate the tracked faces at full resolution, keep audio, keep HDR if possible.
  *
  * Must be called on the main thread (Transformer's application thread).

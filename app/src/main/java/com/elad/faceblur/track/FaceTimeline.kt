@@ -4,15 +4,19 @@ import com.elad.faceblur.analysis.Box
 import com.elad.faceblur.analysis.Kind
 import com.elad.faceblur.analysis.Track
 import com.elad.faceblur.analysis.TrackPoint
+import java.util.TreeMap
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * A face region to cover in one frame, in the pipeline frame's own orientation:
  * center normalized to width/height (top-left origin); half-axes as a fraction of the frame
- * WIDTH; roll angle in radians (image coordinates, y down).
+ * WIDTH; roll angle in radians (image coordinates, y down); opacity 0..1 (fades at the ends).
  */
-class FaceShape(val cx: Float, val cy: Float, val rx: Float, val ry: Float, val angle: Float)
+class FaceShape(val cx: Float, val cy: Float, val rx: Float, val ry: Float, val angle: Float, val alpha: Float)
 
 private class TrackSeries(
     val t: LongArray,
@@ -32,6 +36,8 @@ class FaceTimeline private constructor(
 ) {
     val trackCount get() = series.size
 
+    private val fadeUs = max(2 * frameUs, FADE_US)
+
     fun facesAt(tUs: Long): List<FaceShape> {
         val out = ArrayList<FaceShape>()
         val tol = frameUs / 2
@@ -39,10 +45,16 @@ class FaceTimeline private constructor(
             val n = s.t.size
             val first = s.t[0]
             val last = s.t[n - 1]
-            if (tUs < first - EDGE_FRAMES * frameUs - tol || tUs > last + EDGE_FRAMES * frameUs + tol) continue
+            if (tUs < first - fadeUs - tol || tUs > last + fadeUs + tol) continue
             when {
-                tUs <= first -> if (!cutBetween(tUs, first)) out += shape(s, 0)
-                tUs >= last -> if (!cutBetween(last, tUs)) out += shape(s, n - 1)
+                tUs < first - tol -> if (!cutBetween(tUs, first)) {
+                    out += shape(s, 0, 1f - (first - tUs).toFloat() / (fadeUs + frameUs))
+                }
+                tUs > last + tol -> if (!cutBetween(last, tUs)) {
+                    out += shape(s, n - 1, 1f - (tUs - last).toFloat() / (fadeUs + frameUs))
+                }
+                tUs <= first -> out += shape(s, 0, 1f)
+                tUs >= last -> out += shape(s, n - 1, 1f)
                 else -> {
                     var lo = 0
                     var hi = n - 1
@@ -51,9 +63,9 @@ class FaceTimeline private constructor(
                         if (s.t[mid] <= tUs) lo = mid else hi = mid
                     }
                     when {
-                        abs(s.t[lo] - tUs) <= tol -> out += shape(s, lo)
-                        abs(s.t[hi] - tUs) <= tol -> out += shape(s, hi)
-                        s.t[hi] - s.t[lo] <= MAX_INTERP_FRAMES * frameUs -> {
+                        abs(s.t[lo] - tUs) <= tol -> out += shape(s, lo, 1f)
+                        abs(s.t[hi] - tUs) <= tol -> out += shape(s, hi, 1f)
+                        else -> {
                             val f = (tUs - s.t[lo]).toFloat() / (s.t[hi] - s.t[lo])
                             out += FaceShape(
                                 lerp(s.cx[lo], s.cx[hi], f),
@@ -61,6 +73,7 @@ class FaceTimeline private constructor(
                                 lerp(s.rx[lo], s.rx[hi], f),
                                 lerp(s.ry[lo], s.ry[hi], f),
                                 lerp(s.angle[lo], s.angle[hi], f),
+                                1f,
                             )
                         }
                     }
@@ -70,19 +83,25 @@ class FaceTimeline private constructor(
         return out
     }
 
-    private fun shape(s: TrackSeries, i: Int) = FaceShape(s.cx[i], s.cy[i], s.rx[i], s.ry[i], s.angle[i])
+    private fun shape(s: TrackSeries, i: Int, alpha: Float) =
+        FaceShape(s.cx[i], s.cy[i], s.rx[i], s.ry[i], s.angle[i], alpha.coerceIn(0f, 1f))
 
-    /** True if a shot starts in (a, b]: a track's lead/tail must not spill into another shot. */
+    /** True if a shot starts in (a, b]: a track's fade must not spill into another shot. */
     private fun cutBetween(a: Long, b: Long): Boolean = cuts.any { it > a && it <= b }
 
     companion object {
-        private const val EDGE_FRAMES = 3
-        private const val MAX_INTERP_FRAMES = 6
+        private const val FADE_US = 150_000L
+        private const val BRIDGE_SECONDS = 0.5f
+        // Gaussian smoothing widths in seconds (offline, centered: no lag).
+        private const val SIGMA_POS = 0.07f
+        private const val SIGMA_SIZE = 0.2f
+        private const val SIGMA_ANGLE = 0.25f
 
         private fun lerp(a: Float, b: Float, f: Float) = a + (b - a) * f
 
         /**
          * @param times presentation time of each analysis frame index.
+         * @param cuts presentation times where a new shot starts.
          * @param uprightW / uprightH size of the (upright) analysis frames the boxes refer to.
          * @param rotation clockwise degrees that were applied to make analysis frames upright.
          */
@@ -97,12 +116,12 @@ class FaceTimeline private constructor(
         ): FaceTimeline {
             val diffs = (1 until times.size).map { times[it] - times[it - 1] }.filter { it > 0 }.sorted()
             val frameUs = if (diffs.isEmpty()) 33_333L else diffs[diffs.size / 2]
+            val fps = 1_000_000f / frameUs
             val pipelineW = if (rotation == 90 || rotation == 270) uprightH else uprightW
             val rad = (rotation * PI / 180.0).toFloat()
 
             val series = tracks.mapNotNull { tr ->
-                val pts = smooth(tr.points)
-                if (pts.isEmpty()) return@mapNotNull null
+                val pts = smooth(bridge(tr.points, fps), fps)
                 val keys = pts.keys.filter { it < times.size }
                 if (keys.isEmpty()) return@mapNotNull null
                 val n = keys.size
@@ -115,9 +134,7 @@ class FaceTimeline private constructor(
                 keys.forEachIndexed { i, k ->
                     val b = pts[k]!!.box
                     // Shift up a little to take in the forehead / hairline.
-                    val ux = b.cx
-                    val uy = b.cy - 0.06f * b.h
-                    val (px, py) = unrotate(ux, uy, rotation)
+                    val (px, py) = unrotate(b.cx, b.cy - 0.06f * b.h, rotation)
                     ts[i] = times[k]
                     cx[i] = px
                     cy[i] = py
@@ -138,30 +155,17 @@ class FaceTimeline private constructor(
             else -> u to v
         }
 
-        /** Centered 5-tap smoothing (no lag, offline) + interpolation of short holes. */
-        private fun smooth(src: java.util.TreeMap<Int, TrackPoint>): java.util.TreeMap<Int, TrackPoint> {
-            val out = java.util.TreeMap<Int, TrackPoint>()
-            if (src.isEmpty()) return out
-            val weights = floatArrayOf(1f, 2f, 3f, 2f, 1f)
-            for ((i, p) in src) {
-                var cx = 0f; var cy = 0f; var w = 0f; var h = 0f; var a = 0f; var tw = 0f
-                for (k in -2..2) {
-                    val q = src[i + k] ?: continue
-                    val wt = weights[k + 2]
-                    cx += q.box.cx * wt; cy += q.box.cy * wt
-                    w += q.box.w * wt; h += q.box.h * wt
-                    a += q.box.angle * wt
-                    tw += wt
-                }
-                out[i] = TrackPoint(Box(cx / tw, cy / tw, w / tw, h / tw, a / tw), p.kind)
-            }
-            val keys = out.keys.toList()
+        /** Fills holes of up to half a second by linear interpolation. */
+        private fun bridge(src: TreeMap<Int, TrackPoint>, fps: Float): TreeMap<Int, TrackPoint> {
+            val out = TreeMap(src)
+            val maxGap = max(2, (fps * BRIDGE_SECONDS).roundToInt())
+            val keys = src.keys.toList()
             for (j in 0 until keys.size - 1) {
                 val a = keys[j]
                 val c = keys[j + 1]
-                if (c - a <= 1 || c - a > MAX_INTERP_FRAMES) continue
-                val ba = out[a]!!.box
-                val bc = out[c]!!.box
+                if (c - a <= 1 || c - a > maxGap) continue
+                val ba = src[a]!!.box
+                val bc = src[c]!!.box
                 for (i in a + 1 until c) {
                     val f = (i - a).toFloat() / (c - a)
                     out[i] = TrackPoint(
@@ -173,6 +177,46 @@ class FaceTimeline private constructor(
                         Kind.INTERPOLATED,
                     )
                 }
+            }
+            return out
+        }
+
+        /**
+         * Centered Gaussian smoothing over time: positions lightly, size and angle more (they
+         * should not breathe or wobble). Offline, so it adds no lag.
+         */
+        private fun smooth(src: TreeMap<Int, TrackPoint>, fps: Float): TreeMap<Int, TrackPoint> {
+            val keys = src.keys.toIntArray()
+            val n = keys.size
+            val v = Array(5) { FloatArray(n) }
+            for (i in 0 until n) {
+                val b = src[keys[i]]!!.box
+                v[0][i] = b.cx; v[1][i] = b.cy; v[2][i] = b.w; v[3][i] = b.h; v[4][i] = b.angle
+            }
+            val sig = floatArrayOf(SIGMA_POS, SIGMA_POS, SIGMA_SIZE, SIGMA_SIZE, SIGMA_ANGLE).map { max(0.5f, it * fps) }
+            val out = TreeMap<Int, TrackPoint>()
+            for (i in 0 until n) {
+                val r = FloatArray(5)
+                for (c in 0 until 5) {
+                    val s = sig[c]
+                    val reach = (3 * s).toInt() + 1
+                    var acc = 0f
+                    var tw = 0f
+                    var j = i
+                    while (j >= 0 && keys[i] - keys[j] <= reach) {
+                        val d = (keys[i] - keys[j]) / s
+                        val wt = exp(-0.5f * d * d)
+                        acc += v[c][j] * wt; tw += wt; j--
+                    }
+                    j = i + 1
+                    while (j < n && keys[j] - keys[i] <= reach) {
+                        val d = (keys[j] - keys[i]) / s
+                        val wt = exp(-0.5f * d * d)
+                        acc += v[c][j] * wt; tw += wt; j++
+                    }
+                    r[c] = acc / tw
+                }
+                out[keys[i]] = TrackPoint(Box(r[0], r[1], r[2], r[3], r[4]), src[keys[i]]!!.kind)
             }
             return out
         }

@@ -23,8 +23,6 @@ class Track(val id: Int) {
     lateinit var lastDetected: Box
     /** Normalized 32x32 grayscale patch of the face at its last detection. */
     var anchor: FloatArray? = null
-    /** Pixel aspect (h / w) of each detection. */
-    val aspects = ArrayList<Float>()
     var lost = 0
     var hits = 0
     var strongHits = 0
@@ -52,7 +50,10 @@ class FaceTracker(private val fps: Float) {
     /** Analysis frame indices where a hard cut starts a new shot. */
     val cutFrames = ArrayList<Int>()
 
+    private var lastFrame = 0
+
     fun step(idx: Int, dets: List<Det>, detectionRan: Boolean, gray: Mat) {
+        lastFrame = idx
         val gw = gray.cols().toFloat()
         val gh = gray.rows().toFloat()
         fun toPx(b: Box) = PxBox(b.cx * gw, b.cy * gh, b.w * gw, b.h * gh)
@@ -80,7 +81,7 @@ class FaceTracker(private val fps: Float) {
         for ((di, d) in dets.withIndex()) {
             for (t in active) {
                 val ref = preds[t.id] ?: t.last
-                val o = YuNetDetector.iou(d.box, ref)
+                val o = RetinaFaceDetector.iou(d.box, ref)
                 val dist = hypot((d.box.cx - ref.cx) * gw, (d.box.cy - ref.cy) * gh)
                 val size = max(ref.w * gw, ref.h * gh)
                 val ratio = max(d.box.w, ref.w) / max(1e-6f, min(d.box.w, ref.w))
@@ -103,7 +104,6 @@ class FaceTracker(private val fps: Float) {
             t.lastIdx = idx
             t.lastDetected = d.box
             t.anchor = patch(gray, toPx(d.box))
-            t.aspects += d.box.h * gh / (d.box.w * gw)
             t.lost = 0
             t.hits++
             if (d.score >= STRONG_SCORE) t.strongHits++
@@ -119,7 +119,7 @@ class FaceTracker(private val fps: Float) {
             var dead = p == null || t.lost > maxLost(t) || !onScreen(p)
             if (!dead && p != null) {
                 val ld = t.lastDetected
-                dead = detectedNow.any { YuNetDetector.overlap(p, it) > 0.3f } ||
+                dead = detectedNow.any { RetinaFaceDetector.overlap(p, it) > 0.3f } ||
                     hypot((p.cx - ld.cx) * gw, (p.cy - ld.cy) * gh) > 0.75f * max(ld.w * gw, ld.h * gh) ||
                     p.w / ld.w !in 0.75f..1.33f ||
                     !similar(t.anchor, patch(gray, toPx(p)))
@@ -139,14 +139,13 @@ class FaceTracker(private val fps: Float) {
         // 4. New faces, followed a little backwards in time.
         for ((di, d) in dets.withIndex()) {
             if (di in usedD || d.score < BIRTH_SCORE) continue
-            if (tracks.any { t -> t.points[idx]?.let { YuNetDetector.overlap(d.box, it.box) > 0.3f } == true }) continue
+            if (tracks.any { t -> t.points[idx]?.let { RetinaFaceDetector.overlap(d.box, it.box) > 0.3f } == true }) continue
             val t = Track(nextId++)
             t.points[idx] = TrackPoint(d.box, Kind.DETECTED)
             t.last = d.box
             t.lastIdx = idx
             t.lastDetected = d.box
             t.anchor = patch(gray, toPx(d.box))
-            t.aspects += d.box.h * gh / (d.box.w * gw)
             t.hits = 1
             t.strongHits = if (d.score >= STRONG_SCORE) 1 else 0
             t.maxScore = d.score
@@ -173,7 +172,7 @@ class FaceTracker(private val fps: Float) {
             val p = MedianFlow.track(cur, prev, toPx(box)) ?: break
             val nb = fromPx(p, box.angle)
             if (!onScreen(nb)) break
-            val clash = tracks.any { o -> o !== t && o.points[fi]?.let { YuNetDetector.overlap(nb, it.box) > 0.3f } == true }
+            val clash = tracks.any { o -> o !== t && o.points[fi]?.let { RetinaFaceDetector.overlap(nb, it.box) > 0.3f } == true }
             if (clash) break
             if (hypot((nb.cx - start.cx) / start.w, (nb.cy - start.cy) / start.h) > 1f) break
             if (nb.w / start.w !in 0.75f..1.33f) break
@@ -189,42 +188,55 @@ class FaceTracker(private val fps: Float) {
     private fun maxLost(t: Track): Int = min(fps * 0.6f, max(fps * 0.2f, t.strongHits.toFloat())).toInt()
 
     /**
-     * Tracks worth blurring: one very confident detection, or several confident ones that
-     * don't look like a hand / fist (square box) or sit under a confident face (hands,
-     * chest, gear: YuNet sometimes scores those 0.6-0.75).
+     * Tracks worth blurring: several confident detections (a one-frame 0.99 on a shirt print
+     * happens), or a confident face that a hard cut / the clip's edge cut short. Tracks of the
+     * same face that the detector briefly lost are then joined so the blur doesn't blink.
      */
     fun finish(): List<Track> {
-        val sure = tracks.filter { it.maxScore >= SURE_SCORE }
-        val keep = ArrayList(sure)
-        for (t in tracks) {
-            if (t.maxScore >= SURE_SCORE || t.strongHits < 3) continue
-            if (median(t.aspects) < 1f) continue
-            val detFrames = t.points.filterValues { it.kind == Kind.DETECTED }.keys
-            var below = 0
-            for (i in detFrames) {
-                val b = t.points[i]!!.box
-                val underFace = sure.any { o ->
-                    val q = o.points[i]
-                    if (q == null || q.kind != Kind.DETECTED) false
-                    else {
-                        val ob = q.box
-                        val dy = (b.cy - ob.cy) / ob.h
-                        dy in 0.8f..4f && kotlin.math.abs(b.cx - ob.cx) < 1.2f * ob.w && b.w / ob.w in 0.5f..2f
-                    }
-                }
-                if (underFace) below++
-            }
-            if (detFrames.isNotEmpty() && below * 2 >= detFrames.size) continue
-            keep += t
+        fun truncated(t: Track): Boolean {
+            val a = t.points.firstKey()
+            val b = t.points.lastKey()
+            return cutFrames.any { c -> c - b in 0..2 || a - c in 0..2 } || a <= 2 || b >= lastFrame - 2
         }
-        return keep
+        val keep = tracks.filter {
+            it.points.isNotEmpty() && (it.strongHits >= 3 ||
+                (it.maxScore >= SURE_SCORE && (it.strongHits >= 2 || truncated(it))))
+        }
+        return link(keep)
     }
 
-    private fun median(v: List<Float>): Float {
-        if (v.isEmpty()) return 0f
-        val s = v.sorted()
-        val m = s.size / 2
-        return if (s.size % 2 == 1) s[m] else (s[m - 1] + s[m]) / 2f
+    private fun link(input: List<Track>): List<Track> {
+        val tracksLeft = input.sortedBy { it.points.firstKey() }.toMutableList()
+        val gapMax = (fps * LINK_SECONDS).roundToInt()
+        var merged = true
+        while (merged) {
+            merged = false
+            loop@ for (a in tracksLeft) {
+                val ae = a.points.lastKey()
+                val pa = a.points[ae]!!.box
+                var best: Track? = null
+                for (b in tracksLeft) {
+                    if (b === a) continue
+                    val bs = b.points.firstKey()
+                    if (bs - ae !in 1..gapMax) continue
+                    if (cutFrames.any { it in (ae + 1)..bs }) continue
+                    val pb = b.points[bs]!!.box
+                    val size = max(pa.w, pa.h)
+                    if (hypot(pa.cx - pb.cx, pa.cy - pb.cy) < 1.5f * size && pb.w / pa.w in 0.625f..1.6f) {
+                        if (best == null || bs < best.points.firstKey()) best = b
+                    }
+                }
+                if (best != null) {
+                    a.points.putAll(best.points)
+                    a.maxScore = max(a.maxScore, best.maxScore)
+                    a.strongHits += best.strongHits
+                    tracksLeft.remove(best)
+                    merged = true
+                    break@loop
+                }
+            }
+        }
+        return tracksLeft
     }
 
     private fun clearRing() {
@@ -236,7 +248,8 @@ class FaceTracker(private val fps: Float) {
     companion object {
         const val BIRTH_SCORE = 0.7f
         const val STRONG_SCORE = 0.6f
-        const val SURE_SCORE = 0.85f
+        const val SURE_SCORE = 0.9f
+        private const val LINK_SECONDS = 0.6f
         private const val BACKWARD_SECONDS = 0.6f
         private const val PATCH = 32
         private const val SIMILARITY = 0.45f
