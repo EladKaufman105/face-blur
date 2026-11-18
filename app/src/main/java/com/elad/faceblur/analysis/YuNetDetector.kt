@@ -34,7 +34,7 @@ class YuNetDetector(private val modelPath: String) : Closeable {
         val w = bgr.cols()
         val h = bgr.rows()
         val out = ArrayList<Det>()
-        run(bgr, w, h, 1f, out)
+        run(bgr, w, h, 1f, 0f, out)
         val longSide = max(w, h)
         for (side in EXTRA_SIDES) {
             if (longSide <= side * 1.3f) continue
@@ -42,12 +42,14 @@ class YuNetDetector(private val modelPath: String) : Closeable {
             val sw = (w * s).roundToInt()
             val sh = (h * s).roundToInt()
             Imgproc.resize(bgr, scaled, Size(sw.toDouble(), sh.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
-            run(scaled, w, h, 1f / s, out)
+            // Coarse passes exist for faces too big for the full pass; small boxes there are
+            // unreliable (blurry blobs, hands, textures) and duplicate the full pass anyway.
+            run(scaled, w, h, 1f / s, COARSE_MIN_BOX, out)
         }
-        return nms(out, 0.4f)
+        return nms(out, 0.45f)
     }
 
-    private fun run(img: Mat, fullW: Int, fullH: Int, k: Float, out: MutableList<Det>) {
+    private fun run(img: Mat, fullW: Int, fullH: Int, k: Float, minBox: Float, out: MutableList<Det>) {
         val iw = img.cols()
         val ih = img.rows()
         val key = (iw.toLong() shl 32) or ih.toLong()
@@ -58,6 +60,7 @@ class YuNetDetector(private val modelPath: String) : Closeable {
         val n = if (faces.empty()) 0 else faces.rows()
         for (r in 0 until n) {
             faces.get(r, 0, row)
+            if (min(row[2], row[3]) < minBox) continue
             val x = row[0] * k
             val y = row[1] * k
             val bw = row[2] * k
@@ -80,7 +83,8 @@ class YuNetDetector(private val modelPath: String) : Closeable {
     }
 
     companion object {
-        const val SCORE_THRESHOLD = 0.3f
+        const val SCORE_THRESHOLD = 0.45f
+        private const val COARSE_MIN_BOX = 40f
         private val EXTRA_SIDES = intArrayOf(640, 320)
         private const val MAX_ROLL = 1.31f // 75 degrees
 
@@ -92,10 +96,19 @@ class YuNetDetector(private val modelPath: String) : Closeable {
             return inter / (a.w * a.h + b.w * b.h - inter)
         }
 
+        /** max(IoU, intersection / smaller area): also catches a box nested in another. */
+        fun overlap(a: Box, b: Box): Float {
+            val iw = min(a.cx + a.w / 2, b.cx + b.w / 2) - max(a.cx - a.w / 2, b.cx - b.w / 2)
+            val ih = min(a.cy + a.h / 2, b.cy + b.h / 2) - max(a.cy - a.h / 2, b.cy - b.h / 2)
+            if (iw <= 0f || ih <= 0f) return 0f
+            val inter = iw * ih
+            return max(inter / (a.w * a.h + b.w * b.h - inter), inter / min(a.w * a.h, b.w * b.h))
+        }
+
         fun nms(dets: List<Det>, thr: Float): List<Det> {
             val keep = ArrayList<Det>()
             for (d in dets.sortedByDescending { it.score }) {
-                if (keep.all { iou(it.box, d.box) < thr }) keep += d
+                if (keep.all { overlap(it.box, d.box) < thr }) keep += d
             }
             return keep
         }

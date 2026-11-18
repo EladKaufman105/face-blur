@@ -2,9 +2,9 @@
 
 Android app that blurs faces in videos entirely on-device. Tuned for the vivo X300 Pro (arm64, Android 16), works on any arm64 Android 10+ phone.
 
-- **Detection:** ML Kit face detection (bundled model, offline). Optional "extended" mode adds overlapping high-res tiles to catch small/distant faces.
-- **Tracking:** detections are linked into tracks, interpolated across missed frames, and held slightly before/after each appearance with a growing safety margin.
-- **Rendering:** Media3 Transformer (hardware decode/encode) with a custom GPU effect: blur, pixelate or solid cover, strength relative to each face's size. Audio is copied, HDR kept when the device can encode it.
+- **Detection:** YuNet (OpenCV Zoo, MIT) through OpenCV DNN, on every frame, at the analysis resolution plus coarse passes for faces that fill the frame.
+- **Tracking:** detections are matched to median-flow predictions. Missed frames are bridged by optical flow for a short time, guarded by an appearance check, drift and scale limits. New faces are followed a little backwards in time. Hard cuts end all tracks. A track needs several confident detections to count.
+- **Rendering:** Media3 Transformer (hardware decode/encode) with a custom GPU effect: per-face Gaussian blur in an atlas, soft rotated ellipse mask; pixelate and solid modes. Audio is copied, HDR kept when the device can encode it.
 - Output is saved to `Movies/FaceBlur`.
 
-Builds run on GitHub Actions; every push to `main` publishes a release with the APK.
+CI runs an end-to-end test on an Android emulator over the clips on the `test-media` branch (results on `ci-results`), and only then publishes a release with the APK.

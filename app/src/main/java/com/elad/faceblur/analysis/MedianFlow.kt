@@ -71,7 +71,7 @@ object MedianFlow {
             val fbLimit = max(2f, box.w * 0.05f)
             val good = ArrayList<Int>()
             for (k in 0 until n) if (ok[k] && fb[k] <= max(medFb, 0.5f) && fb[k] < fbLimit) good += k
-            if (good.size < 6) return null
+            if (good.size < 12) return null
 
             val dxs = FloatArray(good.size) { (b[good[it]].x - a[good[it]].x).toFloat() }
             val dys = FloatArray(good.size) { (b[good[it]].y - a[good[it]].y).toFloat() }
@@ -87,10 +87,10 @@ object MedianFlow {
                 val d1 = hypot(b[gi].x - b[gj].x, b[gi].y - b[gj].y)
                 ratios += (d1 / d0).toFloat()
             }
-            val scale = (if (ratios.isEmpty()) 1f else median(ratios.toFloatArray())).coerceIn(0.87f, 1.15f)
+            val scale = (if (ratios.isEmpty()) 1f else median(ratios.toFloatArray())).coerceIn(0.95f, 1.05f)
 
             val resid = median(FloatArray(good.size) { hypot(dxs[it] - dx, dys[it] - dy) })
-            if (resid > box.w * 0.15f) return null
+            if (resid > box.w * 0.08f) return null
 
             return PxBox(box.cx + dx, box.cy + dy, box.w * scale, box.h * scale)
         } finally {
