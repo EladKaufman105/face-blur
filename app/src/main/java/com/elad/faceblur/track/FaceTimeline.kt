@@ -92,8 +92,10 @@ class FaceTimeline private constructor(
     companion object {
         private const val FADE_US = 150_000L
         private const val BRIDGE_SECONDS = 0.5f
-        // Gaussian smoothing widths in seconds (offline, centered: no lag).
-        private const val SIGMA_POS = 0.07f
+        // Gaussian smoothing widths in seconds (offline, centered: no lag). Position stays
+        // nearly raw: with a shaky camera, more smoothing lets the face slide out from under
+        // the blur. Size and angle carry the detector noise, so they get smoothed hard.
+        private const val SIGMA_POS = 0.025f
         private const val SIGMA_SIZE = 0.2f
         private const val SIGMA_ANGLE = 0.25f
 
