@@ -124,7 +124,12 @@ class FaceAnalyzer(context: Context, sensitive: Boolean, private val fps: Float)
 
     @Synchronized
     fun buildTimeline(padding: Float): FaceTimeline =
-        FaceTimeline.build(tracker!!.finish(), times.toLongArray(), uprightW, uprightH, rotation, padding)
+        FaceTimeline.build(
+            tracker!!.finish(),
+            times.toLongArray(),
+            tracker!!.cutFrames.filter { it < times.size }.map { times[it] }.toLongArray(),
+            uprightW, uprightH, rotation, padding,
+        )
 
     @Synchronized
     override fun close() {

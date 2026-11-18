@@ -23,6 +23,8 @@ class Track(val id: Int) {
     lateinit var lastDetected: Box
     /** Normalized 32x32 grayscale patch of the face at its last detection. */
     var anchor: FloatArray? = null
+    /** Pixel aspect (h / w) of each detection. */
+    val aspects = ArrayList<Float>()
     var lost = 0
     var hits = 0
     var strongHits = 0
@@ -47,8 +49,8 @@ class FaceTracker(private val fps: Float) {
     private val tracks = ArrayList<Track>()
     private var nextId = 1
     private val cuts = CutDetector()
-    var cutCount = 0
-        private set
+    /** Analysis frame indices where a hard cut starts a new shot. */
+    val cutFrames = ArrayList<Int>()
 
     fun step(idx: Int, dets: List<Det>, detectionRan: Boolean, gray: Mat) {
         val gw = gray.cols().toFloat()
@@ -57,7 +59,7 @@ class FaceTracker(private val fps: Float) {
         fun fromPx(p: PxBox, angle: Float) = Box(p.cx / gw, p.cy / gh, p.w / gw, p.h / gh, angle)
 
         if (cuts.isCut(gray)) {
-            cutCount++
+            cutFrames += idx
             for (t in tracks) t.active = false
             clearRing()
         }
@@ -101,6 +103,7 @@ class FaceTracker(private val fps: Float) {
             t.lastIdx = idx
             t.lastDetected = d.box
             t.anchor = patch(gray, toPx(d.box))
+            t.aspects += d.box.h * gh / (d.box.w * gw)
             t.lost = 0
             t.hits++
             if (d.score >= STRONG_SCORE) t.strongHits++
@@ -143,6 +146,7 @@ class FaceTracker(private val fps: Float) {
             t.lastIdx = idx
             t.lastDetected = d.box
             t.anchor = patch(gray, toPx(d.box))
+            t.aspects += d.box.h * gh / (d.box.w * gw)
             t.hits = 1
             t.strongHits = if (d.score >= STRONG_SCORE) 1 else 0
             t.maxScore = d.score
@@ -184,8 +188,44 @@ class FaceTracker(private val fps: Float) {
 
     private fun maxLost(t: Track): Int = min(fps * 0.6f, max(fps * 0.2f, t.strongHits.toFloat())).toInt()
 
-    /** Tracks worth blurring: several confident detections, or one very confident one. */
-    fun finish(): List<Track> = tracks.filter { it.strongHits >= 3 || it.maxScore >= 0.85f }
+    /**
+     * Tracks worth blurring: one very confident detection, or several confident ones that
+     * don't look like a hand / fist (square box) or sit under a confident face (hands,
+     * chest, gear: YuNet sometimes scores those 0.6-0.75).
+     */
+    fun finish(): List<Track> {
+        val sure = tracks.filter { it.maxScore >= SURE_SCORE }
+        val keep = ArrayList(sure)
+        for (t in tracks) {
+            if (t.maxScore >= SURE_SCORE || t.strongHits < 3) continue
+            if (median(t.aspects) < 1f) continue
+            val detFrames = t.points.filterValues { it.kind == Kind.DETECTED }.keys
+            var below = 0
+            for (i in detFrames) {
+                val b = t.points[i]!!.box
+                val underFace = sure.any { o ->
+                    val q = o.points[i]
+                    if (q == null || q.kind != Kind.DETECTED) false
+                    else {
+                        val ob = q.box
+                        val dy = (b.cy - ob.cy) / ob.h
+                        dy in 0.8f..4f && kotlin.math.abs(b.cx - ob.cx) < 1.2f * ob.w && b.w / ob.w in 0.5f..2f
+                    }
+                }
+                if (underFace) below++
+            }
+            if (detFrames.isNotEmpty() && below * 2 >= detFrames.size) continue
+            keep += t
+        }
+        return keep
+    }
+
+    private fun median(v: List<Float>): Float {
+        if (v.isEmpty()) return 0f
+        val s = v.sorted()
+        val m = s.size / 2
+        return if (s.size % 2 == 1) s[m] else (s[m - 1] + s[m]) / 2f
+    }
 
     private fun clearRing() {
         while (ring.isNotEmpty()) ring.removeFirst().second.release()
@@ -196,6 +236,7 @@ class FaceTracker(private val fps: Float) {
     companion object {
         const val BIRTH_SCORE = 0.7f
         const val STRONG_SCORE = 0.6f
+        const val SURE_SCORE = 0.85f
         private const val BACKWARD_SECONDS = 0.6f
         private const val PATCH = 32
         private const val SIMILARITY = 0.45f

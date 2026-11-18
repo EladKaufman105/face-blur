@@ -27,6 +27,8 @@ private class TrackSeries(
 class FaceTimeline private constructor(
     private val series: List<TrackSeries>,
     private val frameUs: Long,
+    /** Presentation times of the first frame of each new shot (hard cuts). */
+    private val cuts: LongArray,
 ) {
     val trackCount get() = series.size
 
@@ -39,8 +41,8 @@ class FaceTimeline private constructor(
             val last = s.t[n - 1]
             if (tUs < first - EDGE_FRAMES * frameUs - tol || tUs > last + EDGE_FRAMES * frameUs + tol) continue
             when {
-                tUs <= first -> out += shape(s, 0)
-                tUs >= last -> out += shape(s, n - 1)
+                tUs <= first -> if (!cutBetween(tUs, first)) out += shape(s, 0)
+                tUs >= last -> if (!cutBetween(last, tUs)) out += shape(s, n - 1)
                 else -> {
                     var lo = 0
                     var hi = n - 1
@@ -70,6 +72,9 @@ class FaceTimeline private constructor(
 
     private fun shape(s: TrackSeries, i: Int) = FaceShape(s.cx[i], s.cy[i], s.rx[i], s.ry[i], s.angle[i])
 
+    /** True if a shot starts in (a, b]: a track's lead/tail must not spill into another shot. */
+    private fun cutBetween(a: Long, b: Long): Boolean = cuts.any { it > a && it <= b }
+
     companion object {
         private const val EDGE_FRAMES = 3
         private const val MAX_INTERP_FRAMES = 6
@@ -84,6 +89,7 @@ class FaceTimeline private constructor(
         fun build(
             tracks: List<Track>,
             times: LongArray,
+            cuts: LongArray,
             uprightW: Int,
             uprightH: Int,
             rotation: Int,
@@ -121,7 +127,7 @@ class FaceTimeline private constructor(
                 }
                 TrackSeries(ts, cx, cy, rx, ry, an)
             }
-            return FaceTimeline(series, frameUs)
+            return FaceTimeline(series, frameUs, cuts)
         }
 
         /** Maps a normalized point from the upright frame back to the pipeline frame. */
