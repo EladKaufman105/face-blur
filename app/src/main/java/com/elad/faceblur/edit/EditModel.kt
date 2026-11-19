@@ -47,6 +47,14 @@ class Cue(val id: Int, var startMs: Long, var endMs: Long, var he: String, var e
         SubLang.BOTH -> listOf(he, en).filter { it.isNotBlank() }.joinToString("\n")
         SubLang.NONE -> ""
     }
+
+    /** Paragraphs to show for [lang] (Hebrew above English for both). */
+    fun blocks(lang: SubLang): List<String> = when (lang) {
+        SubLang.HE -> listOf(he)
+        SubLang.EN -> listOf(en)
+        SubLang.BOTH -> listOf(he, en)
+        SubLang.NONE -> emptyList()
+    }.filter { it.isNotBlank() }
 }
 
 /** Which subtitle text to show / burn in. */
@@ -252,6 +260,14 @@ class EditModel(
     fun editCue(id: Int, he: String, en: String) {
         val c = cue(id) ?: return
         snapshot()
+        c.he = he
+        c.en = en
+        changed()
+    }
+
+    /** Fills in text without an undo step (a translation arriving). */
+    fun setCueText(id: Int, he: String, en: String) {
+        val c = cue(id) ?: return
         c.he = he
         c.en = en
         changed()

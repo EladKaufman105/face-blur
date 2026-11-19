@@ -109,7 +109,9 @@ import com.elad.faceblur.edit.EditTrack
 import com.elad.faceblur.edit.EditorController
 import com.elad.faceblur.edit.PreviewSource
 import com.elad.faceblur.edit.SubLang
-import com.elad.faceblur.subs.SubtitleOverlay
+import com.elad.faceblur.subs.SubtitleEngine
+import com.elad.faceblur.subs.SubtitleRenderer
+import com.elad.faceblur.subs.SubtitleStyle
 import com.elad.faceblur.effects.BlurEffect
 import com.elad.faceblur.pipeline.ExportOptions
 import kotlinx.coroutines.CoroutineScope
@@ -142,12 +144,15 @@ fun EditorScreen(
     onExport: () -> Unit,
     export: ExportOptions = ExportOptions(),
     onExportChange: (ExportOptions) -> Unit = {},
+    subStyle: SubtitleStyle = SubtitleStyle(),
+    onSubStyleChange: (SubtitleStyle) -> Unit = {},
 ) {
     var confirmClose by remember { mutableStateOf(false) }
     var exportSheet by remember { mutableStateOf(false) }
     BackHandler {
         when {
             ctrl.addMode -> ctrl.addMode = false
+            ctrl.stylePanel -> ctrl.stylePanel = false
             ctrl.selectedId != null || ctrl.selectedCueId != null -> ctrl.deselect()
             else -> confirmClose = true
         }
@@ -166,19 +171,19 @@ fun EditorScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = { confirmClose = true }) { Icon(Icons.Filled.Close, t("סגור")) }
-            Text(t("עריכת טשטושים"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text(if (ctrl.session.subtitlesOnly) t("כתוביות") else t("עריכת טשטושים"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             Button(onClick = { ctrl.pauser(); exportSheet = true }, enabled = !busy, modifier = Modifier.padding(end = 8.dp)) { Text(t("ייצוא")) }
         }
 
         Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
-            VideoWithOverlay(ctrl, export.subs)
+            VideoWithOverlay(ctrl, export.subs, subStyle)
             Column(
                 Modifier.align(Alignment.TopCenter).padding(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 if (ctrl.addMode) {
                     Banner(t("הקש על הפנים שצריך לטשטש"), action = t("ביטול")) { ctrl.addMode = false }
-                } else if (ctrl.model.tracks.isEmpty()) {
+                } else if (ctrl.model.tracks.isEmpty() && !ctrl.session.subtitlesOnly) {
                     Banner(t("לא זוהו פנים. אפשר לסמן ידנית עם \"הוסף טשטוש\"."))
                 }
             }
@@ -200,10 +205,20 @@ fun EditorScreen(
                 if (!ctrl.subsSheet) {
                     val models = ctrl.models
                     val sp = ctrl.subsProgress
+                    val eta = rememberEta()
                     if (models?.downloading != null) {
-                        ProgressPill(t("מוריד את המודל… %d%%").format((models.progress * 100).roundToInt()), models.progress, ctrl::cancelSubtitles)
+                        val left = etaText(eta.remainingMs("download", models.progress))
+                        ProgressPill(
+                            t("מוריד את המודל… %d%%").format((models.progress * 100).roundToInt()) + (left?.let { " · $it" } ?: ""),
+                            models.progress, ctrl::cancelSubtitles,
+                        )
                     } else if (sp != null) {
-                        ProgressPill(subsStageText(sp.first, sp.second), sp.second, ctrl::cancelSubtitles)
+                        val determinate = sp.first != SubtitleEngine.Stage.PACK
+                        val left = if (determinate) etaText(eta.remainingMs(sp.first, sp.second)) else null
+                        ProgressPill(
+                            subsStageText(sp.first, sp.second) + (left?.let { " · $it" } ?: ""),
+                            if (determinate) sp.second else null, ctrl::cancelSubtitles,
+                        )
                     }
                 }
             }
@@ -212,12 +227,16 @@ fun EditorScreen(
         // Video controls and timelines run left to right even in a Hebrew UI.
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Transport(ctrl, busy)
-            Timeline(ctrl, busy)
+            if (!ctrl.stylePanel) Timeline(ctrl, busy)
         }
 
-        val sel = ctrl.selected
-        if (sel != null && ctrl.sizePanel) SizePanel(ctrl, sel, busy)
-        BottomBar(ctrl, sel, ctrl.selectedCue, busy)
+        if (ctrl.stylePanel) {
+            SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
+        } else {
+            val sel = ctrl.selected
+            if (sel != null && ctrl.sizePanel) SizePanel(ctrl, sel, busy)
+            BottomBar(ctrl, sel, ctrl.selectedCue, busy)
+        }
     }
 
     if (ctrl.subsSheet) SubtitlesSheet(ctrl, export, onExportChange)
@@ -243,10 +262,14 @@ fun EditorScreen(
 }
 
 @Composable
-private fun ProgressPill(text: String, progress: Float, onStop: () -> Unit) {
+private fun ProgressPill(text: String, progress: Float?, onStop: () -> Unit) {
     Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f)) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(20.dp), strokeWidth = 3.dp)
+            if (progress != null) {
+                CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(20.dp), strokeWidth = 3.dp)
+            } else {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 3.dp)
+            }
             Spacer(Modifier.width(10.dp))
             Text(text, style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = onStop) { Text(t("עצור")) }
@@ -267,7 +290,7 @@ private fun Banner(text: String, action: String? = null, onAction: () -> Unit = 
 // ---------------------------------------------------------------------- video + overlay
 
 @Composable
-private fun VideoWithOverlay(ctrl: EditorController, subs: SubLang) {
+private fun VideoWithOverlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle) {
     val context = LocalContext.current
     val analysis = ctrl.session.analysis
     val settings = ctrl.session.settings
@@ -310,7 +333,7 @@ private fun VideoWithOverlay(ctrl: EditorController, subs: SubLang) {
             },
             modifier = Modifier.fillMaxSize(),
         )
-        Overlay(ctrl, subs, Modifier.fillMaxSize())
+        Overlay(ctrl, subs, style, Modifier.fillMaxSize())
     }
 }
 
@@ -432,7 +455,8 @@ private class PlayerSync(
 }
 
 @Composable
-private fun Overlay(ctrl: EditorController, subs: SubLang, modifier: Modifier) {
+private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle, modifier: Modifier) {
+    val renderer = SubtitleRenderer.get(LocalContext.current)
     val primary = MaterialTheme.colorScheme.primary
     val label = remember {
         Paint().apply {
@@ -445,13 +469,28 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, modifier: Modifier) {
     Canvas(modifier.pointerInput(ctrl) { videoGestures(ctrl) }) {
         @Suppress("UNUSED_VARIABLE") val v = ctrl.version
         val live = ctrl.previewOn && ctrl.previewAvailable
-        // Subtitles as they'll be burned in (faded when they won't be).
-        val cue = ctrl.model.cueAt(ctrl.nowMs)
-        if (cue != null) {
+        // Subtitles as they'll be burned in (faded when they won't be; a sample while styling).
+        val nowMs = ctrl.nowMs
+        val cue = ctrl.model.cueAt(nowMs)
+        val faded = subs == SubLang.NONE
+        val lang = if (faded) SubLang.BOTH else subs
+        val blocks = cue?.blocks(lang) ?: if (ctrl.stylePanel) {
+            when (lang) {
+                SubLang.HE -> SampleBlocks.take(1)
+                SubLang.EN -> SampleBlocks.drop(1)
+                else -> SampleBlocks
+            }
+        } else {
+            emptyList()
+        }
+        if (blocks.isNotEmpty()) {
             val nc = drawContext.canvas.nativeCanvas
-            val faded = subs == SubLang.NONE
             if (faded) nc.saveLayerAlpha(0f, 0f, size.width, size.height, 120)
-            SubtitleOverlay.draw(nc, cue.text(if (faded) SubLang.BOTH else subs), size.width.toInt(), size.height.toInt())
+            if (cue != null) {
+                renderer.draw(nc, blocks, cue.startMs * 1000, cue.endMs * 1000, nowMs * 1000, style, size.width.toInt(), size.height.toInt())
+            } else {
+                renderer.draw(nc, blocks, 0L, 2_000_000L, 1_100_000L, style, size.width.toInt(), size.height.toInt())
+            }
             if (faded) nc.restore()
         }
         if (live && ctrl.playing) return@Canvas
@@ -826,7 +865,7 @@ private fun Timeline(ctrl: EditorController, busy: Boolean) {
                     }
                 }
             }
-            if (rows.isEmpty()) {
+            if (rows.isEmpty() && !ctrl.session.subtitlesOnly) {
                 textPaint.color = colors.onSurfaceVariant.toArgb()
                 textPaint.textSize = 12.dp.toPx()
                 val msg = t("אין טשטושים")
@@ -992,9 +1031,18 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
         ) {
             if (cue != null) {
                 Tool(t("ערוך טקסט"), Icons.Filled.Edit, true, wide = true) { ctrl.pauser(); ctrl.cueEditor = true }
+                Tool(t("עיצוב"), EditorIcons.TextFormat, true) { ctrl.pauser(); ctrl.stylePanel = true }
                 Tool(t("מחק"), Icons.Filled.Delete, true) { ctrl.deleteSelectedCue() }
                 Tool(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
             } else if (sel == null) {
+                val subsOnly = ctrl.session.subtitlesOnly
+                val subsTools = @Composable {
+                    Tool(t("כתוביות"), EditorIcons.Subtitles, !busy, wide = subsOnly) { ctrl.pauser(); ctrl.subsSheet = true }
+                    if (ctrl.model.cues.isNotEmpty() || subsOnly) {
+                        Tool(t("עיצוב"), EditorIcons.TextFormat, !busy, wide = subsOnly) { ctrl.pauser(); ctrl.stylePanel = true }
+                    }
+                }
+                if (subsOnly) subsTools()
                 Tool(if (ctrl.addMode) t("ביטול") else t("הוסף טשטוש"), if (ctrl.addMode) Icons.Filled.Close else Icons.Filled.Add, !busy, wide = true) {
                     ctrl.addMode = !ctrl.addMode
                     if (ctrl.addMode) ctrl.pauser()
@@ -1007,7 +1055,7 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
                         wide = true,
                     ) { ctrl.togglePreview() }
                 }
-                Tool(t("כתוביות"), EditorIcons.Subtitles, !busy) { ctrl.pauser(); ctrl.subsSheet = true }
+                if (!subsOnly) subsTools()
             } else {
                 Tool(t("מחק"), Icons.Filled.Delete, !busy) { ctrl.deleteSelected() }
                 Tool(t("פצל"), EditorIcons.Cut, !busy) { ctrl.splitSelected() }
@@ -1051,6 +1099,7 @@ private object EditorIcons {
         .build()
 
     val Pause = icon("pause", "M6 19h4V5H6v14zm8-14v14h4V5h-4z")
+    val TextFormat = icon("text_format", "M5 17v2h14v-2H5zm4.5-4.2h5l.9 2.2h2.1L12.75 4h-1.5L6.5 15h2.1l.9-2.2zM12 5.98L13.87 11h-3.74L12 5.98z")
     val Subtitles = icon(
         "subtitles",
         "M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z",

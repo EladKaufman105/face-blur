@@ -37,6 +37,19 @@ enum class SpeechModel(val fileName: String, val url: String, val approxBytes: L
 /** Downloads and keeps speech models in the app's private storage. */
 class ModelManager(context: Context) {
     private val dir = File(context.filesDir, "models").apply { mkdirs() }
+    private val sp = context.getSharedPreferences("models", Context.MODE_PRIVATE)
+
+    /** Expected seconds of work per second of audio for the model at [path] (learned). */
+    fun speed(path: String): Float {
+        val default = if (android.os.Build.SUPPORTED_ABIS.firstOrNull()?.startsWith("arm") == true) 0.6f else 1.5f
+        return sp.getFloat("speed_" + File(path).name, default)
+    }
+
+    fun learnSpeed(path: String, measured: Float) {
+        val key = "speed_" + File(path).name
+        val old = sp.getFloat(key, -1f)
+        sp.edit().putFloat(key, if (old <= 0f) measured else old * 0.4f + measured * 0.6f).apply()
+    }
 
     /** Model being downloaded and its progress 0..1. */
     var downloading by mutableStateOf<SpeechModel?>(null)

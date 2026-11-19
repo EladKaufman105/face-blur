@@ -34,6 +34,8 @@ import com.elad.faceblur.edit.SubLang
 import com.elad.faceblur.subs.BurnCue
 import com.elad.faceblur.subs.Srt
 import com.elad.faceblur.subs.SubtitleOverlay
+import com.elad.faceblur.subs.SubtitleRenderer
+import com.elad.faceblur.subs.SubtitleStyle
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.TextureOverlay
 import com.google.common.collect.ImmutableList
@@ -94,7 +96,7 @@ class FaceBlurProcessor(private val context: Context) {
             if (model.tracks.isEmpty()) return Outcome.NoFaces
             onStage(2)
             onProgress(0f)
-            return render(info, settings, analysis, model, analysisMs, export, onProgress)
+            return render(info, settings, analysis, model, analysisMs, export, onProgress = onProgress)
         }
     }
 
@@ -133,6 +135,7 @@ class FaceBlurProcessor(private val context: Context) {
         model: EditModel,
         analysisMs: Long,
         export: ExportOptions = ExportOptions(),
+        subStyle: SubtitleStyle = SubtitleStyle(),
         onProgress: (Float) -> Unit,
     ): Outcome.Saved {
         val t1 = SystemClock.elapsedRealtime()
@@ -146,10 +149,14 @@ class FaceBlurProcessor(private val context: Context) {
         out.delete()
         val blur = BlurEffect(timeline, settings.mode, settings.strength)
         // Blur at full resolution first, then resize / drop frames for the chosen output.
-        val burn = if (export.subs == SubLang.NONE) emptyList() else model.cues.mapNotNull { c ->
-            c.text(export.subs).takeIf { it.isNotBlank() }?.let { BurnCue(c.startMs * 1000, c.endMs * 1000, it) }
+        val burn = model.cues.mapNotNull { c ->
+            c.blocks(export.subs).takeIf { it.isNotEmpty() }?.let { BurnCue(c.startMs * 1000, c.endMs * 1000, it) }
         }
-        val subsEffect = if (burn.isEmpty()) emptyList() else listOf<Effect>(OverlayEffect(ImmutableList.of<TextureOverlay>(SubtitleOverlay(burn))))
+        val subsEffect = if (burn.isEmpty()) {
+            emptyList()
+        } else {
+            listOf<Effect>(OverlayEffect(ImmutableList.of<TextureOverlay>(SubtitleOverlay(burn, subStyle, SubtitleRenderer.get(context)))))
+        }
         val item = EditedMediaItem.Builder(MediaItem.fromUri(info.uri))
             .setEffects(Effects(emptyList(), listOf<Effect>(blur) + export.effects(info) + subsEffect))
             .build()
@@ -268,5 +275,37 @@ class FaceBlurProcessor(private val context: Context) {
         values.put(MediaStore.Video.Media.IS_PENDING, 0)
         resolver.update(uri, values, null, null)
         return uri
+    }
+
+    companion object {
+        /**
+         * The video's frame times only (from the container, no decoding), for editing
+         * subtitles without face detection.
+         */
+        fun framesOnly(context: Context, info: VideoInfo): AnalysisResult {
+            val ex = android.media.MediaExtractor()
+            val times = ArrayList<Long>()
+            try {
+                ex.setDataSource(context, info.uri, null)
+                val track = (0 until ex.trackCount).firstOrNull {
+                    ex.getTrackFormat(it).getString(android.media.MediaFormat.KEY_MIME)?.startsWith("video/") == true
+                } ?: error(t("לא נמצא וידאו בקובץ"))
+                ex.selectTrack(track)
+                while (true) {
+                    val tUs = ex.sampleTime
+                    if (tUs < 0) break
+                    times += tUs
+                    if (!ex.advance()) break
+                }
+            } finally {
+                ex.release()
+            }
+            times.sort()
+            if (times.isEmpty()) error(t("לא נמצא וידאו בקובץ"))
+            return AnalysisResult(
+                times.toLongArray(), IntArray(0), FloatArray(times.size * 2), emptyMap(), emptyList(),
+                info.displayWidth, info.displayHeight, info.rotation, info.fps, null,
+            )
+        }
     }
 }

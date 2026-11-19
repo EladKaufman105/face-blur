@@ -29,9 +29,10 @@ sealed interface UiState {
     data object Empty : UiState
     data object Loading : UiState
     data class Ready(val info: VideoInfo) : UiState
-    data class Working(val info: VideoInfo, val stage: Int, val progress: Float) : UiState
+    /** @param stage 0 preparing, 1 analysis, 2 export. */
+    data class Working(val info: VideoInfo, val stage: Int, val progress: Float, val subsOnly: Boolean = false) : UiState
     data class Editing(val info: VideoInfo, val editor: EditorController) : UiState
-    data class Done(val info: VideoInfo, val result: Outcome.Saved, val canEdit: Boolean) : UiState
+    data class Done(val info: VideoInfo, val result: Outcome.Saved, val canEdit: Boolean, val subsOnly: Boolean = false) : UiState
     data class NoFaces(val info: VideoInfo, val canEdit: Boolean) : UiState
     data class Failed(val info: VideoInfo?, val message: String) : UiState
 }
@@ -94,6 +95,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Subtitles without blurring: the editor on the video's frames, no face detection. */
+    fun startSubtitles() {
+        val info = currentInfo() ?: return
+        closeSession()
+        state = UiState.Working(info, 0, 0f)
+        job = viewModelScope.launch {
+            guard(info, onCancel = { UiState.Ready(info) }) {
+                val analysis = withContext(Dispatchers.IO) { FaceBlurProcessor.framesOnly(getApplication(), info) }
+                val session = EditSession(info, Settings(mode, strength, padding, sensitive), analysis, 0, subtitlesOnly = true)
+                val ctrl = EditorController(session, viewModelScope, getApplication(), models)
+                ctrl.previewAvailable = false
+                ctrl.subsSheet = true
+                editor = ctrl
+                state = UiState.Editing(info, ctrl)
+            }
+        }
+    }
+
     /** Opens the editor on the current session (after export, or with no faces found). */
     fun edit() {
         val ctrl = editor ?: return
@@ -114,11 +133,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun render(ctrl: EditorController) {
         val s = ctrl.session
-        state = UiState.Working(s.info, 2, 0f)
+        state = UiState.Working(s.info, 2, 0f, s.subtitlesOnly)
         val saved = FaceBlurProcessor(getApplication()).render(
-            s.info, s.settings, s.analysis, s.model, s.analysisMs, prefs.export,
-        ) { p -> state = UiState.Working(s.info, 2, p) }
-        state = UiState.Done(s.info, saved, canEdit = true)
+            s.info, s.settings, s.analysis, s.model, s.analysisMs, prefs.export, prefs.subStyle,
+        ) { p -> state = UiState.Working(s.info, 2, p, s.subtitlesOnly) }
+        if (s.analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / s.analysisMs
+        state = UiState.Done(s.info, saved, canEdit = true, subsOnly = s.subtitlesOnly)
     }
 
     private suspend fun guard(info: VideoInfo, onCancel: () -> UiState, block: suspend () -> Unit) {
@@ -158,6 +178,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun closeSession() {
         editor?.cancelTracking()
+        editor?.cancelSubtitles()
         editor?.session?.close()
         editor = null
     }

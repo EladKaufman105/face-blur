@@ -10,6 +10,7 @@ import com.elad.faceblur.i18n.Lang
 import com.elad.faceblur.pipeline.ExportCodec
 import com.elad.faceblur.pipeline.ExportOptions
 import com.elad.faceblur.pipeline.ExportQuality
+import com.elad.faceblur.subs.SubtitleStyle
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
@@ -35,6 +36,8 @@ class AppPrefs(context: Context) {
             saveSrt = sp.getBoolean("export_srt", true),
         ),
     )
+        private set
+    var subStyle by mutableStateOf(SubtitleStyle.fromJson(sp.getString("sub_style", null)))
         private set
 
     init {
@@ -68,6 +71,19 @@ class AppPrefs(context: Context) {
             .putBoolean("export_srt", v.saveSrt)
             .apply()
     }
+
+    fun updateSubStyle(v: SubtitleStyle) {
+        subStyle = v
+        sp.edit().putString("sub_style", v.toJson()).apply()
+    }
+
+    /** Learned time of the render pass relative to the analysis pass. */
+    var renderRatio: Float
+        get() = sp.getFloat("render_ratio", 0.8f)
+        set(v) {
+            val old = sp.getFloat("render_ratio", -1f)
+            sp.edit().putFloat("render_ratio", if (old <= 0f) v else old * 0.5f + v * 0.5f).apply()
+        }
 
     private inline fun <reified E : Enum<E>> enumOr(name: String?, default: E): E =
         name?.let { n -> enumValues<E>().firstOrNull { it.name == n } } ?: default

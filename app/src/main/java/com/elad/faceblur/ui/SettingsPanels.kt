@@ -9,6 +9,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,9 +33,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -47,15 +53,43 @@ import com.elad.faceblur.prefs.Palette
 import com.elad.faceblur.prefs.ThemeMode
 import kotlin.math.roundToInt
 
+/**
+ * Segmented choice: one pill outline, the selected part filled. (Material's SegmentedButton
+ * mirrored its rounded ends in some layouts, and its check mark cut labels short.)
+ */
 @Composable
 internal fun <T> Segments(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+    val shape = RoundedCornerShape(50)
+    val outline = MaterialTheme.colorScheme.outline
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .clip(shape)
+            .border(1.dp, outline, shape)
+            .selectableGroup(),
+    ) {
         options.forEachIndexed { i, (v, label) ->
-            SegmentedButton(
-                selected = v == selected,
-                onClick = { onSelect(v) },
-                shape = SegmentedButtonDefaults.itemShape(i, options.size),
-            ) { Text(label, maxLines = 1) }
+            if (i > 0) Box(Modifier.width(1.dp).fillMaxHeight().background(outline))
+            val sel = v == selected
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(if (sel) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+                    .selectable(selected = sel, role = Role.RadioButton, onClick = { onSelect(v) })
+                    .padding(horizontal = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
+                    color = if (sel) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                )
+            }
         }
     }
 }
@@ -218,14 +252,11 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit) {
                     Palette.ORANGE to t("כתום"),
                     Palette.ROSE to t("ורוד"),
                 ) + if (dynamicColorAvailable) listOf(Palette.DYNAMIC to t("מהטפט")) else emptyList()
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
+                Row(Modifier.fillMaxWidth()) {
                     for ((p, label) in palettes) {
                         val sel = prefs.palette == p
                         Column(
-                            Modifier.clickable { prefs.updatePalette(p) }.padding(4.dp),
+                            Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable { prefs.updatePalette(p) }.padding(vertical = 4.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
@@ -239,7 +270,7 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit) {
                             }
                             Box(
                                 Modifier
-                                    .size(40.dp)
+                                    .size(38.dp)
                                     .then(fill)
                                     .border(
                                         if (sel) 3.dp else 0.dp,
@@ -250,7 +281,7 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit) {
                             ) {
                                 if (sel) Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(20.dp))
                             }
-                            Text(label, style = MaterialTheme.typography.labelSmall)
+                            Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }

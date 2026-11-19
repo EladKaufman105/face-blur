@@ -47,9 +47,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -104,6 +101,8 @@ fun MainScreen(vm: MainViewModel) {
                 onExport = vm::export,
                 export = vm.prefs.export,
                 onExportChange = vm.prefs::updateExport,
+                subStyle = vm.prefs.subStyle,
+                onSubStyleChange = vm.prefs::updateSubStyle,
             )
         }
         return
@@ -140,10 +139,15 @@ fun MainScreen(vm: MainViewModel) {
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                         shape = RoundedCornerShape(16.dp),
                     ) { Text(t("טשטש פנים"), style = MaterialTheme.typography.titleMedium) }
+                    OutlinedButton(
+                        onClick = vm::startSubtitles,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(16.dp),
+                    ) { Text(t("כתוביות בלבד, בלי טשטוש"), style = MaterialTheme.typography.titleSmall) }
                 }
                 is UiState.Working -> {
                     VideoCard(state.info, onReplace = null)
-                    WorkingCard(state, onCancel = vm::cancel)
+                    WorkingCard(state, renderAfter = if (vm.review) null else vm.prefs.renderRatio, onCancel = vm::cancel)
                 }
                 is UiState.Editing -> Unit
                 is UiState.Done -> DoneCard(
@@ -286,16 +290,10 @@ private fun SettingsCard(vm: MainViewModel) {
         Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Label(t("סגנון"))
-                val options = listOf(BlurMode.BLUR to t("טשטוש"), BlurMode.PIXELATE to t("פיקסלים"), BlurMode.SOLID to t("כיסוי"))
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    options.forEachIndexed { i, (mode, label) ->
-                        SegmentedButton(
-                            selected = vm.mode == mode,
-                            onClick = { vm.mode = mode },
-                            shape = SegmentedButtonDefaults.itemShape(i, options.size),
-                        ) { Text(label) }
-                    }
-                }
+                Segments(
+                    listOf(BlurMode.BLUR to t("טשטוש"), BlurMode.PIXELATE to t("פיקסלים"), BlurMode.SOLID to t("כיסוי")),
+                    vm.mode,
+                ) { vm.mode = it }
             }
             if (vm.mode != BlurMode.SOLID) {
                 SliderRow(t("עוצמה"), t("עדין"), t("חזק"), vm.strength, 0f..1f) { vm.strength = it }
@@ -355,12 +353,21 @@ private fun SliderRow(
 }
 
 @Composable
-private fun WorkingCard(state: UiState.Working, onCancel: () -> Unit) {
+private fun WorkingCard(state: UiState.Working, renderAfter: Float?, onCancel: () -> Unit) {
+    val eta = rememberEta()
+    val rem = eta.remainingMs(state.stage, state.progress)
+    // During analysis, when the export follows on its own, count it in too.
+    val left = if (rem != null && state.stage == 1 && renderAfter != null) rem + ((eta.elapsedMs + rem) * renderAfter).toLong() else rem
     SectionCard {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (state.stage == 1) t("שלב 1 מתוך 2 · מזהה פנים") else t("שלב 2 מתוך 2 · מטשטש ושומר"),
+                    when {
+                        state.stage == 0 -> t("מכין את הסרטון…")
+                        state.subsOnly -> t("שומר את הסרטון עם הכתוביות")
+                        state.stage == 1 -> t("שלב 1 מתוך 2 · מזהה פנים")
+                        else -> t("שלב 2 מתוך 2 · מטשטש ושומר")
+                    },
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f),
                 )
@@ -369,6 +376,11 @@ private fun WorkingCard(state: UiState.Working, onCancel: () -> Unit) {
             LinearProgressIndicator(
                 progress = { state.progress.coerceIn(0f, 1f) },
                 modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+            )
+            Text(
+                etaText(left) ?: t("מחשב זמן משוער…"),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
             )
             Text(
                 t("השאר את האפליקציה פתוחה עד הסוף. המסך יישאר דלוק."),
@@ -396,8 +408,11 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                     Text(t("נשמר בגלריה"), style = MaterialTheme.typography.titleSmall)
                     Text(
                         buildString {
-                            append("Movies/FaceBlur · ")
-                            append(if (state.result.faces == 1) t("פנים אחת") else t("%d פנים").format(state.result.faces))
+                            append("Movies/FaceBlur")
+                            if (!state.subsOnly) {
+                                append(" · ")
+                                append(if (state.result.faces == 1) t("פנים אחת") else t("%d פנים").format(state.result.faces))
+                            }
                             if (state.result.keptHdr) append(t(" · HDR נשמר"))
                             if (state.result.srtFiles > 0) append(t(" · כתוביות SRT ב-Download/FaceBlur"))
                         },
@@ -407,7 +422,11 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                 }
             }
             Text(
-                t("כדאי לעבור על הסרטון לפני פרסום: זיהוי אוטומטי עלול לפספס פנים מסובבות, מוסתרות או קטנות מאוד."),
+                if (state.subsOnly) {
+                    t("כדאי לעבור על הכתוביות לפני פרסום: זיהוי דיבור ותרגום אוטומטיים עלולים לטעות.")
+                } else {
+                    t("כדאי לעבור על הסרטון לפני פרסום: זיהוי אוטומטי עלול לפספס פנים מסובבות, מוסתרות או קטנות מאוד.")
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -446,7 +465,7 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                 OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.Edit, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text(t("ערוך טשטושים וייצא שוב"))
+                    Text(if (state.subsOnly) t("ערוך וייצא שוב") else t("ערוך טשטושים וייצא שוב"))
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

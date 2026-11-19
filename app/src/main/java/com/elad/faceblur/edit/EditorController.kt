@@ -33,6 +33,8 @@ class EditSession(
     val settings: Settings,
     val analysis: AnalysisResult,
     val analysisMs: Long,
+    /** Opened for subtitles only: no face detection was run. */
+    val subtitlesOnly: Boolean = false,
 ) : Closeable {
     val model = analysis.toEditModel()
 
@@ -81,6 +83,8 @@ class EditorController(
         private set
     var subsSheet by mutableStateOf(false)
     var cueEditor by mutableStateOf(false)
+    /** The subtitle look panel is open (in place of the timeline). */
+    var stylePanel by mutableStateOf(false)
     private var subsJob: Job? = null
 
     /** Frame the player and the overlay show. */
@@ -378,16 +382,23 @@ class EditorController(
         subsProgress = SubtitleEngine.Stage.AUDIO to 0f
         subsJob = scope.launch {
             try {
-                val r = SubtitleEngine.run(ctx, session.info.uri, modelPath, lang, translate = true) { st, p ->
+                val r = SubtitleEngine.run(
+                    ctx, session.info.uri, modelPath, lang, translate = false,
+                    speed = models?.speed(modelPath) ?: 0.6f,
+                    onSpeed = { v -> models?.learnSpeed(modelPath, v) },
+                ) { st, p ->
                     main.post { if (subsProgress != null) subsProgress = st to p }
                 }
+                // Keep the transcription even if translating fails or is stopped.
                 model.setCues(r.lines.map { Triple(it.startMs, it.endMs, it.he to it.en) })
-                if (r.lines.isNotEmpty()) subsSheet = false
-                notice = when {
-                    r.lines.isEmpty() -> t("לא נמצא דיבור בסרטון")
-                    !r.translated -> t("נוצרו %d כתוביות. התרגום לא הצליח (צריך אינטרנט פעם אחת להורדת חבילת השפה).").format(r.lines.size)
-                    else -> t("נוצרו %d כתוביות. אפשר לערוך כל אחת בהקשה.").format(r.lines.size)
+                sync()
+                if (r.lines.isEmpty()) {
+                    notice = t("לא נמצא דיבור בסרטון")
+                    return@launch
                 }
+                subsSheet = false
+                notice = t("נוצרו %d כתוביות. מתרגם…").format(r.lines.size)
+                translateMissing()
             } catch (e: SubtitleEngine.NoAudioException) {
                 notice = t("אין קול בסרטון")
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -398,6 +409,46 @@ class EditorController(
                 subsProgress = null
                 sync()
             }
+        }
+    }
+
+    /** Subtitles with only one of the two languages. */
+    val untranslatedCount get() = model.cues.count { it.he.isBlank() != it.en.isBlank() }
+
+    /** Translates the subtitles that have only one language (again, after a failure). */
+    fun translateSubtitles() {
+        if (subsJob?.isActive == true || untranslatedCount == 0) return
+        subsJob = scope.launch {
+            try {
+                translateMissing()
+            } finally {
+                subsProgress = null
+                sync()
+            }
+        }
+    }
+
+    private suspend fun translateMissing() {
+        val cues = model.cues.map { it.copy() }
+        if (cues.none { it.he.isBlank() != it.en.isBlank() }) return
+        subsProgress = SubtitleEngine.Stage.TRANSLATE to 0f
+        try {
+            SubtitleEngine.translateLines(
+                cues.map { it.he to it.en },
+                { st, p -> main.post { if (subsProgress != null) subsProgress = st to p } },
+            ) { i, he, en ->
+                main.post {
+                    model.setCueText(cues[i].id, he, en)
+                    sync()
+                }
+            }
+            notice = t("הכתוביות מוכנות: %d. אפשר לערוך כל אחת בהקשה.").format(model.cues.size)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            notice = t("התרגום נעצר. אפשר להמשיך מתפריט הכתוביות.")
+            throw e
+        } catch (e: Exception) {
+            notice = t("התרגום לא הצליח (צריך אינטרנט פעם אחת להורדת חבילת השפה). אפשר לנסות שוב מתפריט הכתוביות.")
+            android.util.Log.w("FaceBlur", "translation failed", e)
         }
     }
 

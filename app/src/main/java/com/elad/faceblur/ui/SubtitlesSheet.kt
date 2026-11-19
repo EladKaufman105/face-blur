@@ -44,7 +44,8 @@ import kotlin.math.roundToInt
 internal fun subsStageText(stage: SubtitleEngine.Stage, p: Float): String = when (stage) {
     SubtitleEngine.Stage.AUDIO -> t("מחלץ את הקול…")
     SubtitleEngine.Stage.SPEECH -> t("מזהה דיבור… %d%%").format((p * 100).roundToInt())
-    SubtitleEngine.Stage.TRANSLATE -> t("מתרגם…")
+    SubtitleEngine.Stage.PACK -> t("מוריד חבילת תרגום (פעם אחת)…")
+    SubtitleEngine.Stage.TRANSLATE -> t("מתרגם… %d%%").format((p * 100).roundToInt())
 }
 
 private fun mb(bytes: Long) = "‎%d MB".format((bytes / 1e6).roundToInt())
@@ -120,8 +121,12 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
                 val dl = models.downloading
                 val prog = ctrl.subsProgress
                 when {
-                    dl != null -> Progress(t("מוריד את המודל… %d%%").format((models.progress * 100).roundToInt()), models.progress) { ctrl.cancelSubtitles() }
-                    prog != null -> Progress(subsStageText(prog.first, prog.second), if (prog.first == SubtitleEngine.Stage.SPEECH) prog.second else null) { ctrl.cancelSubtitles() }
+                    dl != null -> Progress(t("מוריד את המודל… %d%%").format((models.progress * 100).roundToInt()), "download", models.progress) { ctrl.cancelSubtitles() }
+                    prog != null -> Progress(
+                        subsStageText(prog.first, prog.second),
+                        prog.first,
+                        if (prog.first == SubtitleEngine.Stage.PACK) null else prog.second,
+                    ) { ctrl.cancelSubtitles() }
                     else -> Button(onClick = { ctrl.makeSubtitles(choice) }, modifier = Modifier.fillMaxWidth()) {
                         Text(
                             when {
@@ -135,6 +140,18 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
                 ctrl.notice?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
+                val missing = ctrl.untranslatedCount
+                if (missing > 0 && !ctrl.subsBusy) {
+                    OutlinedButton(onClick = { ctrl.translateSubtitles() }, modifier = Modifier.fillMaxWidth()) {
+                        Text(t("תרגם %d כתוביות שעוד לא תורגמו").format(missing))
+                    }
+                }
+            }
+            if (count > 0) {
+                OutlinedButton(
+                    onClick = { ctrl.subsSheet = false; ctrl.stylePanel = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(t("עיצוב הכתוביות: סגנון, גופן, צבע ואפקטים")) }
             }
             OutlinedButton(
                 onClick = { ctrl.subsSheet = false; ctrl.addCueHere() },
@@ -184,10 +201,17 @@ fun SubtitleExportOptions(export: ExportOptions, onExportChange: (ExportOptions)
 }
 
 @Composable
-private fun Progress(text: String, progress: Float?, onCancel: () -> Unit) {
+private fun Progress(text: String, step: Any, progress: Float?, onCancel: () -> Unit) {
+    val eta = rememberEta()
+    val left = progress?.let { etaText(eta.remainingMs(step, it)) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Column(Modifier.weight(1f)) {
+                Text(text, style = MaterialTheme.typography.bodyMedium)
+                if (left != null) {
+                    Text(left, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             Spacer(Modifier.width(8.dp))
             TextButton(onClick = onCancel) { Text(t("עצור")) }
         }

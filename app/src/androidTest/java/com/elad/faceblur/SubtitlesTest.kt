@@ -27,7 +27,12 @@ import com.elad.faceblur.pipeline.VideoInfo
 import com.elad.faceblur.subs.AudioDecoder
 import com.elad.faceblur.subs.ModelManager
 import com.elad.faceblur.subs.Srt
+import com.elad.faceblur.subs.SubEffect
+import com.elad.faceblur.subs.SubFont
+import com.elad.faceblur.subs.SubPresets
 import com.elad.faceblur.subs.SubtitleEngine
+import com.elad.faceblur.subs.SubtitleRenderer
+import com.elad.faceblur.subs.SubtitleStyle
 import com.elad.faceblur.ui.EditorScreen
 import com.elad.faceblur.ui.EditorTheme
 import kotlinx.coroutines.CoroutineScope
@@ -99,10 +104,14 @@ class SubtitlesTest {
         val ctrl = EditorController(session, scope, ctx, ModelManager(ctx))
         inst.runOnMainSync { session.model.setCues(r.lines.map { Triple(it.startMs, it.endMs, it.he to it.en) }) }
         var export by mutableStateOf(ExportOptions(subs = SubLang.BOTH))
+        var style by mutableStateOf(SubtitleStyle())
         rule.setContent {
             EditorTheme {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    EditorScreen(ctrl, onClose = {}, onExport = {}, export = export, onExportChange = { export = it })
+                    EditorScreen(
+                        ctrl, onClose = {}, onExport = {}, export = export, onExportChange = { export = it },
+                        subStyle = style, onSubStyleChange = { style = it },
+                    )
                 }
             }
         }
@@ -137,6 +146,23 @@ class SubtitlesTest {
         screen(outDir, "3_subs_sheet.png")
         rule.runOnIdle { ctrl.subsSheet = false }
 
+        // Style panel, then a TikTok-style look on the video.
+        rule.runOnIdle {
+            ctrl.focusCue(longest.id)
+            ctrl.stylePanel = true
+        }
+        rule.waitForIdle()
+        Thread.sleep(1000)
+        shot(outDir, "3b_style_panel.png")
+        rule.runOnIdle { style = SubPresets.all.first { it.name == "תיבה צבעונית" }.style }
+        rule.waitForIdle()
+        Thread.sleep(800)
+        shot(outDir, "3c_style_wordbox.png")
+        rule.runOnIdle {
+            ctrl.stylePanel = false
+            ctrl.deselect()
+        }
+
         // The editor's own path: generate again with the model (replaces the subtitles).
         inst.runOnMainSync { ctrl.generateSubtitles(model.absolutePath, "en") }
         val g0 = System.currentTimeMillis()
@@ -150,7 +176,10 @@ class SubtitlesTest {
 
         // Export: burned-in English + .srt files.
         val out = runBlocking(Dispatchers.Main) {
-            FaceBlurProcessor(ctx).render(info, settings, analysis, session.model, 0, ExportOptions(subs = SubLang.EN, saveSrt = true)) {}
+            FaceBlurProcessor(ctx).render(
+                info, settings, analysis, session.model, 0, ExportOptions(subs = SubLang.EN, saveSrt = true),
+                SubPresets.all.first { it.name == "מילה מודגשת" }.style,
+            ) {}
         }
         note("export: srt=${out.srtFiles} renderMs=${out.renderMs}")
         if (out.srtFiles < 1) fail("no srt saved")
@@ -165,10 +194,9 @@ class SubtitlesTest {
         val after = frame(video.absolutePath, atUs)
         File(outDir, "5_frame_source.png").outputStream().use { before.compress(Bitmap.CompressFormat.PNG, 100, it) }
         File(outDir, "5_frame_burned.png").outputStream().use { after.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        val wb = whiteBottom(before)
-        val wa = whiteBottom(Bitmap.createScaledBitmap(after, before.width, before.height, true))
-        note("white pixels at the bottom: source=$wb burned=$wa ('${cue.en}')")
-        if (wa - wb < 300) fail("subtitle not burned in")
+        val added = newWhite(before, Bitmap.createScaledBitmap(after, before.width, before.height, true))
+        note("near-white pixels added: $added ('${cue.en}')")
+        if (added < 300) fail("subtitle not burned in")
 
         scope.cancel()
         session.close()
@@ -184,16 +212,115 @@ class SubtitlesTest {
         }
     }
 
-    /** Near-white pixels in the bottom quarter. */
-    private fun whiteBottom(b: Bitmap): Int {
+    private fun white(c: Int) = (c shr 16 and 255) > 225 && (c shr 8 and 255) > 225 && (c and 255) > 225
+
+    /** Pixels near-white in [b] but not in [a] (the text drawn on top). */
+    private fun newWhite(a: Bitmap, b: Bitmap): Int {
         var n = 0
-        for (y in b.height * 3 / 4 until b.height) {
-            for (x in 0 until b.width) {
-                val c = b.getPixel(x, y)
-                if ((c shr 16 and 255) > 225 && (c shr 8 and 255) > 225 && (c and 255) > 225) n++
+        for (y in 0 until a.height) {
+            for (x in 0 until a.width) {
+                if (white(b.getPixel(x, y)) && !white(a.getPixel(x, y))) n++
             }
         }
         return n
+    }
+
+    /** Every preset, and each effect over time, drawn on a gray frame: for looking at. */
+    @Test
+    fun styleGallery() {
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val outDir = File(ctx.getExternalFilesDir(null), "subs").apply { mkdirs() }
+        val r = SubtitleRenderer.get(ctx)
+        val blocks = listOf("החיילים מחפשים לכודים מתחת להריסות", "The soldiers search under the ruins")
+        val cw = 360
+        val ch = 640
+        val presets = SubPresets.all
+        val cols = 5
+        val rows = (presets.size + cols - 1) / cols
+        val sheet = Bitmap.createBitmap(cw * cols, ch * rows, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(sheet)
+        val bg = android.graphics.Paint().apply {
+            shader = android.graphics.LinearGradient(0f, 0f, 0f, ch.toFloat(), 0xFF6B7A8F.toInt(), 0xFF2B3240.toInt(), android.graphics.Shader.TileMode.CLAMP)
+        }
+        val label = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; textSize = 22f; isAntiAlias = true }
+        presets.forEachIndexed { i, p ->
+            canvas.save()
+            canvas.translate((i % cols) * cw.toFloat(), (i / cols) * ch.toFloat())
+            canvas.drawRect(0f, 0f, cw.toFloat(), ch.toFloat(), bg)
+            r.draw(canvas, blocks, 0L, 3_000_000L, 1_200_000L, p.style, cw, ch)
+            canvas.drawText(p.style.effect.name + " " + p.style.font.name, 10f, 30f, label)
+            canvas.restore()
+        }
+        File(outDir, "6_presets.png").outputStream().use { sheet.compress(Bitmap.CompressFormat.PNG, 100, it) }
+
+        // Each effect at a few moments of a 3 s subtitle (landscape frame).
+        val effects = SubEffect.entries
+        val times = listOf(50_000L, 150_000L, 700_000L, 1_500_000L, 2_900_000L)
+        val ew = 480
+        val eh = 270
+        val fx = Bitmap.createBitmap(ew * times.size, eh * effects.size, Bitmap.Config.ARGB_8888)
+        val c2 = android.graphics.Canvas(fx)
+        effects.forEachIndexed { row, e ->
+            times.forEachIndexed { col, t ->
+                c2.save()
+                c2.translate(col * ew.toFloat(), row * eh.toFloat())
+                c2.drawRect(0f, 0f, ew.toFloat(), eh.toFloat(), bg)
+                r.draw(c2, blocks.take(1), 0L, 3_000_000L, t, SubtitleStyle(font = SubFont.RUBIK, effect = e, position = 0.6f, size = 1.4f), ew, eh)
+                c2.drawText("${e.name} ${t / 1000}ms", 8f, 24f, label)
+                c2.restore()
+            }
+        }
+        File(outDir, "7_effects.png").outputStream().use { fx.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        // Every font draws Hebrew and English.
+        for (f in SubFont.entries) if (r.typeface(f) == android.graphics.Typeface.DEFAULT_BOLD && f.asset != null) fail("font ${f.name} didn't load")
+    }
+
+    /** Subtitles without face detection: frame times from the file, then an export. */
+    @Test
+    fun subtitlesOnly() {
+        val inst = InstrumentationRegistry.getInstrumentation()
+        val ctx = inst.targetContext
+        val outDir = File(ctx.getExternalFilesDir(null), "subs").apply { mkdirs() }
+        val src = File(ctx.cacheDir, "speech_only.mp4")
+        inst.context.assets.open("samples/speech_en.mp4").use { i -> src.outputStream().use { i.copyTo(it) } }
+        val info = VideoInfo.probe(ctx, Uri.fromFile(src))
+        val analysis = FaceBlurProcessor.framesOnly(ctx, info)
+        val log = StringBuilder("frames only: ${analysis.frameCount} frames, first ${analysis.times.first()} last ${analysis.times.last()}\n")
+        if (analysis.frameCount !in 300..360) fail("frame count ${analysis.frameCount}")
+        val settings = Settings(BlurMode.BLUR, 0.6f, 1.6f, false)
+        val session = EditSession(info, settings, analysis, 0, subtitlesOnly = true)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val ctrl = EditorController(session, scope, ctx, ModelManager(ctx))
+        inst.runOnMainSync {
+            ctrl.previewAvailable = false
+            session.model.setCues(listOf(Triple(500L, 4000L, "שלום לכולם" to "Hello everyone"), Triple(4200L, 9000L, "זה מבחן" to "This is a test")))
+        }
+        val style = SubPresets.all.first { it.name == "טיקטוק" }.style
+        rule.setContent {
+            EditorTheme {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                    EditorScreen(ctrl, onClose = {}, onExport = {}, export = ExportOptions(subs = SubLang.BOTH), subStyle = style)
+                }
+            }
+        }
+        rule.waitForIdle()
+        Thread.sleep(2500)
+        rule.runOnIdle { ctrl.seek(ctrl.frameAt(2_000_000)) }
+        Thread.sleep(1200)
+        shot(outDir, "8_subs_only_editor.png")
+        val out = runBlocking(Dispatchers.Main) {
+            FaceBlurProcessor(ctx).render(info, settings, analysis, session.model, 0, ExportOptions(subs = SubLang.BOTH, saveSrt = false), style) {}
+        }
+        val video = File(outDir, "subs_only.mp4")
+        ctx.contentResolver.openInputStream(out.uri)!!.use { i -> video.outputStream().use { it2 -> i.copyTo(it2) } }
+        val f = frame(video.absolutePath, 2_000_000)
+        File(outDir, "8_subs_only_frame.png").outputStream().use { f.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val added = newWhite(frame(src.absolutePath, 2_000_000), Bitmap.createScaledBitmap(f, info.displayWidth, info.displayHeight, true))
+        log.append("subs only export: ${out.renderMs}ms, near-white added $added\n")
+        File(outDir, "log_subs_only.txt").writeText(log.toString())
+        if (added < 300) fail("subtitle not burned in (subtitles only)")
+        scope.cancel()
+        session.close()
     }
 
     private fun <T> android.app.Instrumentation.onMain(block: () -> T): T {

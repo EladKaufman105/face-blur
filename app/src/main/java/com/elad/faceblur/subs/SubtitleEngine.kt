@@ -2,9 +2,11 @@ package com.elad.faceblur.subs
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.job
@@ -25,13 +27,17 @@ class SubResult(val lines: List<SubLine>, val speechLang: String, val translated
  * translate Hebrew <-> English with ML Kit.
  */
 object SubtitleEngine {
-    enum class Stage { AUDIO, SPEECH, TRANSLATE }
+    /** AUDIO: decoding; SPEECH: recognition; PACK: downloading the translation pack; TRANSLATE. */
+    enum class Stage { AUDIO, SPEECH, PACK, TRANSLATE }
 
     class NoAudioException : Exception("no audio")
 
     /**
      * @param lang language of the speech for the model ("he", "en" or "auto").
-     * @param translate also fill the other language.
+     * @param translate also fill the other language (else lines have only the spoken one).
+     * @param speed expected seconds of work per second of audio: recognition reports progress
+     *   only per 30 s window, so in between, progress follows the clock.
+     * @param onSpeed the measured speed, to expect next time.
      */
     suspend fun run(
         context: Context,
@@ -39,19 +45,26 @@ object SubtitleEngine {
         modelPath: String,
         lang: String,
         translate: Boolean,
+        speed: Float = 0.6f,
+        onSpeed: (Float) -> Unit = {},
         onProgress: (Stage, Float) -> Unit,
     ): SubResult = withContext(Dispatchers.Default) {
         val job = currentCoroutineContext().job
         val pcm = AudioDecoder.decode(context, uri, { job.isActive }) { onProgress(Stage.AUDIO, it) }
             ?: throw NoAudioException()
         onProgress(Stage.SPEECH, 0f)
+        val audioSec = pcm.size / AudioDecoder.RATE.toFloat()
+        val t0 = SystemClock.elapsedRealtime()
         val h = WhisperNative.init(modelPath)
         if (h == 0L) error("model failed to load")
         val raw = ArrayList<Triple<Long, Long, String>>()
         var detected = lang
         try {
             val threads = Runtime.getRuntime().availableProcessors().let { min(6, max(2, it - 2)) }
-            // The native call blocks this thread; a sibling coroutine relays cancellation to it.
+            val expectedMs = max(2000f, audioSec * speed * 1000f)
+            val reported = java.util.concurrent.atomic.AtomicInteger(0)
+            // The native call blocks this thread; sibling coroutines relay cancellation to it
+            // and move the progress along with the clock.
             val done = AtomicBoolean(false)
             val r = coroutineScope {
                 val watcher = launch {
@@ -61,13 +74,22 @@ object SubtitleEngine {
                         if (!done.get()) WhisperNative.cancel(h)
                     }
                 }
-                val code = WhisperNative.transcribe(h, pcm, lang, threads, MAX_CHARS, null) { p -> onProgress(Stage.SPEECH, p / 100f) }
+                val ticker = launch {
+                    while (isActive) {
+                        val byClock = ((SystemClock.elapsedRealtime() - t0) / expectedMs).coerceAtMost(0.97f)
+                        onProgress(Stage.SPEECH, max(reported.get() / 100f, byClock))
+                        delay(250)
+                    }
+                }
+                val code = WhisperNative.transcribe(h, pcm, lang, threads, MAX_CHARS, null) { p -> reported.set(p) }
                 done.set(true)
+                ticker.cancel()
                 watcher.cancel()
                 code
             }
             if (r == 1 || !isActive) throw kotlinx.coroutines.CancellationException()
             if (r != 0) error("transcription failed ($r)")
+            if (audioSec > 3f) onSpeed((SystemClock.elapsedRealtime() - t0) / 1000f / audioSec)
             detected = WhisperNative.language(h).ifEmpty { lang }
             for (i in 0 until WhisperNative.segments(h)) {
                 val text = String(WhisperNative.segmentText(h, i), Charsets.UTF_8).trim()
@@ -77,36 +99,50 @@ object SubtitleEngine {
         } finally {
             WhisperNative.free(h)
         }
-        val lines = tidy(raw)
-        // People switch languages mid-video (the Hebrew model writes English speech in English),
-        // so each line is translated from its own script's language.
-        val langs = lines.map { lineLanguage(it.third, detected) }
-        var translated = false
-        val other = if (translate && lines.isNotEmpty()) {
-            onProgress(Stage.TRANSLATE, 0f)
-            try {
-                Translator.translate(lines.map { it.third }, langs) { onProgress(Stage.TRANSLATE, it) }
-                    .also { translated = true }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                android.util.Log.w("FaceBlur", "translation failed", e)
-                lines.map { "" }
+        val lines = tidy(raw).map { (a, b, t) ->
+            // People switch languages mid-video (the Hebrew model writes English speech in
+            // English), so each line keeps its own language.
+            when (lineLanguage(t, detected)) {
+                "en" -> SubLine(a, b, "", t)
+                "he" -> SubLine(a, b, t, "")
+                else -> SubLine(a, b, t, t)
             }
-        } else {
-            lines.map { "" }
         }
-        SubResult(
-            lines.mapIndexed { i, (a, b, t) ->
-                when (langs[i]) {
-                    "en" -> SubLine(a, b, other[i], t)
-                    "he" -> SubLine(a, b, t, other[i])
-                    else -> SubLine(a, b, t, t)
-                }
-            },
-            detected,
-            translated,
-        )
+        if (!translate || lines.isEmpty()) return@withContext SubResult(lines, detected, false)
+        val out = lines.toMutableList()
+        val ok = try {
+            translateLines(lines.map { it.he to it.en }, onProgress) { i, he, en -> out[i] = SubLine(lines[i].startMs, lines[i].endMs, he, en) }
+            true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.w("FaceBlur", "translation failed", e)
+            false
+        }
+        SubResult(out, detected, ok)
+    }
+
+    /**
+     * Fills the missing language of each (Hebrew, English) pair, calling [onLine] as each one
+     * is done. Throws if the translation pack can't be downloaded or translating fails.
+     */
+    suspend fun translateLines(
+        pairs: List<Pair<String, String>>,
+        onProgress: (Stage, Float) -> Unit,
+        onLine: (Int, String, String) -> Unit,
+    ) {
+        val todo = pairs.indices.filter { (pairs[it].first.isBlank()) != (pairs[it].second.isBlank()) }
+        if (todo.isEmpty()) return
+        Translator.translate(
+            todo.map { i -> pairs[i].first.ifBlank { pairs[i].second } },
+            todo.map { i -> if (pairs[i].first.isBlank()) "en" else "he" },
+            onDownload = { onProgress(Stage.PACK, 0f) },
+            onProgress = { onProgress(Stage.TRANSLATE, it) },
+        ) { k, out ->
+            val i = todo[k]
+            val (he, en) = pairs[i]
+            if (he.isBlank()) onLine(i, out, en) else onLine(i, he, out)
+        }
     }
 
     /**
@@ -134,8 +170,9 @@ object SubtitleEngine {
     /** Readable timing: at least 0.8 s on screen, no overlaps. */
     private fun tidy(raw: List<Triple<Long, Long, String>>): List<Triple<Long, Long, String>> {
         val out = ArrayList<Triple<Long, Long, String>>()
-        raw.sortedBy { it.first }.forEachIndexed { i, (a, b, t) ->
-            val next = raw.getOrNull(i + 1)?.first ?: Long.MAX_VALUE
+        val sorted = raw.sortedBy { it.first }
+        sorted.forEachIndexed { i, (a, b, t) ->
+            val next = sorted.getOrNull(i + 1)?.first ?: Long.MAX_VALUE
             val end = min(max(b, a + 800), next)
             out += Triple(a, max(end, a + 200), t)
         }

@@ -20,4 +20,4 @@ adb pull /sdcard/Android/data/com.elad.faceblur/files/results "$OUT/" || \
 adb pull /sdcard/Android/data/com.elad.faceblur/files/editor "$OUT/" || true
 adb pull /sdcard/Android/data/com.elad.faceblur/files/subs "$OUT/" || true
 ls -la "$OUT" "$OUT/results" || true
-grep -q "^OK (4 tests)" "$OUT/instrument.txt"
+grep -q "^OK (6 tests)" "$OUT/instrument.txt"
