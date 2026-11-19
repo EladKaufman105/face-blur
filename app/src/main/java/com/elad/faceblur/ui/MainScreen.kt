@@ -28,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
@@ -238,14 +239,14 @@ private fun PickCard(onPick: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(240.dp)
+            .height(236.dp)
             .clip(CardShape)
             .clickable(onClick = onPick),
         shape = CardShape,
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
     ) {
         Column(
-            Modifier.fillMaxSize(),
+            Modifier.fillMaxSize().padding(horizontal = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -255,15 +256,24 @@ private fun PickCard(onPick: () -> Unit) {
                     .clip(RoundedCornerShape(32.dp))
                     .background(MaterialTheme.colorScheme.primary),
                 Alignment.Center,
-            ) { Icon(Icons.Filled.Add, null, tint = MaterialTheme.colorScheme.onPrimary) }
-            Spacer(Modifier.height(14.dp))
-            Text(t("טשטוש פנים"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            ) { Icon(AppIcons.Face, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(34.dp)) }
+            Spacer(Modifier.height(12.dp))
+            Text(t("טשטוש פנים בסרטון"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
             Text(
-                t("בחר סרטון, והפנים בו יטושטשו אוטומטית"),
+                t("הפנים מזוהות ומטושטשות אוטומטית. אפשר לבדוק ולתקן לפני השמירה."),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
             )
+            Spacer(Modifier.height(14.dp))
+            Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primary) {
+                Row(Modifier.padding(horizontal = 18.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Add, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(t("בחר סרטון"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)
+                }
+            }
         }
     }
 }
@@ -290,11 +300,12 @@ private fun SubtitlesCard(onPick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(t("כתוביות לסרטון"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(
-                    t("זיהוי דיבור, תרגום ועיצוב בסגנון טיקטוק. בלי טשטוש."),
+                    t("זיהוי דיבור ועיצוב בסגנון טיקטוק, בלי טשטוש."),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

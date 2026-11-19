@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -65,6 +67,7 @@ private val CharChoices = listOf(10, 15, 20, 25, 32, 42)
  * How the subtitles are cut, after they're made: by spoken words (TikTok-style 1-3) or by
  * characters, up to whole sentences. Every change re-cuts from the whole sentences.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SplitControls(ctrl: EditorController) {
     var byChars by remember { mutableStateOf(ctrl.split.chars > 0) }
@@ -76,8 +79,8 @@ fun SplitControls(ctrl: EditorController) {
                 Segments(listOf(false to t("מילים"), true to t("תווים")), byChars) { byChars = it }
             }
         }
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        FlowRow(
+            Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             val choices = if (byChars) CharChoices else WordChoices

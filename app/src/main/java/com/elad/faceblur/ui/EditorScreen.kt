@@ -69,6 +69,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -89,6 +92,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -163,38 +167,44 @@ fun EditorScreen(
     @Suppress("UNUSED_VARIABLE") val version = ctrl.version
     val busy = ctrl.trackingProgress != null
 
+    // A Surface gives text and icons the theme's light-on-dark content color.
+    Surface(color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground, modifier = Modifier.fillMaxSize()) {
     Column(
         Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         Row(
-            Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 4.dp),
+            Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = { confirmClose = true }) { Icon(Icons.Filled.Close, t("סגור")) }
-            Text(if (ctrl.session.subtitlesOnly) t("כתוביות") else t("עריכת טשטושים"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            Button(onClick = { ctrl.pauser(); exportSheet = true }, enabled = !busy, modifier = Modifier.padding(end = 8.dp)) { Text(t("ייצוא")) }
+            Text(
+                if (ctrl.session.subtitlesOnly) t("כתוביות") else t("עריכה"),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Button(onClick = { ctrl.pauser(); exportSheet = true }, enabled = !busy, modifier = Modifier.padding(end = 8.dp)) {
+                Icon(EditorIcons.ExportIcon, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(t("ייצוא"))
+            }
         }
 
         Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
             VideoWithOverlay(ctrl, export.subs, subStyle)
+            // Messages at the top, where they don't cover the subtitles.
             Column(
                 Modifier.align(Alignment.TopCenter).padding(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (ctrl.addMode) {
                     Banner(t("הקש על הפנים שצריך לטשטש"), action = t("ביטול")) { ctrl.addMode = false }
-                } else if (ctrl.model.tracks.isEmpty() && !ctrl.session.subtitlesOnly) {
+                } else if (ctrl.model.tracks.isEmpty() && !ctrl.session.subtitlesOnly && ctrl.notice == null) {
                     Banner(t("לא זוהו פנים. אפשר לסמן ידנית עם \"הוסף טשטוש\"."))
                 }
-            }
-            Column(
-                Modifier.align(Alignment.BottomCenter).padding(10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
                 ctrl.notice?.let { msg ->
                     LaunchedEffect(msg) {
                         delay(4000)
@@ -248,6 +258,7 @@ fun EditorScreen(
             BottomBar(ctrl, sel, ctrl.selectedCue, busy)
         }
     }
+    }
 
     if (ctrl.subsSheet) SubtitlesSheet(ctrl, export, onExportChange)
     if (ctrl.cueEditor) CueEditorDialog(ctrl)
@@ -265,7 +276,7 @@ fun EditorScreen(
         AlertDialog(
             onDismissRequest = { confirmClose = false },
             title = { Text(t("לצאת מהעריכה?")) },
-            text = { Text(t("השינויים בטשטושים לא יישמרו.")) },
+            text = { Text(if (ctrl.session.subtitlesOnly) t("השינויים לא יישמרו.") else t("השינויים בטשטושים לא יישמרו.")) },
             confirmButton = { TextButton(onClick = { confirmClose = false; onClose() }) { Text(t("צא")) } },
             dismissButton = { TextButton(onClick = { confirmClose = false }) { Text(t("המשך לערוך")) } },
         )
@@ -477,7 +488,8 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
             setShadowLayer(5f, 0f, 0f, android.graphics.Color.BLACK)
         }
     }
-    Canvas(modifier.pointerInput(ctrl) { videoGestures(ctrl) }) {
+    val subHit = remember { SubtitleHit() }
+    Canvas(modifier.pointerInput(ctrl) { videoGestures(ctrl, subHit) }) {
         @Suppress("UNUSED_VARIABLE") val v = ctrl.version
         val live = ctrl.previewOn && ctrl.previewAvailable
         // Subtitles as they'll be burned in (faded when they won't be; a sample while styling).
@@ -494,12 +506,15 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
         } else {
             emptyList()
         }
+        subHit.rect = null
         if (blocks.isNotEmpty()) {
             val nc = drawContext.canvas.nativeCanvas
             if (faded) nc.saveLayerAlpha(0f, 0f, size.width, size.height, 120)
             if (cue != null) {
-                renderer.draw(nc, blocks, cue.startMs * 1000, cue.endMs * 1000, nowMs * 1000, style, size.width.toInt(), size.height.toInt())
+                subHit.rect = renderer.draw(nc, blocks, cue.startMs * 1000, cue.endMs * 1000, nowMs * 1000, style, size.width.toInt(), size.height.toInt())
+                subHit.cueId = cue.id
             } else {
+                subHit.rect = null
                 renderer.draw(nc, blocks, 0L, 2_000_000L, 1_100_000L, style, size.width.toInt(), size.height.toInt())
             }
             if (faded) nc.restore()
@@ -535,8 +550,14 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
     }
 }
 
-/** Tap: select / add. Drag a blur: move it at this frame. Pinch: resize the blur. */
-private suspend fun PointerInputScope.videoGestures(ctrl: EditorController) {
+/** Where the subtitle on the video was drawn, so tapping it opens it for editing. */
+private class SubtitleHit {
+    var rect: android.graphics.RectF? = null
+    var cueId: Int? = null
+}
+
+/** Tap: select / add, or edit the subtitle. Drag a blur: move it at this frame. Pinch: resize the blur. */
+private suspend fun PointerInputScope.videoGestures(ctrl: EditorController, subHit: SubtitleHit) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         if (ctrl.playing) {
@@ -576,7 +597,19 @@ private suspend fun PointerInputScope.videoGestures(ctrl: EditorController) {
                 ev.changes.forEach { if (it.positionChanged()) it.consume() }
             }
         }
-        if (active == null) ctrl.tap(down.position.x / w, down.position.y / h)
+        if (active == null) {
+            val r = subHit.rect
+            val id = subHit.cueId
+            val pad = 12.dp.toPx()
+            val onText = r != null && id != null && !ctrl.addMode && hit == null &&
+                down.position.x in (r.left - pad)..(r.right + pad) && down.position.y in (r.top - pad)..(r.bottom + pad)
+            if (onText && ctrl.model.cue(id!!) != null) {
+                ctrl.selectCue(id)
+                ctrl.cueEditor = true
+            } else {
+                ctrl.tap(down.position.x / w, down.position.y / h)
+            }
+        }
     }
 }
 
@@ -1035,41 +1068,44 @@ private fun SizePanel(ctrl: EditorController, t: EditTrack, busy: Boolean) {
 @Composable
 private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: Boolean) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        // Every tool gets an equal share of the width: nothing hides off screen.
         Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
         ) {
             if (cue != null) {
-                Tool(t("ערוך טקסט"), Icons.Filled.Edit, true, wide = true) { ctrl.pauser(); ctrl.cueEditor = true }
+                Tool(t("ערוך טקסט"), Icons.Filled.Edit, true) { ctrl.pauser(); ctrl.cueEditor = true }
                 Tool(t("עיצוב"), EditorIcons.TextFormat, true) { ctrl.pauser(); ctrl.stylePanel = true }
-                Tool(t("כל הכתוביות"), AppIcons.ListLines, true, wide = true) { ctrl.pauser(); ctrl.listEditor = true }
+                Tool(t("כל הכתוביות"), AppIcons.ListLines, true) { ctrl.pauser(); ctrl.listEditor = true }
                 Tool(t("מחק"), Icons.Filled.Delete, true) { ctrl.deleteSelectedCue() }
                 Tool(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
             } else if (sel == null) {
                 val subsOnly = ctrl.session.subtitlesOnly
-                val subsTools = @Composable {
-                    Tool(t("כתוביות"), EditorIcons.Subtitles, !busy, wide = subsOnly) { ctrl.pauser(); ctrl.subsSheet = true }
-                    if (ctrl.model.cues.isNotEmpty() || subsOnly) {
-                        Tool(t("עיצוב"), EditorIcons.TextFormat, !busy, wide = subsOnly) { ctrl.pauser(); ctrl.stylePanel = true }
+                val hasCues = ctrl.model.cues.isNotEmpty()
+                val subsTools: @Composable RowScope.() -> Unit = {
+                    Tool(t("כתוביות"), EditorIcons.Subtitles, !busy) { ctrl.pauser(); ctrl.subsSheet = true }
+                    if (hasCues || subsOnly) {
+                        Tool(t("עיצוב"), EditorIcons.TextFormat, !busy) { ctrl.pauser(); ctrl.stylePanel = true }
                     }
-                    if (ctrl.model.cues.isNotEmpty()) {
-                        Tool(t("כל הכתוביות"), AppIcons.ListLines, !busy, wide = true) { ctrl.pauser(); ctrl.listEditor = true }
-                        Tool(t("חלוקה"), AppIcons.WrapText, !busy) { ctrl.splitPanel = !ctrl.splitPanel }
+                    if (hasCues) {
+                        Tool(t("כל הכתוביות"), AppIcons.ListLines, !busy) { ctrl.pauser(); ctrl.listEditor = true }
+                        Tool(t("חלוקה"), AppIcons.WrapText, !busy, active = ctrl.splitPanel) { ctrl.splitPanel = !ctrl.splitPanel }
                     }
                 }
                 if (subsOnly) subsTools()
-                Tool(if (ctrl.addMode) t("ביטול") else t("הוסף טשטוש"), if (ctrl.addMode) Icons.Filled.Close else Icons.Filled.Add, !busy, wide = true) {
+                Tool(
+                    if (ctrl.addMode) t("ביטול") else t("הוסף טשטוש"),
+                    if (ctrl.addMode) Icons.Filled.Close else Icons.Filled.Add,
+                    !busy,
+                    active = ctrl.addMode,
+                ) {
                     ctrl.addMode = !ctrl.addMode
                     if (ctrl.addMode) ctrl.pauser()
                 }
                 if (ctrl.previewAvailable) {
-                    Tool(
-                        if (ctrl.previewOn) t("תצוגה: טשטוש") else t("תצוגה: מסגרות"),
-                        if (ctrl.previewOn) EditorIcons.Eye else EditorIcons.EyeOff,
-                        !busy,
-                        wide = true,
-                    ) { ctrl.togglePreview() }
+                    Tool(t("תצוגה"), if (ctrl.previewOn) EditorIcons.Eye else EditorIcons.EyeOff, !busy, active = ctrl.previewOn) {
+                        ctrl.togglePreview()
+                    }
                 }
                 if (!subsOnly) subsTools()
             } else {
@@ -1077,31 +1113,41 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
                 Tool(t("פצל"), EditorIcons.Cut, !busy) { ctrl.splitSelected() }
                 Tool(t("עקוב קדימה"), EditorIcons.TrackForward, !busy) { ctrl.trackSelected(1) }
                 Tool(t("עקוב אחורה"), EditorIcons.TrackBack, !busy) { ctrl.trackSelected(-1) }
-                Tool(t("גודל"), EditorIcons.Resize, !busy) { ctrl.sizePanel = !ctrl.sizePanel }
+                Tool(t("גודל"), EditorIcons.Resize, !busy, active = ctrl.sizePanel) { ctrl.sizePanel = !ctrl.sizePanel }
                 Tool(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
             }
         }
     }
 }
 
+/** A tool: icon over a one-line label; [active] for a toggle that's on. */
 @Composable
-private fun Tool(label: String, icon: ImageVector, enabled: Boolean, wide: Boolean = false, onClick: () -> Unit) {
+private fun RowScope.Tool(label: String, icon: ImageVector, enabled: Boolean, active: Boolean = false, onClick: () -> Unit) {
     val alpha = if (enabled) 1f else 0.38f
+    val tint = (if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface).copy(alpha = alpha)
     Column(
         Modifier
-            .width(if (wide) 104.dp else 66.dp)
+            .weight(1f)
+            .clip(RoundedCornerShape(12.dp))
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = 4.dp),
+            .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(icon, null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha), modifier = Modifier.size(22.dp))
-        Spacer(Modifier.height(2.dp))
+        Box(
+            Modifier
+                .size(width = 44.dp, height = 28.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(if (active) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent),
+            contentAlignment = Alignment.Center,
+        ) { Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp)) }
+        Spacer(Modifier.height(3.dp))
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
             textAlign = TextAlign.Center,
             maxLines = 1,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
+            overflow = TextOverflow.Ellipsis,
+            color = tint,
         )
     }
 }
@@ -1115,6 +1161,7 @@ private object EditorIcons {
         .build()
 
     val Pause = icon("pause", "M6 19h4V5H6v14zm8-14v14h4V5h-4z")
+    val ExportIcon = icon("ios_share", "M16 5l-1.42 1.42-1.59-1.59V16h-1.98V4.83L9.42 6.42 8 5l4-4 4 4zm4 5v11c0 1.1-.9 2-2 2H6c-1.11 0-2-.9-2-2V10c0-1.11.89-2 2-2h3v2H6v11h12V10h-3V8h3c1.1 0 2 .89 2 2z")
     val TextFormat = icon("text_format", "M5 17v2h14v-2H5zm4.5-4.2h5l.9 2.2h2.1L12.75 4h-1.5L6.5 15h2.1l.9-2.2zM12 5.98L13.87 11h-3.74L12 5.98z")
     val Subtitles = icon(
         "subtitles",

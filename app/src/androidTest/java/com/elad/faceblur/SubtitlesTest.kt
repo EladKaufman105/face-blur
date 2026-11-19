@@ -181,7 +181,11 @@ class SubtitlesTest {
         note("2 words per subtitle: ${chunks.size} subtitles: " + chunks.joinToString(" | ") { "${it.startMs}-${it.endMs} '${it.en}' / '${it.he}'" })
         if (chunks.size < 8 || chunks.any { it.en.split(" ").size > 2 }) fail("regroup to 2 words")
         if (chunks.zipWithNext().any { (a, b) -> a.endMs > b.startMs }) fail("overlapping subtitles")
-        rule.runOnIdle { ctrl.listEditor = true }
+        rule.runOnIdle { ctrl.splitPanel = true }
+        rule.waitForIdle()
+        Thread.sleep(600)
+        shot(outDir, "4a_split_panel.png")
+        rule.runOnIdle { ctrl.splitPanel = false; ctrl.listEditor = true }
         rule.waitForIdle()
         Thread.sleep(1000)
         shot(outDir, "4b_list_editor.png")

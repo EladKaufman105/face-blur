@@ -1,5 +1,17 @@
 package com.elad.faceblur.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -67,6 +79,8 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
             },
         )
     }
+    // With subtitles already made, creating them again folds away.
+    var createOpen by remember { mutableStateOf(ctrl.model.cues.isEmpty()) }
     ModalBottomSheet(
         onDismissRequest = { ctrl.subsSheet = false },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -75,116 +89,182 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
             Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
                 .padding(bottom = 16.dp)
                 .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             @Suppress("UNUSED_VARIABLE") val v = ctrl.version
             val count = ctrl.model.cues.size
-            Text(t("כתוביות"), style = MaterialTheme.typography.titleLarge)
-            Text(
-                if (count == 0) t("עדיין אין כתוביות. המערכת תזהה את הדיבור, הכול במכשיר.") else t("יש %d כתוביות. הקש על כתובית בציר הזמן כדי לערוך.").format(count),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            val busy = ctrl.subsBusy
+            Column(Modifier.padding(horizontal = 20.dp)) {
+                Text(t("כתוביות"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (count == 0) t("עדיין אין כתוביות. המערכת תזהה את הדיבור, הכול במכשיר.") else t("יש %d כתוביות. הקש על כתובית בסרטון או בציר הזמן כדי לערוך.").format(count),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            // Progress and messages stay in view whatever is folded.
+            val dl = models?.downloading
+            val prog = ctrl.subsProgress
+            if (models != null && (dl != null || prog != null)) {
+                Box(Modifier.padding(horizontal = 20.dp)) {
+                    if (dl != null) {
+                        Progress(t("מוריד את המודל… %d%%").format((models.progress * 100).roundToInt()), "download", models.progress) { ctrl.cancelSubtitles() }
+                    } else if (prog != null) {
+                        Progress(
+                            subsStageText(prog.first, prog.second),
+                            prog.first,
+                            if (prog.first == SubtitleEngine.Stage.PACK) null else prog.second,
+                        ) { ctrl.cancelSubtitles() }
+                    }
+                }
+            }
+            ctrl.notice?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 20.dp))
+            }
+
+            if (count > 0) {
+                SectionTitle(t("עריכה"))
+                Box(Modifier.padding(horizontal = 20.dp)) { SplitControls(ctrl) }
+                ActionRow(AppIcons.ListLines, t("כל הכתוביות"), t("לתקן את הטקסט של כולן ברשימה אחת")) {
+                    ctrl.subsSheet = false
+                    ctrl.listEditor = true
+                }
+                ActionRow(AppIcons.TextFormat, t("עיצוב"), t("סגנון, גופן, צבע ואפקטים")) {
+                    ctrl.subsSheet = false
+                    ctrl.stylePanel = true
+                }
+                val missing = ctrl.untranslatedCount
+                if (missing > 0 && models != null) {
+                    ActionRow(
+                        AppIcons.Translate,
+                        if (ctrl.hasTranslation) t("השלם תרגום") else t("הוסף תרגום"),
+                        if (ctrl.hasTranslation) t("%d כתוביות עוד בלי תרגום").format(missing) else t("עברית לאנגלית ואנגלית לעברית, במכשיר"),
+                        enabled = !busy,
+                    ) { ctrl.translateSubtitles() }
+                }
+                ActionRow(Icons.Filled.Add, t("הוסף כתובית"), t("במיקום הנוכחי בסרטון"), enabled = !busy) {
+                    ctrl.subsSheet = false
+                    ctrl.addCueHere()
+                }
+            }
 
             if (models != null) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Caption(t("מודל זיהוי דיבור"))
-                    Segments(
-                        listOf(SpeechModel.HEBREW to t("עברית (ivrit.ai)"), SpeechModel.MULTILINGUAL to t("רב-לשוני")),
-                        choice,
-                    ) { if (!ctrl.subsBusy) choice = it }
-                    Text(
-                        when (choice) {
-                            SpeechModel.HEBREW -> t("מותאם לעברית ומבין גם אנגלית.")
-                            SpeechModel.MULTILINGUAL -> t("מזהה כל שפה לבד. פחות מדויק בעברית.")
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    val ready = models.isReady(choice)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            if (ready) t("המודל מוכן במכשיר") else t("הורדה חד-פעמית של %s (מומלץ Wi-Fi)").format(mb(choice.approxBytes)),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (ready && !ctrl.subsBusy) {
-                            TextButton(onClick = { models.delete(choice) }) { Text(t("מחק מודל")) }
+                if (count > 0) {
+                    SectionTitle(t("יצירה מחדש"))
+                    if (!createOpen) {
+                        ActionRow(AppIcons.Subtitles, t("צור כתוביות מחדש"), t("מזהה את הדיבור שוב ומחליף את הכתוביות"), enabled = !busy) { createOpen = true }
+                    }
+                }
+                if (createOpen) {
+                    Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Caption(t("מודל זיהוי דיבור"))
+                            Segments(
+                                listOf(SpeechModel.HEBREW to t("עברית (ivrit.ai)"), SpeechModel.MULTILINGUAL to t("רב-לשוני")),
+                                choice,
+                            ) { if (!busy) choice = it }
+                            Text(
+                                when (choice) {
+                                    SpeechModel.HEBREW -> t("מותאם לעברית ומבין גם אנגלית.")
+                                    SpeechModel.MULTILINGUAL -> t("מזהה כל שפה לבד. פחות מדויק בעברית.")
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            val ready = models.isReady(choice)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    if (ready) t("המודל מוכן במכשיר") else t("הורדה חד-פעמית של %s (מומלץ Wi-Fi)").format(mb(choice.approxBytes)),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (ready && !busy) {
+                                    TextButton(onClick = { models.delete(choice) }) { Text(t("מחק מודל")) }
+                                }
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(t("הוסף תרגום"), style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    t("עברית לאנגלית ואנגלית לעברית, במכשיר"),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(checked = ctrl.translateOnCreate, onCheckedChange = { ctrl.changeTranslateOnCreate(it) }, enabled = !busy)
+                        }
+                        if (dl == null && prog == null) {
+                            Button(onClick = { ctrl.makeSubtitles(choice) }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
+                                Text(
+                                    when {
+                                        !models.isReady(choice) -> t("הורד מודל וצור כתוביות")
+                                        count > 0 -> t("צור כתוביות מחדש")
+                                        else -> t("צור כתוביות")
+                                    },
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                            }
                         }
                     }
                 }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(t("הוסף תרגום"), style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            t("עברית לאנגלית ואנגלית לעברית, במכשיר"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(checked = ctrl.translateOnCreate, onCheckedChange = { ctrl.changeTranslateOnCreate(it) }, enabled = !ctrl.subsBusy)
-                }
-                val dl = models.downloading
-                val prog = ctrl.subsProgress
-                when {
-                    dl != null -> Progress(t("מוריד את המודל… %d%%").format((models.progress * 100).roundToInt()), "download", models.progress) { ctrl.cancelSubtitles() }
-                    prog != null -> Progress(
-                        subsStageText(prog.first, prog.second),
-                        prog.first,
-                        if (prog.first == SubtitleEngine.Stage.PACK) null else prog.second,
-                    ) { ctrl.cancelSubtitles() }
-                    else -> Button(onClick = { ctrl.makeSubtitles(choice) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            when {
-                                !models.isReady(choice) -> t("הורד מודל וצור כתוביות")
-                                count > 0 -> t("צור כתוביות מחדש")
-                                else -> t("צור כתוביות")
-                            },
-                        )
-                    }
-                }
-                ctrl.notice?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                }
-                val missing = ctrl.untranslatedCount
-                if (count > 0 && missing > 0 && !ctrl.subsBusy) {
-                    OutlinedButton(onClick = { ctrl.translateSubtitles() }, modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            if (ctrl.hasTranslation) {
-                                t("תרגם %d כתוביות שעוד לא תורגמו").format(missing)
-                            } else {
-                                t("תרגם את הכתוביות (עברית ↔ אנגלית)")
-                            },
-                        )
-                    }
+            }
+            if (count == 0) {
+                ActionRow(Icons.Filled.Add, t("או כתוב כתוביות בעצמך"), t("כתובית ריקה במיקום הנוכחי"), enabled = !busy) {
+                    ctrl.subsSheet = false
+                    ctrl.addCueHere()
                 }
             }
-            if (count > 0) {
-                HorizontalDivider()
-                SplitControls(ctrl)
-                OutlinedButton(
-                    onClick = { ctrl.subsSheet = false; ctrl.listEditor = true },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(t("עריכת כל הכתוביות ברשימה")) }
-                OutlinedButton(
-                    onClick = { ctrl.subsSheet = false; ctrl.stylePanel = true },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(t("עיצוב הכתוביות: סגנון, גופן, צבע ואפקטים")) }
-            }
-            OutlinedButton(
-                onClick = { ctrl.subsSheet = false; ctrl.addCueHere() },
-                enabled = !ctrl.subsBusy,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(t("הוסף כתובית ידנית במיקום הנוכחי")) }
 
-            HorizontalDivider()
-            SubtitleExportOptions(export, onExportChange, ctrl.hasTranslation)
+            SectionTitle(t("בייצוא"))
+            Box(Modifier.padding(horizontal = 20.dp)) { SubtitleExportOptions(export, onExportChange, ctrl.hasTranslation) }
         }
+    }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+        HorizontalDivider()
+        Text(
+            text,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp),
+        )
+    }
+}
+
+/** A tappable row: icon, title and a line about it, and a chevron. */
+@Composable
+internal fun ActionRow(icon: ImageVector, title: String, subtitle: String?, enabled: Boolean = true, onClick: () -> Unit) {
+    val alpha = if (enabled) 1f else 0.4f
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = alpha)),
+            contentAlignment = Alignment.Center,
+        ) { Icon(icon, null, tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = alpha), modifier = Modifier.size(22.dp)) }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha))
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha))
+            }
+        }
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight, null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+        )
     }
 }
 

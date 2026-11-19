@@ -57,11 +57,12 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?) {
 
     /**
      * Draws the subtitle made of [blocks] (one paragraph each, e.g. Hebrew then English) shown
-     * from [startUs] to [endUs], at [tUs], into a [w]×[h] frame.
+     * from [startUs] to [endUs], at [tUs], into a [w]×[h] frame. Returns where the text is
+     * (for tapping it), or null if nothing was drawn.
      */
-    fun draw(canvas: Canvas, blocks: List<String>, startUs: Long, endUs: Long, tUs: Long, style: SubtitleStyle, w: Int, h: Int) {
+    fun draw(canvas: Canvas, blocks: List<String>, startUs: Long, endUs: Long, tUs: Long, style: SubtitleStyle, w: Int, h: Int): RectF? {
         val texts = blocks.filter { it.isNotBlank() }
-        if (texts.isEmpty() || w <= 0 || h <= 0) return
+        if (texts.isEmpty() || w <= 0 || h <= 0) return null
         val effect = style.effect
         val oneWord = effect == SubEffect.ONE_WORD
         val base = min(w, h) * 0.055f * style.size * (if (oneWord) 1.25f else 1f)
@@ -111,12 +112,14 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?) {
                 .build()
             laid += Block(layout, tp, text, wordRanges, if (oneWord) 0 else active, size)
         }
-        if (laid.isEmpty()) return
+        if (laid.isEmpty()) return null
         val gap = base * 0.3f
         val totalH = laid.sumOf { it.layout.height } + gap * (laid.size - 1)
         val margin = h * 0.04f
         var top = (h * style.position - totalH / 2f).coerceIn(margin, max(margin, h - margin - totalH))
         val cy = top + totalH / 2f
+        val widest = laid.maxOf { b -> (0 until b.layout.lineCount).maxOfOrNull { b.layout.getLineWidth(it) } ?: 0f }
+        val bounds = RectF((w - widest) / 2f, top, (w + widest) / 2f, top + totalH)
 
         canvas.save()
         if (scale != 1f) canvas.scale(scale, scale, w / 2f, cy)
@@ -229,6 +232,7 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?) {
         }
         if (layer >= 0) canvas.restoreToCount(layer)
         canvas.restore()
+        return bounds
     }
 
     private fun trimEnd(text: String, s: Int, e: Int): Int {
