@@ -1,5 +1,6 @@
 package com.elad.faceblur.edit
 
+import com.elad.faceblur.i18n.t
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.getValue
@@ -194,7 +195,7 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
         val id = selectedId ?: return
         val t = model.track(id) ?: return
         if (frame <= t.start || frame > t.end) {
-            notice = "כדי לפצל, הזז את הסמן לתוך טווח הטשטוש"
+            notice = t("כדי לפצל, הזז את הסמן לתוך טווח הטשטוש")
             return
         }
         model.split(id, frame)?.let { selectedId = it }
@@ -313,7 +314,7 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
     private fun track(id: Int, dir: Int, fresh: Boolean) {
         val store = session.analysis.frames
         if (store == null) {
-            notice = "מעקב אוטומטי לא זמין לסרטון הזה"
+            notice = t("מעקב אוטומטי לא זמין לסרטון הזה")
             return
         }
         val t = model.track(id) ?: return
@@ -331,7 +332,7 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
                     }
                 }
                 if (result.size <= 1) {
-                    notice = "לא הצלחתי לעקוב מכאן. אפשר להזיז את הטשטוש ולקבוע התחלה וסוף ידנית."
+                    notice = t("לא הצלחתי לעקוב מכאן. אפשר להזיז את הטשטוש ולקבוע התחלה וסוף ידנית.")
                 } else {
                     // The tracker works on the visible size; the path stores it without the user's factor.
                     val unscaled = java.util.TreeMap<Int, Box>()
@@ -340,7 +341,7 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
                     val tr = model.track(id)
                     if (tr != null) {
                         val secs = (tr.end - tr.start + 1) / max(1f, model.fps)
-                        notice = "הטשטוש עוקב %.1f שניות. בדוק וקצר אם צריך.".format(secs)
+                        notice = t("הטשטוש עוקב %.1f שניות. בדוק וקצר אם צריך.").format(secs)
                     }
                 }
             } finally {

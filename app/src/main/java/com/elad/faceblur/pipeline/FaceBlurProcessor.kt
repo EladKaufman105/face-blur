@@ -1,5 +1,6 @@
 package com.elad.faceblur.pipeline
 
+import com.elad.faceblur.i18n.t
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -74,6 +75,7 @@ class FaceBlurProcessor(private val context: Context) {
         settings: Settings,
         onStage: (Int) -> Unit,
         onProgress: (Float) -> Unit,
+        export: ExportOptions = ExportOptions(),
     ): Outcome {
         onStage(1)
         val t0 = SystemClock.elapsedRealtime()
@@ -83,7 +85,7 @@ class FaceBlurProcessor(private val context: Context) {
             if (model.tracks.isEmpty()) return Outcome.NoFaces
             onStage(2)
             onProgress(0f)
-            return render(info, settings, analysis, model, analysisMs, onProgress)
+            return render(info, settings, analysis, model, analysisMs, export, onProgress)
         }
     }
 
@@ -121,6 +123,7 @@ class FaceBlurProcessor(private val context: Context) {
         analysis: AnalysisResult,
         model: EditModel,
         analysisMs: Long,
+        export: ExportOptions = ExportOptions(),
         onProgress: (Float) -> Unit,
     ): Outcome.Saved {
         val t1 = SystemClock.elapsedRealtime()
@@ -133,19 +136,20 @@ class FaceBlurProcessor(private val context: Context) {
         val out = File(context.cacheDir, "render.mp4")
         out.delete()
         val blur = BlurEffect(timeline, settings.mode, settings.strength)
+        // Blur at full resolution first, then resize / drop frames for the chosen output.
         val item = EditedMediaItem.Builder(MediaItem.fromUri(info.uri))
-            .setEffects(Effects(emptyList(), listOf<Effect>(blur)))
+            .setEffects(Effects(emptyList(), listOf<Effect>(blur) + export.effects(info)))
             .build()
-        val bitrate = if (info.bitrate > 0) (info.bitrate * 0.95f).toInt().coerceIn(4_000_000, 120_000_000) else null
-        val modes = if (info.isHdr) {
-            listOf(Composition.HDR_MODE_KEEP_HDR, Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
-        } else {
-            listOf(Composition.HDR_MODE_KEEP_HDR)
+        val bitrate = export.videoBitrate(info)
+        val modes = when {
+            !info.isHdr -> listOf(Composition.HDR_MODE_KEEP_HDR)
+            export.canKeepHdr(info) -> listOf(Composition.HDR_MODE_KEEP_HDR, Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
+            else -> listOf(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
         }
         var keptHdr = info.isHdr
         runWithHdrFallback(modes) { hdrMode ->
             keptHdr = info.isHdr && hdrMode == Composition.HDR_MODE_KEEP_HDR
-            export(composition(item, hdrMode), out, bitrate, mime = null, onProgress)
+            export(composition(item, hdrMode), out, bitrate, mime = export.mimeType(), onProgress)
         }
 
         val saved = withContext(Dispatchers.IO) { saveToGallery(out, "${info.name}_blur") }
@@ -242,7 +246,7 @@ class FaceBlurProcessor(private val context: Context) {
         }
         val resolver = context.contentResolver
         val uri = resolver.insert(MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
-            ?: throw IllegalStateException("לא ניתן לשמור בגלריה")
+            ?: throw IllegalStateException(t("לא ניתן לשמור בגלריה"))
         resolver.openOutputStream(uri)!!.use { out -> file.inputStream().use { it.copyTo(out, 1 shl 20) } }
         values.clear()
         values.put(MediaStore.Video.Media.IS_PENDING, 0)

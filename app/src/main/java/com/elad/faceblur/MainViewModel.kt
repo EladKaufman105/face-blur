@@ -1,5 +1,6 @@
 package com.elad.faceblur
 
+import com.elad.faceblur.i18n.t
 import android.app.Application
 import android.net.Uri
 import androidx.compose.runtime.getValue
@@ -9,6 +10,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import android.os.SystemClock
 import com.elad.faceblur.edit.EditSession
+import com.elad.faceblur.prefs.AppPrefs
 import com.elad.faceblur.edit.EditorController
 import androidx.media3.transformer.ExportException
 import com.elad.faceblur.effects.BlurMode
@@ -45,6 +47,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Open the editor between analysis and export. */
     var review by mutableStateOf(true)
 
+    /** Language, theme and export choices (persisted). */
+    val prefs = AppPrefs(app)
+
     private var job: Job? = null
     private var editor: EditorController? = null
 
@@ -56,7 +61,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             state = try {
                 UiState.Ready(withContext(Dispatchers.IO) { VideoInfo.probe(getApplication(), uri) })
             } catch (e: Exception) {
-                UiState.Failed(null, e.message ?: "לא ניתן לפתוח את הסרטון")
+                UiState.Failed(null, e.message ?: t("לא ניתן לפתוח את הסרטון"))
             }
         }
     }
@@ -106,7 +111,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val s = ctrl.session
         state = UiState.Working(s.info, 2, 0f)
         val saved = FaceBlurProcessor(getApplication()).render(
-            s.info, s.settings, s.analysis, s.model, s.analysisMs,
+            s.info, s.settings, s.analysis, s.model, s.analysisMs, prefs.export,
         ) { p -> state = UiState.Working(s.info, 2, p) }
         state = UiState.Done(s.info, saved, canEdit = true)
     }
@@ -118,7 +123,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             state = onCancel()
             throw e
         } catch (e: ExportException) {
-            state = UiState.Failed(info, "העיבוד נכשל (${e.errorCodeName}): ${e.cause?.message ?: e.message}")
+            state = UiState.Failed(info, t("העיבוד נכשל (%s): %s").format(e.errorCodeName, e.cause?.message ?: e.message))
         } catch (e: Exception) {
             state = UiState.Failed(info, e.message ?: e.javaClass.simpleName)
         }

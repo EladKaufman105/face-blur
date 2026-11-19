@@ -11,6 +11,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.content.IntentCompat
+import com.elad.faceblur.i18n.Lang
 import com.elad.faceblur.ui.FaceBlurTheme
 import com.elad.faceblur.ui.MainScreen
 
@@ -23,9 +24,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) handleShare(intent)
         setContent {
-            FaceBlurTheme {
-                // Hebrew UI: force RTL even when the phone itself is set to English.
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            val prefs = vm.prefs
+            FaceBlurTheme(prefs.themeMode, prefs.palette) {
+                // The UI direction follows the app's language, not the phone's.
+                val dir = if (prefs.lang == Lang.HE) LayoutDirection.Rtl else LayoutDirection.Ltr
+                CompositionLocalProvider(LocalLayoutDirection provides dir) {
                     MainScreen(vm)
                 }
             }

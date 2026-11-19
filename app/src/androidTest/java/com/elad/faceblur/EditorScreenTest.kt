@@ -3,6 +3,23 @@ package com.elad.faceblur
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import com.elad.faceblur.pipeline.ExportQuality
+import com.elad.faceblur.prefs.Palette
+import com.elad.faceblur.prefs.ThemeMode
+import com.elad.faceblur.ui.FaceBlurTheme
+import com.elad.faceblur.ui.MainScreen
+import androidx.compose.ui.test.performClick
+import androidx.test.espresso.Espresso
+import com.elad.faceblur.i18n.I18n
+import com.elad.faceblur.i18n.Lang
+import com.elad.faceblur.pipeline.ExportOptions
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.captureToImage
@@ -66,10 +83,12 @@ class EditorScreenTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         val ctrl = EditorController(session, scope)
 
+        var dir by mutableStateOf(LayoutDirection.Rtl)
+        var export by mutableStateOf(ExportOptions())
         rule.setContent {
             EditorTheme {
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    EditorScreen(ctrl, onClose = {}, onExport = {})
+                CompositionLocalProvider(LocalLayoutDirection provides dir) {
+                    EditorScreen(ctrl, onClose = {}, onExport = {}, export = export, onExportChange = { export = it })
                 }
             }
         }
@@ -171,6 +190,29 @@ class EditorScreenTest {
         Thread.sleep(1200)
         shot(outDir, "6_outlines.png")
 
+        // Export sheet, then the whole editor in English.
+        rule.onNodeWithText("ייצוא").performClick()
+        rule.waitForIdle()
+        Thread.sleep(1000)
+        // The sheet is its own window: capture the last root.
+        rule.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().let { bmp ->
+            File(outDir, "7_export_sheet.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        Espresso.pressBack()
+        rule.waitForIdle()
+        rule.runOnIdle {
+            I18n.lang = Lang.EN
+            dir = LayoutDirection.Ltr
+            ctrl.togglePreview()
+            ctrl.focus(manual.id)
+        }
+        Thread.sleep(1500)
+        shot(outDir, "8_english.png")
+        rule.runOnIdle {
+            I18n.lang = Lang.HE
+            dir = LayoutDirection.Rtl
+        }
+
         val saved = runBlocking(Dispatchers.Main) {
             FaceBlurProcessor(ctx).render(info, settings, analysis, ctrl.model, 0) {}
         }
@@ -179,6 +221,60 @@ class EditorScreenTest {
         scope.cancel()
         session.close()
         if (frac < 0.5f) fail("manual tracker followed only $frac of the face")
+    }
+
+    /** Settings screen with the export card, then English with another palette, then app settings. */
+    @Test
+    fun mainScreen() {
+        val inst = InstrumentationRegistry.getInstrumentation()
+        val ctx = inst.targetContext
+        val outDir = File(ctx.getExternalFilesDir(null), "editor").apply { mkdirs() }
+        val name = inst.context.assets.list("samples")?.firstOrNull { it.startsWith("classroom60") }
+            ?: inst.context.assets.list("samples")?.firstOrNull() ?: return
+        val src = File(ctx.cacheDir, "main_$name")
+        inst.context.assets.open("samples/$name").use { i -> src.outputStream().use { i.copyTo(it) } }
+        val vm = inst.onMain { MainViewModel(ctx.applicationContext as android.app.Application) }
+        inst.runOnMainSync { vm.load(Uri.fromFile(src)) }
+        val t0 = System.currentTimeMillis()
+        while (inst.onMain { vm.state !is UiState.Ready } && System.currentTimeMillis() - t0 < 20_000) Thread.sleep(100)
+        rule.setContent {
+            val prefs = vm.prefs
+            FaceBlurTheme(prefs.themeMode, prefs.palette) {
+                val d = if (prefs.lang == Lang.HE) LayoutDirection.Rtl else LayoutDirection.Ltr
+                CompositionLocalProvider(LocalLayoutDirection provides d) { MainScreen(vm) }
+            }
+        }
+        rule.waitForIdle()
+        Thread.sleep(800)
+        shot(outDir, "9_settings_he.png")
+        rule.runOnIdle {
+            vm.prefs.updateLang(Lang.EN)
+            vm.prefs.updatePalette(Palette.GREEN)
+            vm.prefs.updateThemeMode(ThemeMode.DARK)
+            vm.prefs.updateExport(ExportOptions(shortSide = 720, fps = 30, quality = ExportQuality.SAVER))
+        }
+        Thread.sleep(800)
+        shot(outDir, "10_settings_en.png")
+        rule.onNodeWithContentDescription("Settings").performClick()
+        rule.waitForIdle()
+        Thread.sleep(800)
+        rule.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().let { bmp ->
+            File(outDir, "11_app_settings.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        // Leave the defaults for other runs.
+        rule.runOnIdle {
+            vm.prefs.updateLang(Lang.HE)
+            vm.prefs.updatePalette(Palette.BLUE)
+            vm.prefs.updateThemeMode(ThemeMode.SYSTEM)
+            vm.prefs.updateExport(ExportOptions())
+        }
+    }
+
+    private fun <T> android.app.Instrumentation.onMain(block: () -> T): T {
+        var r: Any? = null
+        runOnMainSync { r = block() }
+        @Suppress("UNCHECKED_CAST")
+        return r as T
     }
 
     private fun shot(dir: File, name: String) {

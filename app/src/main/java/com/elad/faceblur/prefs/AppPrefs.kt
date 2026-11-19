@@ -1,0 +1,69 @@
+package com.elad.faceblur.prefs
+
+import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.elad.faceblur.i18n.I18n
+import com.elad.faceblur.i18n.Lang
+import com.elad.faceblur.pipeline.ExportCodec
+import com.elad.faceblur.pipeline.ExportOptions
+import com.elad.faceblur.pipeline.ExportQuality
+
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
+enum class Palette { BLUE, PURPLE, GREEN, ORANGE, ROSE, DYNAMIC }
+
+/** App-wide choices that persist between launches. */
+class AppPrefs(context: Context) {
+    private val sp = context.getSharedPreferences("faceblur", Context.MODE_PRIVATE)
+
+    var lang by mutableStateOf(enumOr(sp.getString("lang", null), Lang.HE))
+        private set
+    var themeMode by mutableStateOf(enumOr(sp.getString("theme_mode", null), ThemeMode.SYSTEM))
+        private set
+    var palette by mutableStateOf(enumOr(sp.getString("palette", null), Palette.BLUE))
+        private set
+    var export by mutableStateOf(
+        ExportOptions(
+            shortSide = sp.getInt("export_short", 0),
+            fps = sp.getInt("export_fps", 0),
+            quality = enumOr(sp.getString("export_quality", null), ExportQuality.ORIGINAL),
+            codec = enumOr(sp.getString("export_codec", null), ExportCodec.SAME),
+        ),
+    )
+        private set
+
+    init {
+        I18n.lang = lang
+    }
+
+    fun updateLang(v: Lang) {
+        lang = v
+        I18n.lang = v
+        sp.edit().putString("lang", v.name).apply()
+    }
+
+    fun updateThemeMode(v: ThemeMode) {
+        themeMode = v
+        sp.edit().putString("theme_mode", v.name).apply()
+    }
+
+    fun updatePalette(v: Palette) {
+        palette = v
+        sp.edit().putString("palette", v.name).apply()
+    }
+
+    fun updateExport(v: ExportOptions) {
+        export = v
+        sp.edit()
+            .putInt("export_short", v.shortSide)
+            .putInt("export_fps", v.fps)
+            .putString("export_quality", v.quality.name)
+            .putString("export_codec", v.codec.name)
+            .apply()
+    }
+
+    private inline fun <reified E : Enum<E>> enumOr(name: String?, default: E): E =
+        name?.let { n -> enumValues<E>().firstOrNull { it.name == n } } ?: default
+}

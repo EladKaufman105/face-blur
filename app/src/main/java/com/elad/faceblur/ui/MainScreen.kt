@@ -1,5 +1,6 @@
 package com.elad.faceblur.ui
 
+import com.elad.faceblur.i18n.t
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -30,6 +31,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
@@ -91,11 +97,19 @@ fun MainScreen(vm: MainViewModel) {
     BackHandler(enabled = working) { /* keep the export alive */ }
 
     if (state is UiState.Editing) {
-        EditorTheme {
-            EditorScreen(state.editor, onClose = vm::backToSettings, onExport = vm::export)
+        EditorTheme(vm.prefs.palette) {
+            EditorScreen(
+                state.editor,
+                onClose = vm::backToSettings,
+                onExport = vm::export,
+                export = vm.prefs.export,
+                onExportChange = vm.prefs::updateExport,
+            )
         }
         return
     }
+    var showSettings by remember { mutableStateOf(false) }
+    if (showSettings) AppSettingsSheet(vm.prefs) { showSettings = false }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { insets ->
         Column(
@@ -106,7 +120,7 @@ fun MainScreen(vm: MainViewModel) {
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Header()
+            Header(onSettings = { showSettings = true })
             when (state) {
                 UiState.Empty -> PickCard(pick)
                 UiState.Loading -> Box(Modifier.fillMaxWidth().height(200.dp), Alignment.Center) {
@@ -115,11 +129,17 @@ fun MainScreen(vm: MainViewModel) {
                 is UiState.Ready -> {
                     VideoCard(state.info, onReplace = pick)
                     SettingsCard(vm)
+                    SectionCard {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(t("הגדרות ייצוא"), style = MaterialTheme.typography.titleMedium)
+                            ExportOptionsPanel(state.info, vm.prefs.export, vm.prefs::updateExport)
+                        }
+                    }
                     Button(
                         onClick = vm::start,
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                         shape = RoundedCornerShape(16.dp),
-                    ) { Text("טשטש פנים", style = MaterialTheme.typography.titleMedium) }
+                    ) { Text(t("טשטש פנים"), style = MaterialTheme.typography.titleMedium) }
                 }
                 is UiState.Working -> {
                     VideoCard(state.info, onReplace = null)
@@ -135,19 +155,19 @@ fun MainScreen(vm: MainViewModel) {
                 is UiState.NoFaces -> {
                     VideoCard(state.info, onReplace = pick)
                     MessageCard(
-                        title = "לא זוהו פנים בסרטון",
-                        body = "אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב, או סמן אותן ידנית.",
-                        primary = if (state.canEdit) "סמן טשטוש ידנית" to vm::edit else "נסה עם זיהוי מורחב" to vm::retrySensitive,
-                        secondary = if (state.canEdit) "נסה עם זיהוי מורחב" to vm::retrySensitive else "חזרה" to vm::backToSettings,
+                        title = t("לא זוהו פנים בסרטון"),
+                        body = t("אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב, או סמן אותן ידנית."),
+                        primary = if (state.canEdit) t("סמן טשטוש ידנית") to vm::edit else t("נסה עם זיהוי מורחב") to vm::retrySensitive,
+                        secondary = if (state.canEdit) t("נסה עם זיהוי מורחב") to vm::retrySensitive else t("חזרה") to vm::backToSettings,
                     )
                 }
                 is UiState.Failed -> {
                     state.info?.let { VideoCard(it, onReplace = pick) }
                     MessageCard(
-                        title = "משהו השתבש",
+                        title = t("משהו השתבש"),
                         body = state.message,
-                        primary = "בחר סרטון אחר" to { vm.reset(); pick() },
-                        secondary = if (state.info != null) "חזרה להגדרות" to vm::backToSettings else null,
+                        primary = t("בחר סרטון אחר") to { vm.reset(); pick() },
+                        secondary = if (state.info != null) t("חזרה להגדרות") to vm::backToSettings else null,
                     )
                 }
             }
@@ -157,14 +177,17 @@ fun MainScreen(vm: MainViewModel) {
 }
 
 @Composable
-private fun Header() {
-    Column(Modifier.padding(top = 8.dp, bottom = 4.dp)) {
-        Text("טשטוש פנים", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text(
-            "הכל מעובד על המכשיר. שום דבר לא עולה לרשת.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+private fun Header(onSettings: () -> Unit) {
+    Row(Modifier.padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.Top) {
+        Column(Modifier.weight(1f)) {
+            Text(t("טשטוש פנים"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text(
+                t("הכל מעובד על המכשיר. שום דבר לא עולה לרשת."),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, t("הגדרות")) }
     }
 }
 
@@ -209,10 +232,10 @@ private fun PickCard(onPick: () -> Unit) {
                 Alignment.Center,
             ) { Icon(Icons.Filled.Add, null, tint = MaterialTheme.colorScheme.onPrimary) }
             Spacer(Modifier.height(14.dp))
-            Text("בחר סרטון", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(t("בחר סרטון"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
             Text(
-                "או שתף סרטון מהגלריה ישירות לאפליקציה",
+                t("או שתף סרטון מהגלריה ישירות לאפליקציה"),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -251,7 +274,7 @@ private fun VideoCard(info: VideoInfo, onReplace: (() -> Unit)?) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (onReplace != null) TextButton(onClick = onReplace) { Text("החלף") }
+                if (onReplace != null) TextButton(onClick = onReplace) { Text(t("החלף")) }
             }
         }
     }
@@ -262,8 +285,8 @@ private fun SettingsCard(vm: MainViewModel) {
     SectionCard {
         Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Label("סגנון")
-                val options = listOf(BlurMode.BLUR to "טשטוש", BlurMode.PIXELATE to "פיקסלים", BlurMode.SOLID to "כיסוי")
+                Label(t("סגנון"))
+                val options = listOf(BlurMode.BLUR to t("טשטוש"), BlurMode.PIXELATE to t("פיקסלים"), BlurMode.SOLID to t("כיסוי"))
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     options.forEachIndexed { i, (mode, label) ->
                         SegmentedButton(
@@ -275,14 +298,14 @@ private fun SettingsCard(vm: MainViewModel) {
                 }
             }
             if (vm.mode != BlurMode.SOLID) {
-                SliderRow("עוצמה", "עדין", "חזק", vm.strength, 0f..1f) { vm.strength = it }
+                SliderRow(t("עוצמה"), t("עדין"), t("חזק"), vm.strength, 0f..1f) { vm.strength = it }
             }
-            SliderRow("גודל האזור סביב הפנים", "צמוד", "רחב", vm.padding, 1.2f..2.0f) { vm.padding = it }
+            SliderRow(t("גודל האזור סביב הפנים"), t("צמוד"), t("רחב"), vm.padding, 1.2f..2.0f) { vm.padding = it }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("זיהוי מורחב", style = MaterialTheme.typography.titleSmall)
+                    Text(t("זיהוי מורחב"), style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "בודק כל פריים ומטשטש גם פנים שהמערכת פחות בטוחה בהן. מפספס פחות, אבל עלול לטשטש גם דברים מיותרים, ואיטי יותר.",
+                        t("בודק כל פריים ומטשטש גם פנים שהמערכת פחות בטוחה בהן. מפספס פחות, אבל עלול לטשטש גם דברים מיותרים, ואיטי יותר."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -292,9 +315,9 @@ private fun SettingsCard(vm: MainViewModel) {
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("בדיקה ועריכה לפני שמירה", style = MaterialTheme.typography.titleSmall)
+                    Text(t("בדיקה ועריכה לפני שמירה"), style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "אחרי הזיהוי נפתח עורך: אפשר להוסיף, למחוק, להזיז ולשנות גודל של טשטושים ולקבוע מתי הם מתחילים ונגמרים.",
+                        t("אחרי הזיהוי נפתח עורך: אפשר להוסיף, למחוק, להזיז ולשנות גודל של טשטושים ולקבוע מתי הם מתחילים ונגמרים."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -337,7 +360,7 @@ private fun WorkingCard(state: UiState.Working, onCancel: () -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (state.stage == 1) "שלב 1 מתוך 2 · מזהה פנים" else "שלב 2 מתוך 2 · מטשטש ושומר",
+                    if (state.stage == 1) t("שלב 1 מתוך 2 · מזהה פנים") else t("שלב 2 מתוך 2 · מטשטש ושומר"),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f),
                 )
@@ -348,11 +371,11 @@ private fun WorkingCard(state: UiState.Working, onCancel: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
             )
             Text(
-                "השאר את האפליקציה פתוחה עד הסוף. המסך יישאר דלוק.",
+                t("השאר את האפליקציה פתוחה עד הסוף. המסך יישאר דלוק."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("ביטול") }
+            OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text(t("ביטול")) }
         }
     }
 }
@@ -370,12 +393,12 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                 Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
                 Column {
-                    Text("נשמר בגלריה", style = MaterialTheme.typography.titleSmall)
+                    Text(t("נשמר בגלריה"), style = MaterialTheme.typography.titleSmall)
                     Text(
                         buildString {
                             append("Movies/FaceBlur · ")
-                            append(if (state.result.faces == 1) "פנים אחת" else "${state.result.faces} פנים")
-                            if (state.result.keptHdr) append(" · HDR נשמר")
+                            append(if (state.result.faces == 1) t("פנים אחת") else t("%d פנים").format(state.result.faces))
+                            if (state.result.keptHdr) append(t(" · HDR נשמר"))
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -383,7 +406,7 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                 }
             }
             Text(
-                "כדאי לעבור על הסרטון לפני פרסום: זיהוי אוטומטי עלול לפספס פנים מסובבות, מוסתרות או קטנות מאוד.",
+                t("כדאי לעבור על הסרטון לפני פרסום: זיהוי אוטומטי עלול לפספס פנים מסובבות, מוסתרות או קטנות מאוד."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -401,7 +424,7 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                 ) {
                     Icon(Icons.Filled.Share, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("שתף")
+                    Text(t("שתף"))
                 }
                 OutlinedButton(
                     onClick = {
@@ -415,26 +438,26 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                 ) {
                     Icon(Icons.Filled.PlayArrow, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("פתח")
+                    Text(t("פתח"))
                 }
             }
             if (onEdit != null) {
                 OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.Edit, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("ערוך טשטושים וייצא שוב")
+                    Text(t("ערוך טשטושים וייצא שוב"))
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 TextButton(onClick = onAgain, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Filled.Refresh, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("עבד שוב")
+                    Text(t("עבד שוב"))
                 }
                 TextButton(onClick = onNew, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("סרטון חדש")
+                    Text(t("סרטון חדש"))
                 }
             }
         }

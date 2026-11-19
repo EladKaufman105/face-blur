@@ -1,7 +1,10 @@
 package com.elad.faceblur.pipeline
 
+import com.elad.faceblur.i18n.t
 import android.content.Context
 import android.graphics.Bitmap
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -17,7 +20,10 @@ class VideoInfo(
     val isHdr: Boolean,
     val fps: Float,
     val thumbnail: Bitmap?,
+    /** MIME type of the video track, e.g. video/hevc. */
+    val videoMime: String = "",
 ) {
+    val isHevc get() = videoMime == "video/hevc"
     val displayWidth get() = if (rotation % 180 == 0) width else height
     val displayHeight get() = if (rotation % 180 == 0) height else width
     val aspect get() = if (displayHeight == 0) 16f / 9f else displayWidth.toFloat() / displayHeight
@@ -30,7 +36,7 @@ class VideoInfo(
                 fun int(key: Int) = r.extractMetadata(key)?.toIntOrNull() ?: 0
                 val w = int(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
                 val h = int(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
-                if (w == 0 || h == 0) throw IllegalArgumentException("הקובץ שנבחר אינו סרטון")
+                if (w == 0 || h == 0) throw IllegalArgumentException(t("הקובץ שנבחר אינו סרטון"))
                 val rotation = int(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
                 val duration = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
                 val bitrate = int(MediaMetadataRetriever.METADATA_KEY_BITRATE)
@@ -44,9 +50,22 @@ class VideoInfo(
                 } catch (_: Exception) {
                     null
                 }
-                return VideoInfo(uri, displayName(context, uri), w, h, rotation, duration, bitrate, hdr, fps, thumb)
+                return VideoInfo(uri, displayName(context, uri), w, h, rotation, duration, bitrate, hdr, fps, thumb, videoMime(context, uri))
             } finally {
                 r.release()
+            }
+        }
+
+        private fun videoMime(context: Context, uri: Uri): String {
+            val ex = MediaExtractor()
+            return try {
+                ex.setDataSource(context, uri, null)
+                (0 until ex.trackCount).map { ex.getTrackFormat(it).getString(MediaFormat.KEY_MIME) ?: "" }
+                    .firstOrNull { it.startsWith("video/") } ?: ""
+            } catch (_: Exception) {
+                ""
+            } finally {
+                ex.release()
             }
         }
 

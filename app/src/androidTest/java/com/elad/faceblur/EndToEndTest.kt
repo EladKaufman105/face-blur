@@ -9,6 +9,9 @@ import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.elad.faceblur.effects.BlurMode
+import com.elad.faceblur.pipeline.ExportCodec
+import com.elad.faceblur.pipeline.ExportOptions
+import com.elad.faceblur.pipeline.ExportQuality
 import com.elad.faceblur.pipeline.FaceBlurProcessor
 import com.elad.faceblur.pipeline.Outcome
 import com.elad.faceblur.pipeline.Settings
@@ -43,15 +46,23 @@ class EndToEndTest {
         names.firstOrNull { it.startsWith("headpose") }?.let { runs += it to Settings(BlurMode.PIXELATE, 0.6f, 1.6f, false) }
         names.firstOrNull { it.startsWith("classroom.") }?.let { runs += it to Settings(BlurMode.BLUR, 0.6f, 1.6f, true) }
 
-        for ((name, settings) in runs) {
-            val tag = name.removeSuffix(".mp4") + "_" + settings.mode.name.lowercase() + if (settings.sensitive) "_sens" else ""
+        // One export with options: smaller, lower frame rate, H.264.
+        val exportRun = names.firstOrNull { it.startsWith("classroom60") }
+        val exportOpts = ExportOptions(shortSide = 720, fps = 30, quality = ExportQuality.SAVER, codec = ExportCodec.H264)
+        if (exportRun != null) runs += exportRun to Settings(BlurMode.BLUR, 0.6f, 1.6f, false)
+
+        for ((idx, run) in runs.withIndex()) {
+            val (name, settings) = run
+            val withOpts = exportRun != null && idx == runs.size - 1
+            val tag = name.removeSuffix(".mp4") + "_" + settings.mode.name.lowercase() +
+                (if (settings.sensitive) "_sens" else "") + (if (withOpts) "_720p30" else "")
             try {
                 val src = File(ctx.cacheDir, name)
                 assets.open("samples/$name").use { i -> src.outputStream().use { i.copyTo(it) } }
                 val info = VideoInfo.probe(ctx, Uri.fromFile(src))
                 log.appendLine("== $tag: ${info.width}x${info.height} rot=${info.rotation} fps=${info.fps} dur=${info.durationMs}ms")
                 val outcome = runBlocking(Dispatchers.Main) {
-                    FaceBlurProcessor(ctx).process(info, settings, {}, {})
+                    FaceBlurProcessor(ctx).process(info, settings, {}, {}, if (withOpts) exportOpts else ExportOptions())
                 }
                 when (outcome) {
                     is Outcome.Saved -> {
@@ -61,6 +72,19 @@ class EndToEndTest {
                         )
                         val video = File(outDir, "$tag.mp4")
                         ctx.contentResolver.openInputStream(outcome.uri)!!.use { i -> video.outputStream().use { i.copyTo(it) } }
+                        val mmr = MediaMetadataRetriever().apply { setDataSource(video.absolutePath) }
+                        val ow = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+                        val oh = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+                        val orot = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                        val ofr = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)?.toIntOrNull() ?: 0
+                        val odur = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0
+                        mmr.release()
+                        val ofps = if (odur > 0) ofr * 1000f / odur else 0f
+                        log.appendLine("   out ${ow}x$oh rot=$orot fps=${"%.1f".format(ofps)} size=${video.length() / 1024}KB")
+                        if (withOpts) {
+                            if (minOf(ow, oh) != 720) failures += "$tag: short side ${minOf(ow, oh)}"
+                            if (ofps > 32f) failures += "$tag: fps $ofps"
+                        }
                         sheet(Uri.fromFile(src), outcome.uri, info.durationMs, File(outDir, "$tag.jpg"))
                     }
                     Outcome.NoFaces -> log.appendLine("   NO FACES")

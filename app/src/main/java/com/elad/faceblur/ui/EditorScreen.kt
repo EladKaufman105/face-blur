@@ -1,5 +1,6 @@
 package com.elad.faceblur.ui
 
+import com.elad.faceblur.i18n.t
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.media.MediaFormat
@@ -106,6 +107,7 @@ import com.elad.faceblur.edit.EditTrack
 import com.elad.faceblur.edit.EditorController
 import com.elad.faceblur.edit.PreviewSource
 import com.elad.faceblur.effects.BlurEffect
+import com.elad.faceblur.pipeline.ExportOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -117,7 +119,6 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-private val AutoClip = Color(0xFF4A5FD0)
 private val ManualClip = Color(0xFFD99A1E)
 private val ManualOutline = Color(0xFFFFC857)
 
@@ -130,8 +131,15 @@ private val ManualOutline = Color(0xFFFFC857)
  * follows the face automatically.
  */
 @Composable
-fun EditorScreen(ctrl: EditorController, onClose: () -> Unit, onExport: () -> Unit) {
+fun EditorScreen(
+    ctrl: EditorController,
+    onClose: () -> Unit,
+    onExport: () -> Unit,
+    export: ExportOptions = ExportOptions(),
+    onExportChange: (ExportOptions) -> Unit = {},
+) {
     var confirmClose by remember { mutableStateOf(false) }
+    var exportSheet by remember { mutableStateOf(false) }
     BackHandler {
         when {
             ctrl.addMode -> ctrl.addMode = false
@@ -152,9 +160,9 @@ fun EditorScreen(ctrl: EditorController, onClose: () -> Unit, onExport: () -> Un
             Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = { confirmClose = true }) { Icon(Icons.Filled.Close, "סגור") }
-            Text("עריכת טשטושים", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            Button(onClick = onExport, enabled = !busy, modifier = Modifier.padding(end = 8.dp)) { Text("ייצוא") }
+            IconButton(onClick = { confirmClose = true }) { Icon(Icons.Filled.Close, t("סגור")) }
+            Text(t("עריכת טשטושים"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Button(onClick = { ctrl.pauser(); exportSheet = true }, enabled = !busy, modifier = Modifier.padding(end = 8.dp)) { Text(t("ייצוא")) }
         }
 
         Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
@@ -164,9 +172,9 @@ fun EditorScreen(ctrl: EditorController, onClose: () -> Unit, onExport: () -> Un
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 if (ctrl.addMode) {
-                    Banner("הקש על הפנים שצריך לטשטש", action = "ביטול") { ctrl.addMode = false }
+                    Banner(t("הקש על הפנים שצריך לטשטש"), action = t("ביטול")) { ctrl.addMode = false }
                 } else if (ctrl.model.tracks.isEmpty()) {
-                    Banner("לא זוהו פנים. אפשר לסמן ידנית עם \"הוסף טשטוש\".")
+                    Banner(t("לא זוהו פנים. אפשר לסמן ידנית עם \"הוסף טשטוש\"."))
                 }
             }
             Column(
@@ -186,8 +194,8 @@ fun EditorScreen(ctrl: EditorController, onClose: () -> Unit, onExport: () -> Un
                         Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(progress = { p }, modifier = Modifier.size(20.dp), strokeWidth = 3.dp)
                             Spacer(Modifier.width(10.dp))
-                            Text("עוקב אחרי הפנים…", style = MaterialTheme.typography.bodyMedium)
-                            TextButton(onClick = ctrl::cancelTracking) { Text("עצור") }
+                            Text(t("עוקב אחרי הפנים…"), style = MaterialTheme.typography.bodyMedium)
+                            TextButton(onClick = ctrl::cancelTracking) { Text(t("עצור")) }
                         }
                     }
                 }
@@ -205,13 +213,20 @@ fun EditorScreen(ctrl: EditorController, onClose: () -> Unit, onExport: () -> Un
         BottomBar(ctrl, sel, busy)
     }
 
+    if (exportSheet) {
+        ExportSheet(
+            ctrl.session.info, export, onExportChange,
+            onExport = { exportSheet = false; onExport() },
+            onDismiss = { exportSheet = false },
+        )
+    }
     if (confirmClose) {
         AlertDialog(
             onDismissRequest = { confirmClose = false },
-            title = { Text("לצאת מהעריכה?") },
-            text = { Text("השינויים בטשטושים לא יישמרו.") },
-            confirmButton = { TextButton(onClick = { confirmClose = false; onClose() }) { Text("צא") } },
-            dismissButton = { TextButton(onClick = { confirmClose = false }) { Text("המשך לערוך") } },
+            title = { Text(t("לצאת מהעריכה?")) },
+            text = { Text(t("השינויים בטשטושים לא יישמרו.")) },
+            confirmButton = { TextButton(onClick = { confirmClose = false; onClose() }) { Text(t("צא")) } },
+            dismissButton = { TextButton(onClick = { confirmClose = false }) { Text(t("המשך לערוך")) } },
         )
     }
 }
@@ -386,7 +401,7 @@ private class PlayerSync(
         // The live blur is the riskiest part of playback: drop it and play plain video.
         if (ctrl.previewAvailable) {
             ctrl.previewAvailable = false
-            ctrl.notice = "תצוגת הטשטוש לא נתמכת כאן. מוצגות מסגרות בלבד."
+            ctrl.notice = t("תצוגת הטשטוש לא נתמכת כאן. מוצגות מסגרות בלבד.")
             player.setVideoEffects(emptyList())
             player.prepare()
         }
@@ -496,7 +511,7 @@ private fun Transport(ctrl: EditorController, busy: Boolean) {
             modifier = Modifier.align(Alignment.CenterStart),
         )
         Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { ctrl.step(-1) }, enabled = !busy) { Icon(EditorIcons.ChevronLeft, "פריים קודם") }
+            IconButton(onClick = { ctrl.step(-1) }, enabled = !busy) { Icon(EditorIcons.ChevronLeft, t("פריים קודם")) }
             Surface(
                 onClick = { ctrl.playToggler() },
                 enabled = !busy,
@@ -507,18 +522,18 @@ private fun Transport(ctrl: EditorController, busy: Boolean) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         if (ctrl.playing) EditorIcons.Pause else Icons.Filled.PlayArrow,
-                        if (ctrl.playing) "השהה" else "נגן",
+                        if (ctrl.playing) t("השהה") else t("נגן"),
                         modifier = Modifier.size(26.dp),
                     )
                 }
             }
-            IconButton(onClick = { ctrl.step(1) }, enabled = !busy) { Icon(EditorIcons.ChevronRight, "פריים הבא") }
+            IconButton(onClick = { ctrl.step(1) }, enabled = !busy) { Icon(EditorIcons.ChevronRight, t("פריים הבא")) }
         }
         IconButton(
             onClick = ctrl::undo,
             enabled = ctrl.model.canUndo && !busy,
             modifier = Modifier.align(Alignment.CenterEnd),
-        ) { Icon(EditorIcons.Undo, "בטל") }
+        ) { Icon(EditorIcons.Undo, t("בטל")) }
     }
 }
 
@@ -705,7 +720,7 @@ private fun Timeline(ctrl: EditorController, busy: Boolean) {
                     val x1 = max(g.clipX1(t), x0 + 3.dp.toPx())
                     if (x1 < -handleW || x0 > size.width + handleW) continue
                     val sel = t.id == selId
-                    drawRoundRect(if (t.manual) ManualClip else AutoClip, Offset(x0, y), Size(x1 - x0, rowH), CornerRadius(5.dp.toPx()))
+                    drawRoundRect(if (t.manual) ManualClip else colors.primaryContainer, Offset(x0, y), Size(x1 - x0, rowH), CornerRadius(5.dp.toPx()))
                     if (x1 - x0 > 26.dp.toPx()) {
                         drawContext.canvas.nativeCanvas.drawText(
                             "#${t.id}", max(x0, 0f) + 6.dp.toPx(), y + rowH / 2 + textPaint.textSize / 2.8f, textPaint,
@@ -725,7 +740,7 @@ private fun Timeline(ctrl: EditorController, busy: Boolean) {
             if (rows.isEmpty()) {
                 textPaint.color = colors.onSurfaceVariant.toArgb()
                 textPaint.textSize = 12.dp.toPx()
-                val msg = "אין טשטושים"
+                val msg = t("אין טשטושים")
                 drawContext.canvas.nativeCanvas.drawText(msg, size.width / 2 - textPaint.measureText(msg) / 2, rowsTop + rowH * 0.8f, textPaint)
             }
         }
@@ -848,7 +863,7 @@ private suspend fun PointerInputScope.timelineGestures(
 @Composable
 private fun SizePanel(ctrl: EditorController, t: EditTrack, busy: Boolean) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("גודל", style = MaterialTheme.typography.labelLarge)
+        Text(t("גודל"), style = MaterialTheme.typography.labelLarge)
         Slider(
             value = t.scale,
             onValueChange = { ctrl.setSelectedScale(it) },
@@ -875,25 +890,25 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, busy: Boolean) {
             horizontalArrangement = Arrangement.Center,
         ) {
             if (sel == null) {
-                Tool(if (ctrl.addMode) "ביטול" else "הוסף טשטוש", if (ctrl.addMode) Icons.Filled.Close else Icons.Filled.Add, !busy, wide = true) {
+                Tool(if (ctrl.addMode) t("ביטול") else t("הוסף טשטוש"), if (ctrl.addMode) Icons.Filled.Close else Icons.Filled.Add, !busy, wide = true) {
                     ctrl.addMode = !ctrl.addMode
                     if (ctrl.addMode) ctrl.pauser()
                 }
                 if (ctrl.previewAvailable) {
                     Tool(
-                        if (ctrl.previewOn) "תצוגה: טשטוש" else "תצוגה: מסגרות",
+                        if (ctrl.previewOn) t("תצוגה: טשטוש") else t("תצוגה: מסגרות"),
                         if (ctrl.previewOn) EditorIcons.Eye else EditorIcons.EyeOff,
                         !busy,
                         wide = true,
                     ) { ctrl.togglePreview() }
                 }
             } else {
-                Tool("מחק", Icons.Filled.Delete, !busy) { ctrl.deleteSelected() }
-                Tool("פצל", EditorIcons.Cut, !busy) { ctrl.splitSelected() }
-                Tool("עקוב קדימה", EditorIcons.TrackForward, !busy) { ctrl.trackSelected(1) }
-                Tool("עקוב אחורה", EditorIcons.TrackBack, !busy) { ctrl.trackSelected(-1) }
-                Tool("גודל", EditorIcons.Resize, !busy) { ctrl.sizePanel = !ctrl.sizePanel }
-                Tool("סיום", Icons.Filled.Check, true) { ctrl.deselect() }
+                Tool(t("מחק"), Icons.Filled.Delete, !busy) { ctrl.deleteSelected() }
+                Tool(t("פצל"), EditorIcons.Cut, !busy) { ctrl.splitSelected() }
+                Tool(t("עקוב קדימה"), EditorIcons.TrackForward, !busy) { ctrl.trackSelected(1) }
+                Tool(t("עקוב אחורה"), EditorIcons.TrackBack, !busy) { ctrl.trackSelected(-1) }
+                Tool(t("גודל"), EditorIcons.Resize, !busy) { ctrl.sizePanel = !ctrl.sizePanel }
+                Tool(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
             }
         }
     }
