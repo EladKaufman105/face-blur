@@ -18,7 +18,8 @@ import kotlin.math.roundToInt
  *     detections, or detections confirmed on an upscaled crop. Single-frame clutter
  *     (knees, gloves, wall textures) rarely gathers that. Thresholds were tuned on hand-labeled
  *     real footage (shaky handheld camera, many people, hard cuts).
- *  4. Tracklets of the same face split by a longer detector dropout are joined.
+ *  4. Weak tracklets that directly continue an accepted one are absorbed into it, and
+ *     tracklets of the same face split by a longer detector dropout are joined.
  *  5. Gaps are interpolated in stabilized space (so the blur moves with the camera while the
  *     detector misses the face), ends are held a little longer, and the result is smoothed.
  *
@@ -64,7 +65,7 @@ class OfflineTracker(private val fps: Float, private val aspect: Float, private 
         for (s in 0 until bounds.size - 1) {
             tracklets += link(bounds[s], bounds[s + 1], dets, offX, offY)
         }
-        val accepted = merge(tracklets.filter { accept(it) }.toMutableList())
+        val accepted = merge(tracklets.filter { accept(it) }.toMutableList(), tracklets)
         return accepted.map { smooth(fill(it, offX, offY)) }
     }
 
@@ -131,9 +132,15 @@ class OfflineTracker(private val fps: Float, private val aspect: Float, private 
         else strong >= 4 || verified >= 2 || (verified >= 1 && strong >= 2)
     }
 
-    private fun merge(list: MutableList<Tracklet>): List<Tracklet> {
+    /**
+     * Joins accepted tracklets of the same face split by a detector dropout. First, unaccepted
+     * tracklets that directly continue an accepted one (the face's weak start or end) are
+     * absorbed into it.
+     */
+    private fun merge(list: MutableList<Tracklet>, all: List<Tracklet>): List<Tracklet> {
         val gapMax = (LINK_GAP_S * fps).toInt()
         list.sortBy { it.first }
+        absorb(list, all)
         var merged = true
         while (merged) {
             merged = false
@@ -160,6 +167,35 @@ class OfflineTracker(private val fps: Float, private val aspect: Float, private 
             }
         }
         return list
+    }
+
+    private fun absorb(accepted: List<Tracklet>, all: List<Tracklet>) {
+        val acceptedSet = accepted.toHashSet()
+        val extra = all.filter { it !in acceptedSet }.toMutableList()
+        val gapMax = (ABSORB_GAP_S * fps).toInt()
+        var changed = true
+        while (changed) {
+            changed = false
+            loop@ for (a in accepted) {
+                for (b in extra) {
+                    if (b.shotStart != a.shotStart) continue
+                    for ((x, y) in listOf(a to b, b to a)) {
+                        val g = y.first - x.last
+                        if (g <= 0 || g > gapMax) continue
+                        val lx = x.det[x.last]!!
+                        val fy = y.det[y.first]!!
+                        val size = max(lx.w, lx.h)
+                        val r = fy.w / lx.w
+                        if (hypot(lx.x - fy.x, lx.y - fy.y) < ABSORB_DIST * size && r > 1f / 1.5f && r < 1.5f) {
+                            a.det.putAll(b.det)
+                            extra.remove(b)
+                            changed = true
+                            break@loop
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private fun unstab(x: Float, y: Float, w: Float, h: Float, i: Int, offX: FloatArray, offY: FloatArray) =
@@ -233,6 +269,8 @@ class OfflineTracker(private val fps: Float, private val aspect: Float, private 
         const val GATE_PER_S = 1.5f
         const val SIZE_RATIO = 1.7f
         const val LINK_GAP_S = 1.2f
+        const val ABSORB_GAP_S = 0.7f
+        const val ABSORB_DIST = 1.0f
         const val EXTEND_S = 0.25f
         const val SIGMA_POS_S = 0.025f
         const val SIGMA_SIZE_S = 0.2f

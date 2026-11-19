@@ -36,7 +36,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     var mode by mutableStateOf(BlurMode.BLUR)
     var strength by mutableStateOf(0.6f)
-    var padding by mutableStateOf(1.5f)
+    var padding by mutableStateOf(1.6f)
     var sensitive by mutableStateOf(false)
 
     private var job: Job? = null
