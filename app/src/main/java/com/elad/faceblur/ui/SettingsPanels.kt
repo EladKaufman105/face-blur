@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -47,7 +48,7 @@ import com.elad.faceblur.prefs.ThemeMode
 import kotlin.math.roundToInt
 
 @Composable
-private fun <T> Segments(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
+internal fun <T> Segments(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
         options.forEachIndexed { i, (v, label) ->
             SegmentedButton(
@@ -72,7 +73,7 @@ private fun <T> Chips(options: List<Pair<T, String>>, selected: T, onSelect: (T)
 }
 
 @Composable
-private fun Caption(text: String) {
+internal fun Caption(text: String) {
     Text(text, style = MaterialTheme.typography.titleSmall)
 }
 
@@ -159,6 +160,8 @@ fun ExportSheet(
     onChange: (ExportOptions) -> Unit,
     onExport: () -> Unit,
     onDismiss: () -> Unit,
+    /** The video has subtitles: also show what to do with them. */
+    hasSubs: Boolean = false,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
@@ -172,6 +175,10 @@ fun ExportSheet(
         ) {
             Text(t("הגדרות ייצוא"), style = MaterialTheme.typography.titleLarge)
             ExportOptionsPanel(info, options, onChange)
+            if (hasSubs) {
+                HorizontalDivider()
+                SubtitleExportOptions(options, onChange)
+            }
             Button(onClick = onExport, modifier = Modifier.fillMaxWidth()) { Text(t("ייצא")) }
         }
     }

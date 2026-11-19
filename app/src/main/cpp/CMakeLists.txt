@@ -1,0 +1,32 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(faceblur_whisper C CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(WHISPER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/whisper.cpp)
+if (NOT EXISTS ${WHISPER_DIR}/include/whisper.h)
+    message(FATAL_ERROR "whisper.cpp missing: run ci/fetch-whisper.sh")
+endif()
+
+# whisper.cpp + ggml, CPU only, static, built for the target (not the build machine).
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
+set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
+if (ANDROID_ABI STREQUAL "arm64-v8a")
+    # Every recent phone (vivo X300 Pro: ARMv9.2) has dot product and fp16 arithmetic.
+    set(GGML_CPU_ARM_ARCH "armv8.2-a+dotprod+fp16" CACHE STRING "" FORCE)
+elseif (ANDROID_ABI STREQUAL "x86_64")
+    # The x86_64 Android ABI includes SSE4.2 (only the CI emulator runs this).
+    set(GGML_SSE42 ON CACHE BOOL "" FORCE)
+endif()
+# Speech recognition is unusable without optimization, so optimize debug builds too.
+add_compile_options(-O3)
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_definitions(NDEBUG)
+endif()
+add_subdirectory(${WHISPER_DIR} whisper)
+
+add_library(faceblur_whisper SHARED whisper_jni.cpp)
+target_link_libraries(faceblur_whisper PRIVATE whisper log)

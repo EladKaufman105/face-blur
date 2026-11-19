@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.elad.faceblur.edit.SubLang
 import com.elad.faceblur.i18n.I18n
 import com.elad.faceblur.i18n.Lang
 import com.elad.faceblur.pipeline.ExportCodec
@@ -30,6 +31,8 @@ class AppPrefs(context: Context) {
             fps = sp.getInt("export_fps", 0),
             quality = enumOr(sp.getString("export_quality", null), ExportQuality.ORIGINAL),
             codec = enumOr(sp.getString("export_codec", null), ExportCodec.SAME),
+            subs = enumOr(sp.getString("export_subs", null), SubLang.EN),
+            saveSrt = sp.getBoolean("export_srt", true),
         ),
     )
         private set
@@ -61,6 +64,8 @@ class AppPrefs(context: Context) {
             .putInt("export_fps", v.fps)
             .putString("export_quality", v.quality.name)
             .putString("export_codec", v.codec.name)
+            .putString("export_subs", v.subs.name)
+            .putBoolean("export_srt", v.saveSrt)
             .apply()
     }
 

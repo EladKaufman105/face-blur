@@ -4,6 +4,7 @@ import androidx.media3.common.Effect
 import androidx.media3.common.MimeTypes
 import androidx.media3.effect.FrameDropEffect
 import androidx.media3.effect.Presentation
+import com.elad.faceblur.edit.SubLang
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -24,6 +25,10 @@ data class ExportOptions(
     val fps: Int = 0,
     val quality: ExportQuality = ExportQuality.ORIGINAL,
     val codec: ExportCodec = ExportCodec.SAME,
+    /** Which subtitles to burn into the video (if there are any). */
+    val subs: SubLang = SubLang.EN,
+    /** Also save the subtitles as .srt files. */
+    val saveSrt: Boolean = true,
 ) {
     /** Output size (display orientation), even dimensions. */
     fun outputSize(info: VideoInfo): Pair<Int, Int> {

@@ -11,6 +11,11 @@ val buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
 android {
     namespace = "com.elad.faceblur"
     compileSdk = 36
+    // Use the NDK the machine has (CI runners preinstall one), if it names its version.
+    (System.getenv("ANDROID_NDK_HOME") ?: System.getenv("ANDROID_NDK_LATEST_HOME"))
+        ?.let { File(it).name }
+        ?.takeIf { it.matches(Regex("""\d+\.\d+\.\d+""")) }
+        ?.let { ndkVersion = it }
 
     defaultConfig {
         applicationId = "com.elad.faceblur"
@@ -23,6 +28,17 @@ android {
         val abis = (project.findProperty("abiFilters") as String?) ?: "arm64-v8a"
         ndk { abiFilters += abis.split(",") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        externalNativeBuild {
+            cmake { arguments += listOf("-DANDROID_STL=c++_static") }
+        }
+    }
+
+    // Whisper (speech to text) for subtitles; sources fetched by ci/fetch-whisper.sh.
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     signingConfigs {
@@ -80,6 +96,9 @@ dependencies {
 
     // Face detection (YuNet via OpenCV DNN) + optical-flow tracking, fully on-device.
     implementation("org.opencv:opencv:4.10.0")
+
+    // Subtitle translation Hebrew <-> English, on the device.
+    implementation("com.google.mlkit:translate:17.0.3")
 
     implementation(platform("androidx.compose:compose-bom:2025.05.00"))
     implementation("androidx.compose.ui:ui")

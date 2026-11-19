@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -102,10 +103,13 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.ui.PlayerView
 import com.elad.faceblur.R
+import com.elad.faceblur.edit.Cue
 import com.elad.faceblur.edit.EditModel
 import com.elad.faceblur.edit.EditTrack
 import com.elad.faceblur.edit.EditorController
 import com.elad.faceblur.edit.PreviewSource
+import com.elad.faceblur.edit.SubLang
+import com.elad.faceblur.subs.SubtitleOverlay
 import com.elad.faceblur.effects.BlurEffect
 import com.elad.faceblur.pipeline.ExportOptions
 import kotlinx.coroutines.CoroutineScope
@@ -121,6 +125,7 @@ import kotlin.math.roundToInt
 
 private val ManualClip = Color(0xFFD99A1E)
 private val ManualOutline = Color(0xFFFFC857)
+private val SubsClip = Color(0xFF1E8C7E)
 
 /**
  * Blur editor laid out like a video editor: the player on top (with the real blur applied, or
@@ -143,7 +148,7 @@ fun EditorScreen(
     BackHandler {
         when {
             ctrl.addMode -> ctrl.addMode = false
-            ctrl.selectedId != null -> ctrl.deselect()
+            ctrl.selectedId != null || ctrl.selectedCueId != null -> ctrl.deselect()
             else -> confirmClose = true
         }
     }
@@ -166,7 +171,7 @@ fun EditorScreen(
         }
 
         Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
-            VideoWithOverlay(ctrl)
+            VideoWithOverlay(ctrl, export.subs)
             Column(
                 Modifier.align(Alignment.TopCenter).padding(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -190,13 +195,15 @@ fun EditorScreen(
                     Banner(msg)
                 }
                 ctrl.trackingProgress?.let { p ->
-                    Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f)) {
-                        Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(progress = { p }, modifier = Modifier.size(20.dp), strokeWidth = 3.dp)
-                            Spacer(Modifier.width(10.dp))
-                            Text(t("עוקב אחרי הפנים…"), style = MaterialTheme.typography.bodyMedium)
-                            TextButton(onClick = ctrl::cancelTracking) { Text(t("עצור")) }
-                        }
+                    ProgressPill(t("עוקב אחרי הפנים…"), p, ctrl::cancelTracking)
+                }
+                if (!ctrl.subsSheet) {
+                    val models = ctrl.models
+                    val sp = ctrl.subsProgress
+                    if (models?.downloading != null) {
+                        ProgressPill(t("מוריד את המודל… %d%%").format((models.progress * 100).roundToInt()), models.progress, ctrl::cancelSubtitles)
+                    } else if (sp != null) {
+                        ProgressPill(subsStageText(sp.first, sp.second), sp.second, ctrl::cancelSubtitles)
                     }
                 }
             }
@@ -210,14 +217,18 @@ fun EditorScreen(
 
         val sel = ctrl.selected
         if (sel != null && ctrl.sizePanel) SizePanel(ctrl, sel, busy)
-        BottomBar(ctrl, sel, busy)
+        BottomBar(ctrl, sel, ctrl.selectedCue, busy)
     }
+
+    if (ctrl.subsSheet) SubtitlesSheet(ctrl, export, onExportChange)
+    if (ctrl.cueEditor) CueEditorDialog(ctrl)
 
     if (exportSheet) {
         ExportSheet(
             ctrl.session.info, export, onExportChange,
             onExport = { exportSheet = false; onExport() },
             onDismiss = { exportSheet = false },
+            hasSubs = ctrl.model.cues.isNotEmpty(),
         )
     }
     if (confirmClose) {
@@ -228,6 +239,18 @@ fun EditorScreen(
             confirmButton = { TextButton(onClick = { confirmClose = false; onClose() }) { Text(t("צא")) } },
             dismissButton = { TextButton(onClick = { confirmClose = false }) { Text(t("המשך לערוך")) } },
         )
+    }
+}
+
+@Composable
+private fun ProgressPill(text: String, progress: Float, onStop: () -> Unit) {
+    Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f)) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(20.dp), strokeWidth = 3.dp)
+            Spacer(Modifier.width(10.dp))
+            Text(text, style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = onStop) { Text(t("עצור")) }
+        }
     }
 }
 
@@ -244,7 +267,7 @@ private fun Banner(text: String, action: String? = null, onAction: () -> Unit = 
 // ---------------------------------------------------------------------- video + overlay
 
 @Composable
-private fun VideoWithOverlay(ctrl: EditorController) {
+private fun VideoWithOverlay(ctrl: EditorController, subs: SubLang) {
     val context = LocalContext.current
     val analysis = ctrl.session.analysis
     val settings = ctrl.session.settings
@@ -287,7 +310,7 @@ private fun VideoWithOverlay(ctrl: EditorController) {
             },
             modifier = Modifier.fillMaxSize(),
         )
-        Overlay(ctrl, Modifier.fillMaxSize())
+        Overlay(ctrl, subs, Modifier.fillMaxSize())
     }
 }
 
@@ -409,7 +432,7 @@ private class PlayerSync(
 }
 
 @Composable
-private fun Overlay(ctrl: EditorController, modifier: Modifier) {
+private fun Overlay(ctrl: EditorController, subs: SubLang, modifier: Modifier) {
     val primary = MaterialTheme.colorScheme.primary
     val label = remember {
         Paint().apply {
@@ -422,6 +445,15 @@ private fun Overlay(ctrl: EditorController, modifier: Modifier) {
     Canvas(modifier.pointerInput(ctrl) { videoGestures(ctrl) }) {
         @Suppress("UNUSED_VARIABLE") val v = ctrl.version
         val live = ctrl.previewOn && ctrl.previewAvailable
+        // Subtitles as they'll be burned in (faded when they won't be).
+        val cue = ctrl.model.cueAt(ctrl.nowMs)
+        if (cue != null) {
+            val nc = drawContext.canvas.nativeCanvas
+            val faded = subs == SubLang.NONE
+            if (faded) nc.saveLayerAlpha(0f, 0f, size.width, size.height, 120)
+            SubtitleOverlay.draw(nc, cue.text(if (faded) SubLang.BOTH else subs), size.width.toInt(), size.height.toInt())
+            if (faded) nc.restore()
+        }
         if (live && ctrl.playing) return@Canvas
         val shapes = ctrl.model.shapesAt(ctrl.shownFrame, ctrl.padding)
         label.textSize = 13.dp.toPx()
@@ -571,6 +603,9 @@ private class TimelineGeo(
     val rowH: Float,
     val rowScroll: Float,
     val handleW: Float,
+    /** Top of the subtitle lane, or < 0 when there are no subtitles. */
+    val subsTop: Float = -1f,
+    val subsH: Float = 0f,
 ) {
     val cx = width / 2
     val nowUs = ctrl.timeOf(ctrl.frame)
@@ -586,6 +621,25 @@ private class TimelineGeo(
             val y = rowY(r)
             if (p.y in y..(y + rowH)) return row.firstOrNull { p.x in clipX0(it)..clipX1(it) }
         }
+        return null
+    }
+
+    fun cueX0(c: Cue) = x(ctrl.cueRelUs(c.startMs))
+    fun cueX1(c: Cue) = x(ctrl.cueRelUs(c.endMs))
+
+    fun cueAt(p: Offset): Cue? {
+        if (subsTop < 0 || p.y !in subsTop..(subsTop + subsH)) return null
+        return ctrl.model.cues.firstOrNull { p.x in cueX0(it)..cueX1(it) }
+    }
+
+    /** (cue id, is start edge) of the selected subtitle's handle under [p]. */
+    fun cueHandleAt(p: Offset): Pair<Int, Boolean>? {
+        val c = ctrl.selectedCue ?: return null
+        if (subsTop < 0 || p.y !in (subsTop - subsH * 0.4f)..(subsTop + subsH * 1.4f)) return null
+        val x0 = cueX0(c)
+        val x1 = cueX1(c)
+        if (p.x in (x0 - handleW * 1.6f)..(x0 + handleW * 0.4f)) return c.id to true
+        if (p.x in (x1 - handleW * 0.4f)..(x1 + handleW * 1.6f)) return c.id to false
         return null
     }
 
@@ -623,7 +677,11 @@ private fun Timeline(ctrl: EditorController, busy: Boolean) {
 
     val rulerH = with(density) { 16.dp.toPx() }
     val stripTop = rulerH + with(density) { 2.dp.toPx() }
-    val rowsTop = stripTop + stripPx + with(density) { 8.dp.toPx() }
+    @Suppress("UNUSED_VARIABLE") val vers = ctrl.version
+    val hasSubs = ctrl.model.cues.isNotEmpty()
+    val subsTop = if (hasSubs) stripTop + stripPx + with(density) { 6.dp.toPx() } else -1f
+    val subsH = with(density) { 22.dp.toPx() }
+    val rowsTop = (if (hasSubs) subsTop + subsH else stripTop + stripPx) + with(density) { 8.dp.toPx() }
     val rowH = with(density) { 24.dp.toPx() }
     val rowPitch = rowH + with(density) { 5.dp.toPx() }
     val handleW = with(density) { 12.dp.toPx() }
@@ -654,21 +712,21 @@ private fun Timeline(ctrl: EditorController, busy: Boolean) {
     }
     val widthPx = remember { mutableFloatStateOf(1f) }
     val geo: () -> TimelineGeo = {
-        TimelineGeo(ctrl, widthPx.floatValue, pxPerSec.floatValue, rows, rowsTop, rowPitch, rowH, rowScroll.floatValue, handleW)
+        TimelineGeo(ctrl, widthPx.floatValue, pxPerSec.floatValue, rows, rowsTop, rowPitch, rowH, rowScroll.floatValue, handleW, subsTop, subsH)
     }
 
     Canvas(
         Modifier
             .fillMaxWidth()
             .height(heightDp)
-            .pointerInput(ctrl, rows, busy, maxScroll) {
+            .pointerInput(ctrl, rows, busy, maxScroll, hasSubs) {
                 if (!busy) timelineGestures(ctrl, geo, pxPerSec, rowScroll, maxScroll, scope, flingJob)
             },
     ) {
         widthPx.floatValue = size.width
         @Suppress("UNUSED_VARIABLE") val tv = thumbs.version
         @Suppress("UNUSED_VARIABLE") val vv = ctrl.version
-        val g = TimelineGeo(ctrl, size.width, pxPerSec.floatValue, rows, rowsTop, rowPitch, rowH, rowScroll.floatValue, handleW)
+        val g = TimelineGeo(ctrl, size.width, pxPerSec.floatValue, rows, rowsTop, rowPitch, rowH, rowScroll.floatValue, handleW, subsTop, subsH)
         val durUs = ctrl.timeOf(ctrl.frameCount - 1) + ctrl.frameUs
         val vx0 = g.x(0)
         val vx1 = g.x(durUs)
@@ -704,6 +762,37 @@ private fun Timeline(ctrl: EditorController, busy: Boolean) {
                     )
                 }
                 k++
+            }
+        }
+
+        // Subtitles.
+        if (g.subsTop >= 0) {
+            textPaint.textSize = 11.dp.toPx()
+            textPaint.color = android.graphics.Color.WHITE
+            val selCue = ctrl.selectedCueId
+            for (c in ctrl.model.cues) {
+                val x0 = g.cueX0(c)
+                val x1 = max(g.cueX1(c), x0 + 3.dp.toPx())
+                if (x1 < -handleW || x0 > size.width + handleW) continue
+                val y = g.subsTop
+                drawRoundRect(SubsClip, Offset(x0, y), Size(x1 - x0, subsH), CornerRadius(5.dp.toPx()))
+                val label = c.en.ifBlank { c.he }
+                if (x1 - x0 > 20.dp.toPx() && label.isNotBlank()) {
+                    clipRect(left = x0 + 4.dp.toPx(), top = y, right = x1 - 4.dp.toPx(), bottom = y + subsH) {
+                        drawContext.canvas.nativeCanvas.drawText(
+                            label, max(x0, 0f) + 6.dp.toPx(), y + subsH / 2 + textPaint.textSize / 2.8f, textPaint,
+                        )
+                    }
+                }
+                if (c.id == selCue) {
+                    drawRoundRect(Color.White, Offset(x0, y), Size(x1 - x0, subsH), CornerRadius(5.dp.toPx()), style = Stroke(2.dp.toPx()))
+                    for (left in listOf(true, false)) {
+                        val hl = if (left) x0 - handleW else x1
+                        drawRoundRect(Color.White, Offset(hl, y - 3.dp.toPx()), Size(handleW, subsH + 6.dp.toPx()), CornerRadius(3.dp.toPx()))
+                        val gx = hl + handleW / 2
+                        drawLine(Color(0xFF333333), Offset(gx, y + subsH * 0.3f), Offset(gx, y + subsH * 0.7f), 1.5.dp.toPx())
+                    }
+                }
             }
         }
 
@@ -786,7 +875,8 @@ private suspend fun PointerInputScope.timelineGestures(
         flingJob[0]?.cancel()
         if (ctrl.playing) ctrl.pauser()
         val g0 = geo()
-        val handle = g0.handleAt(down.position)
+        val cueHandle = g0.cueHandleAt(down.position)
+        val handle = if (cueHandle == null) g0.handleAt(down.position) else null
         var mode = 0 // 0 undecided, 1 scrub, 2 rows, 3 trim, 4 zoom
         var acc = Offset.Zero
         val durUs = ctrl.timeOf(ctrl.frameCount - 1)
@@ -801,7 +891,7 @@ private suspend fun PointerInputScope.timelineGestures(
             val c0 = pressed.first()
             vt.addPosition(c0.uptimeMillis, c0.position)
             if (pressed.size > 1) {
-                if (mode == 3) ctrl.endTrim()
+                if (mode == 3 || mode == 5) ctrl.endTrim()
                 mode = 4
                 pxPerSec.floatValue = (pxPerSec.floatValue * ev.calculateZoom()).coerceIn(minZoom, maxZoom)
                 ev.changes.forEach { it.consume() }
@@ -813,6 +903,7 @@ private suspend fun PointerInputScope.timelineGestures(
                 acc += pan
                 if (acc.getDistance() > slop) {
                     mode = when {
+                        cueHandle != null -> 5.also { ctrl.beginCueTrim() }
                         handle != null -> 3.also { ctrl.beginTrim() }
                         abs(acc.x) >= abs(acc.y) -> 1
                         else -> 2
@@ -825,6 +916,10 @@ private suspend fun PointerInputScope.timelineGestures(
                     ctrl.seek(ctrl.frameAt(tUs.toLong()))
                 }
                 2 -> rowScroll.floatValue = (rowScroll.floatValue - pan.y).coerceIn(0f, maxScroll)
+                5 -> {
+                    val (id, start) = cueHandle!!
+                    ctrl.trimCueTo(id, start, geo().usAt(c0.position.x).coerceIn(0L, durUs + ctrl.frameUs))
+                }
                 3 -> {
                     val (id, start) = handle!!
                     val us = geo().usAt(c0.position.x) - if (start) 0L else ctrl.frameUs
@@ -835,8 +930,13 @@ private suspend fun PointerInputScope.timelineGestures(
         }
         when (mode) {
             0 -> {
-                val hit = g0.clipAt(down.position)
-                if (hit != null) ctrl.focus(hit.id) else if (down.position.y > g0.rowsTop - 4f) ctrl.deselect()
+                val cue = g0.cueAt(down.position)
+                val hit = if (cue == null) g0.clipAt(down.position) else null
+                when {
+                    cue != null -> ctrl.focusCue(cue.id)
+                    hit != null -> ctrl.focus(hit.id)
+                    down.position.y > g0.rowsTop - 4f -> ctrl.deselect()
+                }
             }
             1 -> {
                 val v = vt.calculateVelocity().x
@@ -854,6 +954,7 @@ private suspend fun PointerInputScope.timelineGestures(
                 }
             }
             3 -> ctrl.endTrim()
+            5 -> ctrl.endCueTrim()
         }
     }
 }
@@ -882,14 +983,18 @@ private fun SizePanel(ctrl: EditorController, t: EditTrack, busy: Boolean) {
 }
 
 @Composable
-private fun BottomBar(ctrl: EditorController, sel: EditTrack?, busy: Boolean) {
+private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: Boolean) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
-            if (sel == null) {
+            if (cue != null) {
+                Tool(t("ערוך טקסט"), Icons.Filled.Edit, true, wide = true) { ctrl.pauser(); ctrl.cueEditor = true }
+                Tool(t("מחק"), Icons.Filled.Delete, true) { ctrl.deleteSelectedCue() }
+                Tool(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
+            } else if (sel == null) {
                 Tool(if (ctrl.addMode) t("ביטול") else t("הוסף טשטוש"), if (ctrl.addMode) Icons.Filled.Close else Icons.Filled.Add, !busy, wide = true) {
                     ctrl.addMode = !ctrl.addMode
                     if (ctrl.addMode) ctrl.pauser()
@@ -902,6 +1007,7 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, busy: Boolean) {
                         wide = true,
                     ) { ctrl.togglePreview() }
                 }
+                Tool(t("כתוביות"), EditorIcons.Subtitles, !busy) { ctrl.pauser(); ctrl.subsSheet = true }
             } else {
                 Tool(t("מחק"), Icons.Filled.Delete, !busy) { ctrl.deleteSelected() }
                 Tool(t("פצל"), EditorIcons.Cut, !busy) { ctrl.splitSelected() }
@@ -945,6 +1051,10 @@ private object EditorIcons {
         .build()
 
     val Pause = icon("pause", "M6 19h4V5H6v14zm8-14v14h4V5h-4z")
+    val Subtitles = icon(
+        "subtitles",
+        "M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z",
+    )
     val Undo = icon(
         "undo",
         "M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z",

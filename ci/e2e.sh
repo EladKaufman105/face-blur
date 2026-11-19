@@ -8,7 +8,7 @@ adb install -r -g app/build/outputs/apk/debug/app-debug.apk
 adb install -r -g app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb logcat -c
 
-timeout 2400 adb shell am instrument -w -e class com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest \
+timeout 2400 adb shell am instrument -w -e class com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.SubtitlesTest \
   com.elad.faceblur.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/instrument.txt"
 
 adb logcat -d -v time > "$OUT/logcat_full.txt"
@@ -18,5 +18,6 @@ rm -f "$OUT/logcat_full.txt"
 adb pull /sdcard/Android/data/com.elad.faceblur/files/results "$OUT/" || \
   adb shell "run-as com.elad.faceblur ls -la" || true
 adb pull /sdcard/Android/data/com.elad.faceblur/files/editor "$OUT/" || true
+adb pull /sdcard/Android/data/com.elad.faceblur/files/subs "$OUT/" || true
 ls -la "$OUT" "$OUT/results" || true
-grep -q "^OK (3 tests)" "$OUT/instrument.txt"
+grep -q "^OK (4 tests)" "$OUT/instrument.txt"

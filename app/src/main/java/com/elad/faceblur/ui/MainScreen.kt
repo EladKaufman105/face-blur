@@ -399,6 +399,7 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                             append("Movies/FaceBlur · ")
                             append(if (state.result.faces == 1) t("פנים אחת") else t("%d פנים").format(state.result.faces))
                             if (state.result.keptHdr) append(t(" · HDR נשמר"))
+                            if (state.result.srtFiles > 0) append(t(" · כתוביות SRT ב-Download/FaceBlur"))
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

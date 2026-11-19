@@ -12,6 +12,7 @@ import android.os.SystemClock
 import com.elad.faceblur.edit.EditSession
 import com.elad.faceblur.prefs.AppPrefs
 import com.elad.faceblur.edit.EditorController
+import com.elad.faceblur.subs.ModelManager
 import androidx.media3.transformer.ExportException
 import com.elad.faceblur.effects.BlurMode
 import com.elad.faceblur.pipeline.FaceBlurProcessor
@@ -50,6 +51,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Language, theme and export choices (persisted). */
     val prefs = AppPrefs(app)
 
+    /** On-device speech models for subtitles. */
+    val models = ModelManager(app)
+
     private var job: Job? = null
     private var editor: EditorController? = null
 
@@ -77,7 +81,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val t0 = SystemClock.elapsedRealtime()
                 val analysis = processor.analyze(info, settings) { p -> state = UiState.Working(info, 1, p) }
                 val session = EditSession(info, settings, analysis, SystemClock.elapsedRealtime() - t0)
-                val ctrl = EditorController(session, viewModelScope)
+                val ctrl = EditorController(session, viewModelScope, getApplication(), models)
                 editor = ctrl
                 if (review) {
                     state = UiState.Editing(info, ctrl)
@@ -100,6 +104,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val ctrl = editor ?: return
         ctrl.pauser()
         ctrl.cancelTracking()
+        ctrl.cancelSubtitles()
         val info = ctrl.session.info
         state = UiState.Working(info, 2, 0f)
         job = viewModelScope.launch {

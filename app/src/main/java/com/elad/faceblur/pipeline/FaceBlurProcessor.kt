@@ -30,6 +30,12 @@ import com.elad.faceblur.track.FaceTimeline
 import com.elad.faceblur.effects.BlurEffect
 import com.elad.faceblur.effects.BlurMode
 import com.elad.faceblur.effects.DetectEffect
+import com.elad.faceblur.edit.SubLang
+import com.elad.faceblur.subs.BurnCue
+import com.elad.faceblur.subs.Srt
+import com.elad.faceblur.subs.SubtitleOverlay
+import androidx.media3.effect.OverlayEffect
+import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -55,6 +61,8 @@ sealed interface Outcome {
         val frames: Int,
         val analysisMs: Long,
         val renderMs: Long,
+        /** Number of .srt files saved (Download/FaceBlur). */
+        val srtFiles: Int = 0,
     ) : Outcome
     data object NoFaces : Outcome
 }
@@ -137,8 +145,12 @@ class FaceBlurProcessor(private val context: Context) {
         out.delete()
         val blur = BlurEffect(timeline, settings.mode, settings.strength)
         // Blur at full resolution first, then resize / drop frames for the chosen output.
+        val burn = if (export.subs == SubLang.NONE) emptyList() else model.cues.mapNotNull { c ->
+            c.text(export.subs).takeIf { it.isNotBlank() }?.let { BurnCue(c.startMs * 1000, c.endMs * 1000, it) }
+        }
+        val subsEffect = if (burn.isEmpty()) emptyList() else listOf<Effect>(OverlayEffect(ImmutableList.of(SubtitleOverlay(burn))))
         val item = EditedMediaItem.Builder(MediaItem.fromUri(info.uri))
-            .setEffects(Effects(emptyList(), listOf<Effect>(blur) + export.effects(info)))
+            .setEffects(Effects(emptyList(), listOf<Effect>(blur) + export.effects(info) + subsEffect))
             .build()
         val bitrate = export.videoBitrate(info)
         val modes = when {
@@ -152,10 +164,14 @@ class FaceBlurProcessor(private val context: Context) {
             export(composition(item, hdrMode), out, bitrate, mime = export.mimeType(), onProgress)
         }
 
-        val saved = withContext(Dispatchers.IO) { saveToGallery(out, "${info.name}_blur") }
+        val base = "${info.name}_blur_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val saved = withContext(Dispatchers.IO) { saveToGallery(out, base) }
         out.delete()
+        val srts = if (export.saveSrt && model.cues.isNotEmpty()) withContext(Dispatchers.IO) {
+            listOfNotNull(Srt.save(context, base, model.cues, english = false), Srt.save(context, base, model.cues, english = true)).size
+        } else 0
         val renderMs = SystemClock.elapsedRealtime() - t1
-        return Outcome.Saved(saved, timeline.trackCount, keptHdr, analysis.frameCount, analysisMs, renderMs)
+        return Outcome.Saved(saved, timeline.trackCount, keptHdr, analysis.frameCount, analysisMs, renderMs, srts)
     }
 
     private suspend fun runWithHdrFallback(modes: List<Int>, block: suspend (Int) -> Unit) {
@@ -237,9 +253,8 @@ class FaceBlurProcessor(private val context: Context) {
     }
 
     private fun saveToGallery(file: File, baseName: String): Uri {
-        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val values = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, "${baseName}_$stamp.mp4")
+            put(MediaStore.Video.Media.DISPLAY_NAME, "$baseName.mp4")
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
             put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/FaceBlur")
             put(MediaStore.Video.Media.IS_PENDING, 1)

@@ -1,6 +1,7 @@
 package com.elad.faceblur.edit
 
 import com.elad.faceblur.i18n.t
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.getValue
@@ -12,6 +13,9 @@ import com.elad.faceblur.analysis.Box
 import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
 import com.elad.faceblur.track.FaceTimeline
+import com.elad.faceblur.subs.ModelManager
+import com.elad.faceblur.subs.SpeechModel
+import com.elad.faceblur.subs.SubtitleEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -39,7 +43,13 @@ class EditSession(
  * Editor UI state and actions over an [EditSession]. Lives in the view model so a running
  * "track" survives recomposition. All methods are called on the main thread.
  */
-class EditorController(val session: EditSession, private val scope: CoroutineScope) {
+class EditorController(
+    val session: EditSession,
+    private val scope: CoroutineScope,
+    private val appContext: Context? = null,
+    /** Speech models for subtitles (null: subtitles unavailable). */
+    val models: ModelManager? = null,
+) {
     val model get() = session.model
     val padding get() = session.settings.padding
     val frameCount get() = model.frameCount
@@ -64,6 +74,14 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
         private set
     var previewAvailable by mutableStateOf(true)
     var sizePanel by mutableStateOf(false)
+    var selectedCueId by mutableStateOf<Int?>(null)
+        private set
+    /** Subtitle generation stage and progress, while it runs. */
+    var subsProgress by mutableStateOf<Pair<SubtitleEngine.Stage, Float>?>(null)
+        private set
+    var subsSheet by mutableStateOf(false)
+    var cueEditor by mutableStateOf(false)
+    private var subsJob: Job? = null
 
     /** Frame the player and the overlay show. */
     val shownFrame get() = peekFrame ?: frame
@@ -93,6 +111,7 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
     private fun sync() {
         version = model.version
         if (selectedId != null && model.track(selectedId!!) == null) selectedId = null
+        if (selectedCueId != null && model.cue(selectedCueId!!) == null) selectedCueId = null
         schedulePreview()
     }
 
@@ -167,11 +186,13 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
 
     fun select(id: Int?) {
         selectedId = id
+        if (id != null) selectedCueId = null
     }
 
     /** Select a blur and, if the playhead isn't on it, jump to its first frame. */
     fun focus(id: Int) {
         selectedId = id
+        selectedCueId = null
         val t = model.track(id) ?: return
         if (frame !in t.start..t.end) seek(t.start)
     }
@@ -232,6 +253,8 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
         sync()
     }
 
+    fun endCueTrim() = endTrim()
+
     fun endTrim() {
         if (peekFrame != null) {
             peekFrame = null
@@ -255,7 +278,131 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
 
     fun deselect() {
         selectedId = null
+        selectedCueId = null
         sizePanel = false
+    }
+
+    // ------------------------------------------------------------------ subtitles
+
+    val selectedCue get() = selectedCueId?.let { model.cue(it) }
+
+    /** Timeline µs (from the first frame) of a media time in ms, and back. */
+    fun cueRelUs(ms: Long): Long = ms * 1000 - (model.times.firstOrNull() ?: 0L)
+    fun msAtRelUs(us: Long): Long = (us + (model.times.firstOrNull() ?: 0L)) / 1000
+
+    /** Media time (ms) of the playhead. */
+    val nowMs get() = msAtRelUs(timeOf(shownFrame))
+
+    fun selectCue(id: Int?) {
+        selectedCueId = id
+        if (id != null) selectedId = null
+        sizePanel = false
+    }
+
+    fun focusCue(id: Int) {
+        selectCue(id)
+        val c = model.cue(id) ?: return
+        if (nowMs !in c.startMs until c.endMs) seek(frameAt(cueRelUs(c.startMs)))
+    }
+
+    fun deleteSelectedCue() {
+        val id = selectedCueId ?: return
+        model.deleteCue(id)
+        selectedCueId = null
+        sync()
+    }
+
+    fun editSelectedCue(he: String, en: String) {
+        val id = selectedCueId ?: return
+        model.editCue(id, he, en)
+        sync()
+    }
+
+    /** A new, empty subtitle at the playhead, opened for typing. */
+    fun addCueHere() {
+        val id = model.addCue(nowMs, msAtRelUs(timeOf(frameCount - 1) + frameUs))
+        sync()
+        selectCue(id)
+        cueEditor = true
+    }
+
+    fun beginCueTrim() {
+        model.beginGesture()
+    }
+
+    fun trimCueTo(id: Int, start: Boolean, relUs: Long) {
+        model.setCueEdge(id, start, msAtRelUs(relUs))
+        val c = model.cue(id) ?: return
+        val f = frameAt(cueRelUs(if (start) c.startMs else c.endMs - 1))
+        if (peekFrame != f) {
+            peekFrame = f
+            seeker(f)
+        }
+        sync()
+    }
+
+    /** Downloads [m] if needed, then transcribes the video with it. */
+    fun makeSubtitles(m: SpeechModel) {
+        val mm = models ?: return
+        if (subsJob?.isActive == true || mm.downloading != null) return
+        if (mm.isReady(m)) {
+            generateSubtitles(m)
+            return
+        }
+        subsJob = scope.launch {
+            try {
+                mm.download(m)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                notice = t("הורדת המודל נכשלה: %s").format(e.message ?: e.javaClass.simpleName)
+                return@launch
+            }
+            generateSubtitles(m)
+        }
+    }
+
+    /** True while a model downloads or subtitles are being made. */
+    val subsBusy get() = subsProgress != null || models?.downloading != null
+
+    /** Transcribes the video with [m] (downloaded) and fills the subtitles. */
+    fun generateSubtitles(m: SpeechModel) {
+        val path = models?.file(m)?.takeIf { models.isReady(m) }?.absolutePath ?: return
+        generateSubtitles(path, m.language)
+    }
+
+    fun generateSubtitles(modelPath: String, lang: String) {
+        val ctx = appContext ?: return
+        if (playing) pauser()
+        subsJob?.cancel()
+        subsProgress = SubtitleEngine.Stage.AUDIO to 0f
+        subsJob = scope.launch {
+            try {
+                val r = SubtitleEngine.run(ctx, session.info.uri, modelPath, lang, translate = true) { st, p ->
+                    main.post { if (subsProgress != null) subsProgress = st to p }
+                }
+                model.setCues(r.lines.map { Triple(it.startMs, it.endMs, it.he to it.en) })
+                if (r.lines.isNotEmpty()) subsSheet = false
+                notice = when {
+                    r.lines.isEmpty() -> t("לא נמצא דיבור בסרטון")
+                    !r.translated -> t("נוצרו %d כתוביות. התרגום לא הצליח (צריך אינטרנט פעם אחת להורדת חבילת השפה).").format(r.lines.size)
+                    else -> t("נוצרו %d כתוביות. אפשר לערוך כל אחת בהקשה.").format(r.lines.size)
+                }
+            } catch (e: SubtitleEngine.NoAudioException) {
+                notice = t("אין קול בסרטון")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                notice = t("יצירת הכתוביות נכשלה: %s").format(e.message ?: e.javaClass.simpleName)
+            } finally {
+                subsProgress = null
+                sync()
+            }
+        }
+    }
+
+    fun cancelSubtitles() {
+        subsJob?.cancel()
     }
 
     fun scaleSelectedBy(f: Float) {
@@ -286,7 +433,7 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
             addAt(x, y)
         } else {
             val id = hitTest(x, y)
-            if (id == null) deselect() else selectedId = id
+            if (id == null) deselect() else select(id)
         }
     }
 

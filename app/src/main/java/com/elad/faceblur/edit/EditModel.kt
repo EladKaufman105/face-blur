@@ -35,6 +35,23 @@ class EditTrack(
     )
 }
 
+/**
+ * One subtitle: time range in milliseconds of media time, Hebrew and English text (either may
+ * be empty).
+ */
+class Cue(val id: Int, var startMs: Long, var endMs: Long, var he: String, var en: String) {
+    fun copy() = Cue(id, startMs, endMs, he, en)
+    fun text(lang: SubLang): String = when (lang) {
+        SubLang.HE -> he
+        SubLang.EN -> en
+        SubLang.BOTH -> listOf(he, en).filter { it.isNotBlank() }.joinToString("\n")
+        SubLang.NONE -> ""
+    }
+}
+
+/** Which subtitle text to show / burn in. */
+enum class SubLang { NONE, EN, HE, BOTH }
+
 /** A blur's shape in one frame: center and half-axes (rx in frame widths, ry in frame heights). */
 class EditShape(val id: Int, val cx: Float, val cy: Float, val rx: Float, val ry: Float, val manual: Boolean)
 
@@ -59,8 +76,11 @@ class EditModel(
     private val shotStarts: IntArray
 
     val tracks = ArrayList<EditTrack>()
+    /** Subtitles, sorted by start. */
+    val cues = ArrayList<Cue>()
     private var nextId = 1
-    private val undo = ArrayDeque<List<EditTrack>>()
+    private var nextCueId = 1
+    private val undo = ArrayDeque<Pair<List<EditTrack>, List<Cue>>>()
 
     /** Bumped on every change. */
     var version = 0
@@ -196,7 +216,7 @@ class EditModel(
     // ------------------------------------------------------------------ edits
 
     private fun snapshot() {
-        undo.addLast(tracks.map { it.copy() })
+        undo.addLast(tracks.map { it.copy() } to cues.map { it.copy() })
         while (undo.size > MAX_UNDO) undo.removeFirst()
     }
 
@@ -205,11 +225,62 @@ class EditModel(
     }
 
     fun undo(): Boolean {
-        val s = undo.removeLastOrNull() ?: return false
+        val (t, c) = undo.removeLastOrNull() ?: return false
         tracks.clear()
-        tracks += s
+        tracks += t
+        cues.clear()
+        cues += c
         changed()
         return true
+    }
+
+    // ------------------------------------------------------------------ subtitles
+
+    fun cue(id: Int): Cue? = cues.firstOrNull { it.id == id }
+
+    /** The subtitle shown at [ms] (media time), if any. */
+    fun cueAt(ms: Long): Cue? = cues.firstOrNull { ms >= it.startMs && ms < it.endMs }
+
+    /** Replaces all subtitles (one undo step). */
+    fun setCues(list: List<Triple<Long, Long, Pair<String, String>>>) {
+        snapshot()
+        cues.clear()
+        for ((a, b, t) in list.sortedBy { it.first }) cues += Cue(nextCueId++, a, b, t.first, t.second)
+        changed()
+    }
+
+    fun editCue(id: Int, he: String, en: String) {
+        val c = cue(id) ?: return
+        snapshot()
+        c.he = he
+        c.en = en
+        changed()
+    }
+
+    fun deleteCue(id: Int) {
+        val c = cue(id) ?: return
+        snapshot()
+        cues.remove(c)
+        changed()
+    }
+
+    /** New subtitle at [ms] lasting up to 2 s (until the next one); returns its id. */
+    fun addCue(ms: Long, maxMs: Long): Int {
+        snapshot()
+        val next = cues.filter { it.startMs > ms }.minOfOrNull { it.startMs } ?: maxMs
+        val c = Cue(nextCueId++, ms, min(next, ms + 2000).coerceAtLeast(ms + 300), "", "")
+        cues += c
+        cues.sortBy { it.startMs }
+        changed()
+        return c.id
+    }
+
+    /** Moves a subtitle edge; no undo snapshot (see [beginGesture]). */
+    fun setCueEdge(id: Int, start: Boolean, ms: Long) {
+        val c = cue(id) ?: return
+        if (start) c.startMs = ms.coerceIn(0, c.endMs - 100) else c.endMs = ms.coerceAtLeast(c.startMs + 100)
+        cues.sortBy { it.startMs }
+        changed()
     }
 
     /** Call once at the start of a drag / pinch / slider move; the moves themselves don't snapshot. */

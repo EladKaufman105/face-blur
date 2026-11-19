@@ -28,6 +28,7 @@ jobs:
       - name: Build release APK
         shell: bash
         run: |
+          bash ci/fetch-whisper.sh
           chmod +x gradlew
           set -o pipefail
           ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
@@ -73,6 +74,12 @@ jobs:
           mkdir -p app/src/androidTest/assets/samples
           git archive FETCH_HEAD | tar -x -C app/src/androidTest/assets/samples
           ls -la app/src/androidTest/assets/samples
+          # Whisper "tiny" (MIT) for the subtitles test.
+          mkdir -p app/src/androidTest/assets/models
+          curl -sSfL --retry 3 -o app/src/androidTest/assets/models/ggml-tiny.bin \
+            https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+          ls -la app/src/androidTest/assets/models
+          bash ci/fetch-whisper.sh
 
       - uses: actions/setup-java@v4
         with:
