@@ -201,8 +201,14 @@ class EditorScreenTest {
         // The sheet is its own window: screenshot the whole display.
         screen(outDir, "7_export_sheet.png")
         // Back key to the sheet's window (Espresso's pressBack waits for the wrong window's focus).
-        inst.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-        rule.waitForIdle()
+        // Again if something else took it (the CI emulator sometimes shows a system "not
+        // responding" dialog).
+        for (attempt in 0 until 4) {
+            inst.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+            rule.waitForIdle()
+            Thread.sleep(500)
+            if (rule.onAllNodes(isRoot()).fetchSemanticsNodes().size == 1) break
+        }
         rule.runOnIdle {
             I18n.lang = Lang.EN
             dir = LayoutDirection.Ltr

@@ -7,6 +7,8 @@ mkdir -p "$OUT"
 adb install -r -g app/build/outputs/apk/debug/app-debug.apk
 adb install -r -g app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb logcat -c
+# A slow emulator can show "app isn't responding" dialogs over the test.
+adb shell settings put global hide_error_dialogs 1 || true
 
 timeout 2400 adb shell am instrument -w -e class com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.SubtitlesTest \
   com.elad.faceblur.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/instrument.txt"
