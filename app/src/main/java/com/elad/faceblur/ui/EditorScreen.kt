@@ -612,12 +612,23 @@ private fun Timeline(ctrl: EditorController, busy: Boolean) {
     val rowH = with(density) { 24.dp.toPx() }
     val rowPitch = rowH + with(density) { 5.dp.toPx() }
     val handleW = with(density) { 12.dp.toPx() }
-    val visibleRows = 3
+    val visibleRows = 4
     val heightDp = with(density) { (rowsTop + visibleRows * rowPitch).toDp() } + 4.dp
 
     val rows = remember(ctrl.version) { packRows(ctrl.model.tracks) }
     val maxScroll = max(0f, (rows.size - visibleRows) * rowPitch)
     if (rowScroll.floatValue > maxScroll) rowScroll.floatValue = maxScroll
+    // Keep the selected clip's row in view.
+    LaunchedEffect(ctrl.selectedId, rows) {
+        val id = ctrl.selectedId ?: return@LaunchedEffect
+        val r = rows.indexOfFirst { row -> row.any { it.id == id } }
+        if (r < 0) return@LaunchedEffect
+        val top = r * rowPitch
+        if (top < rowScroll.floatValue) rowScroll.floatValue = top
+        if (top + rowPitch > rowScroll.floatValue + visibleRows * rowPitch) {
+            rowScroll.floatValue = (top + rowPitch - visibleRows * rowPitch).coerceIn(0f, maxScroll)
+        }
+    }
 
     val colors = MaterialTheme.colorScheme
     val textPaint = remember {
@@ -877,7 +888,6 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, busy: Boolean) {
                     ) { ctrl.togglePreview() }
                 }
             } else {
-                Text("#${sel.id}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 8.dp))
                 Tool("מחק", Icons.Filled.Delete, !busy) { ctrl.deleteSelected() }
                 Tool("פצל", EditorIcons.Cut, !busy) { ctrl.splitSelected() }
                 Tool("עקוב קדימה", EditorIcons.TrackForward, !busy) { ctrl.trackSelected(1) }
@@ -894,7 +904,7 @@ private fun Tool(label: String, icon: ImageVector, enabled: Boolean, wide: Boole
     val alpha = if (enabled) 1f else 0.38f
     Column(
         Modifier
-            .width(if (wide) 104.dp else 62.dp)
+            .width(if (wide) 104.dp else 66.dp)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
