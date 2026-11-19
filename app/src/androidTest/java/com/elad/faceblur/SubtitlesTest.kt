@@ -63,7 +63,7 @@ class SubtitlesTest {
         val inst = InstrumentationRegistry.getInstrumentation()
         val ctx = inst.targetContext
         val assets = inst.context.assets
-        val outDir = File(ctx.getExternalFilesDir(null), "subs").apply { deleteRecursively(); mkdirs() }
+        val outDir = File(ctx.getExternalFilesDir(null), "subs").apply { mkdirs() } // not cleared: other tests here write too
         val log = StringBuilder()
         fun note(s: String) {
             log.appendLine(s)
