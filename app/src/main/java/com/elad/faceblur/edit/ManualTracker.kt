@@ -23,7 +23,8 @@ import kotlin.math.roundToInt
  * any face detection that overlaps it (this stops drift). Stops when the points are lost,
  * the box leaves the frame, at a hard cut, or after [MAX_SECONDS].
  *
- * Tuned on hand-labeled faces of real footage: ~92% of frames covered vs ~77% for NanoTrack.
+ * Tuned on hand-labeled faces of real footage: ~92% of frames covered vs ~77% for NanoTrack
+ * and ~57% for MIL.
  */
 class ManualTracker(private val store: FrameStore, private val model: EditModel) {
 
@@ -142,13 +143,15 @@ class ManualTracker(private val store: FrameStore, private val model: EditModel)
         if (ga.size < MIN_POINTS) return null
         val dx = median(ga.indices.map { (gb[it].x - ga[it].x).toFloat() })
         val dy = median(ga.indices.map { (gb[it].y - ga[it].y).toFloat() })
+        // Scale from point pairs far apart (short baselines are mostly noise).
         val ratios = ArrayList<Float>()
         val m = ga.size
-        for (k in 0 until m) for (off in intArrayOf(1, 7, 13, 29)) {
+        val minBase = max(2f, 0.25f * bw).toDouble()
+        for (k in 0 until m) for (off in intArrayOf(max(1, m / 4), max(1, m / 3), max(1, m / 2))) {
             val l = (k + off) % m
             if (l == k) continue
             val d0 = hypot(ga[k].x - ga[l].x, ga[k].y - ga[l].y)
-            if (d0 < 2.0) continue
+            if (d0 < minBase) continue
             ratios += (hypot(gb[k].x - gb[l].x, gb[k].y - gb[l].y) / d0).toFloat()
         }
         val s = if (ratios.isEmpty()) 1f else median(ratios).coerceIn(0.9f, 1.1f)

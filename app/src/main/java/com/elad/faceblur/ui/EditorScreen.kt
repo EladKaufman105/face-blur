@@ -44,7 +44,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -150,7 +149,26 @@ fun EditorScreen(ctrl: EditorController, onClose: () -> Unit, onExport: () -> Un
                 if (ctrl.addMode) {
                     Banner("הקש על הפנים שצריך לטשטש", action = "ביטול") { ctrl.addMode = false }
                 } else if (ctrl.model.tracks.isEmpty()) {
-                    Banner("לא זוהו פנים. אפשר להוסיף טשטוש ידנית עם \"הוסף\".")
+                    Banner("לא זוהו פנים. אפשר לסמן טשטוש ידנית עם \"הוסף טשטוש\".")
+                }
+            }
+            if (!busy) {
+                Surface(
+                    onClick = {
+                        ctrl.addMode = !ctrl.addMode
+                        if (ctrl.addMode) ctrl.pauser()
+                    },
+                    modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    color = if (ctrl.addMode) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = if (ctrl.addMode) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onPrimaryContainer,
+                    shadowElevation = 4.dp,
+                ) {
+                    Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(if (ctrl.addMode) Icons.Filled.Close else Icons.Filled.Add, null, Modifier.size(20.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (ctrl.addMode) "ביטול" else "הוסף טשטוש", style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                    }
                 }
             }
             ctrl.trackingProgress?.let { p ->
@@ -362,7 +380,6 @@ private fun Overlay(ctrl: EditorController, modifier: Modifier) {
     Canvas(modifier.pointerInput(ctrl) { editGestures(ctrl) }) {
         @Suppress("UNUSED_VARIABLE") val v = ctrl.version
         val shapes = ctrl.model.shapesAt(ctrl.frame, ctrl.padding)
-        val labels = ctrl.labels()
         label.textSize = 13.dp.toPx()
         val selectedId = ctrl.selectedId
         for (s in shapes.sortedBy { it.id == selectedId }) {
@@ -376,13 +393,11 @@ private fun Overlay(ctrl: EditorController, modifier: Modifier) {
             }
             drawOval(c.copy(alpha = if (sel) 0.30f else 0.16f), tl, sz)
             drawOval(c, tl, sz, style = Stroke(width = if (sel) 3.dp.toPx() else 1.5.dp.toPx()))
-            labels[s.id]?.let { n ->
-                val text = n.toString()
-                val tw = label.measureText(text)
-                drawContext.canvas.nativeCanvas.drawText(
-                    text, tl.x + sz.width / 2 - tw / 2, (tl.y - 5.dp.toPx()).coerceAtLeast(label.textSize), label,
-                )
-            }
+            val text = s.id.toString()
+            val tw = label.measureText(text)
+            drawContext.canvas.nativeCanvas.drawText(
+                text, tl.x + sz.width / 2 - tw / 2, (tl.y - 5.dp.toPx()).coerceAtLeast(label.textSize), label,
+            )
         }
     }
 }
@@ -449,17 +464,9 @@ private fun Transport(ctrl: EditorController, busy: Boolean) {
                 style = MaterialTheme.typography.labelMedium,
                 fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.weight(1f))
-            FilledTonalButton(
-                onClick = { ctrl.addMode = !ctrl.addMode; if (ctrl.addMode) ctrl.pauser() },
-                enabled = !busy,
-                modifier = Modifier.padding(end = 4.dp),
-            ) {
-                Icon(if (ctrl.addMode) Icons.Filled.Close else Icons.Filled.Add, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("הוסף")
-            }
         }
         if (n > 1) {
             Slider(
@@ -493,18 +500,17 @@ private fun ToolPanel(ctrl: EditorController, t: EditTrack, busy: Boolean) {
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                val n = ctrl.labels()[t.id]
                 Text(
-                    if (n != null) "טשטוש $n" else "טשטוש",
+                    "#${t.id}",
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(horizontal = 8.dp),
                 )
                 Tool("מחק", Icons.Filled.Delete, !busy) { ctrl.deleteSelected() }
-                Tool("פצל כאן", EditorIcons.Cut, !busy) { ctrl.splitSelected() }
                 Tool("מתחיל כאן", EditorIcons.StartHere, !busy) { ctrl.startHere() }
                 Tool("נגמר כאן", EditorIcons.EndHere, !busy) { ctrl.endHere() }
-                Tool("עקוב אחורה", EditorIcons.TrackBack, !busy) { ctrl.trackSelected(-1) }
                 Tool("עקוב קדימה", EditorIcons.TrackForward, !busy) { ctrl.trackSelected(1) }
+                Tool("עקוב אחורה", EditorIcons.TrackBack, !busy) { ctrl.trackSelected(-1) }
+                Tool("פצל כאן", EditorIcons.Cut, !busy) { ctrl.splitSelected() }
                 Tool("סגור", Icons.Filled.Close, true) { ctrl.select(null) }
             }
             Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -533,7 +539,7 @@ private fun Tool(label: String, icon: ImageVector, enabled: Boolean, onClick: ()
     val alpha = if (enabled) 1f else 0.38f
     Column(
         Modifier
-            .width(70.dp)
+            .width(64.dp)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -554,8 +560,7 @@ private fun Tool(label: String, icon: ImageVector, enabled: Boolean, onClick: ()
 
 @Composable
 private fun Lanes(ctrl: EditorController, modifier: Modifier) {
-    val labels = ctrl.labels()
-    val sorted = ctrl.model.tracks.sortedBy { labels[it.id] ?: 0 }
+    val sorted = ctrl.model.tracks.sortedWith(compareBy({ it.start }, { it.id }))
     Column(modifier) {
         Text(
             if (sorted.isEmpty()) "אין טשטושים" else "טשטושים (${sorted.size}) · הקש על פס כדי לבחור ולקפוץ",
@@ -565,7 +570,7 @@ private fun Lanes(ctrl: EditorController, modifier: Modifier) {
         )
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             LazyColumn(Modifier.fillMaxSize()) {
-                items(sorted, key = { it.id }) { t -> Lane(ctrl, t, labels[t.id] ?: 0) }
+                items(sorted, key = { it.id }) { t -> Lane(ctrl, t, t.id) }
             }
         }
     }

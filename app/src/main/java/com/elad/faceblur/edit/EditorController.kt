@@ -73,10 +73,6 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
 
     val selected get() = selectedId?.let { model.track(it) }
 
-    /** Display numbers (1-based, by start frame) for blurs, shared by the lanes and the overlay. */
-    fun labels(): Map<Int, Int> =
-        model.tracks.sortedWith(compareBy({ it.start }, { it.id })).mapIndexed { i, t -> t.id to i + 1 }.toMap()
-
     // ------------------------------------------------------------------ playback
 
     /** From the player while it plays (or after a seek lands). */
