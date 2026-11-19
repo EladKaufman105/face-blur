@@ -18,7 +18,6 @@ import com.elad.faceblur.ui.MainScreen
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
-import androidx.test.espresso.Espresso
 import com.elad.faceblur.i18n.I18n
 import com.elad.faceblur.i18n.Lang
 import com.elad.faceblur.pipeline.ExportOptions
@@ -201,7 +200,8 @@ class EditorScreenTest {
         Thread.sleep(1000)
         // The sheet is its own window: screenshot the whole display.
         screen(outDir, "7_export_sheet.png")
-        Espresso.pressBack()
+        // Back key to the sheet's window (Espresso's pressBack waits for the wrong window's focus).
+        inst.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
         rule.waitForIdle()
         rule.runOnIdle {
             I18n.lang = Lang.EN
