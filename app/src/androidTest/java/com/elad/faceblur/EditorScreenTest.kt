@@ -16,6 +16,8 @@ import com.elad.faceblur.prefs.ThemeMode
 import com.elad.faceblur.ui.FaceBlurTheme
 import com.elad.faceblur.ui.MainScreen
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.test.espresso.Espresso
 import com.elad.faceblur.i18n.I18n
 import com.elad.faceblur.i18n.Lang
@@ -197,10 +199,8 @@ class EditorScreenTest {
         val opened = runCatching { rule.waitUntil(5000) { rule.onAllNodes(isRoot()).fetchSemanticsNodes().size > 1 } }.isSuccess
         note("export sheet opened: $opened")
         Thread.sleep(1000)
-        // The sheet is its own window: capture the last root.
-        rule.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().let { bmp ->
-            File(outDir, "7_export_sheet.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        }
+        // The sheet is its own window: screenshot the whole display.
+        screen(outDir, "7_export_sheet.png")
         Espresso.pressBack()
         rule.waitForIdle()
         rule.runOnIdle {
@@ -258,13 +258,15 @@ class EditorScreenTest {
         }
         Thread.sleep(800)
         shot(outDir, "10_settings_en.png")
+        repeat(2) { rule.onRoot().performTouchInput { swipeUp() } }
+        rule.waitForIdle()
+        Thread.sleep(600)
+        shot(outDir, "10b_export_card.png")
         rule.onNodeWithContentDescription("Settings").performClick()
         rule.waitForIdle()
         runCatching { rule.waitUntil(5000) { rule.onAllNodes(isRoot()).fetchSemanticsNodes().size > 1 } }
         Thread.sleep(1000)
-        rule.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().let { bmp ->
-            File(outDir, "11_app_settings.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        }
+        screen(outDir, "11_app_settings.png")
         // Leave the defaults for other runs.
         rule.runOnIdle {
             vm.prefs.updateLang(Lang.HE)
@@ -279,6 +281,11 @@ class EditorScreenTest {
         runOnMainSync { r = block() }
         @Suppress("UNCHECKED_CAST")
         return r as T
+    }
+
+    private fun screen(dir: File, name: String) {
+        val bmp = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return
+        File(dir, name).outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
     private fun shot(dir: File, name: String) {
