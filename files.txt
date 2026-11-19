@@ -1,0 +1,4 @@
+total 560600
+drwxr-xr-x  2 runner runner      4096 Nov 19 17:11 .
+drwxr-xr-x 10 runner runner      4096 Nov 19 17:11 ..
+-rw-r--r--  1 runner runner 574041195 Nov 19 17:11 ggml-ivrit-large-v3-turbo-q5_0.bin
