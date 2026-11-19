@@ -121,8 +121,12 @@ class OfflineTracker(private val fps: Float, private val aspect: Float, private 
         val strong = t.det.values.count { it.score >= STRONG }
         val verified = t.det.values.count { it.verify >= VERIFIED }
         // Sensitive mode takes weaker evidence: more faces covered, more needless blurs.
-        return if (sensitive) strong >= 3 || verified >= 1
-        else strong >= 4 || verified >= 2 || (verified >= 1 && strong >= 2)
+        if (sensitive) return strong >= 3 || verified >= 1
+        // A very short tracklet needs two crisp crop confirmations: seats of trousers and
+        // backs of soldiers walking away fool both detectors for a few frames, but don't
+        // verify as cleanly as even tiny real faces.
+        if (t.det.size < SHORT_N) return t.det.values.count { it.verify >= SHORT_VERIFIED } >= 2
+        return strong >= 4 || verified >= 2 || (verified >= 1 && strong >= 2)
     }
 
     /**
@@ -278,6 +282,8 @@ class OfflineTracker(private val fps: Float, private val aspect: Float, private 
         private const val BIRTH_THRESHOLD = 0.45f
         private const val STRONG = 0.6f
         private const val VERIFIED = 0.5f
+        private const val SHORT_N = 4
+        private const val SHORT_VERIFIED = 0.9f
         private const val MAX_GAP_S = 0.7f
         private const val GATE = 0.6f
         private const val GATE_PER_S = 1.5f

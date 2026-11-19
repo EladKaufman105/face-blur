@@ -10,6 +10,7 @@ import com.elad.faceblur.analysis.AnalysisResult
 import com.elad.faceblur.analysis.Box
 import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
+import com.elad.faceblur.track.FaceTimeline
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -54,6 +55,17 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
     var trackingProgress by mutableStateOf<Float?>(null)
         private set
     var notice by mutableStateOf<String?>(null)
+    /** Frame shown while dragging a clip's edge (the playhead itself stays put). */
+    var peekFrame by mutableStateOf<Int?>(null)
+        private set
+    /** Show the real blur in the player (vs. outlines only). */
+    var previewOn by mutableStateOf(true)
+        private set
+    var previewAvailable by mutableStateOf(true)
+    var sizePanel by mutableStateOf(false)
+
+    /** Frame the player and the overlay show. */
+    val shownFrame get() = peekFrame ?: frame
 
     /** Set by the player UI: shows frame [f]. */
     var seeker: (Int) -> Unit = {}
@@ -61,14 +73,51 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
     var pauser: () -> Unit = {}
     /** Set by the player UI. */
     var playToggler: () -> Unit = {}
+    /** Set by the player UI: re-renders the paused frame (after an edit, for the live blur). */
+    var refresher: () -> Unit = {}
+
+    /** Live blur for the editor player; set by the player UI. */
+    var preview: PreviewSource? = null
+        set(value) {
+            field = value
+            value?.enabled = previewOn
+            rebuildPreview()
+        }
 
     private var trackJob: Job? = null
     private val main = Handler(Looper.getMainLooper())
     private var sliderGesture = false
+    private var rebuildPending = false
 
     private fun sync() {
         version = model.version
         if (selectedId != null && model.track(selectedId!!) == null) selectedId = null
+        schedulePreview()
+    }
+
+    private fun schedulePreview() {
+        if (rebuildPending || preview == null) return
+        rebuildPending = true
+        main.postDelayed({
+            rebuildPending = false
+            rebuildPreview()
+            if (!playing) refresher()
+        }, 120)
+    }
+
+    private fun rebuildPreview() {
+        val p = preview ?: return
+        val a = session.analysis
+        p.timeline = FaceTimeline.build(
+            model.renderTracks(), a.times, a.cuts.map { a.times[it] }.toLongArray(),
+            a.uprightW, a.uprightH, a.rotation, padding,
+        )
+    }
+
+    fun togglePreview() {
+        previewOn = !previewOn
+        preview?.enabled = previewOn
+        if (!playing) refresher()
     }
 
     val selected get() = selectedId?.let { model.track(it) }
@@ -82,9 +131,33 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
 
     fun seek(f: Int) {
         val c = f.coerceIn(0, frameCount - 1)
+        if (c == frame && peekFrame == null) return
         frame = c
         seeker(c)
     }
+
+    /** Frame index at a time (µs from the first frame), nearest. */
+    fun frameAt(us: Long): Int {
+        val t = model.times
+        if (t.isEmpty()) return 0
+        val target = t[0] + us
+        var lo = 0
+        var hi = t.size - 1
+        while (hi - lo > 1) {
+            val mid = (lo + hi) ushr 1
+            if (t[mid] <= target) lo = mid else hi = mid
+        }
+        return if (kotlin.math.abs(t[hi] - target) < kotlin.math.abs(t[lo] - target)) hi else lo
+    }
+
+    /** Time of a frame in µs from the first frame. */
+    fun timeOf(f: Int): Long {
+        val t = model.times
+        if (t.isEmpty()) return 0
+        return t[f.coerceIn(0, t.size - 1)] - t[0]
+    }
+
+    val frameUs: Long get() = (1_000_000f / max(1f, model.fps)).toLong()
 
     fun step(d: Int) {
         if (playing) pauser()
@@ -140,6 +213,31 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
         sync()
     }
 
+    /** Dragging a clip edge on the timeline: one undo step per drag. */
+    fun beginTrim() {
+        model.beginGesture()
+    }
+
+    /** @param start true for the clip's start edge. Shows the edge's frame in the player. */
+    fun trimTo(id: Int, start: Boolean, f: Int) {
+        val c = f.coerceIn(0, frameCount - 1)
+        if (start) model.setStart(id, c, undoable = false) else model.setEnd(id, c, undoable = false)
+        val t = model.track(id) ?: return
+        val shown = if (start) t.start else t.end
+        if (peekFrame != shown) {
+            peekFrame = shown
+            seeker(shown)
+        }
+        sync()
+    }
+
+    fun endTrim() {
+        if (peekFrame != null) {
+            peekFrame = null
+            seeker(frame)
+        }
+    }
+
     /** At the start of a drag / pinch: false if the selected blur isn't on this frame. */
     fun beginGesture(): Boolean {
         val t = selected ?: return false
@@ -152,6 +250,11 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
         val id = selectedId ?: return
         model.moveBy(id, frame, dx, dy)
         sync()
+    }
+
+    fun deselect() {
+        selectedId = null
+        sizePanel = false
     }
 
     fun scaleSelectedBy(f: Float) {
@@ -178,7 +281,12 @@ class EditorController(val session: EditSession, private val scope: CoroutineSco
     fun hitTest(x: Float, y: Float): Int? = model.hitTest(frame, x, y, padding, HIT_RADIUS)
 
     fun tap(x: Float, y: Float) {
-        if (addMode) addAt(x, y) else selectedId = hitTest(x, y)
+        if (addMode) {
+            addAt(x, y)
+        } else {
+            val id = hitTest(x, y)
+            if (id == null) deselect() else selectedId = id
+        }
     }
 
     /** New blur at a tapped point (sized from a detection there, if any), then tracked both ways. */

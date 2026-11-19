@@ -234,16 +234,16 @@ class EditModel(
         return b.id
     }
 
-    fun setStart(id: Int, frame: Int) {
+    fun setStart(id: Int, frame: Int, undoable: Boolean = true) {
         val t = track(id) ?: return
-        snapshot()
+        if (undoable) snapshot()
         t.start = frame.coerceIn(0, t.end)
         changed()
     }
 
-    fun setEnd(id: Int, frame: Int) {
+    fun setEnd(id: Int, frame: Int, undoable: Boolean = true) {
         val t = track(id) ?: return
-        snapshot()
+        if (undoable) snapshot()
         t.end = frame.coerceIn(t.start, frameCount - 1)
         changed()
     }

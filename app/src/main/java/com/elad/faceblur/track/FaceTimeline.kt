@@ -28,12 +28,12 @@ class FaceTimeline private constructor(
     private val frameUs: Long,
     /** Presentation times of the first frame of each new shot (hard cuts). */
     private val cuts: LongArray,
-) {
+) : FaceSource {
     val trackCount get() = series.size
 
     private val fadeUs = max(2 * frameUs, FADE_US)
 
-    fun facesAt(tUs: Long): List<FaceShape> {
+    override fun facesAt(tUs: Long): List<FaceShape> {
         val out = ArrayList<FaceShape>()
         val tol = frameUs / 2
         for (s in series) {

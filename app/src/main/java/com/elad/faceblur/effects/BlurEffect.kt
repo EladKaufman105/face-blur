@@ -9,7 +9,7 @@ import androidx.media3.effect.GlShaderProgram
 import com.elad.faceblur.gl.Gl
 import com.elad.faceblur.gl.Quad
 import com.elad.faceblur.gl.Uniforms
-import com.elad.faceblur.track.FaceTimeline
+import com.elad.faceblur.track.FaceSource
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.ln
@@ -30,7 +30,7 @@ enum class BlurMode { BLUR, PIXELATE, SOLID }
  * Pixelate: same machinery with a smaller blur, sampled once per mosaic block.
  */
 class BlurEffect(
-    private val timeline: FaceTimeline,
+    private val timeline: FaceSource,
     private val mode: BlurMode,
     private val strength: Float,
 ) : GlEffect {
@@ -39,7 +39,7 @@ class BlurEffect(
 }
 
 private class BlurProgram(
-    private val timeline: FaceTimeline,
+    private val timeline: FaceSource,
     private val mode: BlurMode,
     private val strength: Float,
     private val highPrecision: Boolean,

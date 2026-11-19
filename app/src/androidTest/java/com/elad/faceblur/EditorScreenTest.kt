@@ -74,8 +74,25 @@ class EditorScreenTest {
             }
         }
         rule.waitForIdle()
-        Thread.sleep(3000)
+        Thread.sleep(3500)
         shot(outDir, "1_overview.png")
+
+        // Playback: the playhead must advance on its own.
+        // (While playing the UI is never idle: talk to it on the main thread directly.)
+        val f0 = rule.runOnIdle { ctrl.frame }
+        inst.runOnMainSync { ctrl.playToggler() }
+        Thread.sleep(2000)
+        var f1 = 0
+        var wasPlaying = false
+        inst.runOnMainSync {
+            f1 = ctrl.frame
+            wasPlaying = ctrl.playing
+            ctrl.pauser()
+        }
+        Thread.sleep(500)
+        shot(outDir, "1b_after_play.png")
+        note("playback: frame $f0 -> $f1, playing=$wasPlaying, preview=${rule.runOnIdle { ctrl.previewAvailable }}")
+        if (f1 <= f0) fail("playback did not advance")
 
         val first = rule.runOnIdle { ctrl.model.tracks.maxByOrNull { it.end - it.start } }
         if (first == null) {
@@ -93,6 +110,19 @@ class EditorScreenTest {
         }
         Thread.sleep(2000)
         shot(outDir, "2_selected.png")
+
+        // Trim the clip's end by dragging its edge, then undo.
+        rule.runOnIdle {
+            ctrl.beginTrim()
+            ctrl.trimTo(first.id, start = false, f = mid + 5)
+        }
+        Thread.sleep(800)
+        shot(outDir, "2b_trimming.png")
+        rule.runOnIdle { ctrl.endTrim() }
+        val trimmedEnd = rule.runOnIdle { ctrl.model.track(first.id)!!.end }
+        rule.runOnIdle { ctrl.undo() }
+        note("trim: end $origEnd -> $trimmedEnd, after undo ${rule.runOnIdle { ctrl.model.track(first.id)!!.end }}")
+        if (trimmedEnd != mid + 5) fail("trim failed")
 
         // Delete the face's blur, then put it back by hand and let the tracker follow it.
         val target = orig[mid]!!
@@ -137,6 +167,9 @@ class EditorScreenTest {
         note("after edits: ${rule.runOnIdle { ctrl.model.tracks.joinToString { "${it.id}:${it.start}-${it.end}x${"%.1f".format(it.scale)}" } }}")
         Thread.sleep(1000)
         shot(outDir, "5_after_edits.png")
+        rule.runOnIdle { ctrl.togglePreview() }
+        Thread.sleep(1200)
+        shot(outDir, "6_outlines.png")
 
         val saved = runBlocking(Dispatchers.Main) {
             FaceBlurProcessor(ctx).render(info, settings, analysis, ctrl.model, 0) {}
