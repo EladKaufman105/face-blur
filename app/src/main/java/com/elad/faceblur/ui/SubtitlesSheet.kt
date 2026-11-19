@@ -118,6 +118,7 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
                     }
                 }
 
+                WordsPerCueChips(ctrl)
                 val dl = models.downloading
                 val prog = ctrl.subsProgress
                 when {
@@ -148,6 +149,10 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
                 }
             }
             if (count > 0) {
+                OutlinedButton(
+                    onClick = { ctrl.subsSheet = false; ctrl.listEditor = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(t("עריכת כל הכתוביות ברשימה")) }
                 OutlinedButton(
                     onClick = { ctrl.subsSheet = false; ctrl.stylePanel = true },
                     modifier = Modifier.fillMaxWidth(),

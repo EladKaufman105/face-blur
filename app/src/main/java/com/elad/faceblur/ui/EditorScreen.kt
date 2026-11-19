@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -153,6 +154,7 @@ fun EditorScreen(
         when {
             ctrl.addMode -> ctrl.addMode = false
             ctrl.stylePanel -> ctrl.stylePanel = false
+            ctrl.listEditor -> ctrl.listEditor = false
             ctrl.selectedId != null || ctrl.selectedCueId != null -> ctrl.deselect()
             else -> confirmClose = true
         }
@@ -227,10 +229,12 @@ fun EditorScreen(
         // Video controls and timelines run left to right even in a Hebrew UI.
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Transport(ctrl, busy)
-            if (!ctrl.stylePanel) Timeline(ctrl, busy)
+            if (!ctrl.stylePanel && !ctrl.listEditor) Timeline(ctrl, busy)
         }
 
-        if (ctrl.stylePanel) {
+        if (ctrl.listEditor) {
+            AllSubtitlesPanel(ctrl, Modifier.fillMaxHeight(0.6f))
+        } else if (ctrl.stylePanel) {
             SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
         } else {
             val sel = ctrl.selected
@@ -1032,6 +1036,7 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
             if (cue != null) {
                 Tool(t("ערוך טקסט"), Icons.Filled.Edit, true, wide = true) { ctrl.pauser(); ctrl.cueEditor = true }
                 Tool(t("עיצוב"), EditorIcons.TextFormat, true) { ctrl.pauser(); ctrl.stylePanel = true }
+                Tool(t("כל הכתוביות"), AppIcons.ListLines, true, wide = true) { ctrl.pauser(); ctrl.listEditor = true }
                 Tool(t("מחק"), Icons.Filled.Delete, true) { ctrl.deleteSelectedCue() }
                 Tool(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
             } else if (sel == null) {
@@ -1040,6 +1045,9 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
                     Tool(t("כתוביות"), EditorIcons.Subtitles, !busy, wide = subsOnly) { ctrl.pauser(); ctrl.subsSheet = true }
                     if (ctrl.model.cues.isNotEmpty() || subsOnly) {
                         Tool(t("עיצוב"), EditorIcons.TextFormat, !busy, wide = subsOnly) { ctrl.pauser(); ctrl.stylePanel = true }
+                    }
+                    if (ctrl.model.cues.isNotEmpty()) {
+                        Tool(t("כל הכתוביות"), AppIcons.ListLines, !busy, wide = true) { ctrl.pauser(); ctrl.listEditor = true }
                     }
                 }
                 if (subsOnly) subsTools()

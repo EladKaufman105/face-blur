@@ -35,12 +35,40 @@ class EditTrack(
     )
 }
 
+/** When a word is said (media time, ms). */
+class TimedWord(val startMs: Long, val endMs: Long)
+
+/** A new subtitle sentence from speech recognition. */
+class NewCue(val startMs: Long, val endMs: Long, val he: String, val en: String, val src: String, val words: List<TimedWord>?)
+
 /**
  * One subtitle: time range in milliseconds of media time, Hebrew and English text (either may
  * be empty).
+ *
+ * @param group subtitles split from one sentence share a group; they're merged back when the
+ *   words per subtitle change.
+ * @param src the spoken language of the text, "he" or "en" ("" if unknown).
+ * @param words when each word of the spoken text is said, if known.
  */
-class Cue(val id: Int, var startMs: Long, var endMs: Long, var he: String, var en: String) {
-    fun copy() = Cue(id, startMs, endMs, he, en)
+class Cue(
+    val id: Int,
+    var startMs: Long,
+    var endMs: Long,
+    var he: String,
+    var en: String,
+    var group: Int = id,
+    var src: String = "",
+    var words: List<TimedWord>? = null,
+) {
+    fun copy() = Cue(id, startMs, endMs, he, en, group, src, words)
+
+    /** The text in the spoken language (Hebrew if unknown). */
+    val srcText get() = when (src) {
+        "en" -> en
+        "he" -> he
+        else -> he.ifBlank { en }
+    }
+
     fun text(lang: SubLang): String = when (lang) {
         SubLang.HE -> he
         SubLang.EN -> en
@@ -254,6 +282,81 @@ class EditModel(
         snapshot()
         cues.clear()
         for ((a, b, t) in list.sortedBy { it.first }) cues += Cue(nextCueId++, a, b, t.first, t.second)
+        changed()
+    }
+
+    /** Replaces all subtitles with recognized sentences, each its own group (one undo step). */
+    fun setSentences(list: List<NewCue>) {
+        snapshot()
+        cues.clear()
+        for (n in list.sortedBy { it.startMs }) {
+            val id = nextCueId++
+            cues += Cue(id, n.startMs, n.endMs, n.he, n.en, id, n.src, n.words)
+        }
+        changed()
+    }
+
+    /**
+     * Re-splits every sentence into subtitles of up to [n] words of the spoken language (0: whole
+     * sentences), keeping the other language alongside. One undo step.
+     */
+    fun regroup(n: Int, undoable: Boolean = true) {
+        if (cues.isEmpty()) return
+        if (undoable) snapshot()
+        val groups = LinkedHashMap<Int, MutableList<Cue>>()
+        for (c in cues.sortedBy { it.startMs }) groups.getOrPut(c.group) { ArrayList() } += c
+        val out = ArrayList<Cue>()
+        for ((g, cs) in groups) out += Subtitles.split(Subtitles.merge(cs), n, g) { nextCueId++ }
+        cues.clear()
+        cues += out.sortedBy { it.startMs }
+        changed()
+    }
+
+    /** Joins a subtitle with the next one. */
+    fun mergeWithNext(id: Int): Boolean {
+        val sorted = cues.sortedBy { it.startMs }
+        val i = sorted.indexOfFirst { it.id == id }
+        if (i < 0 || i + 1 >= sorted.size) return false
+        snapshot()
+        val a = sorted[i]
+        val b = sorted[i + 1]
+        val m = Subtitles.merge(listOf(a, b))
+        a.endMs = m.endMs
+        a.he = m.he
+        a.en = m.en
+        a.src = m.src
+        a.words = m.words
+        cues.remove(b)
+        changed()
+        return true
+    }
+
+    /** Replaces [find] with [replace] in every subtitle (both languages); returns how many. */
+    fun replaceAll(find: String, replace: String, ignoreCase: Boolean = true): Int {
+        if (find.isEmpty()) return 0
+        var n = 0
+        for (c in cues) {
+            n += Regex.escape(find).toRegex(if (ignoreCase) setOf(RegexOption.IGNORE_CASE) else emptySet()).findAll(c.he + "\n" + c.en).count()
+        }
+        if (n == 0) return 0
+        snapshot()
+        for (c in cues) {
+            c.he = c.he.replace(find, replace, ignoreCase)
+            c.en = c.en.replace(find, replace, ignoreCase)
+        }
+        changed()
+        return n
+    }
+
+    /**
+     * A translation of a whole group's sentence arriving: spread its words over the group's
+     * subtitles in proportion to their spoken words. No undo step.
+     */
+    fun fillGroup(group: Int, translated: String, intoEnglish: Boolean) {
+        val cs = cues.filter { it.group == group }.sortedBy { it.startMs }
+        if (cs.isEmpty()) return
+        val parts = Subtitles.spread(Subtitles.words(translated), cs.map { Subtitles.words(it.srcText).size })
+        cs.forEachIndexed { i, c -> if (intoEnglish) c.en = parts[i] else c.he = parts[i] }
         changed()
     }
 

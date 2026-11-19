@@ -3,6 +3,7 @@ package com.elad.faceblur.subs
 import android.content.Context
 import android.net.Uri
 import android.os.SystemClock
+import com.elad.faceblur.edit.TimedWord
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
@@ -16,8 +17,18 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 import kotlin.math.min
 
-/** A transcribed line: time range (ms) and both languages. */
-class SubLine(val startMs: Long, val endMs: Long, val he: String, val en: String)
+/**
+ * A transcribed sentence: time range (ms), both languages, the spoken one ("he", "en" or "")
+ * and when each of its spoken words is said.
+ */
+class SubLine(
+    val startMs: Long,
+    val endMs: Long,
+    val he: String,
+    val en: String,
+    val src: String = "",
+    val words: List<TimedWord>? = null,
+)
 
 /** @param translated false if the translation step failed (lines have one language only). */
 class SubResult(val lines: List<SubLine>, val speechLang: String, val translated: Boolean)
@@ -81,7 +92,8 @@ object SubtitleEngine {
                         delay(250)
                     }
                 }
-                val code = WhisperNative.transcribe(h, pcm, lang, threads, MAX_CHARS, null) { p -> reported.set(p) }
+                // max length 1 = one segment per word, each with its own time.
+                val code = WhisperNative.transcribe(h, pcm, lang, threads, 1, null) { p -> reported.set(p) }
                 done.set(true)
                 ticker.cancel()
                 watcher.cancel()
@@ -99,19 +111,20 @@ object SubtitleEngine {
         } finally {
             WhisperNative.free(h)
         }
-        val lines = tidy(raw).map { (a, b, t) ->
+        val lines = sentences(raw).map { s ->
             // People switch languages mid-video (the Hebrew model writes English speech in
-            // English), so each line keeps its own language.
-            when (lineLanguage(t, detected)) {
-                "en" -> SubLine(a, b, "", t)
-                "he" -> SubLine(a, b, t, "")
-                else -> SubLine(a, b, t, t)
+            // English), so each sentence keeps its own language.
+            val t = s.text
+            when (val l = lineLanguage(t, detected)) {
+                "en" -> SubLine(s.startMs, s.endMs, "", t, l, s.words)
+                "he" -> SubLine(s.startMs, s.endMs, t, "", l, s.words)
+                else -> SubLine(s.startMs, s.endMs, t, t, "", s.words)
             }
         }
         if (!translate || lines.isEmpty()) return@withContext SubResult(lines, detected, false)
         val out = lines.toMutableList()
         val ok = try {
-            translateLines(lines.map { it.he to it.en }, onProgress) { i, he, en -> out[i] = SubLine(lines[i].startMs, lines[i].endMs, he, en) }
+            translateLines(lines.map { it.he to it.en }, onProgress) { i, he, en -> out[i] = SubLine(lines[i].startMs, lines[i].endMs, he, en, lines[i].src, lines[i].words) }
             true
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -167,17 +180,41 @@ object SubtitleEngine {
     private fun isNoise(t: String) =
         (t.startsWith("[") && t.endsWith("]")) || (t.startsWith("(") && t.endsWith(")")) || t.all { !it.isLetterOrDigit() }
 
-    /** Readable timing: at least 0.8 s on screen, no overlaps. */
-    private fun tidy(raw: List<Triple<Long, Long, String>>): List<Triple<Long, Long, String>> {
-        val out = ArrayList<Triple<Long, Long, String>>()
-        val sorted = raw.sortedBy { it.first }
-        sorted.forEachIndexed { i, (a, b, t) ->
-            val next = sorted.getOrNull(i + 1)?.first ?: Long.MAX_VALUE
-            val end = min(max(b, a + 800), next)
-            out += Triple(a, max(end, a + 200), t)
+    class Sentence(val startMs: Long, val endMs: Long, val text: String, val words: List<TimedWord>)
+
+    /**
+     * Words -> sentences: a new one after . ? ! or a pause, or when it would grow past
+     * [MAX_CHARS]. Readable timing: at least 0.8 s on screen, no overlaps.
+     */
+    fun sentences(words: List<Triple<Long, Long, String>>): List<Sentence> {
+        val sorted = words.sortedBy { it.first }
+        val groups = ArrayList<List<Triple<Long, Long, String>>>()
+        var cur = ArrayList<Triple<Long, Long, String>>()
+        var chars = 0
+        sorted.forEachIndexed { i, w ->
+            cur += w
+            chars += w.third.length + 1
+            val next = sorted.getOrNull(i + 1)
+            val end = w.third.trimEnd().lastOrNull()?.let { it in ".?!…" } == true
+            val pause = next != null && next.first - w.second > PAUSE_MS
+            val full = next != null && chars + next.third.length > MAX_CHARS
+            if (next == null || end || pause || full) {
+                groups += cur
+                cur = ArrayList()
+                chars = 0
+            }
+        }
+        val out = ArrayList<Sentence>()
+        groups.forEachIndexed { i, g ->
+            val a = g.first().first
+            val nextStart = groups.getOrNull(i + 1)?.first()?.first ?: Long.MAX_VALUE
+            val b = min(max(g.last().second, a + 800), nextStart)
+            out += Sentence(a, max(b, a + 200), g.joinToString(" ") { it.third }, g.map { TimedWord(it.first, it.second) })
         }
         return out
     }
+
+    private const val PAUSE_MS = 700L
 
     /** Max characters per subtitle (about two short lines). */
     private const val MAX_CHARS = 64

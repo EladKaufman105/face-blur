@@ -55,6 +55,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,10 +81,19 @@ private val CardShape = RoundedCornerShape(20.dp)
 
 @Composable
 fun MainScreen(vm: MainViewModel) {
+    // What the picked video is for: blurring (and the settings screen) or subtitles only.
+    var pickForSubs by rememberSaveable { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) vm.load(uri)
+        if (uri != null) vm.load(uri, thenSubtitles = pickForSubs)
     }
-    val pick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
+    val pick = {
+        pickForSubs = false
+        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+    }
+    val pickSubs = {
+        pickForSubs = true
+        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+    }
     val state = vm.state
     val working = state is UiState.Working
 
@@ -121,7 +132,17 @@ fun MainScreen(vm: MainViewModel) {
         ) {
             Header(onSettings = { showSettings = true })
             when (state) {
-                UiState.Empty -> PickCard(pick)
+                UiState.Empty -> {
+                    PickCard(pick)
+                    SubtitlesCard(pickSubs)
+                    Text(
+                        t("אפשר גם לשתף סרטון מהגלריה ישירות לאפליקציה"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center,
+                    )
+                }
                 UiState.Loading -> Box(Modifier.fillMaxWidth().height(200.dp), Alignment.Center) {
                     CircularProgressIndicator()
                 }
@@ -236,13 +257,44 @@ private fun PickCard(onPick: () -> Unit) {
                 Alignment.Center,
             ) { Icon(Icons.Filled.Add, null, tint = MaterialTheme.colorScheme.onPrimary) }
             Spacer(Modifier.height(14.dp))
-            Text(t("בחר סרטון"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(t("טשטוש פנים"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
             Text(
-                t("או שתף סרטון מהגלריה ישירות לאפליקציה"),
+                t("בחר סרטון, והפנים בו יטושטשו אוטומטית"),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+@Composable
+private fun SubtitlesCard(onPick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(CardShape)
+            .clickable(onClick = onPick),
+        shape = CardShape,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(26.dp))
+                    .background(MaterialTheme.colorScheme.primary),
+                Alignment.Center,
+            ) { Icon(AppIcons.Subtitles, null, tint = MaterialTheme.colorScheme.onPrimary) }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(t("כתוביות לסרטון"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    t("זיהוי דיבור, תרגום ועיצוב בסגנון טיקטוק. בלי טשטוש."),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

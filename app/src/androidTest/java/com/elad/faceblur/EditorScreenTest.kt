@@ -237,9 +237,6 @@ class EditorScreenTest {
         val src = File(ctx.cacheDir, "main_$name")
         inst.context.assets.open("samples/$name").use { i -> src.outputStream().use { i.copyTo(it) } }
         val vm = inst.onMain { MainViewModel(ctx.applicationContext as android.app.Application) }
-        inst.runOnMainSync { vm.load(Uri.fromFile(src)) }
-        val t0 = System.currentTimeMillis()
-        while (inst.onMain { vm.state !is UiState.Ready } && System.currentTimeMillis() - t0 < 20_000) Thread.sleep(100)
         rule.setContent {
             val prefs = vm.prefs
             FaceBlurTheme(prefs.themeMode, prefs.palette) {
@@ -247,6 +244,12 @@ class EditorScreenTest {
                 CompositionLocalProvider(LocalLayoutDirection provides d) { MainScreen(vm) }
             }
         }
+        rule.waitForIdle()
+        Thread.sleep(600)
+        shot(outDir, "9a_home.png")
+        inst.runOnMainSync { vm.load(Uri.fromFile(src)) }
+        val t0 = System.currentTimeMillis()
+        while (inst.onMain { vm.state !is UiState.Ready } && System.currentTimeMillis() - t0 < 20_000) Thread.sleep(100)
         rule.waitForIdle()
         Thread.sleep(800)
         shot(outDir, "9_settings_he.png")

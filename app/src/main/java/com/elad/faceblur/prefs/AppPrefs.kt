@@ -39,6 +39,9 @@ class AppPrefs(context: Context) {
         private set
     var subStyle by mutableStateOf(SubtitleStyle.fromJson(sp.getString("sub_style", null)))
         private set
+    /** Spoken words per subtitle (0: whole sentences). */
+    var subsWords by mutableStateOf(sp.getInt("subs_words", 0))
+        private set
 
     init {
         I18n.lang = lang
@@ -70,6 +73,11 @@ class AppPrefs(context: Context) {
             .putString("export_subs", v.subs.name)
             .putBoolean("export_srt", v.saveSrt)
             .apply()
+    }
+
+    fun updateSubsWords(v: Int) {
+        subsWords = v
+        sp.edit().putInt("subs_words", v).apply()
     }
 
     fun updateSubStyle(v: SubtitleStyle) {

@@ -58,7 +58,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var job: Job? = null
     private var editor: EditorController? = null
 
-    fun load(uri: Uri) {
+    /** @param thenSubtitles go straight to the subtitles editor (no blurring). */
+    fun load(uri: Uri, thenSubtitles: Boolean = false) {
         if (state is UiState.Working) return
         closeSession()
         state = UiState.Loading
@@ -68,6 +69,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 UiState.Failed(null, e.message ?: t("לא ניתן לפתוח את הסרטון"))
             }
+            if (thenSubtitles && state is UiState.Ready) startSubtitles()
         }
     }
 
@@ -82,7 +84,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val t0 = SystemClock.elapsedRealtime()
                 val analysis = processor.analyze(info, settings) { p -> state = UiState.Working(info, 1, p) }
                 val session = EditSession(info, settings, analysis, SystemClock.elapsedRealtime() - t0)
-                val ctrl = EditorController(session, viewModelScope, getApplication(), models)
+                val ctrl = EditorController(session, viewModelScope, getApplication(), models, prefs)
                 editor = ctrl
                 if (review) {
                     state = UiState.Editing(info, ctrl)
@@ -104,7 +106,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             guard(info, onCancel = { UiState.Ready(info) }) {
                 val analysis = withContext(Dispatchers.IO) { FaceBlurProcessor.framesOnly(getApplication(), info) }
                 val session = EditSession(info, Settings(mode, strength, padding, sensitive), analysis, 0, subtitlesOnly = true)
-                val ctrl = EditorController(session, viewModelScope, getApplication(), models)
+                val ctrl = EditorController(session, viewModelScope, getApplication(), models, prefs)
                 ctrl.previewAvailable = false
                 ctrl.subsSheet = true
                 editor = ctrl

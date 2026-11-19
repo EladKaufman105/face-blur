@@ -174,6 +174,22 @@ class SubtitlesTest {
         Thread.sleep(800)
         shot(outDir, "4_after_generate.png")
 
+        // Two words per subtitle, then the list of all subtitles.
+        rule.runOnIdle { ctrl.changeWordsPerCue(2) }
+        val chunks = rule.runOnIdle { session.model.cues.map { it.copy() } }
+        note("2 words per subtitle: ${chunks.size} subtitles: " + chunks.joinToString(" | ") { "${it.startMs}-${it.endMs} '${it.en}' / '${it.he}'" })
+        if (chunks.size < 8 || chunks.any { it.en.split(" ").size > 2 }) fail("regroup to 2 words")
+        if (chunks.zipWithNext().any { (a, b) -> a.endMs > b.startMs }) fail("overlapping subtitles")
+        rule.runOnIdle { ctrl.listEditor = true }
+        rule.waitForIdle()
+        Thread.sleep(1000)
+        shot(outDir, "4b_list_editor.png")
+        rule.runOnIdle {
+            ctrl.listEditor = false
+            ctrl.changeWordsPerCue(0)
+        }
+        if (rule.runOnIdle { session.model.cues.size } != n) fail("back to sentences")
+
         // Export: burned-in English + .srt files.
         val out = runBlocking(Dispatchers.Main) {
             FaceBlurProcessor(ctx).render(

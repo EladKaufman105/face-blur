@@ -14,6 +14,7 @@ import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
 import com.elad.faceblur.track.FaceTimeline
 import com.elad.faceblur.subs.ModelManager
+import com.elad.faceblur.prefs.AppPrefs
 import com.elad.faceblur.subs.SpeechModel
 import com.elad.faceblur.subs.SubtitleEngine
 import kotlinx.coroutines.CoroutineScope
@@ -51,6 +52,7 @@ class EditorController(
     private val appContext: Context? = null,
     /** Speech models for subtitles (null: subtitles unavailable). */
     val models: ModelManager? = null,
+    private val prefs: AppPrefs? = null,
 ) {
     val model get() = session.model
     val padding get() = session.settings.padding
@@ -85,6 +87,12 @@ class EditorController(
     var cueEditor by mutableStateOf(false)
     /** The subtitle look panel is open (in place of the timeline). */
     var stylePanel by mutableStateOf(false)
+    /** The list of all subtitles is open (in place of the timeline). */
+    var listEditor by mutableStateOf(false)
+    /** Spoken words per subtitle (0: whole sentences). */
+    var wordsPerCue by mutableIntStateOf(prefs?.subsWords ?: 0)
+        private set
+    private var pendingTextSnapshot = false
     private var subsJob: Job? = null
 
     /** Frame the player and the overlay show. */
@@ -322,12 +330,13 @@ class EditorController(
         sync()
     }
 
-    /** A new, empty subtitle at the playhead, opened for typing. */
-    fun addCueHere() {
+    /** A new, empty subtitle at the playhead, opened for typing (in a dialog, or in the list). */
+    fun addCueHere(dialog: Boolean = true): Int {
         val id = model.addCue(nowMs, msAtRelUs(timeOf(frameCount - 1) + frameUs))
         sync()
         selectCue(id)
-        cueEditor = true
+        if (dialog) cueEditor = true
+        return id
     }
 
     fun beginCueTrim() {
@@ -390,7 +399,8 @@ class EditorController(
                     main.post { if (subsProgress != null) subsProgress = st to p }
                 }
                 // Keep the transcription even if translating fails or is stopped.
-                model.setCues(r.lines.map { Triple(it.startMs, it.endMs, it.he to it.en) })
+                model.setSentences(r.lines.map { NewCue(it.startMs, it.endMs, it.he, it.en, it.src, it.words) })
+                if (wordsPerCue > 0) model.regroup(wordsPerCue, undoable = false)
                 sync()
                 if (r.lines.isEmpty()) {
                     notice = t("לא נמצא דיבור בסרטון")
@@ -412,8 +422,18 @@ class EditorController(
         }
     }
 
-    /** Subtitles with only one of the two languages. */
-    val untranslatedCount get() = model.cues.count { it.he.isBlank() != it.en.isBlank() }
+    /** Sentences (groups) that have only one of the two languages: (group, he, en). */
+    private fun untranslated(): List<Triple<Int, String, String>> {
+        val groups = LinkedHashMap<Int, MutableList<Cue>>()
+        for (c in model.cues.sortedBy { it.startMs }) groups.getOrPut(c.group) { ArrayList() } += c
+        return groups.mapNotNull { (g, cs) ->
+            val he = cs.joinToString(" ") { it.he.trim() }.trim()
+            val en = cs.joinToString(" ") { it.en.trim() }.trim()
+            if (he.isBlank() == en.isBlank()) null else Triple(g, he, en)
+        }
+    }
+
+    val untranslatedCount get() = untranslated().size
 
     /** Translates the subtitles that have only one language (again, after a failure). */
     fun translateSubtitles() {
@@ -428,17 +448,19 @@ class EditorController(
         }
     }
 
+    /** Whole sentences translate better than pieces of them: one per group. */
     private suspend fun translateMissing() {
-        val cues = model.cues.map { it.copy() }
-        if (cues.none { it.he.isBlank() != it.en.isBlank() }) return
+        val todo = untranslated()
+        if (todo.isEmpty()) return
         subsProgress = SubtitleEngine.Stage.TRANSLATE to 0f
         try {
             SubtitleEngine.translateLines(
-                cues.map { it.he to it.en },
+                todo.map { it.second to it.third },
                 { st, p -> main.post { if (subsProgress != null) subsProgress = st to p } },
             ) { i, he, en ->
+                val (g, he0, _) = todo[i]
                 main.post {
-                    model.setCueText(cues[i].id, he, en)
+                    if (he0.isBlank()) model.fillGroup(g, he, intoEnglish = false) else model.fillGroup(g, en, intoEnglish = true)
                     sync()
                 }
             }
@@ -450,6 +472,46 @@ class EditorController(
             notice = t("התרגום לא הצליח (צריך אינטרנט פעם אחת להורדת חבילת השפה). אפשר לנסות שוב מתפריט הכתוביות.")
             android.util.Log.w("FaceBlur", "translation failed", e)
         }
+    }
+
+    /** Re-splits the subtitles into [n] spoken words each (0: whole sentences); remembered. */
+    fun changeWordsPerCue(n: Int) {
+        wordsPerCue = n
+        prefs?.updateSubsWords(n)
+        if (model.cues.isEmpty()) return
+        model.regroup(n)
+        sync()
+    }
+
+    fun deleteCue(id: Int) {
+        model.deleteCue(id)
+        sync()
+    }
+
+    fun mergeCueWithNext(id: Int) {
+        if (model.mergeWithNext(id)) sync()
+    }
+
+    /** Find and replace in every subtitle; returns how many were replaced. */
+    fun replaceInSubtitles(find: String, replace: String): Int {
+        val n = model.replaceAll(find, replace)
+        if (n > 0) sync()
+        return n
+    }
+
+    /** A text field of a subtitle got focus: its first change will be one undo step. */
+    fun beginTextEdit() {
+        pendingTextSnapshot = true
+    }
+
+    /** Typing in a subtitle (from the list). */
+    fun typeCueText(id: Int, he: String, en: String) {
+        if (pendingTextSnapshot) {
+            model.beginGesture()
+            pendingTextSnapshot = false
+        }
+        model.setCueText(id, he, en)
+        sync()
     }
 
     fun cancelSubtitles() {
