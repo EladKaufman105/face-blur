@@ -98,14 +98,16 @@ class ModelManager(context: Context) {
                         FileOutputStream(part, resume).use { out ->
                             val buf = ByteArray(1 shl 16)
                             var done = already
+                            var shown = -1f
                             while (true) {
                                 ensureActive()
                                 val n = input.read(buf)
                                 if (n < 0) break
                                 out.write(buf, 0, n)
                                 done += n
-                                if (total > 0) {
-                                    val p = done.toFloat() / total
+                                val p = if (total > 0) done.toFloat() / total else 0f
+                                if (p - shown >= 0.002f) {
+                                    shown = p
                                     withContext(Dispatchers.Main) { progress = p }
                                 }
                             }

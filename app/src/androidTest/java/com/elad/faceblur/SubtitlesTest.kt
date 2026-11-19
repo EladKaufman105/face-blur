@@ -116,10 +116,15 @@ class SubtitlesTest {
         Thread.sleep(1500)
         shot(outDir, "1_subs_timeline.png")
         rule.runOnIdle { ctrl.cueEditor = true }
+        rule.waitForIdle()
+        runCatching { rule.waitUntil(5000) { rule.onAllNodes(isRoot()).fetchSemanticsNodes().size > 1 } }
         Thread.sleep(1200)
         screen(outDir, "2_cue_editor.png")
         rule.runOnIdle {
             ctrl.cueEditor = false
+        }
+        rule.waitForIdle()
+        rule.runOnIdle {
             ctrl.editSelectedCue("שלום עולם", "Hello world")
             ctrl.deselect()
         }
