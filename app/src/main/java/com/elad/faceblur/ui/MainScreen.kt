@@ -29,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
@@ -89,6 +90,13 @@ fun MainScreen(vm: MainViewModel) {
     }
     BackHandler(enabled = working) { /* keep the export alive */ }
 
+    if (state is UiState.Editing) {
+        EditorTheme {
+            EditorScreen(state.editor, onClose = vm::backToSettings, onExport = vm::export)
+        }
+        return
+    }
+
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { insets ->
         Column(
             Modifier
@@ -117,14 +125,20 @@ fun MainScreen(vm: MainViewModel) {
                     VideoCard(state.info, onReplace = null)
                     WorkingCard(state, onCancel = vm::cancel)
                 }
-                is UiState.Done -> DoneCard(state, onAgain = vm::backToSettings, onNew = { vm.reset(); pick() })
+                is UiState.Editing -> Unit
+                is UiState.Done -> DoneCard(
+                    state,
+                    onEdit = if (state.canEdit) vm::edit else null,
+                    onAgain = vm::backToSettings,
+                    onNew = { vm.reset(); pick() },
+                )
                 is UiState.NoFaces -> {
                     VideoCard(state.info, onReplace = pick)
                     MessageCard(
                         title = "לא זוהו פנים בסרטון",
-                        body = "אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב.",
-                        primary = "נסה עם זיהוי מורחב" to vm::retrySensitive,
-                        secondary = "חזרה" to vm::backToSettings,
+                        body = "אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב, או סמן אותן ידנית.",
+                        primary = if (state.canEdit) "סמן טשטוש ידנית" to vm::edit else "נסה עם זיהוי מורחב" to vm::retrySensitive,
+                        secondary = if (state.canEdit) "נסה עם זיהוי מורחב" to vm::retrySensitive else "חזרה" to vm::backToSettings,
                     )
                 }
                 is UiState.Failed -> {
@@ -276,6 +290,18 @@ private fun SettingsCard(vm: MainViewModel) {
                 Spacer(Modifier.width(12.dp))
                 Switch(checked = vm.sensitive, onCheckedChange = { vm.sensitive = it })
             }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("בדיקה ועריכה לפני שמירה", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "אחרי הזיהוי נפתח עורך: אפשר להוסיף, למחוק, להזיז ולשנות גודל של טשטושים ולקבוע מתי הם מתחילים ונגמרים.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Switch(checked = vm.review, onCheckedChange = { vm.review = it })
+            }
         }
     }
 }
@@ -332,7 +358,7 @@ private fun WorkingCard(state: UiState.Working, onCancel: () -> Unit) {
 }
 
 @Composable
-private fun DoneCard(state: UiState.Done, onAgain: () -> Unit, onNew: () -> Unit) {
+private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> Unit, onNew: () -> Unit) {
     val context = LocalContext.current
     val uri = state.result.uri
     SectionCard {
@@ -390,6 +416,13 @@ private fun DoneCard(state: UiState.Done, onAgain: () -> Unit, onNew: () -> Unit
                     Icon(Icons.Filled.PlayArrow, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("פתח")
+                }
+            }
+            if (onEdit != null) {
+                OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Filled.Edit, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("ערוך טשטושים וייצא שוב")
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

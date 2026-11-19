@@ -1,7 +1,6 @@
 package com.elad.faceblur.analysis
 
 import android.content.Context
-import com.elad.faceblur.track.FaceTimeline
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -29,7 +28,7 @@ object OpenCv {
 /**
  * Analysis pass: receives each frame (RGBA, top row first) from the GL pipeline, runs face
  * detection on ~30 frames per second of video and measures camera motion and hard cuts on
- * every frame. When the pass is done, [buildTimeline] links everything into face tracks
+ * every frame. When the pass is done, [result] links everything into face tracks
  * offline. Called on the video pipeline's GL thread; the timeline is read after the pass.
  */
 class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val fps: Float) : Closeable {
@@ -47,6 +46,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     private var detector: FaceDetector? = null
     private val camera = CameraMotion()
     private val cutDetector = CutDetector()
+    private var frames: FrameStore? = FrameStore(File(context.cacheDir, "frames.bin"))
 
     private val times = ArrayList<Long>()
     private val dets = HashMap<Int, List<Det>>()
@@ -76,6 +76,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         detector = FaceDetector(retinaPath, yunetPath)
         camera.reset()
         cutDetector.reset()
+        frames?.reset()
         times.clear()
         dets.clear()
         cuts.clear()
@@ -116,6 +117,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         Imgproc.resize(src, small, Size(tw.toDouble(), th.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
         val gray = Mat()
         Imgproc.cvtColor(small, gray, Imgproc.COLOR_RGBA2GRAY)
+        frames?.append(gray)
         if (cutDetector.isCut(gray)) {
             cuts += idx
             camera.reset()
@@ -134,25 +136,37 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     @Synchronized
     fun frameCount() = times.size
 
+    /** Everything the analysis found; takes over the frame store (closing the result frees it). */
     @Synchronized
-    fun buildTimeline(padding: Float): FaceTimeline {
+    fun result(): AnalysisResult {
         val n = times.size
         val diffs = (1 until n).map { times[it] - times[it - 1] }.filter { it > 0 }.sorted()
-        val measuredFps = if (diffs.isEmpty()) fps else 1_000_000f / diffs[diffs.size / 2]
+        val measuredFps = (if (diffs.isEmpty()) fps else 1_000_000f / diffs[diffs.size / 2]).coerceIn(5f, 240f)
         val aspect = if (uprightW > 0) uprightH.toFloat() / uprightW else 1f
-        val tracks = OfflineTracker(measuredFps.coerceIn(5f, 240f), aspect, sensitive).run(n, dets, motion, cuts)
-        return FaceTimeline.build(
-            tracks,
-            times.toLongArray(),
-            cuts.filter { it < n }.map { times[it] }.toLongArray(),
-            uprightW, uprightH, rotation, padding,
-        )
+        val cutList = cuts.filter { it in 1 until n }
+        val tracks = OfflineTracker(measuredFps, aspect, sensitive).run(n, dets, motion, cutList)
+        val store = frames
+        frames = null
+        return AnalysisResult(
+            times = times.toLongArray(),
+            cuts = cutList.toIntArray(),
+            motion = motion.copyOf(2 * n),
+            dets = HashMap(dets),
+            tracks = tracks,
+            uprightW = uprightW,
+            uprightH = uprightH,
+            rotation = rotation,
+            fps = measuredFps,
+            frames = store?.takeIf { it.size == n },
+        ).also { if (it.frames == null) store?.close() }
     }
 
     @Synchronized
     override fun close() {
         detector?.close()
         detector = null
+        frames?.close()
+        frames = null
         camera.close()
         cutDetector.close()
         rgba.release()

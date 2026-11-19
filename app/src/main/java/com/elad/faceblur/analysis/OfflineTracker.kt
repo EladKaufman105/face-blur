@@ -47,14 +47,7 @@ class OfflineTracker(private val fps: Float, private val aspect: Float, private 
      */
     fun run(n: Int, dets: Map<Int, List<Det>>, motion: FloatArray, cuts: List<Int>): List<TreeMap<Int, Box>> {
         if (n == 0) return emptyList()
-        val cutSet = cuts.toHashSet()
-        val offX = FloatArray(n)
-        val offY = FloatArray(n)
-        for (i in 1 until n) {
-            if (i in cutSet) continue
-            offX[i] = offX[i - 1] + motion.getOrElse(2 * i) { 0f }
-            offY[i] = offY[i - 1] + motion.getOrElse(2 * i + 1) { 0f } * aspect
-        }
+        val (offX, offY) = cameraOffsets(n, motion, cuts, aspect)
 
         val bounds = ArrayList<Int>().apply {
             add(0)
@@ -227,52 +220,73 @@ class OfflineTracker(private val fps: Float, private val aspect: Float, private 
         return out
     }
 
-    /** Centered Gaussian over time: position barely (shaky cameras), size more (no breathing). */
-    private fun smooth(src: TreeMap<Int, FloatArray>): TreeMap<Int, Box> {
-        val keys = src.keys.toIntArray()
-        val vals = keys.map { src[it]!! }
-        val sig = floatArrayOf(SIGMA_POS_S, SIGMA_POS_S, SIGMA_SIZE_S, SIGMA_SIZE_S).map { it * fps }
-        val out = TreeMap<Int, Box>()
-        for (i in keys.indices) {
-            val r = FloatArray(4)
-            for (c in 0 until 4) {
-                val reach = 3 * sig[c] + 0.5f
-                val s = max(sig[c], 0.5f)
-                var acc = 0f
-                var tw = 0f
-                var j = i
-                while (j >= 0 && keys[i] - keys[j] <= reach) {
-                    val d = (keys[i] - keys[j]) / s
-                    val wt = exp(-0.5f * d * d)
-                    acc += vals[j][c] * wt; tw += wt; j--
-                }
-                j = i + 1
-                while (j < keys.size && keys[j] - keys[i] <= reach) {
-                    val d = (keys[j] - keys[i]) / s
-                    val wt = exp(-0.5f * d * d)
-                    acc += vals[j][c] * wt; tw += wt; j++
-                }
-                r[c] = acc / tw
-            }
-            out[keys[i]] = Box(r[0], r[1], r[2], r[3])
-        }
-        return out
-    }
+    private fun smooth(src: TreeMap<Int, FloatArray>): TreeMap<Int, Box> = smoothBoxes(src, fps)
 
-    private companion object {
-        const val DET_THRESHOLD = 0.4f
-        const val BIRTH_THRESHOLD = 0.45f
-        const val STRONG = 0.6f
-        const val VERIFIED = 0.5f
-        const val MAX_GAP_S = 0.7f
-        const val GATE = 0.6f
-        const val GATE_PER_S = 1.5f
-        const val SIZE_RATIO = 1.7f
-        const val LINK_GAP_S = 1.2f
-        const val ABSORB_GAP_S = 0.7f
-        const val ABSORB_DIST = 1.0f
-        const val EXTEND_S = 0.25f
-        const val SIGMA_POS_S = 0.025f
-        const val SIGMA_SIZE_S = 0.2f
+    companion object {
+        /**
+         * Cumulative camera offset per frame in width units (x: fraction of width, y: in the
+         * same unit), reset to 0 at every cut. Subtracting it gives stabilized coordinates.
+         */
+        fun cameraOffsets(n: Int, motion: FloatArray, cuts: Collection<Int>, aspect: Float): Pair<FloatArray, FloatArray> {
+            val cutSet = cuts.toHashSet()
+            val offX = FloatArray(n)
+            val offY = FloatArray(n)
+            for (i in 1 until n) {
+                if (i in cutSet) continue
+                offX[i] = offX[i - 1] + motion.getOrElse(2 * i) { 0f }
+                offY[i] = offY[i - 1] + motion.getOrElse(2 * i + 1) { 0f } * aspect
+            }
+            return offX to offY
+        }
+
+        /**
+         * Centered Gaussian over time of contiguous per-frame boxes (cx, cy, w, h): position
+         * barely (shaky cameras), size more (no breathing).
+         */
+        fun smoothBoxes(src: TreeMap<Int, FloatArray>, fps: Float): TreeMap<Int, Box> {
+            val keys = src.keys.toIntArray()
+            val vals = keys.map { src[it]!! }
+            val sig = floatArrayOf(SIGMA_POS_S, SIGMA_POS_S, SIGMA_SIZE_S, SIGMA_SIZE_S).map { it * fps }
+            val out = TreeMap<Int, Box>()
+            for (i in keys.indices) {
+                val r = FloatArray(4)
+                for (c in 0 until 4) {
+                    val reach = 3 * sig[c] + 0.5f
+                    val s = max(sig[c], 0.5f)
+                    var acc = 0f
+                    var tw = 0f
+                    var j = i
+                    while (j >= 0 && keys[i] - keys[j] <= reach) {
+                        val d = (keys[i] - keys[j]) / s
+                        val wt = exp(-0.5f * d * d)
+                        acc += vals[j][c] * wt; tw += wt; j--
+                    }
+                    j = i + 1
+                    while (j < keys.size && keys[j] - keys[i] <= reach) {
+                        val d = (keys[j] - keys[i]) / s
+                        val wt = exp(-0.5f * d * d)
+                        acc += vals[j][c] * wt; tw += wt; j++
+                    }
+                    r[c] = acc / tw
+                }
+                out[keys[i]] = Box(r[0], r[1], r[2], r[3])
+            }
+            return out
+        }
+
+        private const val DET_THRESHOLD = 0.4f
+        private const val BIRTH_THRESHOLD = 0.45f
+        private const val STRONG = 0.6f
+        private const val VERIFIED = 0.5f
+        private const val MAX_GAP_S = 0.7f
+        private const val GATE = 0.6f
+        private const val GATE_PER_S = 1.5f
+        private const val SIZE_RATIO = 1.7f
+        private const val LINK_GAP_S = 1.2f
+        private const val ABSORB_GAP_S = 0.7f
+        private const val ABSORB_DIST = 1.0f
+        private const val EXTEND_S = 0.25f
+        private const val SIGMA_POS_S = 0.025f
+        private const val SIGMA_SIZE_S = 0.2f
     }
 }

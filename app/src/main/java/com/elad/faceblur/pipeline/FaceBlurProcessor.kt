@@ -21,7 +21,11 @@ import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
+import com.elad.faceblur.analysis.AnalysisResult
 import com.elad.faceblur.analysis.FaceAnalyzer
+import com.elad.faceblur.edit.EditModel
+import com.elad.faceblur.edit.toEditModel
+import com.elad.faceblur.track.FaceTimeline
 import com.elad.faceblur.effects.BlurEffect
 import com.elad.faceblur.effects.BlurMode
 import com.elad.faceblur.effects.DetectEffect
@@ -56,27 +60,37 @@ sealed interface Outcome {
 
 /**
  * Two passes, both through Media3 Transformer (hardware decode/encode, GPU effects):
- *  1. Analysis: detect (RetinaFace) and track (median flow) faces on every frame (output discarded).
- *  2. Render: blur/pixelate the tracked faces at full resolution, keep audio, keep HDR if possible.
+ *  1. [analyze]: detect faces, measure camera motion and cuts on every frame (output discarded),
+ *     then track offline. The result can be edited ([EditModel]) before rendering.
+ *  2. [render]: blur/pixelate the blurs at full resolution, keep audio, keep HDR if possible.
  *
  * Must be called on the main thread (Transformer's application thread).
  */
 class FaceBlurProcessor(private val context: Context) {
 
+    /** Analysis + render without editing. */
     suspend fun process(
         info: VideoInfo,
         settings: Settings,
         onStage: (Int) -> Unit,
         onProgress: (Float) -> Unit,
     ): Outcome {
-        val cache = context.cacheDir
-
-        // ---- Pass 1: analysis ----
         onStage(1)
         val t0 = SystemClock.elapsedRealtime()
-        val analysisFile = File(cache, "analysis.mp4")
+        analyze(info, settings, onProgress).use { analysis ->
+            val analysisMs = SystemClock.elapsedRealtime() - t0
+            val model = analysis.toEditModel()
+            if (model.tracks.isEmpty()) return Outcome.NoFaces
+            onStage(2)
+            onProgress(0f)
+            return render(info, settings, analysis, model, analysisMs, onProgress)
+        }
+    }
+
+    suspend fun analyze(info: VideoInfo, settings: Settings, onProgress: (Float) -> Unit): AnalysisResult {
+        val analysisFile = File(context.cacheDir, "analysis.mp4")
         val analyzer = withContext(Dispatchers.IO) { FaceAnalyzer(context, settings.sensitive, info.fps) }
-        val (timeline, frames) = try {
+        try {
             val detect = DetectEffect(
                 analyzer, info.rotation,
                 displayLandscape = info.displayWidth >= info.displayHeight,
@@ -94,19 +108,29 @@ class FaceBlurProcessor(private val context: Context) {
                 analyzer.reset()
                 export(composition(item, hdrMode), analysisFile, bitrate = 1_500_000, mime = MimeTypes.VIDEO_H264, onProgress)
             }
-            analyzer.buildTimeline(settings.padding) to analyzer.frameCount()
+            return withContext(Dispatchers.Default) { analyzer.result() }
         } finally {
             analyzer.close()
             analysisFile.delete()
         }
-        val analysisMs = SystemClock.elapsedRealtime() - t0
-        if (timeline.trackCount == 0) return Outcome.NoFaces
+    }
 
-        // ---- Pass 2: render ----
-        onStage(2)
-        onProgress(0f)
+    suspend fun render(
+        info: VideoInfo,
+        settings: Settings,
+        analysis: AnalysisResult,
+        model: EditModel,
+        analysisMs: Long,
+        onProgress: (Float) -> Unit,
+    ): Outcome.Saved {
         val t1 = SystemClock.elapsedRealtime()
-        val out = File(cache, "render.mp4")
+        val timeline = FaceTimeline.build(
+            model.renderTracks(),
+            analysis.times,
+            analysis.cuts.map { analysis.times[it] }.toLongArray(),
+            analysis.uprightW, analysis.uprightH, analysis.rotation, settings.padding,
+        )
+        val out = File(context.cacheDir, "render.mp4")
         out.delete()
         val blur = BlurEffect(timeline, settings.mode, settings.strength)
         val item = EditedMediaItem.Builder(MediaItem.fromUri(info.uri))
@@ -127,7 +151,7 @@ class FaceBlurProcessor(private val context: Context) {
         val saved = withContext(Dispatchers.IO) { saveToGallery(out, "${info.name}_blur") }
         out.delete()
         val renderMs = SystemClock.elapsedRealtime() - t1
-        return Outcome.Saved(saved, timeline.trackCount, keptHdr, frames, analysisMs, renderMs)
+        return Outcome.Saved(saved, timeline.trackCount, keptHdr, analysis.frameCount, analysisMs, renderMs)
     }
 
     private suspend fun runWithHdrFallback(modes: List<Int>, block: suspend (Int) -> Unit) {

@@ -51,3 +51,9 @@ private val Dark = darkColorScheme(
 fun FaceBlurTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) Dark else Light, content = content)
 }
+
+/** The editor is always dark, like video editors: the footage is what should stand out. */
+@Composable
+fun EditorTheme(content: @Composable () -> Unit) {
+    MaterialTheme(colorScheme = Dark, content = content)
+}
