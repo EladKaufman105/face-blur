@@ -123,7 +123,7 @@ object SubPresets {
         SubPreset("מילה אחת", SubtitleStyle(font = SubFont.SECULAR, size = 1.7f, outline = 0.14f, effect = SubEffect.ONE_WORD, position = 0.55f)),
         SubPreset("ויראלי צהוב", SubtitleStyle(font = SubFont.SECULAR, size = 1.25f, textColor = YELLOW_TEXT, outline = 0.2f, effect = SubEffect.POP, position = 0.66f)),
         SubPreset("רקע שחור", SubtitleStyle(font = SubFont.ASSISTANT, size = 1f, outline = 0f, shadow = false, box = true, effect = SubEffect.FADE, position = 0.82f)),
-        SubPreset("רקע לבן", SubtitleStyle(font = SubFont.RUBIK, size = 1f, textColor = BLACK, outline = 0f, shadow = false, box = true, boxColor = 0xF2FFFFFF.toInt(), effect = SubEffect.POP, position = 0.75f)),
+        SubPreset("רקע לבן", SubtitleStyle(font = SubFont.RUBIK, size = 1f, textColor = SubtitleStyle.BLACK, outline = 0f, shadow = false, box = true, boxColor = 0xF2FFFFFF.toInt(), effect = SubEffect.POP, position = 0.75f)),
         SubPreset("מכונת כתיבה", SubtitleStyle(font = SubFont.VARELA, size = 1f, outline = 0f, shadow = false, box = true, effect = SubEffect.TYPEWRITER, position = 0.80f)),
         SubPreset("ניאון", SubtitleStyle(font = SubFont.FREDOKA, size = 1.15f, textColor = CYAN, outline = 0f, shadow = false, glow = true, effect = SubEffect.FADE, position = 0.70f)),
         SubPreset("ירוק קריוקי", SubtitleStyle(font = SubFont.HEEBO, size = 1.1f, outline = 0.16f, accentColor = GREEN, effect = SubEffect.HIGHLIGHT, position = 0.72f)),
