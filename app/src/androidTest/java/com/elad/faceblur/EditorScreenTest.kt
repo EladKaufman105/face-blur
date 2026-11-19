@@ -62,7 +62,8 @@ class EditorScreenTest {
     fun editAndExport() {
         val inst = InstrumentationRegistry.getInstrumentation()
         val ctx = inst.targetContext
-        val outDir = File(ctx.getExternalFilesDir(null), "editor").apply { deleteRecursively(); mkdirs() }
+        // Not cleared: the other test in this class writes here too (test order isn't fixed).
+        val outDir = File(ctx.getExternalFilesDir(null), "editor").apply { mkdirs() }
         val log = StringBuilder()
         fun note(s: String) {
             log.appendLine(s)
@@ -193,6 +194,8 @@ class EditorScreenTest {
         // Export sheet, then the whole editor in English.
         rule.onNodeWithText("ייצוא").performClick()
         rule.waitForIdle()
+        val opened = runCatching { rule.waitUntil(5000) { rule.onAllNodes(isRoot()).fetchSemanticsNodes().size > 1 } }.isSuccess
+        note("export sheet opened: $opened")
         Thread.sleep(1000)
         // The sheet is its own window: capture the last root.
         rule.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().let { bmp ->
@@ -257,7 +260,8 @@ class EditorScreenTest {
         shot(outDir, "10_settings_en.png")
         rule.onNodeWithContentDescription("Settings").performClick()
         rule.waitForIdle()
-        Thread.sleep(800)
+        runCatching { rule.waitUntil(5000) { rule.onAllNodes(isRoot()).fetchSemanticsNodes().size > 1 } }
+        Thread.sleep(1000)
         rule.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap().let { bmp ->
             File(outDir, "11_app_settings.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }

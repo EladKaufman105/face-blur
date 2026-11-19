@@ -35,7 +35,7 @@ internal val English: Map<String, String> = mapOf(
     "תצוגה: מסגרות" to "View: outlines",
     "מחק" to "Delete",
     "פצל" to "Split",
-    "עקוב קדימה" to "Track forward",
+    "עקוב קדימה" to "Track ahead",
     "עקוב אחורה" to "Track back",
     "סיום" to "Done",
     "הגדרות ייצוא" to "Export settings",
