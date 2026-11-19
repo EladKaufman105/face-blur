@@ -27,24 +27,31 @@ object OpenCv {
 }
 
 /**
- * Analysis pass: receives each frame (RGBA, top row first) from the GL pipeline, detects
- * and tracks faces. Called on the video pipeline's GL thread; the timeline is read on the
- * main thread after the pass completes.
+ * Analysis pass: receives each frame (RGBA, top row first) from the GL pipeline, runs face
+ * detection on ~30 frames per second of video and measures camera motion and hard cuts on
+ * every frame. When the pass is done, [buildTimeline] links everything into face tracks
+ * offline. Called on the video pipeline's GL thread; the timeline is read after the pass.
  */
-class FaceAnalyzer(context: Context, sensitive: Boolean, private val fps: Float) : Closeable {
+class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val fps: Float) : Closeable {
 
     // Must run before any Mat field below is constructed (initializers run in declaration order).
     init {
         OpenCv.ensureLoaded()
     }
 
-    /** Long side of the frames handed to [onFrame]. */
-    val maxSide = if (sensitive) 1280 else 960
+    /** Long side of the frames handed to [onFrame]: small/distant faces need the resolution. */
+    val maxSide = 1280
 
-    private val modelPath: String
-    private var detector: RetinaFaceDetector? = null
-    private var tracker: FaceTracker? = null
+    private val retinaPath = asset(context, RetinaFaceDetector.MODEL)
+    private val yunetPath = asset(context, FaceDetector.YUNET_MODEL)
+    private var detector: FaceDetector? = null
+    private val camera = CameraMotion()
+    private val cutDetector = CutDetector()
+
     private val times = ArrayList<Long>()
+    private val dets = HashMap<Int, List<Det>>()
+    private var motion = FloatArray(1024)
+    private val cuts = ArrayList<Int>()
     private var uprightW = 0
     private var uprightH = 0
     private var rotation = 0
@@ -55,25 +62,23 @@ class FaceAnalyzer(context: Context, sensitive: Boolean, private val fps: Float)
     private val bgr = Mat()
     private val small = Mat()
 
-    // Detection ~30 times per second of video; tracking still runs on every frame.
-    private val detectEvery = max(1, (fps / 30f).roundToInt())
+    // Detection ~30 times per second of video (every frame in sensitive mode); camera motion
+    // and cut detection run on every frame.
+    private val detectEvery = if (sensitive) 1 else max(1, (fps / 30f).roundToInt())
 
     init {
-        val file = File(context.filesDir, MODEL)
-        if (!file.exists() || file.length() == 0L) {
-            context.assets.open(MODEL).use { input -> file.outputStream().use { input.copyTo(it) } }
-        }
-        modelPath = file.absolutePath
         reset()
     }
 
     @Synchronized
     fun reset() {
-        tracker?.release()
-        tracker = FaceTracker(fps.coerceIn(5f, 240f))
         detector?.close()
-        detector = RetinaFaceDetector(modelPath)
+        detector = FaceDetector(retinaPath, yunetPath)
+        camera.reset()
+        cutDetector.reset()
         times.clear()
+        dets.clear()
+        cuts.clear()
     }
 
     /**
@@ -104,45 +109,67 @@ class FaceAnalyzer(context: Context, sensitive: Boolean, private val fps: Float)
 
         val idx = times.size
         times += timeUs
-        val runDetection = idx % detectEvery == 0
-        val dets = if (runDetection) {
-            Imgproc.cvtColor(src, bgr, Imgproc.COLOR_RGBA2BGR)
-            detector!!.detect(bgr)
-        } else emptyList()
 
-        val ts = minOf(1f, TRACK_SIDE.toFloat() / max(uprightW, uprightH))
+        val ts = minOf(1f, MOTION_SIDE.toFloat() / max(uprightW, uprightH))
         val tw = max(16, (uprightW * ts).roundToInt())
         val th = max(16, (uprightH * ts).roundToInt())
         Imgproc.resize(src, small, Size(tw.toDouble(), th.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
         val gray = Mat()
         Imgproc.cvtColor(small, gray, Imgproc.COLOR_RGBA2GRAY)
-        tracker!!.step(idx, dets, runDetection, gray)
+        if (cutDetector.isCut(gray)) {
+            cuts += idx
+            camera.reset()
+        }
+        val m = camera.step(gray)
+        if (motion.size < 2 * (idx + 1)) motion = motion.copyOf(motion.size * 2)
+        motion[2 * idx] = m[0]
+        motion[2 * idx + 1] = m[1]
+
+        if (idx % detectEvery == 0) {
+            Imgproc.cvtColor(src, bgr, Imgproc.COLOR_RGBA2BGR)
+            dets[idx] = detector!!.detect(bgr)
+        }
     }
 
     @Synchronized
     fun frameCount() = times.size
 
     @Synchronized
-    fun buildTimeline(padding: Float): FaceTimeline =
-        FaceTimeline.build(
-            tracker!!.finish(),
+    fun buildTimeline(padding: Float): FaceTimeline {
+        val n = times.size
+        val diffs = (1 until n).map { times[it] - times[it - 1] }.filter { it > 0 }.sorted()
+        val measuredFps = if (diffs.isEmpty()) fps else 1_000_000f / diffs[diffs.size / 2]
+        val aspect = if (uprightW > 0) uprightH.toFloat() / uprightW else 1f
+        val tracks = OfflineTracker(measuredFps.coerceIn(5f, 240f), aspect, sensitive).run(n, dets, motion, cuts)
+        return FaceTimeline.build(
+            tracks,
             times.toLongArray(),
-            tracker!!.cutFrames.filter { it < times.size }.map { times[it] }.toLongArray(),
+            cuts.filter { it < n }.map { times[it] }.toLongArray(),
             uprightW, uprightH, rotation, padding,
         )
+    }
 
     @Synchronized
     override fun close() {
-        tracker?.release()
         detector?.close()
+        detector = null
+        camera.close()
+        cutDetector.close()
         rgba.release()
         rotated.release()
         bgr.release()
         small.release()
     }
 
+    private fun asset(context: Context, name: String): String {
+        val file = File(context.filesDir, name)
+        if (!file.exists() || file.length() == 0L) {
+            context.assets.open(name).use { input -> file.outputStream().use { input.copyTo(it) } }
+        }
+        return file.absolutePath
+    }
+
     companion object {
-        const val MODEL = RetinaFaceDetector.MODEL
-        private const val TRACK_SIDE = 640
+        private const val MOTION_SIDE = 640
     }
 }

@@ -39,9 +39,9 @@ class EndToEndTest {
         log.appendLine("samples: $names")
 
         val runs = ArrayList<Pair<String, Settings>>()
-        for (name in names) runs += name to Settings(BlurMode.BLUR, 0.6f, 1.35f, false)
-        names.firstOrNull { it.startsWith("headpose") }?.let { runs += it to Settings(BlurMode.PIXELATE, 0.6f, 1.35f, false) }
-        names.firstOrNull { it.startsWith("classroom.") }?.let { runs += it to Settings(BlurMode.BLUR, 0.6f, 1.35f, true) }
+        for (name in names) runs += name to Settings(BlurMode.BLUR, 0.6f, 1.5f, false)
+        names.firstOrNull { it.startsWith("headpose") }?.let { runs += it to Settings(BlurMode.PIXELATE, 0.6f, 1.5f, false) }
+        names.firstOrNull { it.startsWith("classroom.") }?.let { runs += it to Settings(BlurMode.BLUR, 0.6f, 1.5f, true) }
 
         for ((name, settings) in runs) {
             val tag = name.removeSuffix(".mp4") + "_" + settings.mode.name.lowercase() + if (settings.sensitive) "_sens" else ""

@@ -122,7 +122,7 @@ fun MainScreen(vm: MainViewModel) {
                     VideoCard(state.info, onReplace = pick)
                     MessageCard(
                         title = "לא זוהו פנים בסרטון",
-                        body = "אם יש בסרטון פנים קטנות או רחוקות, נסה שוב עם זיהוי מורחב.",
+                        body = "אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב.",
                         primary = "נסה עם זיהוי מורחב" to vm::retrySensitive,
                         secondary = "חזרה" to vm::backToSettings,
                     )
@@ -263,12 +263,12 @@ private fun SettingsCard(vm: MainViewModel) {
             if (vm.mode != BlurMode.SOLID) {
                 SliderRow("עוצמה", "עדין", "חזק", vm.strength, 0f..1f) { vm.strength = it }
             }
-            SliderRow("גודל האזור סביב הפנים", "צמוד", "רחב", vm.padding, 1.1f..1.9f) { vm.padding = it }
+            SliderRow("גודל האזור סביב הפנים", "צמוד", "רחב", vm.padding, 1.2f..2.0f) { vm.padding = it }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("זיהוי מורחב", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "מנתח ברזולוציה גבוהה יותר כדי למצוא גם פנים זעירות (קהל, צילום רחב). איטי יותר.",
+                        "בודק כל פריים ומטשטש גם פנים שהמערכת פחות בטוחה בהן. מפספס פחות, אבל עלול לטשטש גם דברים מיותרים, ואיטי יותר.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
