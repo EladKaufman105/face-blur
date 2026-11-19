@@ -162,12 +162,27 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?) {
             }
 
             val tp = b.paint
-            // Hidden words keep their place in the layout but draw nothing.
+            // Words not said yet keep their place in the layout but are clipped away (with
+            // their outline and shadow).
+            if (visibleEnd < b.text.length) {
+                val clip = Path()
+                for (line in 0 until layout.lineCount) {
+                    val s = layout.getLineStart(line)
+                    val e = min(layout.getLineEnd(line), visibleEnd)
+                    if (e <= s || b.text.substring(s, e).isBlank()) continue
+                    path.reset()
+                    layout.getSelectionPath(s, trimEnd(b.text, s, e), path)
+                    path.computeBounds(rect, true)
+                    rect.top = layout.getLineTop(line) - size * 0.2f
+                    rect.bottom = layout.getLineBottom(line) + size * 0.3f
+                    rect.left -= size * 0.12f
+                    rect.right += size * 0.12f
+                    clip.addRect(rect, Path.Direction.CW)
+                }
+                canvas.clipPath(clip)
+            }
             fun spans(fill: Boolean): CharSequence {
                 val sp = SpannableString(b.text)
-                if (visibleEnd < b.text.length) {
-                    sp.setSpan(ForegroundColorSpan(Color.TRANSPARENT), visibleEnd, b.text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                }
                 if (fill && effect == SubEffect.HIGHLIGHT && b.active >= 0) {
                     val r = b.words[b.active]
                     sp.setSpan(ForegroundColorSpan(style.accentColor), r.first, r.last + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
