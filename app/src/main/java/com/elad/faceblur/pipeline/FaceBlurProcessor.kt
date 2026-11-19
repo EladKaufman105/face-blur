@@ -35,6 +35,7 @@ import com.elad.faceblur.subs.BurnCue
 import com.elad.faceblur.subs.Srt
 import com.elad.faceblur.subs.SubtitleOverlay
 import androidx.media3.effect.OverlayEffect
+import androidx.media3.effect.TextureOverlay
 import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -148,7 +149,7 @@ class FaceBlurProcessor(private val context: Context) {
         val burn = if (export.subs == SubLang.NONE) emptyList() else model.cues.mapNotNull { c ->
             c.text(export.subs).takeIf { it.isNotBlank() }?.let { BurnCue(c.startMs * 1000, c.endMs * 1000, it) }
         }
-        val subsEffect = if (burn.isEmpty()) emptyList() else listOf<Effect>(OverlayEffect(ImmutableList.of(SubtitleOverlay(burn))))
+        val subsEffect = if (burn.isEmpty()) emptyList() else listOf<Effect>(OverlayEffect(ImmutableList.of<TextureOverlay>(SubtitleOverlay(burn))))
         val item = EditedMediaItem.Builder(MediaItem.fromUri(info.uri))
             .setEffects(Effects(emptyList(), listOf<Effect>(blur) + export.effects(info) + subsEffect))
             .build()
