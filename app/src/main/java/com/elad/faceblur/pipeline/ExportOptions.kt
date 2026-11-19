@@ -26,7 +26,7 @@ data class ExportOptions(
     val quality: ExportQuality = ExportQuality.ORIGINAL,
     val codec: ExportCodec = ExportCodec.SAME,
     /** Which subtitles to burn into the video (if there are any). */
-    val subs: SubLang = SubLang.EN,
+    val subs: SubLang = SubLang.ORIGINAL,
     /** Also save the subtitles as .srt files. */
     val saveSrt: Boolean = true,
 ) {

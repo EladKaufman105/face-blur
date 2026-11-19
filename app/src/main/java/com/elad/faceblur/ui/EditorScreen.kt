@@ -155,6 +155,7 @@ fun EditorScreen(
             ctrl.addMode -> ctrl.addMode = false
             ctrl.stylePanel -> ctrl.stylePanel = false
             ctrl.listEditor -> ctrl.listEditor = false
+            ctrl.splitPanel -> ctrl.splitPanel = false
             ctrl.selectedId != null || ctrl.selectedCueId != null -> ctrl.deselect()
             else -> confirmClose = true
         }
@@ -239,6 +240,11 @@ fun EditorScreen(
         } else {
             val sel = ctrl.selected
             if (sel != null && ctrl.sizePanel) SizePanel(ctrl, sel, busy)
+            if (ctrl.splitPanel && ctrl.model.cues.isNotEmpty()) {
+                Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    SplitControls(ctrl)
+                }
+            }
             BottomBar(ctrl, sel, ctrl.selectedCue, busy)
         }
     }
@@ -252,6 +258,7 @@ fun EditorScreen(
             onExport = { exportSheet = false; onExport() },
             onDismiss = { exportSheet = false },
             hasSubs = ctrl.model.cues.isNotEmpty(),
+            hasTranslation = ctrl.hasTranslation,
         )
     }
     if (confirmClose) {
@@ -480,8 +487,8 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
         val lang = if (faded) SubLang.BOTH else subs
         val blocks = cue?.blocks(lang) ?: if (ctrl.stylePanel) {
             when (lang) {
-                SubLang.HE -> SampleBlocks.take(1)
-                SubLang.EN -> SampleBlocks.drop(1)
+                SubLang.ORIGINAL -> SampleBlocks.take(1)
+                SubLang.TRANSLATED -> SampleBlocks.drop(1)
                 else -> SampleBlocks
             }
         } else {
@@ -819,7 +826,7 @@ private fun Timeline(ctrl: EditorController, busy: Boolean) {
                 if (x1 < -handleW || x0 > size.width + handleW) continue
                 val y = g.subsTop
                 drawRoundRect(SubsClip, Offset(x0, y), Size(x1 - x0, subsH), CornerRadius(5.dp.toPx()))
-                val label = c.en.ifBlank { c.he }
+                val label = c.srcText
                 if (x1 - x0 > 20.dp.toPx() && label.isNotBlank()) {
                     clipRect(left = x0 + 4.dp.toPx(), top = y, right = x1 - 4.dp.toPx(), bottom = y + subsH) {
                         drawContext.canvas.nativeCanvas.drawText(
@@ -1048,6 +1055,7 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
                     }
                     if (ctrl.model.cues.isNotEmpty()) {
                         Tool(t("כל הכתוביות"), AppIcons.ListLines, !busy, wide = true) { ctrl.pauser(); ctrl.listEditor = true }
+                        Tool(t("חלוקה"), AppIcons.WrapText, !busy) { ctrl.splitPanel = !ctrl.splitPanel }
                     }
                 }
                 if (subsOnly) subsTools()

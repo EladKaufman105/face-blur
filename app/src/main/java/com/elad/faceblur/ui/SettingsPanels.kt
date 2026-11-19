@@ -196,6 +196,8 @@ fun ExportSheet(
     onDismiss: () -> Unit,
     /** The video has subtitles: also show what to do with them. */
     hasSubs: Boolean = false,
+    /** ...and some have a translation. */
+    hasTranslation: Boolean = false,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
@@ -211,7 +213,7 @@ fun ExportSheet(
             ExportOptionsPanel(info, options, onChange)
             if (hasSubs) {
                 HorizontalDivider()
-                SubtitleExportOptions(options, onChange)
+                SubtitleExportOptions(options, onChange, hasTranslation)
             }
             Button(onClick = onExport, modifier = Modifier.fillMaxWidth()) { Text(t("ייצא")) }
         }

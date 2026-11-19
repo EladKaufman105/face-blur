@@ -84,7 +84,7 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
             val count = ctrl.model.cues.size
             Text(t("כתוביות"), style = MaterialTheme.typography.titleLarge)
             Text(
-                if (count == 0) t("עדיין אין כתוביות. המערכת תזהה את הדיבור ותתרגם, הכול במכשיר.") else t("יש %d כתוביות. הקש על כתובית בציר הזמן כדי לערוך.").format(count),
+                if (count == 0) t("עדיין אין כתוביות. המערכת תזהה את הדיבור, הכול במכשיר.") else t("יש %d כתוביות. הקש על כתובית בציר הזמן כדי לערוך.").format(count),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -98,7 +98,7 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
                     ) { if (!ctrl.subsBusy) choice = it }
                     Text(
                         when (choice) {
-                            SpeechModel.HEBREW -> t("מותאם לעברית ומבין גם אנגלית. הדיבור יתורגם לאנגלית.")
+                            SpeechModel.HEBREW -> t("מותאם לעברית ומבין גם אנגלית.")
                             SpeechModel.MULTILINGUAL -> t("מזהה כל שפה לבד. פחות מדויק בעברית.")
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -118,7 +118,17 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
                     }
                 }
 
-                WordsPerCueChips(ctrl)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(t("הוסף תרגום"), style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            t("עברית לאנגלית ואנגלית לעברית, במכשיר"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = ctrl.translateOnCreate, onCheckedChange = { ctrl.setTranslateOnCreate(it) }, enabled = !ctrl.subsBusy)
+                }
                 val dl = models.downloading
                 val prog = ctrl.subsProgress
                 when {
@@ -142,13 +152,21 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
                 val missing = ctrl.untranslatedCount
-                if (missing > 0 && !ctrl.subsBusy) {
+                if (count > 0 && missing > 0 && !ctrl.subsBusy) {
                     OutlinedButton(onClick = { ctrl.translateSubtitles() }, modifier = Modifier.fillMaxWidth()) {
-                        Text(t("תרגם %d כתוביות שעוד לא תורגמו").format(missing))
+                        Text(
+                            if (ctrl.hasTranslation) {
+                                t("תרגם %d כתוביות שעוד לא תורגמו").format(missing)
+                            } else {
+                                t("תרגם את הכתוביות (עברית ↔ אנגלית)")
+                            },
+                        )
                     }
                 }
             }
             if (count > 0) {
+                HorizontalDivider()
+                SplitControls(ctrl)
                 OutlinedButton(
                     onClick = { ctrl.subsSheet = false; ctrl.listEditor = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -165,26 +183,33 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
             ) { Text(t("הוסף כתובית ידנית במיקום הנוכחי")) }
 
             HorizontalDivider()
-            SubtitleExportOptions(export, onExportChange)
+            SubtitleExportOptions(export, onExportChange, ctrl.hasTranslation)
         }
     }
 }
 
 /** What subtitles go into the exported video, and whether .srt files are saved too. */
 @Composable
-fun SubtitleExportOptions(export: ExportOptions, onExportChange: (ExportOptions) -> Unit) {
+fun SubtitleExportOptions(export: ExportOptions, onExportChange: (ExportOptions) -> Unit, translated: Boolean) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Caption(t("כתוביות בסרטון המיוצא"))
-            Segments(
-                listOf(
-                    SubLang.EN to t("אנגלית"),
-                    SubLang.HE to t("עברית"),
-                    SubLang.BOTH to t("שתיהן"),
-                    SubLang.NONE to t("בלי"),
-                ),
-                export.subs,
-            ) { onExportChange(export.copy(subs = it)) }
+            if (translated) {
+                Segments(
+                    listOf(
+                        SubLang.ORIGINAL to t("כמו שנאמר"),
+                        SubLang.TRANSLATED to t("תרגום"),
+                        SubLang.BOTH to t("שתיהן"),
+                        SubLang.NONE to t("בלי"),
+                    ),
+                    export.subs,
+                ) { onExportChange(export.copy(subs = it)) }
+            } else {
+                Segments(
+                    listOf(SubLang.ORIGINAL to t("לצרוב בסרטון"), SubLang.NONE to t("לא לצרוב")),
+                    if (export.subs == SubLang.NONE) SubLang.NONE else SubLang.ORIGINAL,
+                ) { onExportChange(export.copy(subs = it)) }
+            }
             Text(
                 if (export.subs == SubLang.NONE) t("הכתוביות לא ייצרבו בסרטון.") else t("הכתוביות ייצרבו בתמונה ויופיעו בכל נגן."),
                 style = MaterialTheme.typography.bodySmall,
@@ -195,7 +220,7 @@ fun SubtitleExportOptions(export: ExportOptions, onExportChange: (ExportOptions)
             Column(Modifier.weight(1f)) {
                 Text(t("שמור גם קובצי SRT"), style = MaterialTheme.typography.titleSmall)
                 Text(
-                    t("עברית ואנגלית, בתיקייה Download/FaceBlur"),
+                    t("בתיקייה Download/FaceBlur"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -228,7 +253,7 @@ private fun Progress(text: String, step: Any, progress: Float?, onCancel: () -> 
     }
 }
 
-/** Edit the selected subtitle's Hebrew and English text. */
+/** Edit the selected subtitle's text (and its translation, if there are translations). */
 @Composable
 fun CueEditorDialog(ctrl: EditorController) {
     val c = ctrl.selectedCue
@@ -236,8 +261,9 @@ fun CueEditorDialog(ctrl: EditorController) {
         LaunchedEffect(Unit) { ctrl.cueEditor = false }
         return
     }
-    var he by remember(c.id) { mutableStateOf(c.he) }
-    var en by remember(c.id) { mutableStateOf(c.en) }
+    var spoken by remember(c.id) { mutableStateOf(c.srcText) }
+    var translation by remember(c.id) { mutableStateOf(c.otherText) }
+    val showTranslation = ctrl.hasTranslation
     val dismiss = {
         ctrl.cueEditor = false
         // A new subtitle left empty isn't kept.
@@ -248,15 +274,17 @@ fun CueEditorDialog(ctrl: EditorController) {
         title = { Text(t("עריכת כתובית")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(he, { he = it }, label = { Text(t("עברית")) }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(en, { en = it }, label = { Text(t("אנגלית")) }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(spoken, { spoken = it }, label = { Text(t("טקסט")) }, modifier = Modifier.fillMaxWidth())
+                if (showTranslation) {
+                    OutlinedTextField(translation, { translation = it }, label = { Text(t("תרגום")) }, modifier = Modifier.fillMaxWidth())
+                }
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                ctrl.editSelectedCue(he.trim(), en.trim())
+                ctrl.editSelectedCueTexts(spoken.trim(), translation.trim())
                 ctrl.cueEditor = false
-                if (he.isBlank() && en.isBlank()) ctrl.deleteSelectedCue()
+                if (spoken.isBlank() && translation.isBlank()) ctrl.deleteSelectedCue()
             }) { Text(t("שמור")) }
         },
         dismissButton = { TextButton(onClick = dismiss) { Text(t("ביטול")) } },

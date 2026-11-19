@@ -54,28 +54,46 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.elad.faceblur.edit.Cue
 import com.elad.faceblur.edit.EditorController
+import com.elad.faceblur.edit.SplitRule
 import com.elad.faceblur.i18n.t
 import kotlinx.coroutines.launch
 
-/** Choices of spoken words per subtitle (0: whole sentences). */
-private val WordCounts = listOf(1, 2, 3, 4, 5, 6, 8, 0)
+private val WordChoices = listOf(1, 2, 3, 4, 5, 6, 8)
+private val CharChoices = listOf(10, 15, 20, 25, 32, 42)
 
-/** How many spoken words each subtitle has: TikTok-style 1-3 words, up to whole sentences. */
+/**
+ * How the subtitles are cut, after they're made: by spoken words (TikTok-style 1-3) or by
+ * characters, up to whole sentences. Every change re-cuts from the whole sentences.
+ */
 @Composable
-fun WordsPerCueChips(ctrl: EditorController) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Caption(t("מילים בכל כתובית"))
+fun SplitControls(ctrl: EditorController) {
+    var byChars by remember { mutableStateOf(ctrl.split.chars > 0) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Caption(t("חלוקת הכתוביות"))
+            Spacer(Modifier.weight(1f))
+            Box(Modifier.width(180.dp)) {
+                Segments(listOf(false to t("מילים"), true to t("תווים")), byChars) { byChars = it }
+            }
+        }
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            for (n in WordCounts) {
+            val choices = if (byChars) CharChoices else WordChoices
+            for (n in choices) {
+                val rule = if (byChars) SplitRule(chars = n) else SplitRule(words = n)
                 FilterChip(
-                    selected = ctrl.wordsPerCue == n,
-                    onClick = { ctrl.changeWordsPerCue(n) },
-                    label = { Text(if (n == 0) t("משפט שלם") else "‎$n") },
+                    selected = ctrl.split == rule,
+                    onClick = { ctrl.changeSplit(rule) },
+                    label = { Text(if (byChars) t("עד %d").format(n) else "\u200E$n") },
                 )
             }
+            FilterChip(
+                selected = ctrl.split.isSentence,
+                onClick = { ctrl.changeSplit(SplitRule()) },
+                label = { Text(t("משפט שלם")) },
+            )
         }
     }
 }
@@ -99,6 +117,7 @@ fun AllSubtitlesPanel(ctrl: EditorController, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     val nowMs = ctrl.nowMs
     val current = cues.indexOfFirst { nowMs >= it.startMs && nowMs < it.endMs }
+    val translated = ctrl.hasTranslation
     // Follow the playback.
     LaunchedEffect(current, ctrl.playing) {
         if (ctrl.playing && current >= 0) list.animateScrollToItem(current)
@@ -115,12 +134,12 @@ fun AllSubtitlesPanel(ctrl: EditorController, modifier: Modifier = Modifier) {
                     Text(t("סיום"))
                 }
             }
-            Box(Modifier.padding(horizontal = 16.dp)) { WordsPerCueChips(ctrl) }
+            Box(Modifier.padding(horizontal = 16.dp)) { SplitControls(ctrl) }
             if (findOpen) FindReplace(ctrl)
             HorizontalDivider(Modifier.padding(top = 6.dp))
             LazyColumn(Modifier.fillMaxWidth().weight(1f), state = list) {
                 items(cues, key = { it.id }) { c ->
-                    CueRow(ctrl, c, cues.indexOf(c) == current)
+                    CueRow(ctrl, c, cues.indexOf(c) == current, translated)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
                 item {
@@ -161,7 +180,7 @@ private fun FindReplace(ctrl: EditorController) {
 }
 
 @Composable
-private fun CueRow(ctrl: EditorController, c: Cue, current: Boolean) {
+private fun CueRow(ctrl: EditorController, c: Cue, current: Boolean, translated: Boolean) {
     val bg = if (current) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f) else MaterialTheme.colorScheme.surfaceContainer
     Row(
         Modifier.fillMaxWidth().background(bg).padding(start = 8.dp, end = 2.dp, top = 6.dp, bottom = 6.dp),
@@ -183,8 +202,11 @@ private fun CueRow(ctrl: EditorController, c: Cue, current: Boolean) {
             )
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            CueField(c.he, t("עברית"), rtl = true, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(c.id, it, c.en) }
-            CueField(c.en, "English", rtl = false, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(c.id, c.he, it) }
+            val englishSpoken = c.src == "en" || (c.src == "" && c.he.isBlank() && c.en.isNotBlank())
+            CueField(c.srcText, t("טקסט"), rtl = !englishSpoken, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(c.id, it, c.otherText) }
+            if (translated) {
+                CueField(c.otherText, t("תרגום"), rtl = englishSpoken, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(c.id, c.srcText, it) }
+            }
         }
         Column {
             IconButton(onClick = { ctrl.mergeCueWithNext(c.id) }, modifier = Modifier.size(40.dp)) {

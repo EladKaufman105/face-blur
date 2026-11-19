@@ -89,8 +89,13 @@ class EditorController(
     var stylePanel by mutableStateOf(false)
     /** The list of all subtitles is open (in place of the timeline). */
     var listEditor by mutableStateOf(false)
-    /** Spoken words per subtitle (0: whole sentences). */
-    var wordsPerCue by mutableIntStateOf(prefs?.subsWords ?: 0)
+    /** The words / characters per subtitle choice is open above the tools. */
+    var splitPanel by mutableStateOf(false)
+    /** How the sentences are cut into subtitles now. */
+    var split by mutableStateOf(SplitRule())
+        private set
+    /** Translate new subtitles when they're created (remembered). */
+    var translateOnCreate by mutableStateOf(prefs?.subsTranslate ?: false)
         private set
     private var pendingTextSnapshot = false
     private var subsJob: Job? = null
@@ -330,9 +335,18 @@ class EditorController(
         sync()
     }
 
+    /** From the text editor: the spoken-language text and the translation. */
+    fun editSelectedCueTexts(spoken: String, translation: String) {
+        val id = selectedCueId ?: return
+        model.editCueTexts(id, spoken, translation)
+        sync()
+    }
+
     /** A new, empty subtitle at the playhead, opened for typing (in a dialog, or in the list). */
     fun addCueHere(dialog: Boolean = true): Int {
         val id = model.addCue(nowMs, msAtRelUs(timeOf(frameCount - 1) + frameUs))
+        // In the language most of the subtitles are in.
+        model.cue(id)?.src = model.cues.filter { it.src != "" }.groupingBy { it.src }.eachCount().maxByOrNull { it.value }?.key ?: "he"
         sync()
         selectCue(id)
         if (dialog) cueEditor = true
@@ -400,15 +414,19 @@ class EditorController(
                 }
                 // Keep the transcription even if translating fails or is stopped.
                 model.setSentences(r.lines.map { NewCue(it.startMs, it.endMs, it.he, it.en, it.src, it.words) })
-                if (wordsPerCue > 0) model.regroup(wordsPerCue, undoable = false)
+                split = SplitRule()
                 sync()
                 if (r.lines.isEmpty()) {
                     notice = t("לא נמצא דיבור בסרטון")
                     return@launch
                 }
                 subsSheet = false
-                notice = t("נוצרו %d כתוביות. מתרגם…").format(r.lines.size)
-                translateMissing()
+                if (translateOnCreate) {
+                    notice = t("נוצרו %d כתוביות. מתרגם…").format(r.lines.size)
+                    translateMissing()
+                } else {
+                    notice = t("נוצרו %d כתוביות. אפשר לערוך כל אחת בהקשה.").format(r.lines.size)
+                }
             } catch (e: SubtitleEngine.NoAudioException) {
                 notice = t("אין קול בסרטון")
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -474,14 +492,21 @@ class EditorController(
         }
     }
 
-    /** Re-splits the subtitles into [n] spoken words each (0: whole sentences); remembered. */
-    fun changeWordsPerCue(n: Int) {
-        wordsPerCue = n
-        prefs?.updateSubsWords(n)
+    /** Re-cuts the subtitles (from their whole sentences, so nothing is lost). */
+    fun changeSplit(rule: SplitRule) {
+        split = rule
         if (model.cues.isEmpty()) return
-        model.regroup(n)
+        model.regroup(rule)
         sync()
     }
+
+    fun setTranslateOnCreate(v: Boolean) {
+        translateOnCreate = v
+        prefs?.updateSubsTranslate(v)
+    }
+
+    /** Some subtitle has a translation. */
+    val hasTranslation get() = model.cues.any { it.otherText.isNotBlank() }
 
     fun deleteCue(id: Int) {
         model.deleteCue(id)
@@ -504,13 +529,13 @@ class EditorController(
         pendingTextSnapshot = true
     }
 
-    /** Typing in a subtitle (from the list). */
-    fun typeCueText(id: Int, he: String, en: String) {
+    /** Typing in a subtitle (from the list): its spoken text and translation. */
+    fun typeCueText(id: Int, spoken: String, translation: String) {
         if (pendingTextSnapshot) {
             model.beginGesture()
             pendingTextSnapshot = false
         }
-        model.setCueText(id, he, en)
+        model.setCueTexts(id, spoken, translation)
         sync()
     }
 

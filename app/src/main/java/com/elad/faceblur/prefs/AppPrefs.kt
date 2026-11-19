@@ -32,15 +32,15 @@ class AppPrefs(context: Context) {
             fps = sp.getInt("export_fps", 0),
             quality = enumOr(sp.getString("export_quality", null), ExportQuality.ORIGINAL),
             codec = enumOr(sp.getString("export_codec", null), ExportCodec.SAME),
-            subs = enumOr(sp.getString("export_subs", null), SubLang.EN),
+            subs = enumOr(sp.getString("export_subs", null), SubLang.ORIGINAL),
             saveSrt = sp.getBoolean("export_srt", true),
         ),
     )
         private set
     var subStyle by mutableStateOf(SubtitleStyle.fromJson(sp.getString("sub_style", null)))
         private set
-    /** Spoken words per subtitle (0: whole sentences). */
-    var subsWords by mutableStateOf(sp.getInt("subs_words", 0))
+    /** Translate new subtitles (Hebrew <-> English) when they're created. */
+    var subsTranslate by mutableStateOf(sp.getBoolean("subs_translate", false))
         private set
 
     init {
@@ -75,9 +75,9 @@ class AppPrefs(context: Context) {
             .apply()
     }
 
-    fun updateSubsWords(v: Int) {
-        subsWords = v
-        sp.edit().putInt("subs_words", v).apply()
+    fun updateSubsTranslate(v: Boolean) {
+        subsTranslate = v
+        sp.edit().putBoolean("subs_translate", v).apply()
     }
 
     fun updateSubStyle(v: SubtitleStyle) {

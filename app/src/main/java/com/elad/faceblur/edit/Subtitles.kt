@@ -30,21 +30,47 @@ object Subtitles {
         )
     }
 
+    /** Word index bounds of the pieces of [ws] under [rule]. */
+    fun bounds(ws: List<String>, rule: SplitRule): IntArray {
+        if (rule.words > 0) {
+            if (ws.size <= rule.words) return intArrayOf(0, ws.size)
+            // Balanced, so there's no lone last word.
+            val k = ceil(ws.size / rule.words.toDouble()).toInt()
+            val base = ws.size / k
+            val extra = ws.size % k
+            val b = IntArray(k + 1)
+            for (j in 0 until k) b[j + 1] = b[j] + base + if (j < extra) 1 else 0
+            return b
+        }
+        if (rule.chars > 0) {
+            val out = arrayListOf(0)
+            var len = 0
+            ws.forEachIndexed { i, w ->
+                val add = if (len == 0) w.length else len + 1 + w.length
+                if (len > 0 && add > rule.chars) {
+                    out += i
+                    len = w.length
+                } else {
+                    len = add
+                }
+            }
+            out += ws.size
+            return out.toIntArray()
+        }
+        return intArrayOf(0, ws.size)
+    }
+
     /**
-     * Splits [c] into subtitles of at most [n] spoken words (balanced, so there's no lone last
-     * word), in group [group]; [newId] gives ids. The other language is spread in proportion.
+     * Splits [c] into pieces by [rule] (in spoken words), in group [group]; [newId] gives ids.
+     * The translation is spread over the pieces in proportion.
      */
-    fun split(c: Cue, n: Int, group: Int, newId: () -> Int): List<Cue> {
+    fun split(c: Cue, rule: SplitRule, group: Int, newId: () -> Int): List<Cue> {
         val src = words(c.srcText)
-        if (n <= 0 || src.size <= n) return listOf(Cue(newId(), c.startMs, c.endMs, c.he, c.en, group, c.src, c.words))
-        val k = ceil(src.size / n.toDouble()).toInt()
-        val base = src.size / k
-        val extra = src.size % k
-        val bounds = IntArray(k + 1)
-        for (j in 0 until k) bounds[j + 1] = bounds[j] + base + if (j < extra) 1 else 0
-        val srcIsEnglish = c.src == "en"
-        val same = c.he.trim() == c.en.trim()
-        val other = if (same) src else words(if (srcIsEnglish) c.he else c.en)
+        val bounds = bounds(src, rule)
+        val k = bounds.size - 1
+        if (k <= 1) return listOf(Cue(newId(), c.startMs, c.endMs, c.he, c.en, group, c.src, c.words))
+        val srcIsEnglish = c.src == "en" || (c.src == "" && c.he.isBlank())
+        val other = words(c.otherText)
         val otherParts = spread(other, (0 until k).map { bounds[it + 1] - bounds[it] })
         val wt = c.words?.takeIf { it.size == src.size }
         val chars = src.map { it.length + 1 }
@@ -63,7 +89,7 @@ object Subtitles {
             if (wt != null && j < k - 1) end = min(end, wt[e - 1].endMs + HOLD_MS)
             end = max(end, start + 100)
             val srcText = src.subList(a, e).joinToString(" ")
-            val otherText = if (same) srcText else otherParts[j]
+            val otherText = otherParts[j]
             val he = if (srcIsEnglish) otherText else srcText
             val en = if (srcIsEnglish) srcText else otherText
             out += Cue(newId(), start, end, he, en, group, c.src, wt?.subList(a, e)?.toList())

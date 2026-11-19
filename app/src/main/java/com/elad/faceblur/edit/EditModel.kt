@@ -69,24 +69,46 @@ class Cue(
         else -> he.ifBlank { en }
     }
 
-    fun text(lang: SubLang): String = when (lang) {
-        SubLang.HE -> he
-        SubLang.EN -> en
-        SubLang.BOTH -> listOf(he, en).filter { it.isNotBlank() }.joinToString("\n")
-        SubLang.NONE -> ""
+    /** The translation ("" if none). */
+    val otherText: String get() {
+        val o = when (src) {
+            "en" -> he
+            "he" -> en
+            else -> if (he.isBlank()) "" else en
+        }
+        return if (o.trim() == srcText.trim()) "" else o
     }
 
-    /** Paragraphs to show for [lang] (Hebrew above English for both). */
+    /** Sets the spoken-language text and / or the translation. */
+    fun setTexts(spoken: String, translation: String) {
+        if (src == "en" || (src == "" && he.isBlank() && en.isNotBlank())) {
+            en = spoken
+            he = translation
+        } else {
+            he = spoken
+            en = translation
+        }
+    }
+
+    /** Paragraphs to show for [lang] (the spoken language above the translation for both). */
     fun blocks(lang: SubLang): List<String> = when (lang) {
-        SubLang.HE -> listOf(he)
-        SubLang.EN -> listOf(en)
-        SubLang.BOTH -> listOf(he, en)
+        SubLang.ORIGINAL -> listOf(srcText)
+        SubLang.TRANSLATED -> listOf(otherText.ifBlank { srcText })
+        SubLang.BOTH -> listOf(srcText, otherText)
         SubLang.NONE -> emptyList()
     }.filter { it.isNotBlank() }
 }
 
-/** Which subtitle text to show / burn in. */
-enum class SubLang { NONE, EN, HE, BOTH }
+/** Which subtitle text to show / burn in: as spoken, its translation, both, or none. */
+enum class SubLang { NONE, ORIGINAL, TRANSLATED, BOTH }
+
+/**
+ * How sentences are cut into subtitles: at most [words] spoken words, or at most [chars]
+ * characters, each; neither: whole sentences.
+ */
+data class SplitRule(val words: Int = 0, val chars: Int = 0) {
+    val isSentence get() = words <= 0 && chars <= 0
+}
 
 /** A blur's shape in one frame: center and half-axes (rx in frame widths, ry in frame heights). */
 class EditShape(val id: Int, val cx: Float, val cy: Float, val rx: Float, val ry: Float, val manual: Boolean)
@@ -300,13 +322,13 @@ class EditModel(
      * Re-splits every sentence into subtitles of up to [n] words of the spoken language (0: whole
      * sentences), keeping the other language alongside. One undo step.
      */
-    fun regroup(n: Int, undoable: Boolean = true) {
+    fun regroup(rule: SplitRule, undoable: Boolean = true) {
         if (cues.isEmpty()) return
         if (undoable) snapshot()
         val groups = LinkedHashMap<Int, MutableList<Cue>>()
         for (c in cues.sortedBy { it.startMs }) groups.getOrPut(c.group) { ArrayList() } += c
         val out = ArrayList<Cue>()
-        for ((g, cs) in groups) out += Subtitles.split(Subtitles.merge(cs), n, g) { nextCueId++ }
+        for ((g, cs) in groups) out += Subtitles.split(Subtitles.merge(cs), rule, g) { nextCueId++ }
         cues.clear()
         cues += out.sortedBy { it.startMs }
         changed()
@@ -356,7 +378,11 @@ class EditModel(
         val cs = cues.filter { it.group == group }.sortedBy { it.startMs }
         if (cs.isEmpty()) return
         val parts = Subtitles.spread(Subtitles.words(translated), cs.map { Subtitles.words(it.srcText).size })
-        cs.forEachIndexed { i, c -> if (intoEnglish) c.en = parts[i] else c.he = parts[i] }
+        cs.forEachIndexed { i, c ->
+            // A manual subtitle (no language) gets one from the side it's written on.
+            if (c.src == "") c.src = if (intoEnglish) "he" else "en"
+            if (intoEnglish) c.en = parts[i] else c.he = parts[i]
+        }
         changed()
     }
 
@@ -365,6 +391,21 @@ class EditModel(
         snapshot()
         c.he = he
         c.en = en
+        changed()
+    }
+
+    /** Spoken-language text and translation of a subtitle (one undo step). */
+    fun editCueTexts(id: Int, spoken: String, translation: String) {
+        val c = cue(id) ?: return
+        snapshot()
+        c.setTexts(spoken, translation)
+        changed()
+    }
+
+    /** Same without an undo step (typing; see [beginGesture]). */
+    fun setCueTexts(id: Int, spoken: String, translation: String) {
+        val c = cue(id) ?: return
+        c.setTexts(spoken, translation)
         changed()
     }
 

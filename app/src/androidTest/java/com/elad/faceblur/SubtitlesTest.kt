@@ -18,6 +18,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.elad.faceblur.edit.EditSession
 import com.elad.faceblur.edit.EditorController
+import com.elad.faceblur.edit.SplitRule
 import com.elad.faceblur.edit.SubLang
 import com.elad.faceblur.effects.BlurMode
 import com.elad.faceblur.pipeline.ExportOptions
@@ -175,7 +176,7 @@ class SubtitlesTest {
         shot(outDir, "4_after_generate.png")
 
         // Two words per subtitle, then the list of all subtitles.
-        rule.runOnIdle { ctrl.changeWordsPerCue(2) }
+        rule.runOnIdle { ctrl.changeSplit(SplitRule(words = 2)) }
         val chunks = rule.runOnIdle { session.model.cues.map { it.copy() } }
         note("2 words per subtitle: ${chunks.size} subtitles: " + chunks.joinToString(" | ") { "${it.startMs}-${it.endMs} '${it.en}' / '${it.he}'" })
         if (chunks.size < 8 || chunks.any { it.en.split(" ").size > 2 }) fail("regroup to 2 words")
@@ -184,16 +185,26 @@ class SubtitlesTest {
         rule.waitForIdle()
         Thread.sleep(1000)
         shot(outDir, "4b_list_editor.png")
+        rule.runOnIdle { ctrl.changeSplit(SplitRule(chars = 15)) }
+        val byChars = rule.runOnIdle { session.model.cues.map { it.en } }
+        note("15 characters: $byChars")
+        if (byChars.any { it.length > 15 && it.contains(" ") }) fail("regroup to 15 characters")
         rule.runOnIdle {
             ctrl.listEditor = false
-            ctrl.changeWordsPerCue(0)
+            ctrl.changeSplit(SplitRule())
         }
         if (rule.runOnIdle { session.model.cues.size } != n) fail("back to sentences")
+        // Translation after the fact.
+        inst.runOnMainSync { ctrl.translateSubtitles() }
+        val tr0 = System.currentTimeMillis()
+        Thread.sleep(300)
+        while (inst.onMain { ctrl.subsProgress != null } && System.currentTimeMillis() - tr0 < 180_000) Thread.sleep(200)
+        note("translated afterwards: ${inst.onMain { ctrl.hasTranslation }} " + inst.onMain { session.model.cues.joinToString(" | ") { it.he } })
 
         // Export: burned-in English + .srt files.
         val out = runBlocking(Dispatchers.Main) {
             FaceBlurProcessor(ctx).render(
-                info, settings, analysis, session.model, 0, ExportOptions(subs = SubLang.EN, saveSrt = true),
+                info, settings, analysis, session.model, 0, ExportOptions(subs = SubLang.ORIGINAL, saveSrt = true),
                 SubPresets.all.first { it.name == "מילה מודגשת" }.style,
             ) {}
         }
