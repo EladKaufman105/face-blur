@@ -77,7 +77,8 @@ private fun Caption(text: String) {
 }
 
 private fun sizeText(bytes: Long): String =
-    if (bytes >= 1_000_000_000L) "%.1f GB".format(bytes / 1e9) else "%d MB".format((bytes / 1e6).roundToInt().coerceAtLeast(1))
+    // LRM: keep "2 MB" in that order inside Hebrew text.
+    "\u200E" + if (bytes >= 1_000_000_000L) "%.1f GB".format(bytes / 1e9) else "%d MB".format((bytes / 1e6).roundToInt().coerceAtLeast(1))
 
 /** Resolution, frame rate, quality / compression and codec of the exported video. */
 @Composable
@@ -94,7 +95,7 @@ fun ExportOptionsPanel(info: VideoInfo, options: ExportOptions, onChange: (Expor
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Caption(t("קצב פריימים"))
             Chips(
-                listOf(0 to t("מקור (%s)").format("${info.fps.roundToInt()} fps")) + ExportOptions.fpsChoices(info).map { it to "$it fps" },
+                listOf(0 to t("מקור (%s)").format("\u200E${info.fps.roundToInt()} fps\u200E")) + ExportOptions.fpsChoices(info).map { it to "\u200E$it fps" },
                 if (options.fps in ExportOptions.fpsChoices(info)) options.fps else 0,
             ) { onChange(options.copy(fps = it)) }
         }
@@ -141,7 +142,7 @@ fun ExportOptionsPanel(info: VideoInfo, options: ExportOptions, onChange: (Expor
         val (w, h) = options.outputSize(info)
         Text(
             t("יוצא: %s · %s · גודל משוער %s").format(
-                "${w}×$h", "${options.outputFps(info).roundToInt()} fps", sizeText(options.estimatedBytes(info)),
+                "\u200E${w}×$h", "\u200E${options.outputFps(info).roundToInt()} fps", sizeText(options.estimatedBytes(info)),
             ),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
