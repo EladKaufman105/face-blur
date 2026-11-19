@@ -500,7 +500,7 @@ class EditorController(
         sync()
     }
 
-    fun setTranslateOnCreate(v: Boolean) {
+    fun changeTranslateOnCreate(v: Boolean) {
         translateOnCreate = v
         prefs?.updateSubsTranslate(v)
     }

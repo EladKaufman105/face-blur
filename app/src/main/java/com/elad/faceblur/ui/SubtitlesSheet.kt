@@ -127,7 +127,7 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Switch(checked = ctrl.translateOnCreate, onCheckedChange = { ctrl.setTranslateOnCreate(it) }, enabled = !ctrl.subsBusy)
+                    Switch(checked = ctrl.translateOnCreate, onCheckedChange = { ctrl.changeTranslateOnCreate(it) }, enabled = !ctrl.subsBusy)
                 }
                 val dl = models.downloading
                 val prog = ctrl.subsProgress
