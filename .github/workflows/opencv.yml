@@ -52,7 +52,7 @@ jobs:
               -DWITH_OPENEXR=OFF -DWITH_AVIF=OFF -DWITH_IMGCODEC_HDR=OFF -DWITH_IMGCODEC_SUNRASTER=OFF \
               -DWITH_IMGCODEC_PXM=OFF -DWITH_IMGCODEC_PFM=OFF -DWITH_JPEG=ON -DBUILD_JPEG=ON \
               -DWITH_PROTOBUF=ON -DBUILD_PROTOBUF=ON -DWITH_ANDROID_MEDIANDK=OFF \
-              -DWITH_ADE=OFF -DCV_TRACE=OFF \
+              -DWITH_ADE=OFF -DCV_TRACE=OFF -DWITH_FLATBUFFERS=OFF -DCPU_DISPATCH= \
               > "logs/cmake-$ABI.log" 2>&1 || { tail -120 "logs/cmake-$ABI.log"; exit 1; }
             grep -A3 "OpenCV modules:" "logs/cmake-$ABI.log" || true
             if ! cmake --build "../b-$ABI" -j 4 --target opencv_java > "logs/build-$ABI.log" 2>&1; then
@@ -80,7 +80,7 @@ jobs:
           cat > out/README.md <<EOF
           OpenCV $OPENCV_TAG built by .github/workflows/opencv.yml (branch opencv-src): core, imgproc,
           imgcodecs (JPEG), dnn, objdetect, calib3d, features2d, flann, video and the Java bindings,
-          static libc++, 16 KB pages. Apache-2.0, https://github.com/opencv/opencv
+          static libc++, 16 KB pages, no TFLite importer, no extra CPU dispatch variants (the app computes in fp32). Apache-2.0, https://github.com/opencv/opencv
           EOF
           cd out
           git init -q -b opencv-min
