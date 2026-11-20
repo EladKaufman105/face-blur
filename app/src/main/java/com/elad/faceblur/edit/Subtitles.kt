@@ -64,9 +64,12 @@ object Subtitles {
      * Splits [c] into pieces by [rule] (in spoken words), in group [group]; [newId] gives ids.
      * The translation is spread over the pieces in proportion.
      */
-    fun split(c: Cue, rule: SplitRule, group: Int, newId: () -> Int): List<Cue> {
+    fun split(c: Cue, rule: SplitRule, group: Int, newId: () -> Int): List<Cue> =
+        splitAt(c, bounds(words(c.srcText), rule), group, newId)
+
+    /** Splits [c] at the spoken-word [bounds] (0, ..., word count). */
+    fun splitAt(c: Cue, bounds: IntArray, group: Int, newId: () -> Int): List<Cue> {
         val src = words(c.srcText)
-        val bounds = bounds(src, rule)
         val k = bounds.size - 1
         if (k <= 1) return listOf(Cue(newId(), c.startMs, c.endMs, c.he, c.en, group, c.src, c.words))
         val srcIsEnglish = c.src == "en" || (c.src == "" && c.he.isBlank())
@@ -95,6 +98,30 @@ object Subtitles {
             out += Cue(newId(), start, end, he, en, group, c.src, wt?.subList(a, e)?.toList())
         }
         return out
+    }
+
+    /** When spoken word [i] of [c] starts: its recognized time, or spread by length. */
+    fun wordStartMs(c: Cue, i: Int): Long {
+        val src = words(c.srcText)
+        c.words?.takeIf { it.size == src.size }?.let { return it[i].startMs }
+        val chars = src.map { it.length + 1 }
+        val total = chars.sum().toDouble()
+        return c.startMs + ((c.endMs - c.startMs) * chars.take(i).sum() / total).toLong()
+    }
+
+    /** The word boundary (1 until word count) nearest to [ms]; -1 if there's one word. */
+    fun nearestBoundary(c: Cue, ms: Long): Int {
+        val n = words(c.srcText).size
+        if (n < 2) return -1
+        return (1 until n).minBy { kotlin.math.abs(wordStartMs(c, it) - ms) }
+    }
+
+    /** The word boundary at a text position: words that start before [offset] stay first. */
+    fun boundaryAtChar(text: String, offset: Int): Int {
+        val ranges = Regex("""\S+""").findAll(text).map { it.range }.toList()
+        if (ranges.size < 2) return -1
+        if (offset < 0) return ranges.size / 2
+        return ranges.count { it.first < offset }.coerceIn(1, ranges.size - 1)
     }
 
     /** [ws] split into parts with sizes in proportion to [weights]. */

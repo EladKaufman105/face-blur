@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -184,6 +185,8 @@ private fun FindReplace(ctrl: EditorController) {
 
 @Composable
 private fun CueRow(ctrl: EditorController, c: Cue, current: Boolean, translated: Boolean) {
+    // Where the cursor is in the spoken text, to split there.
+    var caret by remember(c.id) { mutableIntStateOf(-1) }
     val bg = if (current) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f) else MaterialTheme.colorScheme.surfaceContainer
     Row(
         Modifier.fillMaxWidth().background(bg).padding(start = 8.dp, end = 2.dp, top = 6.dp, bottom = 6.dp),
@@ -206,17 +209,22 @@ private fun CueRow(ctrl: EditorController, c: Cue, current: Boolean, translated:
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             val englishSpoken = c.src == "en" || (c.src == "" && c.he.isBlank() && c.en.isNotBlank())
-            CueField(c.srcText, t("טקסט"), rtl = !englishSpoken, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(c.id, it, c.otherText) }
+            CueField(c.srcText, t("טקסט"), rtl = !englishSpoken, onFocus = ctrl::beginTextEdit, onCaret = { caret = it }) {
+                ctrl.typeCueText(c.id, it, c.otherText)
+            }
             if (translated) {
                 CueField(c.otherText, t("תרגום"), rtl = englishSpoken, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(c.id, c.srcText, it) }
             }
         }
         Column {
-            IconButton(onClick = { ctrl.mergeCueWithNext(c.id) }, modifier = Modifier.size(40.dp)) {
-                Icon(AppIcons.MergeDown, t("חבר עם הבאה"), Modifier.size(20.dp))
+            IconButton(onClick = { ctrl.splitCueAtCaret(c.id, caret) }, modifier = Modifier.size(36.dp)) {
+                Icon(AppIcons.Cut, t("פצל במקום הסמן"), Modifier.size(19.dp))
             }
-            IconButton(onClick = { ctrl.deleteCue(c.id) }, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.Delete, t("מחק"), Modifier.size(20.dp))
+            IconButton(onClick = { ctrl.mergeCueWithNext(c.id) }, modifier = Modifier.size(36.dp)) {
+                Icon(AppIcons.MergeDown, t("חבר עם הבאה"), Modifier.size(19.dp))
+            }
+            IconButton(onClick = { ctrl.deleteCue(c.id) }, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Filled.Delete, t("מחק"), Modifier.size(19.dp))
             }
         }
     }
@@ -227,7 +235,14 @@ private fun CueRow(ctrl: EditorController, c: Cue, current: Boolean, translated:
  * moving the cursor while typing. [rtl] null: by the text.
  */
 @Composable
-private fun CueField(text: String, hint: String, rtl: Boolean?, onFocus: () -> Unit = {}, onChange: (String) -> Unit) {
+private fun CueField(
+    text: String,
+    hint: String,
+    rtl: Boolean?,
+    onFocus: () -> Unit = {},
+    onCaret: (Int) -> Unit = {},
+    onChange: (String) -> Unit,
+) {
     var value by remember { mutableStateOf(TextFieldValue(text)) }
     LaunchedEffect(text) {
         if (value.text != text) value = TextFieldValue(text, TextRange(text.length))
@@ -243,6 +258,7 @@ private fun CueField(text: String, hint: String, rtl: Boolean?, onFocus: () -> U
             value = value,
             onValueChange = { nv ->
                 value = nv
+                onCaret(nv.selection.start)
                 if (nv.text != text) onChange(nv.text)
             },
             textStyle = MaterialTheme.typography.bodyMedium.copy(

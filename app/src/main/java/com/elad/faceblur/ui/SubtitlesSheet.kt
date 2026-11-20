@@ -13,6 +13,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.layout.Arrangement
+import com.elad.faceblur.edit.Subtitles
+import androidx.compose.material3.AssistChip
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -333,7 +337,11 @@ private fun Progress(text: String, step: Any, progress: Float?, onCancel: () -> 
     }
 }
 
-/** Edit the selected subtitle's text (and its translation, if there are translations). */
+/**
+ * Edit the selected subtitle's text (and its translation, if there are translations), split it
+ * at a word or join it with a neighbor.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CueEditorDialog(ctrl: EditorController) {
     val c = ctrl.selectedCue
@@ -357,6 +365,27 @@ fun CueEditorDialog(ctrl: EditorController) {
                 OutlinedTextField(spoken, { spoken = it }, label = { Text(t("טקסט")) }, modifier = Modifier.fillMaxWidth())
                 if (showTranslation) {
                     OutlinedTextField(translation, { translation = it }, label = { Text(t("תרגום")) }, modifier = Modifier.fillMaxWidth())
+                }
+                // Split: tap the word that should start the next subtitle (at its own time).
+                val words = Subtitles.words(c.srcText)
+                if (words.size >= 2 && spoken.trim() == c.srcText.trim()) {
+                    Text(t("פיצול: הקש על המילה שתתחיל כתובית חדשה"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        words.forEachIndexed { i, w ->
+                            AssistChip(
+                                onClick = {
+                                    ctrl.cueEditor = false
+                                    ctrl.splitCueAtWord(c.id, i)
+                                },
+                                enabled = i > 0,
+                                label = { Text(w) },
+                            )
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { ctrl.cueEditor = false; ctrl.mergeCueWithPrevious(c.id) }) { Text(t("מזג עם הקודמת")) }
+                    TextButton(onClick = { ctrl.cueEditor = false; ctrl.mergeCueWithNext(c.id) }) { Text(t("מזג עם הבאה")) }
                 }
             }
         },

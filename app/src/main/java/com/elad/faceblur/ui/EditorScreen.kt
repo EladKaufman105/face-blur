@@ -511,7 +511,10 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
             val nc = drawContext.canvas.nativeCanvas
             if (faded) nc.saveLayerAlpha(0f, 0f, size.width, size.height, 120)
             if (cue != null) {
-                subHit.rect = renderer.draw(nc, blocks, cue.startMs * 1000, cue.endMs * 1000, nowMs * 1000, style, size.width.toInt(), size.height.toInt())
+                subHit.rect = renderer.draw(
+                    nc, blocks, cue.startMs * 1000, cue.endMs * 1000, nowMs * 1000, style,
+                    size.width.toInt(), size.height.toInt(), cue.blockTimes(lang),
+                )
                 subHit.cueId = cue.id
             } else {
                 subHit.rect = null
@@ -1075,8 +1078,9 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
         ) {
             if (cue != null) {
                 Tool(t("ערוך טקסט"), Icons.Filled.Edit, true) { ctrl.pauser(); ctrl.cueEditor = true }
+                Tool(t("פצל כאן"), EditorIcons.Cut, true) { ctrl.pauser(); ctrl.splitSelectedCue() }
+                Tool(t("מזג"), AppIcons.MergeDown, true) { ctrl.mergeSelectedCue() }
                 Tool(t("עיצוב"), EditorIcons.TextFormat, true) { ctrl.pauser(); ctrl.stylePanel = true }
-                Tool(t("כל הכתוביות"), AppIcons.ListLines, true) { ctrl.pauser(); ctrl.listEditor = true }
                 Tool(t("מחק"), Icons.Filled.Delete, true) { ctrl.deleteSelectedCue() }
                 Tool(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
             } else if (sel == null) {

@@ -150,7 +150,7 @@ class FaceBlurProcessor(private val context: Context) {
         val blur = BlurEffect(timeline, settings.mode, settings.strength)
         // Blur at full resolution first, then resize / drop frames for the chosen output.
         val burn = model.cues.mapNotNull { c ->
-            c.blocks(export.subs).takeIf { it.isNotEmpty() }?.let { BurnCue(c.startMs * 1000, c.endMs * 1000, it) }
+            c.blocks(export.subs).takeIf { it.isNotEmpty() }?.let { BurnCue(c.startMs * 1000, c.endMs * 1000, it, c.blockTimes(export.subs)) }
         }
         val subsEffect = if (burn.isEmpty()) {
             emptyList()

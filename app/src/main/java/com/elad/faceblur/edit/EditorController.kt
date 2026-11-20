@@ -344,7 +344,12 @@ class EditorController(
 
     /** A new, empty subtitle at the playhead, opened for typing (in a dialog, or in the list). */
     fun addCueHere(dialog: Boolean = true): Int {
-        val id = model.addCue(nowMs, msAtRelUs(timeOf(frameCount - 1) + frameUs))
+        // Into the free time at the playhead (after the subtitle that's there, if any).
+        val id = model.addCueInGap(nowMs, msAtRelUs(timeOf(frameCount - 1) + frameUs))
+        if (id < 0) {
+            notice = t("אין כאן מקום לכתובית חדשה. אפשר לפצל כתובית קיימת.")
+            return -1
+        }
         // In the language most of the subtitles are in.
         model.cue(id)?.src = model.cues.filter { it.src != "" }.groupingBy { it.src }.eachCount().maxByOrNull { it.value }?.key ?: "he"
         sync()
@@ -515,6 +520,41 @@ class EditorController(
 
     fun mergeCueWithNext(id: Int) {
         if (model.mergeWithNext(id)) sync()
+    }
+
+    fun mergeCueWithPrevious(id: Int) {
+        if (model.mergeWithPrevious(id)) sync()
+    }
+
+    /** Joins the selected subtitle with the next one (or the one before, if it's the last). */
+    fun mergeSelectedCue() {
+        val id = selectedCueId ?: return
+        if (model.mergeWithNext(id) || model.mergeWithPrevious(id)) {
+            sync()
+            model.cues.firstOrNull { it.id == id }?.let { selectCue(it.id) }
+        }
+    }
+
+    /** Splits the selected subtitle at the word nearest to the playhead. */
+    fun splitSelectedCue() {
+        val id = selectedCueId ?: return
+        val r = model.splitCueAtTime(id, nowMs)
+        if (r < 0) {
+            notice = t("אפשר לפצל רק כתובית עם יותר ממילה אחת")
+            return
+        }
+        sync()
+        selectCue(id)
+    }
+
+    /** Splits so spoken word [k] starts a new subtitle. */
+    fun splitCueAtWord(id: Int, k: Int) {
+        if (model.splitCueAtWord(id, k) >= 0) sync()
+    }
+
+    /** Splits at the cursor in the spoken text (-1: in the middle). */
+    fun splitCueAtCaret(id: Int, offset: Int) {
+        if (model.splitCueAtChar(id, offset) >= 0) sync() else notice = t("אפשר לפצל רק כתובית עם יותר ממילה אחת")
     }
 
     /** Find and replace in every subtitle; returns how many were replaced. */

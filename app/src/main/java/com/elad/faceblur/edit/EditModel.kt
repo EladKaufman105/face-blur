@@ -90,6 +90,27 @@ class Cue(
         }
     }
 
+    /** Start times (µs) of the spoken text's words, if known and still matching the text. */
+    fun wordStartsUs(): LongArray? {
+        val w = words ?: return null
+        if (w.size != Subtitles.words(srcText).size) return null
+        return LongArray(w.size) { w[it].startMs * 1000 }
+    }
+
+    /** [blocks] with each one's word start times (only the spoken text has them). */
+    fun blockTimes(lang: SubLang): List<LongArray?> {
+        val src = srcText
+        val other = otherText
+        val pairs = when (lang) {
+            SubLang.ORIGINAL -> listOf(src to true)
+            SubLang.TRANSLATED -> listOf(if (other.isBlank()) src to true else other to false)
+            SubLang.BOTH -> listOf(src to true, other to false)
+            SubLang.NONE -> emptyList()
+        }.filter { it.first.isNotBlank() }
+        val starts = wordStartsUs()
+        return pairs.map { (_, spoken) -> if (spoken) starts else null }
+    }
+
     /** Paragraphs to show for [lang] (the spoken language above the translation for both). */
     fun blocks(lang: SubLang): List<String> = when (lang) {
         SubLang.ORIGINAL -> listOf(srcText)
@@ -332,6 +353,62 @@ class EditModel(
         cues.clear()
         cues += out.sortedBy { it.startMs }
         changed()
+    }
+
+    /**
+     * Splits a subtitle so spoken word [k] starts a new one, at that word's time. The
+     * translation is split in proportion. One undo step; returns the second part's id or -1.
+     */
+    fun splitCueAtWord(id: Int, k: Int): Int {
+        val c = cue(id) ?: return -1
+        val n = Subtitles.words(c.srcText).size
+        if (k <= 0 || k >= n) return -1
+        snapshot()
+        var first = true
+        val parts = Subtitles.splitAt(c, intArrayOf(0, k, n), c.group) { if (first) { first = false; c.id } else nextCueId++ }
+        cues.remove(c)
+        cues += parts
+        cues.sortBy { it.startMs }
+        changed()
+        return parts.last().id
+    }
+
+    /** Splits at the word boundary nearest to [ms]. */
+    fun splitCueAtTime(id: Int, ms: Long): Int {
+        val c = cue(id) ?: return -1
+        return splitCueAtWord(id, Subtitles.nearestBoundary(c, ms))
+    }
+
+    /** Splits at a position in the spoken text (e.g. the cursor); -1 offset: in the middle. */
+    fun splitCueAtChar(id: Int, offset: Int): Int {
+        val c = cue(id) ?: return -1
+        return splitCueAtWord(id, Subtitles.boundaryAtChar(c.srcText, offset))
+    }
+
+    /** Joins a subtitle with the one before it. */
+    fun mergeWithPrevious(id: Int): Boolean {
+        val sorted = cues.sortedBy { it.startMs }
+        val i = sorted.indexOfFirst { it.id == id }
+        if (i <= 0) return false
+        return mergeWithNext(sorted[i - 1].id)
+    }
+
+    /**
+     * A new empty subtitle at [ms], fitted into the free time there: after the subtitle under
+     * [ms] if any, up to the next one (at most 2.5 s). -1 if there's no room (< 0.4 s).
+     */
+    fun addCueInGap(ms: Long, maxMs: Long): Int {
+        val inside = cues.firstOrNull { ms >= it.startMs && ms < it.endMs }
+        val start = inside?.endMs ?: ms
+        val next = cues.filter { it !== inside && it.startMs >= start }.minOfOrNull { it.startMs } ?: maxMs
+        val end = min(next, start + 2500)
+        if (end - start < 400) return -1
+        snapshot()
+        val c = Cue(nextCueId++, start, end, "", "")
+        cues += c
+        cues.sortBy { it.startMs }
+        changed()
+        return c.id
     }
 
     /** Joins a subtitle with the next one. */

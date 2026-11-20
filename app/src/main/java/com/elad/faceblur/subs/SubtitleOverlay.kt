@@ -6,8 +6,11 @@ import android.graphics.Color
 import androidx.media3.common.util.Size
 import androidx.media3.effect.BitmapOverlay
 
-/** One subtitle to burn in: media-time range (µs) and its paragraphs (e.g. Hebrew, English). */
-class BurnCue(val startUs: Long, val endUs: Long, val blocks: List<String>)
+/**
+ * One subtitle to burn in: media-time range (µs), its paragraphs (e.g. Hebrew, English) and
+ * each paragraph's word start times if known.
+ */
+class BurnCue(val startUs: Long, val endUs: Long, val blocks: List<String>, val times: List<LongArray?>? = null)
 
 /**
  * Burns subtitles into the video with [SubtitleRenderer]. A frame is redrawn only when its look
@@ -44,13 +47,13 @@ class SubtitleOverlay(
             lastCue = null
             return empty
         }
-        val key = renderer.frameKey(cue.blocks, cue.startUs, cue.endUs, presentationTimeUs, style)
+        val key = renderer.frameKey(cue.blocks, cue.startUs, cue.endUs, presentationTimeUs, style, cue.times)
         val shown = bitmaps[current]
         if (shown != null && cue === lastCue && key == lastKey) return shown
         current = 1 - current
         val bmp = bitmaps[current] ?: Bitmap.createBitmap(frameW, frameH, Bitmap.Config.ARGB_8888).also { bitmaps[current] = it }
         bmp.eraseColor(Color.TRANSPARENT)
-        renderer.draw(Canvas(bmp), cue.blocks, cue.startUs, cue.endUs, presentationTimeUs, style, frameW, frameH)
+        renderer.draw(Canvas(bmp), cue.blocks, cue.startUs, cue.endUs, presentationTimeUs, style, frameW, frameH, cue.times)
         lastCue = cue
         lastKey = key
         return bmp

@@ -1,6 +1,22 @@
 package com.elad.faceblur.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import com.elad.faceblur.subs.FontStore
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Add
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -122,12 +138,12 @@ private fun <T> Grid(items: List<T>, columns: Int, cell: @Composable (T) -> Unit
 
 /** A style drawn on a small dark card, the way it will look. */
 @Composable
-internal fun StylePreview(style: SubtitleStyle, modifier: Modifier = Modifier) {
+internal fun StylePreview(style: SubtitleStyle, modifier: Modifier = Modifier, timeUs: () -> Long = { 1_100_000L }) {
     val renderer = SubtitleRenderer.get(LocalContext.current)
     Canvas(modifier.background(PreviewBg)) {
         // The card is small: scale the text up to fill it, centered.
         val s = style.copy(size = style.size.coerceIn(0.8f, 1.6f) * 2.6f, position = 0.5f)
-        renderer.draw(drawContext.canvas.nativeCanvas, SampleBlocks.take(1), 0L, 2_000_000L, 1_100_000L, s, size.width.toInt(), size.height.toInt())
+        renderer.draw(drawContext.canvas.nativeCanvas, SampleBlocks.take(1), 200_000L, 2_200_000L, timeUs(), s, size.width.toInt(), size.height.toInt())
     }
 }
 
@@ -163,22 +179,90 @@ private fun PresetsTab(style: SubtitleStyle, onChange: (SubtitleStyle) -> Unit) 
 
 @Composable
 private fun FontsTab(style: SubtitleStyle, onChange: (SubtitleStyle) -> Unit) {
-    val renderer = SubtitleRenderer.get(LocalContext.current)
-    Grid(SubFont.entries.toList(), 3) { f ->
-        val family = remember(f) { FontFamily(renderer.typeface(f)) }
-        Selectable(style.font == f, { onChange(style.copy(font = f)) }) {
-            Column(
-                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(vertical = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text("אבג Abc", fontFamily = family, fontSize = 20.sp, maxLines = 1)
-                Text(
-                    if (f == SubFont.SYSTEM) t("של המכשיר") else f.label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
+    val ctx = LocalContext.current
+    val renderer = SubtitleRenderer.get(ctx)
+    var imported by remember { mutableStateOf(FontStore.list(ctx)) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching { FontStore.import(ctx, uri) } }
+            r.onSuccess { name ->
+                imported = FontStore.list(ctx)
+                val tf = renderer.customTypeface(name)
+                message = if (tf != null && !FontStore.hasHebrew(tf)) {
+                    t("הגופן נוסף, אבל אין בו אותיות עבריות: טקסט בעברית יוצג בגופן אחר.")
+                } else {
+                    t("הגופן נוסף.")
+                }
+                onChange(style.copy(customFont = name))
+            }.onFailure {
+                message = t("לא הצלחתי לייבא: צריך קובץ גופן TTF או OTF.")
             }
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilledTonalButton(onClick = { picker.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(t("ייבוא גופן מהמכשיר (TTF / OTF)"))
+        }
+        message?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
+        if (imported.isNotEmpty()) {
+            Caption(t("הגופנים שלי"))
+            Grid(imported, 3) { name ->
+                val tf = remember(name) { renderer.customTypeface(name) }
+                Box {
+                    FontCell(
+                        tf?.let { FontFamily(it) },
+                        FontStore.label(name),
+                        style.customFont == name,
+                    ) { onChange(style.copy(customFont = name)) }
+                    // Delete, in the corner.
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(2.dp)
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                            .clickable {
+                                FontStore.delete(ctx, name)
+                                renderer.forget(name)
+                                imported = FontStore.list(ctx)
+                                if (style.customFont == name) onChange(style.copy(customFont = null))
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Filled.Close, t("מחק"), Modifier.size(14.dp)) }
+                }
+            }
+            Caption(t("גופנים מובנים"))
+        }
+        Grid(SubFont.entries.toList(), 3) { f ->
+            val family = remember(f) { FontFamily(renderer.typeface(f)) }
+            FontCell(family, if (f == SubFont.SYSTEM) t("של המכשיר") else f.label, style.customFont == null && style.font == f) {
+                onChange(style.copy(font = f, customFont = null))
+            }
+        }
+    }
+}
+
+@Composable
+private fun FontCell(family: FontFamily?, label: String, selected: Boolean, onClick: () -> Unit) {
+    Selectable(selected, onClick) {
+        Column(
+            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(vertical = 8.dp, horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("אבג Abc", fontFamily = family, fontSize = 20.sp, maxLines = 1)
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -241,15 +325,30 @@ private fun EffectsTab(style: SubtitleStyle, onChange: (SubtitleStyle) -> Unit) 
         SubEffect.NONE to t("בלי"),
         SubEffect.FADE to t("הופעה רכה"),
         SubEffect.POP to t("קפיצה"),
+        SubEffect.SLIDE_UP to t("החלקה למעלה"),
+        SubEffect.ZOOM to t("זום"),
+        SubEffect.ROTATE to t("סיבוב"),
+        SubEffect.GLITCH to t("גליץ'"),
+        SubEffect.FLICKER to t("ניאון מהבהב"),
         SubEffect.HIGHLIGHT to t("מילה מודגשת"),
         SubEffect.WORD_BOX to t("תיבה על המילה"),
+        SubEffect.ACTIVE_ZOOM to t("זום למילה"),
+        SubEffect.BOUNCE to t("קפיצה למילה"),
+        SubEffect.SHAKE to t("רעידה"),
         SubEffect.ONE_WORD to t("מילה אחת"),
+        SubEffect.WORD_POP to t("מילים קופצות"),
+        SubEffect.WORD_FADE to t("מילים בהדרגה"),
         SubEffect.TYPEWRITER to t("מכונת כתיבה"),
+        SubEffect.LETTERS to t("אות אחר אות"),
+    )
+    // The cards play their effect over and over.
+    val loop by rememberInfiniteTransition(label = "effects").animateFloat(
+        0f, 2600f, infiniteRepeatable(tween(2600, easing = LinearEasing)), label = "t",
     )
     Grid(effects, 3) { (e, label) ->
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Selectable(style.effect == e, { onChange(style.copy(effect = e)) }) {
-                StylePreview(style.copy(effect = e), Modifier.fillMaxWidth().aspectRatio(1.6f))
+                StylePreview(style.copy(effect = e), Modifier.fillMaxWidth().aspectRatio(1.6f)) { (loop * 1000).toLong() }
             }
             Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
         }

@@ -37,6 +37,39 @@ enum class SubEffect {
 
     /** Words appear one after another. */
     TYPEWRITER,
+
+    /** Slides up into place, fades out at the end. */
+    SLIDE_UP,
+
+    /** Zooms down from big. */
+    ZOOM,
+
+    /** Spins in. */
+    ROTATE,
+
+    /** Red and cyan glitch as it appears. */
+    GLITCH,
+
+    /** Flickers on like a neon sign. */
+    FLICKER,
+
+    /** Letter by letter, as it's said. */
+    LETTERS,
+
+    /** Each word pops in as it's said. */
+    WORD_POP,
+
+    /** Each word fades in as it's said. */
+    WORD_FADE,
+
+    /** The word being said is bigger, in the accent color. */
+    ACTIVE_ZOOM,
+
+    /** The word being said jumps up. */
+    BOUNCE,
+
+    /** The word being said shakes. */
+    SHAKE,
 }
 
 /**
@@ -48,6 +81,8 @@ enum class SubEffect {
  */
 data class SubtitleStyle(
     val font: SubFont = SubFont.HEEBO,
+    /** An imported font file (in the app's fonts folder); overrides [font]. */
+    val customFont: String? = null,
     val size: Float = 1f,
     val textColor: Int = WHITE,
     val accentColor: Int = YELLOW,
@@ -62,6 +97,7 @@ data class SubtitleStyle(
 ) {
     fun toJson(): String = JSONObject().apply {
         put("font", font.name)
+        customFont?.let { put("customFont", it) }
         put("size", size.toDouble())
         put("text", textColor)
         put("accent", accentColor)
@@ -87,6 +123,7 @@ data class SubtitleStyle(
                 val d = SubtitleStyle()
                 SubtitleStyle(
                     font = runCatching { SubFont.valueOf(o.optString("font")) }.getOrDefault(d.font),
+                    customFont = o.optString("customFont").ifBlank { null },
                     size = o.optDouble("size", d.size.toDouble()).toFloat(),
                     textColor = o.optInt("text", d.textColor),
                     accentColor = o.optInt("accent", d.accentColor),
@@ -130,6 +167,17 @@ object SubPresets {
         SubPreset("סגול", SubtitleStyle(font = SubFont.FREDOKA, size = 1.1f, outline = 0f, accentColor = PURPLE, effect = SubEffect.WORD_BOX, position = 0.72f)),
         SubPreset("כותרת", SubtitleStyle(font = SubFont.KARANTINA, size = 1.6f, outline = 0.12f, effect = SubEffect.POP, position = 0.5f)),
         SubPreset("כתב יד", SubtitleStyle(font = SubFont.AMATIC, size = 1.5f, outline = 0.1f, effect = SubEffect.FADE, position = 0.78f)),
+        SubPreset("מילים קופצות", SubtitleStyle(font = SubFont.RUBIK, size = 1.2f, outline = 0.14f, effect = SubEffect.WORD_POP, position = 0.68f)),
+        SubPreset("זום למילה", SubtitleStyle(font = SubFont.RUBIK, size = 1.15f, outline = 0.14f, accentColor = GREEN, effect = SubEffect.ACTIVE_ZOOM, position = 0.68f)),
+        SubPreset("קפיצה למילה", SubtitleStyle(font = SubFont.SECULAR, size = 1.2f, outline = 0.16f, effect = SubEffect.BOUNCE, position = 0.68f)),
+        SubPreset("רעידה", SubtitleStyle(font = SubFont.SECULAR, size = 1.2f, outline = 0.16f, accentColor = RED, effect = SubEffect.SHAKE, position = 0.66f)),
+        SubPreset("גליץ'", SubtitleStyle(font = SubFont.KARANTINA, size = 1.5f, outline = 0f, shadow = true, effect = SubEffect.GLITCH, position = 0.6f)),
+        SubPreset("החלקה", SubtitleStyle(font = SubFont.ASSISTANT, size = 1.05f, outline = 0f, shadow = false, box = true, effect = SubEffect.SLIDE_UP, position = 0.8f)),
+        SubPreset("זום", SubtitleStyle(font = SubFont.HEEBO, size = 1.2f, outline = 0.16f, effect = SubEffect.ZOOM, position = 0.7f)),
+        SubPreset("סיבוב", SubtitleStyle(font = SubFont.FREDOKA, size = 1.2f, textColor = YELLOW_TEXT, outline = 0.14f, effect = SubEffect.ROTATE, position = 0.66f)),
+        SubPreset("ניאון מהבהב", SubtitleStyle(font = SubFont.FREDOKA, size = 1.15f, textColor = 0xFFFF6FB5.toInt(), outline = 0f, shadow = false, glow = true, effect = SubEffect.FLICKER, position = 0.7f)),
+        SubPreset("אות אחר אות", SubtitleStyle(font = SubFont.VARELA, size = 1.05f, outline = 0.12f, effect = SubEffect.LETTERS, position = 0.78f)),
+        SubPreset("מילים בהדרגה", SubtitleStyle(font = SubFont.ASSISTANT, size = 1.1f, outline = 0.1f, shadow = true, effect = SubEffect.WORD_FADE, position = 0.75f)),
     )
 
     private const val YELLOW_TEXT = 0xFFFFE135.toInt()

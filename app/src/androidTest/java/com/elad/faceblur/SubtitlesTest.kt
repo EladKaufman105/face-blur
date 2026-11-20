@@ -28,6 +28,7 @@ import com.elad.faceblur.pipeline.VideoInfo
 import com.elad.faceblur.subs.AudioDecoder
 import com.elad.faceblur.subs.ModelManager
 import com.elad.faceblur.subs.Srt
+import com.elad.faceblur.subs.FontStore
 import com.elad.faceblur.subs.SubEffect
 import com.elad.faceblur.subs.SubFont
 import com.elad.faceblur.subs.SubPresets
@@ -198,6 +199,23 @@ class SubtitlesTest {
             ctrl.changeSplit(SplitRule())
         }
         if (rule.runOnIdle { session.model.cues.size } != n) fail("back to sentences")
+        // Split the first sentence at the playhead (snaps to a word's start time), then merge back.
+        val first = rule.runOnIdle { session.model.cues.minBy { it.startMs } }
+        val firstWords = first.words?.size ?: 0
+        rule.runOnIdle {
+            ctrl.selectCue(first.id)
+            ctrl.seek(ctrl.frameAt(ctrl.cueRelUs((first.startMs + first.endMs) / 2)))
+            ctrl.splitSelectedCue()
+        }
+        val afterSplit = rule.runOnIdle { session.model.cues.sortedBy { it.startMs }.map { it.copy() } }
+        val wordStarts = first.words?.map { it.startMs }.orEmpty()
+        note("split at playhead: ${afterSplit.take(2).joinToString(" | ") { "${it.startMs}-${it.endMs} '${it.srcText}'" }} (word starts $wordStarts)")
+        if (firstWords >= 2) {
+            if (afterSplit.size != n + 1) fail("split")
+            if (afterSplit[1].startMs !in wordStarts) fail("split not at a word start")
+            rule.runOnIdle { ctrl.selectCue(first.id); ctrl.mergeSelectedCue() }
+            if (rule.runOnIdle { session.model.cues.size } != n) fail("merge back")
+        }
         // Translation after the fact.
         inst.runOnMainSync { ctrl.translateSubtitles() }
         val tr0 = System.currentTimeMillis()
@@ -262,6 +280,20 @@ class SubtitlesTest {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val outDir = File(ctx.getExternalFilesDir(null), "subs").apply { mkdirs() }
         val r = SubtitleRenderer.get(ctx)
+        // Importing a font: a bundled one, as if picked from the phone's files.
+        val picked = File(ctx.cacheDir, "My Font.ttf")
+        ctx.assets.open("fonts/suez_one.ttf").use { i -> picked.outputStream().use { i.copyTo(it) } }
+        val name = FontStore.import(ctx, android.net.Uri.fromFile(picked))
+        val tf = r.customTypeface(name) ?: run { fail("imported font doesn't load"); return }
+        if (!FontStore.hasHebrew(tf)) fail("imported font has no Hebrew")
+        val notFont = File(ctx.cacheDir, "notes.ttf").apply { writeText("hello") }
+        if (runCatching { FontStore.import(ctx, android.net.Uri.fromFile(notFont)) }.isSuccess) fail("imported a non-font")
+        val customStyle = SubtitleStyle(customFont = name, size = 1.4f, position = 0.5f)
+        val cbmp = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
+        r.draw(android.graphics.Canvas(cbmp), listOf("גופן מיובא Imported"), 0L, 2_000_000L, 1_000_000L, customStyle, 640, 360)
+        File(outDir, "9_imported_font.png").outputStream().use { cbmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        FontStore.delete(ctx, name)
+        r.forget(name)
         val blocks = listOf("החיילים מחפשים לכודים מתחת להריסות", "The soldiers search under the ruins")
         val cw = 360
         val ch = 640
