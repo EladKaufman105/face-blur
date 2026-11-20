@@ -94,7 +94,30 @@ data class SubtitleStyle(
     val boxColor: Int = 0xB8000000.toInt(),
     val effect: SubEffect = SubEffect.NONE,
     val position: Float = 0.86f,
+    /** Text colors of speakers 2, 3, ... (speaker 1 uses [textColor]). */
+    val speakerColors: List<Int> = DEFAULT_SPEAKERS,
 ) {
+    /** Text color for [speaker] (0 or 1: [textColor]); never the same as speaker 1's. */
+    fun speakerColor(speaker: Int): Int {
+        if (speaker <= 1) return textColor
+        val c = speakerColors.getOrNull(speaker - 2) ?: SPARE.getOrElse(speaker - 2 - speakerColors.size) { textColor }
+        if (c != textColor) return c
+        return (SPARE + DEFAULT_SPEAKERS).firstOrNull { it != textColor && it !in speakerColors } ?: c
+    }
+
+    /** Sets the color of [speaker] (2..). */
+    fun withSpeakerColor(speaker: Int, color: Int): SubtitleStyle {
+        val list = (2..maxOf(speaker, speakerColors.size + 1)).map { speakerColor(it) }.toMutableList()
+        list[speaker - 2] = color
+        return copy(speakerColors = list)
+    }
+
+    /** The look for a subtitle said by [speaker]. */
+    fun forSpeaker(speaker: Int): SubtitleStyle {
+        val c = speakerColor(speaker)
+        return if (c == textColor) this else copy(textColor = c)
+    }
+
     fun toJson(): String = JSONObject().apply {
         put("font", font.name)
         customFont?.let { put("customFont", it) }
@@ -109,12 +132,15 @@ data class SubtitleStyle(
         put("boxColor", boxColor)
         put("effect", effect.name)
         put("position", position.toDouble())
+        put("speakers", org.json.JSONArray(speakerColors))
     }.toString()
 
     companion object {
         const val WHITE = 0xFFFFFFFF.toInt()
         const val BLACK = 0xFF000000.toInt()
         const val YELLOW = 0xFFFFE135.toInt()
+        val DEFAULT_SPEAKERS = listOf(YELLOW, 0xFF3DF2FF.toInt(), 0xFFFF6FB5.toInt(), 0xFF34E07A.toInt(), 0xFFFFB020.toInt())
+        private val SPARE = listOf(WHITE, 0xFF9B5CFF.toInt(), 0xFF4D8DFF.toInt())
 
         fun fromJson(s: String?): SubtitleStyle {
             if (s.isNullOrBlank()) return SubtitleStyle()
@@ -135,6 +161,7 @@ data class SubtitleStyle(
                     boxColor = o.optInt("boxColor", d.boxColor),
                     effect = runCatching { SubEffect.valueOf(o.optString("effect")) }.getOrDefault(d.effect),
                     position = o.optDouble("position", d.position.toDouble()).toFloat(),
+                    speakerColors = o.optJSONArray("speakers")?.let { a -> List(a.length()) { a.getInt(it) } }?.takeIf { it.isNotEmpty() } ?: d.speakerColors,
                 )
             } catch (e: Exception) {
                 SubtitleStyle()

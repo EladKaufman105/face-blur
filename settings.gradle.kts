@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "FaceBlur"
+rootProject.name = "EDITIT"
 include(":app")

@@ -17,6 +17,10 @@ import com.elad.faceblur.subs.ModelManager
 import com.elad.faceblur.prefs.AppPrefs
 import com.elad.faceblur.subs.SpeechModel
 import com.elad.faceblur.subs.SubtitleEngine
+import com.elad.faceblur.subs.SpeakerDetector
+import com.elad.faceblur.audio.AudioEdit
+import com.elad.faceblur.audio.VoiceDsp
+import com.elad.faceblur.audio.VoiceFx
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -100,6 +104,20 @@ class EditorController(
     private var pendingTextSnapshot = false
     private var subsJob: Job? = null
 
+    /** Voice change and bleep settings. */
+    var audio by mutableStateOf(AudioEdit())
+        private set
+    /** The voice panel is open (in place of the timeline). */
+    var voicePanel by mutableStateOf(false)
+    /** The subtitle list shows words to tap and bleep (instead of text to edit). */
+    var bleepMode by mutableStateOf(false)
+    /** Bleeps and robot sound for the player, rebuilt on changes (read on the audio thread). */
+    @Volatile var voiceDsp: VoiceDsp? = null
+        private set
+    private var dspVersion = -1
+    /** Set by the player UI: applies [audio]'s pitch / mute to the player. */
+    var voiceApplier: () -> Unit = {}
+
     /** Frame the player and the overlay show. */
     val shownFrame get() = peekFrame ?: frame
 
@@ -127,6 +145,7 @@ class EditorController(
 
     private fun sync() {
         version = model.version
+        rebuildVoice()
         if (selectedId != null && model.track(selectedId!!) == null) selectedId = null
         if (selectedCueId != null && model.cue(selectedCueId!!) == null) selectedCueId = null
         schedulePreview()
@@ -395,7 +414,7 @@ class EditorController(
     }
 
     /** True while a model downloads or subtitles are being made. */
-    val subsBusy get() = subsProgress != null || models?.downloading != null
+    val subsBusy get() = subsProgress != null || models?.downloading != null || speakersProgress != null
 
     /** Transcribes the video with [m] (downloaded) and fills the subtitles. */
     fun generateSubtitles(m: SpeechModel) {
@@ -498,6 +517,56 @@ class EditorController(
     }
 
     /** Re-cuts the subtitles (from their whole sentences, so nothing is lost). */
+    /** Puts back a saved project's choices (no edits recorded). */
+    fun restore(rule: SplitRule, audio: AudioEdit, frame: Int) {
+        split = rule
+        this.audio = audio
+        this.frame = frame.coerceIn(0, max(0, frameCount - 1))
+        sync()
+    }
+
+    // ------------------------------------------------------------------ voice
+
+    fun changeAudio(a: AudioEdit) {
+        if (a == audio) return
+        audio = a
+        dspVersion = -1
+        rebuildVoice()
+        voiceApplier()
+    }
+
+    private fun rebuildVoice() {
+        if (dspVersion == model.version) return
+        dspVersion = model.version
+        val b = model.bleeps.map { (x, y) -> longArrayOf(x, y) }
+        voiceDsp = VoiceDsp(b, audio.voice, audio.tone, pitchAfter = audio.voice.pitch).takeIf { it.active && audio.voice != VoiceFx.MUTE }
+    }
+
+    /** Bleeps spoken word [i] of subtitle [id] or puts it back. */
+    fun toggleBleep(id: Int, i: Int) {
+        val on = model.toggleBleep(id, i)
+        sync()
+        if (on && audio.voice == VoiceFx.NONE && model.bleeps.size == 1) notice = t("המילה תצפצף בייצוא. אפשר לשמוע בנגן.")
+    }
+
+    fun clearBleeps() {
+        model.clearBleeps()
+        sync()
+    }
+
+    /** Words bleeped in all subtitles. */
+    val bleepedCount get() = model.cues.sumOf { model.bleepedWords(it).size }
+
+    // ------------------------------------------------------------------ speakers
+
+    fun setSpeaker(id: Int, speaker: Int, wholeSentence: Boolean = true) {
+        model.setSpeaker(id, speaker, wholeSentence)
+        sync()
+    }
+
+    /** Speakers in use (1..). */
+    val speakersUsed get() = model.cues.map { it.speaker.coerceAtLeast(1) }.toSortedSet()
+
     fun changeSplit(rule: SplitRule) {
         split = rule
         if (model.cues.isEmpty()) return
@@ -581,6 +650,56 @@ class EditorController(
 
     fun cancelSubtitles() {
         subsJob?.cancel()
+        speakersJob?.cancel()
+    }
+
+    // ------------------------------------------------------------------ who speaks
+
+    /** Speaker detection progress 0..1 while it runs. */
+    var speakersProgress by mutableStateOf<Float?>(null)
+        private set
+    private var speakersJob: Job? = null
+
+    /**
+     * Finds who says each sentence (on the device) and gives each speaker a color.
+     * @param count the number of speakers, if known (null: found automatically).
+     */
+    fun detectSpeakers(count: Int?) {
+        val mm = models ?: return
+        val ctx = appContext ?: return
+        if (model.cues.isEmpty() || speakersJob?.isActive == true || subsBusy) return
+        pauser()
+        speakersJob = scope.launch {
+            speakersProgress = 0f
+            try {
+                val dl = if (mm.speakerReady) 0f else 0.3f
+                if (dl > 0f) mm.downloadSpeakerModel { speakersProgress = it * dl }
+                val groups = model.cues.sortedBy { it.startMs }.groupBy { it.group }.values.toList()
+                val spans = groups.map { cs -> SpeakerDetector.Span(cs.minOf { it.startMs }, cs.maxOf { it.endMs }) }
+                val labels = SpeakerDetector.detect(ctx, session.info.uri, mm.speakerFile.path, spans, count) { p ->
+                    main.post { if (speakersProgress != null) speakersProgress = dl + (1f - dl) * p }
+                }
+                val map = HashMap<Int, Int>()
+                groups.forEachIndexed { i, cs -> for (c in cs) map[c.id] = labels[i] }
+                model.setSpeakers(map)
+                sync()
+                val n = labels.distinct().size
+                notice = if (n <= 1) t("נמצא דובר אחד") else t("נמצאו %d דוברים, כל אחד בצבע משלו").format(n)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: SubtitleEngine.NoAudioException) {
+                notice = t("אין קול בסרטון")
+            } catch (e: Exception) {
+                android.util.Log.w("EDITIT", "speakers failed", e)
+                notice = t("זיהוי הדוברים נכשל: %s").format(e.message ?: e.javaClass.simpleName)
+            } finally {
+                speakersProgress = null
+            }
+        }
+    }
+
+    fun cancelSpeakers() {
+        speakersJob?.cancel()
     }
 
     fun scaleSelectedBy(f: Float) {

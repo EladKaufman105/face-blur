@@ -37,13 +37,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/*.apk "out/FaceBlur-${{ github.run_number }}.apk"
+          cp app/build/outputs/apk/release/*.apk "out/EDITIT-${{ github.run_number }}.apk"
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: FaceBlur ${{ github.run_number }}
+          name: EDITIT ${{ github.run_number }}
           body: "APK for arm64 (vivo X300 Pro). Commit ${{ github.sha }}"
           files: out/*.apk
           make_latest: true
@@ -63,7 +63,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -78,6 +78,9 @@ jobs:
           mkdir -p app/src/androidTest/assets/models
           curl -sSfL --retry 3 -o app/src/androidTest/assets/models/ggml-tiny.bin \
             https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+          # The speaker model (WeSpeaker, CC BY 4.0), as the app downloads it.
+          curl -sSfL --retry 3 -o app/src/androidTest/assets/models/speaker.onnx \
+            https://raw.githubusercontent.com/EladKaufman105/face-blur/speaker-model/speaker-wespeaker-r34lm-fp16.onnx
           ls -la app/src/androidTest/assets/models
           bash ci/fetch-whisper.sh
 

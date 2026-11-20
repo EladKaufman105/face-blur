@@ -67,6 +67,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import com.elad.faceblur.R
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -82,10 +85,12 @@ private val CardShape = RoundedCornerShape(20.dp)
 
 @Composable
 fun MainScreen(vm: MainViewModel) {
-    // What the picked video is for: blurring (and the settings screen) or subtitles only.
+    // What the picked video is for: blurring (and the settings screen), subtitles only, or a
+    // saved project whose video went missing.
     var pickForSubs by rememberSaveable { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) vm.load(uri, thenSubtitles = pickForSubs)
+        if (uri == null) return@rememberLauncherForActivityResult
+        if (vm.state is UiState.Relink) vm.relink(uri) else vm.load(uri, thenSubtitles = pickForSubs)
     }
     val pick = {
         pickForSubs = false
@@ -109,7 +114,7 @@ fun MainScreen(vm: MainViewModel) {
         EditorTheme(vm.prefs.palette) {
             EditorScreen(
                 state.editor,
-                onClose = vm::backToSettings,
+                onClose = vm::closeEditor,
                 onExport = vm::export,
                 export = vm.prefs.export,
                 onExportChange = vm.prefs::updateExport,
@@ -136,6 +141,7 @@ fun MainScreen(vm: MainViewModel) {
                 UiState.Empty -> {
                     PickCard(pick)
                     SubtitlesCard(pickSubs)
+                    ProjectsSection(vm.projects, vm::openProject, vm::renameProject, vm::deleteProject)
                     Text(
                         t("אפשר גם לשתף סרטון מהגלריה ישירות לאפליקציה"),
                         style = MaterialTheme.typography.bodySmall,
@@ -144,6 +150,13 @@ fun MainScreen(vm: MainViewModel) {
                         textAlign = TextAlign.Center,
                     )
                 }
+                is UiState.Relink -> MessageCard(
+                    title = t("הסרטון של הפרויקט לא נמצא"),
+                    body = if (state.wrong) t("זה לא אותו סרטון (האורך שונה). בחר את הסרטון המקורי של \"%s\".").format(state.project.name)
+                    else t("ייתכן שהוא הועבר או נמחק, או שההרשאה אליו פגה. בחר אותו שוב כדי להמשיך לערוך את \"%s\".").format(state.project.name),
+                    primary = t("בחר את הסרטון") to { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
+                    secondary = t("חזרה") to vm::reset,
+                )
                 UiState.Loading -> Box(Modifier.fillMaxWidth().height(200.dp), Alignment.Center) {
                     CircularProgressIndicator()
                 }
@@ -206,7 +219,12 @@ fun MainScreen(vm: MainViewModel) {
 private fun Header(onSettings: () -> Unit) {
     Row(Modifier.padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f)) {
-            Text(t("טשטוש פנים"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Image(painterResource(R.drawable.ic_logo), null, Modifier.size(36.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("EDITIT", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+            }
+            Spacer(Modifier.height(4.dp))
             Text(
                 t("הכל מעובד על המכשיר. שום דבר לא עולה לרשת."),
                 style = MaterialTheme.typography.bodyMedium,
@@ -471,13 +489,13 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                     Text(t("נשמר בגלריה"), style = MaterialTheme.typography.titleSmall)
                     Text(
                         buildString {
-                            append("Movies/FaceBlur")
+                            append("Movies/EDITIT")
                             if (!state.subsOnly) {
                                 append(" · ")
                                 append(if (state.result.faces == 1) t("פנים אחת") else t("%d פנים").format(state.result.faces))
                             }
                             if (state.result.keptHdr) append(t(" · HDR נשמר"))
-                            if (state.result.srtFiles > 0) append(t(" · כתוביות SRT ב-Download/FaceBlur"))
+                            if (state.result.srtFiles > 0) append(t(" · כתוביות SRT ב-Download/EDITIT"))
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

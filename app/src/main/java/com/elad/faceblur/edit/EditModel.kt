@@ -49,6 +49,7 @@ class NewCue(val startMs: Long, val endMs: Long, val he: String, val en: String,
  *   words per subtitle change.
  * @param src the spoken language of the text, "he" or "en" ("" if unknown).
  * @param words when each word of the spoken text is said, if known.
+ * @param speaker who says it: 0 unknown (shown like speaker 1), 1.. [Speakers.MAX].
  */
 class Cue(
     val id: Int,
@@ -59,8 +60,9 @@ class Cue(
     var group: Int = id,
     var src: String = "",
     var words: List<TimedWord>? = null,
+    var speaker: Int = 0,
 ) {
-    fun copy() = Cue(id, startMs, endMs, he, en, group, src, words)
+    fun copy() = Cue(id, startMs, endMs, he, en, group, src, words, speaker)
 
     /** The text in the spoken language (Hebrew if unknown). */
     val srcText get() = when (src) {
@@ -111,14 +113,35 @@ class Cue(
         return pairs.map { (_, spoken) -> if (spoken) starts else null }
     }
 
-    /** Paragraphs to show for [lang] (the spoken language above the translation for both). */
-    fun blocks(lang: SubLang): List<String> = when (lang) {
-        SubLang.ORIGINAL -> listOf(srcText)
-        SubLang.TRANSLATED -> listOf(otherText.ifBlank { srcText })
-        SubLang.BOTH -> listOf(srcText, otherText)
-        SubLang.NONE -> emptyList()
-    }.filter { it.isNotBlank() }
+    /**
+     * Paragraphs to show for [lang] (the spoken language above the translation for both).
+     * Spoken words at [hide] (indices) are masked, e.g. ones bleeped out of the sound.
+     */
+    fun blocks(lang: SubLang, hide: Set<Int> = emptySet()): List<String> {
+        val spoken = if (hide.isEmpty()) srcText else Subtitles.mask(srcText, hide)
+        return when (lang) {
+            SubLang.ORIGINAL -> listOf(spoken)
+            SubLang.TRANSLATED -> listOf(otherText.ifBlank { spoken })
+            SubLang.BOTH -> listOf(spoken, otherText)
+            SubLang.NONE -> emptyList()
+        }.filter { it.isNotBlank() }
+    }
 }
+
+/** Speakers of subtitles. */
+object Speakers {
+    const val MAX = 6
+}
+
+/** Everything the user edited, copied out to be saved (see [EditModel.exportState]). */
+class EditState(
+    val tracks: List<EditTrack>,
+    val cues: List<Cue>,
+    /** Bleeped stretches of the sound: start, end (ms). */
+    val bleeps: List<LongArray>,
+    val nextId: Int,
+    val nextCueId: Int,
+)
 
 /** Which subtitle text to show / burn in: as spoken, its translation, both, or none. */
 enum class SubLang { NONE, ORIGINAL, TRANSLATED, BOTH }
@@ -159,7 +182,10 @@ class EditModel(
     val cues = ArrayList<Cue>()
     private var nextId = 1
     private var nextCueId = 1
-    private val undo = ArrayDeque<Pair<List<EditTrack>, List<Cue>>>()
+    /** Stretches of sound to bleep: start ms -> end ms. */
+    val bleeps = TreeMap<Long, Long>()
+    private class Snap(val tracks: List<EditTrack>, val cues: List<Cue>, val bleeps: Map<Long, Long>)
+    private val undo = ArrayDeque<Snap>()
 
     /** Bumped on every change. */
     var version = 0
@@ -295,8 +321,28 @@ class EditModel(
     // ------------------------------------------------------------------ edits
 
     private fun snapshot() {
-        undo.addLast(tracks.map { it.copy() } to cues.map { it.copy() })
+        undo.addLast(Snap(tracks.map { it.copy() }, cues.map { it.copy() }, TreeMap(bleeps)))
         while (undo.size > MAX_UNDO) undo.removeFirst()
+    }
+
+    /** A copy of everything edited, for saving. */
+    fun exportState() = EditState(
+        tracks.map { it.copy() }, cues.map { it.copy() },
+        bleeps.map { (a, b) -> longArrayOf(a, b) }, nextId, nextCueId,
+    )
+
+    /** Puts back a saved state (no undo history). */
+    fun restore(st: EditState) {
+        tracks.clear()
+        tracks += st.tracks
+        cues.clear()
+        cues += st.cues.sortedBy { it.startMs }
+        bleeps.clear()
+        for (b in st.bleeps) if (b.size == 2 && b[1] > b[0]) bleeps[b[0]] = b[1]
+        nextId = max(st.nextId, (tracks.maxOfOrNull { it.id } ?: 0) + 1)
+        nextCueId = max(st.nextCueId, (cues.maxOfOrNull { max(it.id, it.group) } ?: 0) + 1)
+        undo.clear()
+        changed()
     }
 
     private fun changed() {
@@ -304,13 +350,106 @@ class EditModel(
     }
 
     fun undo(): Boolean {
-        val (t, c) = undo.removeLastOrNull() ?: return false
+        val u = undo.removeLastOrNull() ?: return false
         tracks.clear()
-        tracks += t
+        tracks += u.tracks
         cues.clear()
-        cues += c
+        cues += u.cues
+        bleeps.clear()
+        bleeps.putAll(u.bleeps)
         changed()
         return true
+    }
+
+    // ------------------------------------------------------------------ speakers, bleeps
+
+    /** Sets who says a subtitle; [wholeSentence]: every subtitle split from the same sentence. */
+    fun setSpeaker(id: Int, speaker: Int, wholeSentence: Boolean = false) {
+        val c = cue(id) ?: return
+        val s = speaker.coerceIn(0, Speakers.MAX)
+        val targets = if (wholeSentence) cues.filter { it.group == c.group } else listOf(c)
+        if (targets.all { it.speaker == s }) return
+        snapshot()
+        for (t in targets) t.speaker = s
+        changed()
+    }
+
+    /** Speakers for many subtitles at once (automatic detection): id -> speaker. One undo step. */
+    fun setSpeakers(map: Map<Int, Int>) {
+        if (map.isEmpty()) return
+        snapshot()
+        for (c in cues) map[c.id]?.let { c.speaker = it.coerceIn(0, Speakers.MAX) }
+        changed()
+    }
+
+    /** Spoken words of [c] that are bleeped (indices). */
+    fun bleepedWords(c: Cue): Set<Int> {
+        if (bleeps.isEmpty()) return emptySet()
+        val n = Subtitles.words(c.srcText).size
+        val out = HashSet<Int>()
+        for (i in 0 until n) {
+            val (a, b) = Subtitles.wordSpanMs(c, i)
+            if (bleepCovers(a, b)) out += i
+        }
+        return out
+    }
+
+    /** Whether most of [a, b) is bleeped. */
+    private fun bleepCovers(a: Long, b: Long): Boolean {
+        if (b <= a) return false
+        var covered = 0L
+        for ((s, e) in bleeps.subMap(bleeps.floorKey(a) ?: a, true, b, false)) covered += max(0L, min(e, b) - max(s, a))
+        return covered * 2 >= b - a
+    }
+
+    /** Bleeps spoken word [i] of subtitle [id] out of the sound, or puts it back. Returns whether it's bleeped now. */
+    fun toggleBleep(id: Int, i: Int): Boolean {
+        val c = cue(id) ?: return false
+        val (a, b) = Subtitles.wordSpanMs(c, i)
+        if (b <= a) return false
+        snapshot()
+        val on = !bleepCovers(a, b)
+        if (on) {
+            // Merge with stretches it touches (or nearly: one beep over neighbouring words).
+            var s = a
+            var e = b
+            val hit = bleeps.entries.filter { (x, y) -> x <= e + BLEEP_JOIN_MS && y >= s - BLEEP_JOIN_MS }
+            for ((x, y) in hit) {
+                s = min(s, x)
+                e = max(e, y)
+                bleeps.remove(x)
+            }
+            bleeps[s] = e
+        } else {
+            // Cut [a, b) out of every stretch.
+            val hit = bleeps.entries.filter { (x, y) -> x < b && y > a }.map { it.key to it.value }
+            for ((x, y) in hit) {
+                bleeps.remove(x)
+                if (x < a) bleeps[x] = a
+                if (y > b) bleeps[b] = y
+            }
+        }
+        changed()
+        return on
+    }
+
+    /** Copies of the subtitles to export; with [mask], bleeped words are hidden (****). */
+    fun exportCues(mask: Boolean): List<Cue> = cues.sortedBy { it.startMs }.map { c ->
+        val hide = if (mask) bleepedWords(c) else emptySet()
+        c.copy().also { m ->
+            if (hide.isNotEmpty()) {
+                val spoken = Subtitles.mask(c.srcText, hide)
+                if (c.src == "en" || (c.src == "" && c.he.isBlank())) m.en = spoken else m.he = spoken
+            }
+        }
+    }
+
+    /** Removes every bleep (one undo step). */
+    fun clearBleeps() {
+        if (bleeps.isEmpty()) return
+        snapshot()
+        bleeps.clear()
+        changed()
     }
 
     // ------------------------------------------------------------------ subtitles
@@ -349,7 +488,16 @@ class EditModel(
         val groups = LinkedHashMap<Int, MutableList<Cue>>()
         for (c in cues.sortedBy { it.startMs }) groups.getOrPut(c.group) { ArrayList() } += c
         val out = ArrayList<Cue>()
-        for ((g, cs) in groups) out += Subtitles.split(Subtitles.merge(cs), rule, g) { nextCueId++ }
+        for ((g, cs) in groups) {
+            // A subtitle never mixes speakers: each speaker's run is cut on its own.
+            var a = 0
+            while (a < cs.size) {
+                var b = a + 1
+                while (b < cs.size && cs[b].speaker == cs[a].speaker) b++
+                out += Subtitles.split(Subtitles.merge(cs.subList(a, b)), rule, g) { nextCueId++ }
+                a = b
+            }
+        }
         cues.clear()
         cues += out.sortedBy { it.startMs }
         changed()
@@ -366,6 +514,11 @@ class EditModel(
         snapshot()
         var first = true
         val parts = Subtitles.splitAt(c, intArrayOf(0, k, n), c.group) { if (first) { first = false; c.id } else nextCueId++ }
+        // Splitting by hand ends the sentence there: what follows becomes a sentence of its own
+        // (it keeps its own words per subtitle, and can get another speaker).
+        val second = parts.last()
+        for (o in cues) if (o !== c && o.group == c.group && o.startMs >= c.endMs) o.group = second.id
+        second.group = second.id
         cues.remove(c)
         cues += parts
         cues.sortBy { it.startMs }
@@ -614,6 +767,8 @@ class EditModel(
     }
 
     companion object {
+        /** Bleeped words closer than this sound as one beep. */
+        const val BLEEP_JOIN_MS = 250L
         const val MIN_SCALE = 0.4f
         const val MAX_SCALE = 3f
         private const val MAX_UNDO = 60

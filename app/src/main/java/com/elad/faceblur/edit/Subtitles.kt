@@ -27,6 +27,7 @@ object Subtitles {
             f.group,
             src,
             if (timed) cs.flatMap { it.words!! } else null,
+            f.speaker,
         )
     }
 
@@ -71,7 +72,7 @@ object Subtitles {
     fun splitAt(c: Cue, bounds: IntArray, group: Int, newId: () -> Int): List<Cue> {
         val src = words(c.srcText)
         val k = bounds.size - 1
-        if (k <= 1) return listOf(Cue(newId(), c.startMs, c.endMs, c.he, c.en, group, c.src, c.words))
+        if (k <= 1) return listOf(Cue(newId(), c.startMs, c.endMs, c.he, c.en, group, c.src, c.words, c.speaker))
         val srcIsEnglish = c.src == "en" || (c.src == "" && c.he.isBlank())
         val other = words(c.otherText)
         val otherParts = spread(other, (0 until k).map { bounds[it + 1] - bounds[it] })
@@ -95,9 +96,34 @@ object Subtitles {
             val otherText = otherParts[j]
             val he = if (srcIsEnglish) otherText else srcText
             val en = if (srcIsEnglish) srcText else otherText
-            out += Cue(newId(), start, end, he, en, group, c.src, wt?.subList(a, e)?.toList())
+            out += Cue(newId(), start, end, he, en, group, c.src, wt?.subList(a, e)?.toList(), c.speaker)
         }
         return out
+    }
+
+    /** When spoken word [i] of [c] is said: its recognized times, or spread by length. */
+    fun wordSpanMs(c: Cue, i: Int): Pair<Long, Long> {
+        val src = words(c.srcText)
+        if (i !in src.indices) return 0L to 0L
+        c.words?.takeIf { it.size == src.size }?.let { return it[i].startMs to max(it[i].endMs, it[i].startMs + 80) }
+        val end = if (i + 1 < src.size) wordStartMs(c, i + 1) else c.endMs
+        return wordStartMs(c, i) to end
+    }
+
+    /** [s] with the words at [hide] masked (punctuation around them kept). */
+    fun mask(s: String, hide: Set<Int>): String {
+        var i = -1
+        return Regex("""\S+""").replace(s) { m ->
+            i++
+            if (i !in hide) m.value
+            else {
+                val w = m.value
+                val a = w.indexOfFirst { it.isLetterOrDigit() }
+                val b = w.indexOfLast { it.isLetterOrDigit() }
+                // Always 4 stars: the length shouldn't hint at the word.
+                if (a < 0) w else w.substring(0, a) + "****" + w.substring(b + 1)
+            }
+        }
     }
 
     /** When spoken word [i] of [c] starts: its recognized time, or spread by length. */

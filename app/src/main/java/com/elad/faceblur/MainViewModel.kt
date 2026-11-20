@@ -24,6 +24,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
+import androidx.compose.runtime.snapshotFlow
+import android.os.Handler
+import android.os.Looper
+import com.elad.faceblur.audio.AudioEdit
+import com.elad.faceblur.edit.SplitRule
+import com.elad.faceblur.project.ProjectMeta
+import com.elad.faceblur.project.ProjectStore
+import com.elad.faceblur.subs.SubtitleStyle
+import org.json.JSONObject
+import java.util.concurrent.Executors
 
 sealed interface UiState {
     data object Empty : UiState
@@ -34,6 +47,8 @@ sealed interface UiState {
     data class Editing(val info: VideoInfo, val editor: EditorController) : UiState
     data class Done(val info: VideoInfo, val result: Outcome.Saved, val canEdit: Boolean, val subsOnly: Boolean = false) : UiState
     data class NoFaces(val info: VideoInfo, val canEdit: Boolean) : UiState
+    /** A saved project whose video can't be read any more: pick it again. [wrong]: the last pick was another video. */
+    data class Relink(val project: ProjectMeta, val wrong: Boolean = false) : UiState
     data class Failed(val info: VideoInfo?, val message: String) : UiState
 }
 
@@ -57,6 +72,183 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private var job: Job? = null
     private var editor: EditorController? = null
+
+    /** Saved projects, last edited first. */
+    var projects by mutableStateOf<List<ProjectMeta>>(emptyList())
+        private set
+    /** The project of the open session. */
+    private var projectId: String? = null
+    private var autosave: Job? = null
+    /** Writes projects one at a time, also after the screen is gone. */
+    private val saver = Executors.newSingleThreadExecutor()
+    private val main = Handler(Looper.getMainLooper())
+
+    init {
+        refreshProjects()
+    }
+
+    fun refreshProjects() {
+        viewModelScope.launch {
+            projects = withContext(Dispatchers.IO) { ProjectStore.list(getApplication()) }
+        }
+    }
+
+    /** What the editor changes, for project.json. */
+    private fun editorFields(ctrl: EditorController): JSONObject = JSONObject()
+        .put("style", prefs.subStyle.toJson())
+        .put("split", JSONObject().put("words", ctrl.split.words).put("chars", ctrl.split.chars))
+        .put("audio", ctrl.audio.toJson())
+        .put("frame", ctrl.frame)
+
+    /** Every new editing session is saved as a project. */
+    private fun beginProject(ctrl: EditorController) {
+        val s = ctrl.session
+        val id = ProjectStore.newId()
+        projectId = id
+        val st = s.settings
+        val json = editorFields(ctrl)
+            .put("v", 1)
+            .put("name", s.info.name)
+            .put("uri", s.info.uri.toString())
+            .put("created", System.currentTimeMillis())
+            .put("durationMs", s.info.durationMs)
+            .put("subtitlesOnly", s.subtitlesOnly)
+            .put("analysisMs", s.analysisMs)
+            .put("settings", JSONObject().put("mode", st.mode.name).put("strength", st.strength.toDouble()).put("padding", st.padding.toDouble()).put("sensitive", st.sensitive))
+        val edits = ctrl.model.exportState()
+        val app = getApplication<Application>()
+        saver.execute {
+            runCatching { ProjectStore.create(app, id, s.analysis, s.info.thumbnail, json, edits) }
+                .onFailure { android.util.Log.w("EDITIT", "project not saved", it) }
+            main.post { refreshProjects() }
+        }
+        startAutosave(ctrl)
+    }
+
+    private fun startAutosave(ctrl: EditorController) {
+        autosave?.cancel()
+        autosave = viewModelScope.launch {
+            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, prefs.subStyle) }
+                .drop(1)
+                .collectLatest {
+                    delay(1500)
+                    saveProject(ctrl)
+                }
+        }
+    }
+
+    /** Saves the open project now (its state is copied here; written in the background). */
+    fun saveProject(ctrl: EditorController? = editor) {
+        val id = projectId ?: return
+        if (ctrl == null) return
+        val fields = editorFields(ctrl)
+        val edits = ctrl.model.exportState()
+        val app = getApplication<Application>()
+        saver.execute {
+            runCatching { ProjectStore.save(app, id, fields, edits) }
+                .onFailure { android.util.Log.w("EDITIT", "project not saved", it) }
+            main.post { if (state !is UiState.Editing) refreshProjects() }
+        }
+    }
+
+    fun openProject(id: String) {
+        if (state is UiState.Working) return
+        closeSession()
+        state = UiState.Loading
+        job = viewModelScope.launch {
+            val app = getApplication<Application>()
+            val loaded = try {
+                withContext(Dispatchers.IO) { ProjectStore.load(app, id) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("EDITIT", "project not loaded", e)
+                state = UiState.Failed(null, t("לא ניתן לפתוח את הפרויקט"))
+                return@launch
+            }
+            val info = try {
+                withContext(Dispatchers.IO) { VideoInfo.probe(app, loaded.meta.uri) }
+            } catch (e: CancellationException) {
+                loaded.analysis.close()
+                throw e
+            } catch (e: Exception) {
+                loaded.analysis.close()
+                state = UiState.Relink(loaded.meta)
+                return@launch
+            }
+            val j = loaded.json
+            val sj = j.optJSONObject("settings") ?: JSONObject()
+            val settings = Settings(
+                runCatching { BlurMode.valueOf(sj.optString("mode")) }.getOrDefault(BlurMode.BLUR),
+                sj.optDouble("strength", 0.6).toFloat(),
+                sj.optDouble("padding", 1.6).toFloat(),
+                sj.optBoolean("sensitive"),
+            )
+            val session = EditSession(info, settings, loaded.analysis, j.optLong("analysisMs"), j.optBoolean("subtitlesOnly"))
+            loaded.edits?.let { session.model.restore(it) }
+            val ctrl = EditorController(session, viewModelScope, app, models, prefs)
+            if (session.subtitlesOnly) ctrl.previewAvailable = false
+            j.optString("style").takeIf { it.isNotBlank() }?.let { prefs.updateSubStyle(SubtitleStyle.fromJson(it)) }
+            val sp = j.optJSONObject("split")
+            ctrl.restore(
+                SplitRule(sp?.optInt("words") ?: 0, sp?.optInt("chars") ?: 0),
+                AudioEdit.fromJson(j.optJSONObject("audio")),
+                j.optInt("frame"),
+            )
+            editor = ctrl
+            projectId = id
+            startAutosave(ctrl)
+            state = UiState.Editing(info, ctrl)
+        }
+    }
+
+    /** The project's video, picked again. */
+    fun relink(uri: Uri) {
+        val project = (state as? UiState.Relink)?.project ?: return
+        state = UiState.Loading
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val info = try {
+                withContext(Dispatchers.IO) { VideoInfo.probe(app, uri) }
+            } catch (e: Exception) {
+                state = UiState.Relink(project, wrong = true)
+                return@launch
+            }
+            if (project.durationMs > 0 && kotlin.math.abs(info.durationMs - project.durationMs) > 1500) {
+                state = UiState.Relink(project, wrong = true)
+                return@launch
+            }
+            withContext(Dispatchers.IO) { ProjectStore.relink(app, project.id, uri) }
+            openProject(project.id)
+        }
+    }
+
+    fun deleteProject(id: String) {
+        val app = getApplication<Application>()
+        projects = projects.filter { it.id != id }
+        saver.execute {
+            ProjectStore.delete(app, id)
+            main.post { refreshProjects() }
+        }
+    }
+
+    fun renameProject(id: String, name: String) {
+        val n = name.trim().take(80)
+        if (n.isEmpty()) return
+        val app = getApplication<Application>()
+        saver.execute {
+            runCatching { ProjectStore.rename(app, id, n) }
+            main.post { refreshProjects() }
+        }
+    }
+
+    /** Closes the editor (the project is saved) and goes home. */
+    fun closeEditor() {
+        job?.cancel()
+        closeSession()
+        state = UiState.Empty
+        refreshProjects()
+    }
 
     /** @param thenSubtitles go straight to the subtitles editor (no blurring). */
     fun load(uri: Uri, thenSubtitles: Boolean = false) {
@@ -86,6 +278,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val session = EditSession(info, settings, analysis, SystemClock.elapsedRealtime() - t0)
                 val ctrl = EditorController(session, viewModelScope, getApplication(), models, prefs)
                 editor = ctrl
+                beginProject(ctrl)
                 if (review) {
                     state = UiState.Editing(info, ctrl)
                 } else if (session.model.tracks.isEmpty()) {
@@ -110,6 +303,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ctrl.previewAvailable = false
                 ctrl.subsSheet = true
                 editor = ctrl
+                beginProject(ctrl)
                 state = UiState.Editing(info, ctrl)
             }
         }
@@ -136,8 +330,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun render(ctrl: EditorController) {
         val s = ctrl.session
         state = UiState.Working(s.info, 2, 0f, s.subtitlesOnly)
+        saveProject(ctrl)
         val saved = FaceBlurProcessor(getApplication()).render(
-            s.info, s.settings, s.analysis, s.model, s.analysisMs, prefs.export, prefs.subStyle,
+            s.info, s.settings, s.analysis, s.model, s.analysisMs, prefs.export, prefs.subStyle, ctrl.audio,
         ) { p -> state = UiState.Working(s.info, 2, p, s.subtitlesOnly) }
         if (s.analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / s.analysisMs
         state = UiState.Done(s.info, saved, canEdit = true, subsOnly = s.subtitlesOnly)
@@ -179,6 +374,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun closeSession() {
+        autosave?.cancel()
+        autosave = null
+        editor?.let { saveProject(it) }
+        projectId = null
         editor?.cancelTracking()
         editor?.cancelSubtitles()
         editor?.session?.close()
@@ -187,6 +386,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         closeSession()
+        saver.shutdown()
     }
 
     private fun currentInfo(): VideoInfo? = when (val s = state) {

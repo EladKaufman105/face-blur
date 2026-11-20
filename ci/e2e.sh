@@ -12,7 +12,7 @@ adb shell settings put global hide_error_dialogs 1 || true
 # The home screen app isn't needed and its "not responding" dialog steals the keys.
 adb shell pm disable-user --user 0 com.google.android.apps.nexuslauncher || true
 
-timeout 2400 adb shell am instrument -w -e class com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.SubtitlesTest \
+timeout 3300 adb shell am instrument -w -e class com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.SubtitlesTest,com.elad.faceblur.ProjectsVoiceTest \
   com.elad.faceblur.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/instrument.txt"
 
 adb logcat -d -v time > "$OUT/logcat_full.txt"
@@ -23,5 +23,6 @@ adb pull /sdcard/Android/data/com.elad.faceblur/files/results "$OUT/" || \
   adb shell "run-as com.elad.faceblur ls -la" || true
 adb pull /sdcard/Android/data/com.elad.faceblur/files/editor "$OUT/" || true
 adb pull /sdcard/Android/data/com.elad.faceblur/files/subs "$OUT/" || true
+adb pull /sdcard/Android/data/com.elad.faceblur/files/projects "$OUT/" || true
 ls -la "$OUT" "$OUT/results" || true
-grep -q "^OK (6 tests)" "$OUT/instrument.txt"
+grep -q "^OK (9 tests)" "$OUT/instrument.txt"

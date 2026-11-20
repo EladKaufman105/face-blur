@@ -40,6 +40,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.media3.common.PlaybackParameters
+import com.elad.faceblur.audio.VoiceFx
+import com.elad.faceblur.audio.VoicePreviewRenderers
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -152,7 +156,6 @@ fun EditorScreen(
     subStyle: SubtitleStyle = SubtitleStyle(),
     onSubStyleChange: (SubtitleStyle) -> Unit = {},
 ) {
-    var confirmClose by remember { mutableStateOf(false) }
     var exportSheet by remember { mutableStateOf(false) }
     BackHandler {
         when {
@@ -160,8 +163,9 @@ fun EditorScreen(
             ctrl.stylePanel -> ctrl.stylePanel = false
             ctrl.listEditor -> ctrl.listEditor = false
             ctrl.splitPanel -> ctrl.splitPanel = false
+            ctrl.voicePanel -> ctrl.voicePanel = false
             ctrl.selectedId != null || ctrl.selectedCueId != null -> ctrl.deselect()
-            else -> confirmClose = true
+            else -> onClose()
         }
     }
     @Suppress("UNUSED_VARIABLE") val version = ctrl.version
@@ -178,7 +182,8 @@ fun EditorScreen(
             Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = { confirmClose = true }) { Icon(Icons.Filled.Close, t("סגור")) }
+            // Everything is saved in the project as it's edited.
+            IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, t("חזרה")) }
             Text(
                 if (ctrl.session.subtitlesOnly) t("כתוביות") else t("עריכה"),
                 style = MaterialTheme.typography.titleLarge,
@@ -216,6 +221,9 @@ fun EditorScreen(
                     ProgressPill(t("עוקב אחרי הפנים…"), p, ctrl::cancelTracking)
                 }
                 if (!ctrl.subsSheet) {
+                    ctrl.speakersProgress?.let { p -> ProgressPill(t("מזהה דוברים…"), p, ctrl::cancelSpeakers) }
+                }
+                if (!ctrl.subsSheet) {
                     val models = ctrl.models
                     val sp = ctrl.subsProgress
                     val eta = rememberEta()
@@ -240,11 +248,13 @@ fun EditorScreen(
         // Video controls and timelines run left to right even in a Hebrew UI.
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Transport(ctrl, busy)
-            if (!ctrl.stylePanel && !ctrl.listEditor) Timeline(ctrl, busy)
+            if (!ctrl.stylePanel && !ctrl.listEditor && !ctrl.voicePanel) Timeline(ctrl, busy, subStyle)
         }
 
         if (ctrl.listEditor) {
-            AllSubtitlesPanel(ctrl, Modifier.fillMaxHeight(0.6f))
+            AllSubtitlesPanel(ctrl, Modifier.fillMaxHeight(0.6f), subStyle)
+        } else if (ctrl.voicePanel) {
+            VoicePanel(ctrl)
         } else if (ctrl.stylePanel) {
             SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
         } else {
@@ -261,7 +271,7 @@ fun EditorScreen(
     }
 
     if (ctrl.subsSheet) SubtitlesSheet(ctrl, export, onExportChange)
-    if (ctrl.cueEditor) CueEditorDialog(ctrl)
+    if (ctrl.cueEditor) CueEditorDialog(ctrl, subStyle)
 
     if (exportSheet) {
         ExportSheet(
@@ -270,15 +280,6 @@ fun EditorScreen(
             onDismiss = { exportSheet = false },
             hasSubs = ctrl.model.cues.isNotEmpty(),
             hasTranslation = ctrl.hasTranslation,
-        )
-    }
-    if (confirmClose) {
-        AlertDialog(
-            onDismissRequest = { confirmClose = false },
-            title = { Text(t("לצאת מהעריכה?")) },
-            text = { Text(if (ctrl.session.subtitlesOnly) t("השינויים לא יישמרו.") else t("השינויים בטשטושים לא יישמרו.")) },
-            confirmButton = { TextButton(onClick = { confirmClose = false; onClose() }) { Text(t("צא")) } },
-            dismissButton = { TextButton(onClick = { confirmClose = false }) { Text(t("המשך לערוך")) } },
         )
     }
 }
@@ -320,7 +321,8 @@ private fun VideoWithOverlay(ctrl: EditorController, subs: SubLang, style: Subti
     val times = ctrl.model.times
     val preview = remember(ctrl) { PreviewSource(if (times.isEmpty()) 0L else times[0]) }
     val player = remember(ctrl) {
-        ExoPlayer.Builder(context).build().apply {
+        // Bleeps and the robot voice are heard live; the pitch is set on the player.
+        ExoPlayer.Builder(context, VoicePreviewRenderers(context) { ctrl.voiceDsp }).build().apply {
             if (ctrl.previewAvailable) {
                 setVideoEffects(listOf<Effect>(BlurEffect(preview, settings.mode, settings.strength)))
             }
@@ -332,7 +334,14 @@ private fun VideoWithOverlay(ctrl: EditorController, subs: SubLang, style: Subti
     DisposableEffect(player) {
         ctrl.preview = preview
         sync.attach()
+        ctrl.voiceApplier = {
+            val v = ctrl.audio.voice
+            player.playbackParameters = PlaybackParameters(1f, v.pitch)
+            player.volume = if (v == VoiceFx.MUTE) 0f else 1f
+        }
+        ctrl.voiceApplier()
         onDispose {
+            ctrl.voiceApplier = {}
             sync.detach()
             ctrl.preview = null
             player.release()
@@ -497,7 +506,8 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
         val cue = ctrl.model.cueAt(nowMs)
         val faded = subs == SubLang.NONE
         val lang = if (faded) SubLang.BOTH else subs
-        val blocks = cue?.blocks(lang) ?: if (ctrl.stylePanel) {
+        val hide = if (cue != null && ctrl.audio.maskWords) ctrl.model.bleepedWords(cue) else emptySet()
+        val blocks = cue?.blocks(lang, hide) ?: if (ctrl.stylePanel) {
             when (lang) {
                 SubLang.ORIGINAL -> SampleBlocks.take(1)
                 SubLang.TRANSLATED -> SampleBlocks.drop(1)
@@ -512,7 +522,7 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
             if (faded) nc.saveLayerAlpha(0f, 0f, size.width, size.height, 120)
             if (cue != null) {
                 subHit.rect = renderer.draw(
-                    nc, blocks, cue.startMs * 1000, cue.endMs * 1000, nowMs * 1000, style,
+                    nc, blocks, cue.startMs * 1000, cue.endMs * 1000, nowMs * 1000, style.forSpeaker(cue.speaker),
                     size.width.toInt(), size.height.toInt(), cue.blockTimes(lang),
                 )
                 subHit.cueId = cue.id
@@ -647,11 +657,19 @@ private fun Transport(ctrl: EditorController, busy: Boolean) {
             }
             IconButton(onClick = { ctrl.step(1) }, enabled = !busy) { Icon(EditorIcons.ChevronRight, t("פריים הבא")) }
         }
-        IconButton(
-            onClick = ctrl::undo,
-            enabled = ctrl.model.canUndo && !busy,
-            modifier = Modifier.align(Alignment.CenterEnd),
-        ) { Icon(EditorIcons.Undo, t("בטל")) }
+        Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically) {
+            if (ctrl.previewAvailable) {
+                // The real blur in the player, or outlines only.
+                IconButton(onClick = ctrl::togglePreview, enabled = !busy) {
+                    Icon(
+                        if (ctrl.previewOn) EditorIcons.Eye else EditorIcons.EyeOff,
+                        t("תצוגה"),
+                        tint = if (ctrl.previewOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            IconButton(onClick = ctrl::undo, enabled = ctrl.model.canUndo && !busy) { Icon(EditorIcons.Undo, t("בטל")) }
+        }
     }
 }
 
@@ -746,7 +764,7 @@ private class TimelineGeo(
 }
 
 @Composable
-private fun Timeline(ctrl: EditorController, busy: Boolean) {
+private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
@@ -862,6 +880,10 @@ private fun Timeline(ctrl: EditorController, busy: Boolean) {
                 if (x1 < -handleW || x0 > size.width + handleW) continue
                 val y = g.subsTop
                 drawRoundRect(SubsClip, Offset(x0, y), Size(x1 - x0, subsH), CornerRadius(5.dp.toPx()))
+                // Who says it: a bar in the speaker's color.
+                if (c.speaker > 0) {
+                    drawRoundRect(Color(style.speakerColor(c.speaker)), Offset(x0, y + subsH - 3.dp.toPx()), Size(x1 - x0, 3.dp.toPx()), CornerRadius(1.5.dp.toPx()))
+                }
                 val label = c.srcText
                 if (x1 - x0 > 20.dp.toPx() && label.isNotBlank()) {
                     clipRect(left = x0 + 4.dp.toPx(), top = y, right = x1 - 4.dp.toPx(), bottom = y + subsH) {
@@ -879,6 +901,13 @@ private fun Timeline(ctrl: EditorController, busy: Boolean) {
                         drawLine(Color(0xFF333333), Offset(gx, y + subsH * 0.3f), Offset(gx, y + subsH * 0.7f), 1.5.dp.toPx())
                     }
                 }
+            }
+            // Bleeped stretches of the sound.
+            for ((a, b) in ctrl.model.bleeps) {
+                val x0 = g.x(ctrl.cueRelUs(a))
+                val x1 = max(g.x(ctrl.cueRelUs(b)), x0 + 2.dp.toPx())
+                if (x1 < 0 || x0 > size.width) continue
+                drawRect(BleepMark, Offset(x0, g.subsTop - 4.dp.toPx()), Size(x1 - x0, 3.dp.toPx()))
             }
         }
 
@@ -1095,6 +1124,9 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
                         Tool(t("כל הכתוביות"), AppIcons.ListLines, !busy) { ctrl.pauser(); ctrl.listEditor = true }
                         Tool(t("חלוקה"), AppIcons.WrapText, !busy, active = ctrl.splitPanel) { ctrl.splitPanel = !ctrl.splitPanel }
                     }
+                    Tool(t("קול"), AppIcons.Voice, !busy, active = ctrl.audio.voice != VoiceFx.NONE || ctrl.model.bleeps.isNotEmpty()) {
+                        ctrl.pauser(); ctrl.voicePanel = true
+                    }
                 }
                 if (subsOnly) subsTools()
                 Tool(
@@ -1105,11 +1137,6 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
                 ) {
                     ctrl.addMode = !ctrl.addMode
                     if (ctrl.addMode) ctrl.pauser()
-                }
-                if (ctrl.previewAvailable) {
-                    Tool(t("תצוגה"), if (ctrl.previewOn) EditorIcons.Eye else EditorIcons.EyeOff, !busy, active = ctrl.previewOn) {
-                        ctrl.togglePreview()
-                    }
                 }
                 if (!subsOnly) subsTools()
             } else {
@@ -1159,6 +1186,8 @@ private fun RowScope.Tool(label: String, icon: ImageVector, enabled: Boolean, ac
 // ---------------------------------------------------------------------- icons
 
 /** A few Material icons (Apache 2.0) not in the core icon set. */
+private val BleepMark = Color(0xFFFF4D6D)
+
 private object EditorIcons {
     private fun icon(name: String, path: String) = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
         .addPath(pathData = addPathNodes(path), fill = SolidColor(Color.Black))

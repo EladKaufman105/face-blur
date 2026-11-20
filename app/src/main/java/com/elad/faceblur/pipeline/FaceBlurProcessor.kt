@@ -26,6 +26,12 @@ import com.elad.faceblur.analysis.AnalysisResult
 import com.elad.faceblur.analysis.FaceAnalyzer
 import com.elad.faceblur.edit.EditModel
 import com.elad.faceblur.edit.toEditModel
+import com.elad.faceblur.audio.AudioEdit
+import com.elad.faceblur.audio.VoiceAudioProcessor
+import com.elad.faceblur.audio.VoiceDsp
+import com.elad.faceblur.audio.VoiceFx
+import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.common.audio.SonicAudioProcessor
 import com.elad.faceblur.track.FaceTimeline
 import com.elad.faceblur.effects.BlurEffect
 import com.elad.faceblur.effects.BlurMode
@@ -64,7 +70,7 @@ sealed interface Outcome {
         val frames: Int,
         val analysisMs: Long,
         val renderMs: Long,
-        /** Number of .srt files saved (Download/FaceBlur). */
+        /** Number of .srt files saved (Download/EDITIT). */
         val srtFiles: Int = 0,
     ) : Outcome
     data object NoFaces : Outcome
@@ -136,6 +142,7 @@ class FaceBlurProcessor(private val context: Context) {
         analysisMs: Long,
         export: ExportOptions = ExportOptions(),
         subStyle: SubtitleStyle = SubtitleStyle(),
+        audio: AudioEdit = AudioEdit(),
         onProgress: (Float) -> Unit,
     ): Outcome.Saved {
         val t1 = SystemClock.elapsedRealtime()
@@ -149,16 +156,26 @@ class FaceBlurProcessor(private val context: Context) {
         out.delete()
         val blur = BlurEffect(timeline, settings.mode, settings.strength)
         // Blur at full resolution first, then resize / drop frames for the chosen output.
-        val burn = model.cues.mapNotNull { c ->
-            c.blocks(export.subs).takeIf { it.isNotEmpty() }?.let { BurnCue(c.startMs * 1000, c.endMs * 1000, it, c.blockTimes(export.subs)) }
+        val cues = model.exportCues(audio.maskWords)
+        val burn = cues.mapNotNull { c ->
+            c.blocks(export.subs).takeIf { it.isNotEmpty() }?.let { BurnCue(c.startMs * 1000, c.endMs * 1000, it, c.blockTimes(export.subs), c.speaker) }
         }
         val subsEffect = if (burn.isEmpty()) {
             emptyList()
         } else {
             listOf<Effect>(OverlayEffect(ImmutableList.of<TextureOverlay>(SubtitleOverlay(burn, subStyle, SubtitleRenderer.get(context)))))
         }
+        // The voice: the pitch, then bleeps and robot sound (so the beep isn't shifted).
+        val audioFx = ArrayList<AudioProcessor>()
+        val bleeps = model.bleeps.map { (a, b) -> longArrayOf(a, b) }
+        val dsp = VoiceDsp(bleeps, audio.voice, audio.tone)
+        if (audio.voice != VoiceFx.MUTE) {
+            if (audio.voice.pitch != 1f) audioFx += SonicAudioProcessor().apply { setPitch(audio.voice.pitch) }
+            if (dsp.active) audioFx += VoiceAudioProcessor(dsp)
+        }
         val item = EditedMediaItem.Builder(MediaItem.fromUri(info.uri))
-            .setEffects(Effects(emptyList(), listOf<Effect>(blur) + export.effects(info) + subsEffect))
+            .setRemoveAudio(audio.voice == VoiceFx.MUTE)
+            .setEffects(Effects(audioFx, listOf<Effect>(blur) + export.effects(info) + subsEffect))
             .build()
         val bitrate = export.videoBitrate(info)
         val modes = when {
@@ -175,8 +192,8 @@ class FaceBlurProcessor(private val context: Context) {
         val base = "${info.name}_blur_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val saved = withContext(Dispatchers.IO) { saveToGallery(out, base) }
         out.delete()
-        val srts = if (export.saveSrt && model.cues.isNotEmpty()) withContext(Dispatchers.IO) {
-            listOfNotNull(Srt.save(context, base, model.cues, english = false), Srt.save(context, base, model.cues, english = true)).size
+        val srts = if (export.saveSrt && cues.isNotEmpty()) withContext(Dispatchers.IO) {
+            listOfNotNull(Srt.save(context, base, cues, english = false), Srt.save(context, base, cues, english = true)).size
         } else 0
         val renderMs = SystemClock.elapsedRealtime() - t1
         return Outcome.Saved(saved, timeline.trackCount, keptHdr, analysis.frameCount, analysisMs, renderMs, srts)
@@ -264,7 +281,7 @@ class FaceBlurProcessor(private val context: Context) {
         val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, "$baseName.mp4")
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/FaceBlur")
+            put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/EDITIT")
             put(MediaStore.Video.Media.IS_PENDING, 1)
         }
         val resolver = context.contentResolver

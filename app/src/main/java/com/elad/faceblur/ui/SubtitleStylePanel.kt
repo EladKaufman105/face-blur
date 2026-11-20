@@ -20,6 +20,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.elad.faceblur.edit.Speakers
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -163,7 +166,8 @@ private fun Selectable(selected: Boolean, onClick: () -> Unit, content: @Composa
 private fun PresetsTab(style: SubtitleStyle, onChange: (SubtitleStyle) -> Unit) {
     Grid(SubPresets.all, 3) { p ->
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Selectable(style == p.style, { onChange(p.style) }) {
+            // A preset keeps the speakers' colors.
+            Selectable(style.copy(speakerColors = p.style.speakerColors) == p.style, { onChange(p.style.copy(speakerColors = style.speakerColors)) }) {
                 StylePreview(p.style, Modifier.fillMaxWidth().aspectRatio(1.5f))
             }
             Text(
@@ -315,6 +319,26 @@ private fun ColorsTab(style: SubtitleStyle, onChange: (SubtitleStyle) -> Unit) {
                 // Keep the box a little see-through.
                 onChange(style.copy(boxColor = (c and 0x00FFFFFF) or (0xD0 shl 24)))
             }
+        }
+        // Each speaker's subtitles in its own color (speaker 1: the text color above).
+        Caption(t("צבעי דוברים"))
+        var editing by remember { mutableIntStateOf(2) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            for (n in 1..Speakers.MAX) {
+                val on = n == editing
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .border(if (on) 2.dp else 0.dp, if (on) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape)
+                        .clickable(enabled = n > 1) { editing = n }
+                        .semantics { contentDescription = t("דובר %d").format(n) },
+                    contentAlignment = Alignment.Center,
+                ) { SpeakerDot(n, style, 28.dp) }
+            }
+        }
+        Swatches(SubPresets.colors.filter { it != style.textColor }, style.speakerColor(editing)) { c ->
+            onChange(style.withSpeakerColor(editing, c))
         }
     }
 }

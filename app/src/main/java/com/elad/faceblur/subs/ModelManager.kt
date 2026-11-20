@@ -78,63 +78,88 @@ class ModelManager(context: Context) {
         downloading = m
         progress = 0f
         try {
-            withContext(Dispatchers.IO) {
-                val part = File(dir, m.fileName + ".part")
-                var url = URL(m.url)
-                var conn: HttpURLConnection
-                var redirects = 0
-                while (true) {
-                    conn = url.openConnection() as HttpURLConnection
-                    conn.instanceFollowRedirects = false
-                    conn.connectTimeout = 20_000
-                    conn.readTimeout = 30_000
-                    if (part.exists() && part.length() > 0) conn.setRequestProperty("Range", "bytes=${part.length()}-")
-                    val code = conn.responseCode
-                    if (code in 300..399 && redirects < 8) {
-                        val loc = conn.getHeaderField("Location") ?: error("redirect without location")
-                        url = URL(url, loc)
-                        conn.disconnect()
-                        redirects++
-                        continue
-                    }
-                    if (code == 416) {
-                        // Range past the end: the partial file is complete.
-                        conn.disconnect()
-                        break
-                    }
-                    if (code != 200 && code != 206) error("HTTP $code")
-                    val resume = code == 206
-                    if (!resume) part.delete()
-                    val already = if (resume) part.length() else 0L
-                    val total = already + conn.contentLengthLong.coerceAtLeast(0L)
-                    conn.inputStream.use { input ->
-                        FileOutputStream(part, resume).use { out ->
-                            val buf = ByteArray(1 shl 16)
-                            var done = already
-                            var shown = -1f
-                            while (true) {
-                                ensureActive()
-                                val n = input.read(buf)
-                                if (n < 0) break
-                                out.write(buf, 0, n)
-                                done += n
-                                val p = if (total > 0) done.toFloat() / total else 0f
-                                if (p - shown >= 0.002f) {
-                                    shown = p
-                                    withContext(Dispatchers.Main) { progress = p }
-                                }
-                            }
-                        }
-                    }
-                    conn.disconnect()
-                    break
-                }
-                if (part.length() < 10_000_000L) error("download incomplete")
-                if (!part.renameTo(file(m))) error("can't save the model")
-            }
+            fetch(m.fileName, m.url, 10_000_000L) { progress = it }
         } finally {
             downloading = null
             version++
         }
+    }
+
+    /** The voice model that tells speakers apart (WeSpeaker, ~13 MB). */
+    val speakerFile get() = File(dir, SPEAKER_FILE)
+
+    val speakerReady get() = speakerFile.let { it.exists() && it.length() > 5_000_000L }
+
+    /** Downloads the speaker model once. */
+    suspend fun downloadSpeakerModel(onProgress: (Float) -> Unit) {
+        try {
+            fetch(SPEAKER_FILE, SPEAKER_URL, 5_000_000L, onProgress)
+        } finally {
+            version++
+        }
+    }
+
+    /** Downloads [url] into [name] in the models folder, resuming a partial file. */
+    private suspend fun fetch(name: String, urlText: String, minBytes: Long, onProgress: (Float) -> Unit) {
+        withContext(Dispatchers.IO) {
+            val part = File(dir, "$name.part")
+            var url = URL(urlText)
+            var conn: HttpURLConnection
+            var redirects = 0
+            while (true) {
+                conn = url.openConnection() as HttpURLConnection
+                conn.instanceFollowRedirects = false
+                conn.connectTimeout = 20_000
+                conn.readTimeout = 30_000
+                if (part.exists() && part.length() > 0) conn.setRequestProperty("Range", "bytes=${part.length()}-")
+                val code = conn.responseCode
+                if (code in 300..399 && redirects < 8) {
+                    val loc = conn.getHeaderField("Location") ?: error("redirect without location")
+                    url = URL(url, loc)
+                    conn.disconnect()
+                    redirects++
+                    continue
+                }
+                if (code == 416) {
+                    // Range past the end: the partial file is complete.
+                    conn.disconnect()
+                    break
+                }
+                if (code != 200 && code != 206) error("HTTP $code")
+                val resume = code == 206
+                if (!resume) part.delete()
+                val already = if (resume) part.length() else 0L
+                val total = already + conn.contentLengthLong.coerceAtLeast(0L)
+                conn.inputStream.use { input ->
+                    FileOutputStream(part, resume).use { out ->
+                        val buf = ByteArray(1 shl 16)
+                        var done = already
+                        var shown = -1f
+                        while (true) {
+                            ensureActive()
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                            done += n
+                            val p = if (total > 0) done.toFloat() / total else 0f
+                            if (p - shown >= 0.002f) {
+                                shown = p
+                                withContext(Dispatchers.Main) { onProgress(p) }
+                            }
+                        }
+                    }
+                }
+                conn.disconnect()
+                break
+            }
+            if (part.length() < minBytes) error("download incomplete")
+            if (!part.renameTo(File(dir, name))) error("can't save the model")
+        }
+    }
+
+    companion object {
+        const val SPEAKER_FILE = "speaker-wespeaker-r34lm-fp16.onnx"
+        /** WeSpeaker ResNet34-LM (CC BY 4.0), made fit for OpenCV; see the repo's speaker-model branch. */
+        const val SPEAKER_URL = "https://raw.githubusercontent.com/EladKaufman105/face-blur/speaker-model/speaker-wespeaker-r34lm-fp16.onnx"
     }
 }

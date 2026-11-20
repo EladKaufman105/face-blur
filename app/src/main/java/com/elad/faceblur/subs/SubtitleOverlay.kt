@@ -10,7 +10,7 @@ import androidx.media3.effect.BitmapOverlay
  * One subtitle to burn in: media-time range (µs), its paragraphs (e.g. Hebrew, English) and
  * each paragraph's word start times if known.
  */
-class BurnCue(val startUs: Long, val endUs: Long, val blocks: List<String>, val times: List<LongArray?>? = null)
+class BurnCue(val startUs: Long, val endUs: Long, val blocks: List<String>, val times: List<LongArray?>? = null, val speaker: Int = 0)
 
 /**
  * Burns subtitles into the video with [SubtitleRenderer]. A frame is redrawn only when its look
@@ -26,6 +26,7 @@ class SubtitleOverlay(
     private var frameH = 0
     private var lastKey: Long? = null
     private var lastCue: BurnCue? = null
+    private var lastStyle: SubtitleStyle = style
     private val bitmaps = arrayOfNulls<Bitmap>(2)
     private var current = 0
     private val empty = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
@@ -47,6 +48,8 @@ class SubtitleOverlay(
             lastCue = null
             return empty
         }
+        val style = if (cue === lastCue) lastStyle else this.style.forSpeaker(cue.speaker)
+        lastStyle = style
         val key = renderer.frameKey(cue.blocks, cue.startUs, cue.endUs, presentationTimeUs, style, cue.times)
         val shown = bitmaps[current]
         if (shown != null && cue === lastCue && key == lastKey) return shown

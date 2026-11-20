@@ -27,14 +27,14 @@ object Srt {
         }
     }
 
-    /** Saves to Download/FaceBlur; returns null if there's nothing to save. */
+    /** Saves to Download/EDITIT; returns null if there's nothing to save. */
     fun save(context: Context, baseName: String, cues: List<Cue>, english: Boolean): Uri? {
         val text = format(cues, english)
         if (text.isBlank()) return null
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, "$baseName.${if (english) "en" else "he"}.srt")
             put(MediaStore.Downloads.MIME_TYPE, "application/x-subrip")
-            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/FaceBlur")
+            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/EDITIT")
         }
         val r = context.contentResolver
         val uri = r.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null

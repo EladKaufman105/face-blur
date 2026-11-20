@@ -55,6 +55,13 @@ import com.elad.faceblur.i18n.t
 import com.elad.faceblur.pipeline.ExportOptions
 import com.elad.faceblur.subs.SpeechModel
 import com.elad.faceblur.subs.SubtitleEngine
+import com.elad.faceblur.subs.SubtitleStyle
+import com.elad.faceblur.edit.Speakers
+import androidx.compose.foundation.border
+import androidx.compose.material3.FilterChip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import kotlin.math.roundToInt
 
 internal fun subsStageText(stage: SubtitleEngine.Stage, p: Float): String = when (stage) {
@@ -112,6 +119,12 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
             // Progress and messages stay in view whatever is folded.
             val dl = models?.downloading
             val prog = ctrl.subsProgress
+            val spk = ctrl.speakersProgress
+            if (spk != null) {
+                Box(Modifier.padding(horizontal = 20.dp)) {
+                    Progress(t("מזהה דוברים… %d%%").format((spk * 100).roundToInt()), "speakers", spk) { ctrl.cancelSpeakers() }
+                }
+            }
             if (models != null && (dl != null || prog != null)) {
                 Box(Modifier.padding(horizontal = 20.dp)) {
                     if (dl != null) {
@@ -153,6 +166,7 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
                     ctrl.subsSheet = false
                     ctrl.addCueHere()
                 }
+                if (models != null) SpeakersRow(ctrl, busy)
             }
 
             if (models != null) {
@@ -226,6 +240,37 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
 
             SectionTitle(t("בייצוא"))
             Box(Modifier.padding(horizontal = 20.dp)) { SubtitleExportOptions(export, onExportChange, ctrl.hasTranslation) }
+        }
+    }
+}
+
+/** Who speaks: found on the device, each speaker in a color; how many if the user knows. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SpeakersRow(ctrl: EditorController, busy: Boolean) {
+    var open by remember { mutableStateOf(false) }
+    val models = ctrl.models ?: return
+    ActionRow(
+        AppIcons.Person,
+        t("זיהוי דוברים"),
+        if (models.speakerReady) t("כל דובר בצבע משלו, גם ברשימת הכתוביות") else t("כל דובר בצבע משלו · הורדה חד-פעמית של 13MB"),
+        enabled = !busy,
+    ) { open = !open }
+    if (open) {
+        var count by remember { mutableStateOf<Int?>(null) }
+        Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Caption(t("כמה מדברים בסרטון?"))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(selected = count == null, onClick = { count = null }, label = { Text(t("אוטומטי")) })
+                for (n in 2..Speakers.MAX) {
+                    FilterChip(selected = count == n, onClick = { count = n }, label = { Text("\u200E$n") })
+                }
+            }
+            Button(
+                onClick = { open = false; ctrl.detectSpeakers(count) },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) { Text(t("זהה דוברים")) }
         }
     }
 }
@@ -304,7 +349,7 @@ fun SubtitleExportOptions(export: ExportOptions, onExportChange: (ExportOptions)
             Column(Modifier.weight(1f)) {
                 Text(t("שמור גם קובצי SRT"), style = MaterialTheme.typography.titleSmall)
                 Text(
-                    t("בתיקייה Download/FaceBlur"),
+                    t("בתיקייה Download/EDITIT"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -343,7 +388,7 @@ private fun Progress(text: String, step: Any, progress: Float?, onCancel: () -> 
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun CueEditorDialog(ctrl: EditorController) {
+fun CueEditorDialog(ctrl: EditorController, style: SubtitleStyle = SubtitleStyle()) {
     val c = ctrl.selectedCue
     if (c == null) {
         LaunchedEffect(Unit) { ctrl.cueEditor = false }
@@ -366,20 +411,52 @@ fun CueEditorDialog(ctrl: EditorController) {
                 if (showTranslation) {
                     OutlinedTextField(translation, { translation = it }, label = { Text(t("תרגום")) }, modifier = Modifier.fillMaxWidth())
                 }
-                // Split: tap the word that should start the next subtitle (at its own time).
+                // Who says it.
+                @Suppress("UNUSED_VARIABLE") val v = ctrl.version
+                Text(t("דובר"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row {
+                    for (n in 1..Speakers.MAX) {
+                        val on = c.speaker.coerceAtLeast(1) == n
+                        Box(
+                            Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .border(if (on) 2.dp else 0.dp, if (on) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape)
+                                .clickable { ctrl.setSpeaker(c.id, n) }
+                                .semantics { contentDescription = t("דובר %d").format(n) },
+                            contentAlignment = Alignment.Center,
+                        ) { SpeakerDot(n, style, 26.dp) }
+                    }
+                }
+                // The words: tap one to start a new subtitle there (at its own time), or to bleep it.
                 val words = Subtitles.words(c.srcText)
-                if (words.size >= 2 && spoken.trim() == c.srcText.trim()) {
-                    Text(t("פיצול: הקש על המילה שתתחיל כתובית חדשה"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        words.forEachIndexed { i, w ->
-                            AssistChip(
-                                onClick = {
-                                    ctrl.cueEditor = false
-                                    ctrl.splitCueAtWord(c.id, i)
-                                },
-                                enabled = i > 0,
-                                label = { Text(w) },
-                            )
+                if (words.isNotEmpty() && spoken.trim() == c.srcText.trim()) {
+                    var bleep by remember { mutableStateOf(false) }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(selected = !bleep, onClick = { bleep = false }, label = { Text(t("פיצול")) }, enabled = words.size >= 2)
+                        FilterChip(
+                            selected = bleep, onClick = { bleep = true }, label = { Text(t("צפצוף")) },
+                            leadingIcon = { Icon(AppIcons.Mute, null, Modifier.size(16.dp)) },
+                        )
+                    }
+                    Text(
+                        if (bleep) t("הקש על מילה כדי לצפצף אותה בסאונד") else t("הקש על המילה שתתחיל כתובית חדשה"),
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (bleep || words.size < 2) {
+                        BleepWords(ctrl, c, rtl = c.src != "en" && !(c.src == "" && c.he.isBlank()))
+                    } else {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            words.forEachIndexed { i, w ->
+                                AssistChip(
+                                    onClick = {
+                                        ctrl.cueEditor = false
+                                        ctrl.splitCueAtWord(c.id, i)
+                                    },
+                                    enabled = i > 0,
+                                    label = { Text(w) },
+                                )
+                            }
                         }
                     }
                 }

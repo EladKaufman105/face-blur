@@ -58,6 +58,18 @@ import androidx.compose.ui.unit.dp
 import com.elad.faceblur.edit.Cue
 import com.elad.faceblur.edit.EditorController
 import com.elad.faceblur.edit.SplitRule
+import com.elad.faceblur.edit.Speakers
+import com.elad.faceblur.edit.Subtitles
+import com.elad.faceblur.subs.SubtitleStyle
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import com.elad.faceblur.i18n.t
 import kotlinx.coroutines.launch
 
@@ -113,7 +125,7 @@ private fun stamp(ms: Long): String {
  * replace, and choose how many words each subtitle has.
  */
 @Composable
-fun AllSubtitlesPanel(ctrl: EditorController, modifier: Modifier = Modifier) {
+fun AllSubtitlesPanel(ctrl: EditorController, modifier: Modifier = Modifier, style: SubtitleStyle = SubtitleStyle()) {
     @Suppress("UNUSED_VARIABLE") val v = ctrl.version
     val cues = ctrl.model.cues.sortedBy { it.startMs }
     var findOpen by remember { mutableStateOf(false) }
@@ -130,20 +142,35 @@ fun AllSubtitlesPanel(ctrl: EditorController, modifier: Modifier = Modifier) {
         Column(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(t("כל הכתוביות (%d)").format(cues.size), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                IconButton(onClick = { ctrl.bleepMode = !ctrl.bleepMode }) {
+                    Icon(
+                        AppIcons.Mute, t("צפצוף מילים"),
+                        tint = if (ctrl.bleepMode) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 IconButton(onClick = { findOpen = !findOpen }) { Icon(Icons.Filled.Search, t("חפש והחלף")) }
                 IconButton(onClick = { ctrl.undo() }) { Icon(AppIcons.Undo, t("בטל")) }
-                TextButton(onClick = { ctrl.listEditor = false }) {
+                TextButton(onClick = { ctrl.listEditor = false; ctrl.bleepMode = false }) {
                     Icon(Icons.Filled.Check, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text(t("סיום"))
                 }
             }
-            Box(Modifier.padding(horizontal = 16.dp)) { SplitControls(ctrl) }
+            if (ctrl.bleepMode) {
+                Text(
+                    t("הקש על מילה כדי לצפצף אותה בסאונד, ושוב כדי להחזיר."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            } else {
+                Box(Modifier.padding(horizontal = 16.dp)) { SplitControls(ctrl) }
+            }
             if (findOpen) FindReplace(ctrl)
             HorizontalDivider(Modifier.padding(top = 6.dp))
             LazyColumn(Modifier.fillMaxWidth().weight(1f), state = list) {
                 items(cues, key = { it.id }) { c ->
-                    CueRow(ctrl, c, cues.indexOf(c) == current, translated)
+                    CueRow(ctrl, c, cues.indexOf(c) == current, translated, style)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
                 item {
@@ -184,7 +211,7 @@ private fun FindReplace(ctrl: EditorController) {
 }
 
 @Composable
-private fun CueRow(ctrl: EditorController, c: Cue, current: Boolean, translated: Boolean) {
+private fun CueRow(ctrl: EditorController, c: Cue, current: Boolean, translated: Boolean, style: SubtitleStyle) {
     // Where the cursor is in the spoken text, to split there.
     var caret by remember(c.id) { mutableIntStateOf(-1) }
     val bg = if (current) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f) else MaterialTheme.colorScheme.surfaceContainer
@@ -207,8 +234,11 @@ private fun CueRow(ctrl: EditorController, c: Cue, current: Boolean, translated:
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            val englishSpoken = c.src == "en" || (c.src == "" && c.he.isBlank() && c.en.isNotBlank())
+        SpeakerButton(c.speaker, style) { ctrl.setSpeaker(c.id, it) }
+        val englishSpoken = c.src == "en" || (c.src == "" && c.he.isBlank() && c.en.isNotBlank())
+        if (ctrl.bleepMode) {
+            BleepWords(ctrl, c, rtl = !englishSpoken, Modifier.weight(1f).padding(vertical = 4.dp))
+        } else Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             CueField(c.srcText, t("טקסט"), rtl = !englishSpoken, onFocus = ctrl::beginTextEdit, onCaret = { caret = it }) {
                 ctrl.typeCueText(c.id, it, c.otherText)
             }
@@ -216,7 +246,7 @@ private fun CueRow(ctrl: EditorController, c: Cue, current: Boolean, translated:
                 CueField(c.otherText, t("תרגום"), rtl = englishSpoken, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(c.id, c.srcText, it) }
             }
         }
-        Column {
+        if (!ctrl.bleepMode) Column {
             IconButton(onClick = { ctrl.splitCueAtCaret(c.id, caret) }, modifier = Modifier.size(36.dp)) {
                 Icon(AppIcons.Cut, t("פצל במקום הסמן"), Modifier.size(19.dp))
             }
@@ -227,6 +257,84 @@ private fun CueRow(ctrl: EditorController, c: Cue, current: Boolean, translated:
                 Icon(Icons.Filled.Delete, t("מחק"), Modifier.size(19.dp))
             }
         }
+    }
+}
+
+/** The spoken words as chips: tap one to bleep it out of the sound (red), again to bring it back. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun BleepWords(ctrl: EditorController, c: Cue, rtl: Boolean, modifier: Modifier = Modifier) {
+    val words = Subtitles.words(c.srcText)
+    val bleeped = ctrl.model.bleepedWords(c)
+    CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+        FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            words.forEachIndexed { i, w ->
+                val on = i in bleeped
+                Surface(
+                    onClick = { ctrl.toggleBleep(c.id, i) },
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (on) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = if (on) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurface,
+                ) {
+                    Row(Modifier.padding(horizontal = 9.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (on) {
+                            Icon(AppIcons.Mute, null, Modifier.size(14.dp))
+                            Spacer(Modifier.width(3.dp))
+                        }
+                        Text(w, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+            if (words.isEmpty()) Text(t("אין טקסט"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Who says a subtitle: a dot in the speaker's color; tap to choose. */
+@Composable
+fun SpeakerButton(speaker: Int, style: SubtitleStyle, onChange: (Int) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val s = speaker.coerceAtLeast(1)
+    Box {
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .clickable { open = true }
+                .semantics { contentDescription = t("דובר %d").format(s) },
+            contentAlignment = Alignment.Center,
+        ) { SpeakerDot(s, style, 24.dp) }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            for (n in 1..Speakers.MAX) {
+                DropdownMenuItem(
+                    text = { Text(t("דובר %d").format(n)) },
+                    leadingIcon = { SpeakerDot(n, style, 20.dp) },
+                    trailingIcon = if (n == s) ({ Icon(Icons.Filled.Check, null, Modifier.size(18.dp)) }) else null,
+                    onClick = { open = false; onChange(n) },
+                )
+            }
+        }
+    }
+}
+
+/** A speaker's color with its number on it. */
+@Composable
+fun SpeakerDot(n: Int, style: SubtitleStyle, size: androidx.compose.ui.unit.Dp) {
+    val c = Color(style.speakerColor(n))
+    Box(
+        Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(c)
+            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            "$n",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = if (c.luminance() > 0.5f) Color.Black else Color.White,
+        )
     }
 }
 

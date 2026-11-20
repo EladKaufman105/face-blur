@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
+    <group android:translateX="-18" android:translateY="-18">
+        <path android:pathData="M36,18h36a18,18 0,0 1,18,18v36a18,18 0,0 1,-18,18h-36a18,18 0,0 1,-18,-18v-36a18,18 0,0 1,18,-18z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="18" android:startY="18"
+                    android:endX="90" android:endY="90"
+                    android:startColor="#3A2A8C"
+                    android:endColor="#11152E" />
+            </aapt:attr>
+        </path>
+        <path android:fillColor="#FFFFFF" android:pathData="M33.5,33h4a3.5,3.5 0,0 1,3.5,3.5v35a3.5,3.5 0,0 1,-3.5,3.5h-4a3.5,3.5 0,0 1,-3.5,-3.5v-35a3.5,3.5 0,0 1,3.5,-3.5z" />
+        <path android:fillColor="#FF4D6D" android:pathData="M47.5,33h26a3.5,3.5 0,0 1,3.5,3.5v4a3.5,3.5 0,0 1,-3.5,3.5h-26a3.5,3.5 0,0 1,-3.5,-3.5v-4a3.5,3.5 0,0 1,3.5,-3.5z" />
+        <path android:fillColor="#FFC53D" android:pathData="M47.5,48.5h14a3.5,3.5 0,0 1,3.5,3.5v4a3.5,3.5 0,0 1,-3.5,3.5h-14a3.5,3.5 0,0 1,-3.5,-3.5v-4a3.5,3.5 0,0 1,3.5,-3.5z" />
+        <path android:fillColor="#3DDCFF" android:pathData="M47.5,64h26a3.5,3.5 0,0 1,3.5,3.5v4a3.5,3.5 0,0 1,-3.5,3.5h-26a3.5,3.5 0,0 1,-3.5,-3.5v-4a3.5,3.5 0,0 1,3.5,-3.5z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M69.8,30h0a1.8,1.8 0,0 1,1.8,1.8v46.4a1.8,1.8 0,0 1,-1.8,1.8h-0a1.8,1.8 0,0 1,-1.8,-1.8v-46.4a1.8,1.8 0,0 1,1.8,-1.8z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M63.8,24h12a1.5,1.5 0,0 1,1.5,1.5v3l-7.5,5.5l-7.5,-5.5v-3a1.5,1.5 0,0 1,1.5,-1.5z" />
+    </group>
+</vector>
