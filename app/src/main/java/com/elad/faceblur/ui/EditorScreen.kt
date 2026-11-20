@@ -577,7 +577,6 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
     val renderer = SubtitleRenderer.get(context)
     // The watermark as it will be burned in, drawn once per size.
     val wmCache = remember { arrayOfNulls<Any>(2) }
-    val primary = MaterialTheme.colorScheme.primary
     val label = remember {
         Paint().apply {
             isAntiAlias = true
