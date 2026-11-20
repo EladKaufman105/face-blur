@@ -16,6 +16,7 @@ import com.elad.faceblur.prefs.ThemeMode
 import com.elad.faceblur.ui.FaceBlurTheme
 import com.elad.faceblur.ui.MainScreen
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import com.elad.faceblur.i18n.I18n
@@ -272,7 +273,7 @@ class EditorScreenTest {
         rule.waitForIdle()
         Thread.sleep(600)
         shot(outDir, "10b_export_card.png")
-        rule.onNodeWithContentDescription("Settings").performClick()
+        rule.onNodeWithContentDescription("Settings").performScrollTo().performClick()
         rule.waitForIdle()
         runCatching { rule.waitUntil(5000) { rule.onAllNodes(isRoot()).fetchSemanticsNodes().size > 1 } }
         Thread.sleep(1000)
