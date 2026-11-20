@@ -9,3 +9,6 @@ build/
 
 # fetched by ci/fetch-whisper.sh
 app/src/main/cpp/whisper.cpp/
+
+# fetched by ci/fetch-opencv.sh
+app/src/main/jniLibs/

@@ -8,6 +8,12 @@ plugins {
 
 val buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
 
+// vivo X300 Pro (Dimensity 9500) is arm64 only: keep just that ABI to slim the APK.
+// CI's emulator test overrides this with -PabiFilters=x86_64.
+val abiList = ((project.findProperty("abiFilters") as String?) ?: "arm64-v8a").split(",")
+// OpenCV with only the modules the app uses, when ci/fetch-opencv.sh put it in jniLibs.
+val minimalOpenCv = abiList.all { file("src/main/jniLibs/$it/libopencv_min.so").exists() }
+
 android {
     namespace = "com.elad.faceblur"
     compileSdk = 36
@@ -23,10 +29,7 @@ android {
         targetSdk = 36
         versionCode = buildNumber
         versionName = "1.0.$buildNumber"
-        // vivo X300 Pro (Dimensity 9500) is arm64 only: keep just that ABI to slim the APK.
-        // CI's emulator test overrides this with -PabiFilters=x86_64.
-        val abis = (project.findProperty("abiFilters") as String?) ?: "arm64-v8a"
-        ndk { abiFilters += abis.split(",") }
+        ndk { abiFilters += abiList }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The app speaks Hebrew and English: other languages' library strings are left out.
         resourceConfigurations += listOf("en", "iw", "he")
@@ -79,7 +82,12 @@ android {
 
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
-        jniLibs { useLegacyPackaging = false }
+        jniLibs {
+            useLegacyPackaging = false
+            // The minimal OpenCV replaces the package's full library and the shared C++ runtime
+            // only that one needed (the minimal one has it built in).
+            if (minimalOpenCv) excludes += listOf("**/libopencv_java4.so", "**/libc++_shared.so")
+        }
     }
 
     androidResources {

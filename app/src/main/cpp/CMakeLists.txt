@@ -30,3 +30,5 @@ add_subdirectory(${WHISPER_DIR} whisper)
 
 add_library(faceblur_whisper SHARED whisper_jni.cpp)
 target_link_libraries(faceblur_whisper PRIVATE whisper log)
+# 16 KB pages (Android 15+ devices may use them).
+target_link_options(faceblur_whisper PRIVATE "-Wl,-z,max-page-size=16384")

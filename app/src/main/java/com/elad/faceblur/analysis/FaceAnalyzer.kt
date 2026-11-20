@@ -15,10 +15,20 @@ import kotlin.math.roundToInt
 object OpenCv {
     @Volatile private var loaded = false
 
+    /** Which library was loaded: "minimal" (only the modules the app uses) or "full". */
+    var variant = ""
+        private set
+
     fun ensureLoaded() {
         if (!loaded) synchronized(this) {
             if (!loaded) {
-                System.loadLibrary("opencv_java4")
+                variant = try {
+                    System.loadLibrary("opencv_min")
+                    "minimal"
+                } catch (_: UnsatisfiedLinkError) {
+                    System.loadLibrary("opencv_java4")
+                    "full"
+                }
                 loaded = true
             }
         }
