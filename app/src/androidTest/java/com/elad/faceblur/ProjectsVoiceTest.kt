@@ -15,6 +15,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.elad.faceblur.audio.AudioEdit
 import com.elad.faceblur.audio.VoiceFx
 import com.elad.faceblur.edit.EditSession
+import com.elad.faceblur.edit.ExportAspect
+import com.elad.faceblur.pipeline.Watermark
+import android.media.MediaMetadataRetriever
 import com.elad.faceblur.edit.EditorController
 import com.elad.faceblur.edit.NewCue
 import com.elad.faceblur.edit.SplitRule
@@ -63,10 +66,11 @@ class ProjectsVoiceTest {
     private val ctx get() = inst.targetContext
     private val outDir get() = File(ctx.getExternalFilesDir(null), "projects").apply { mkdirs() }
     private val log = StringBuilder()
+    private var logName = "log.txt"
 
     private fun note(s: String) {
         log.appendLine(s)
-        File(outDir, "log_${javaClass.simpleName}_${Thread.currentThread().id}.txt").writeText(log.toString())
+        File(outDir, logName).writeText(log.toString())
     }
 
     private fun sample(name: String): File {
@@ -85,6 +89,7 @@ class ProjectsVoiceTest {
 
     @Test
     fun speakers() {
+        logName = "log_speakers.txt"
         val src = sample("speech_two.mp4")
         val uri = Uri.fromFile(src)
         val mm = ModelManager(ctx)
@@ -147,6 +152,7 @@ class ProjectsVoiceTest {
 
     @Test
     fun voiceExport() {
+        logName = "log_voice.txt"
         val src = sample("speech_en.mp4")
         val uri = Uri.fromFile(src)
         val info = VideoInfo.probe(ctx, uri)
@@ -245,6 +251,7 @@ class ProjectsVoiceTest {
     /** Blur a clip, edit, close: the project is on the home screen, and reopens as it was. */
     @Test
     fun projectRoundTrip() {
+        logName = "log_projects.txt"
         val names = inst.context.assets.list("samples")?.toList() ?: emptyList()
         val name = listOf("walk.mp4", "classroom.mp4").firstOrNull { it in names } ?: run { fail("no sample"); return }
         val src = sample(name)
@@ -309,6 +316,32 @@ class ProjectsVoiceTest {
         rule.waitForIdle()
         Thread.sleep(2500)
         shot("12b_reopened.png")
+
+        // A vertical export that follows the faces, with a text watermark.
+        val vexport = ExportOptions(aspect = ExportAspect.VERTICAL, subs = SubLang.ORIGINAL, saveSrt = false, watermark = Watermark(text = "@editit"))
+        inst.runOnMainSync { vm.prefs.updateExport(vexport) }
+        rule.waitForIdle()
+        Thread.sleep(1500)
+        shot("12c_vertical_preview.png")
+        val s2 = c2.session
+        val vout = runBlocking(Dispatchers.Main) {
+            FaceBlurProcessor(ctx).render(s2.info, s2.settings, s2.analysis, s2.model, 0, vexport, inst.onMain { vm.prefs.subStyle }, inst.onMain { c2.audio }) {}
+        }
+        val vfile = File(outDir, "vertical.mp4")
+        ctx.contentResolver.openInputStream(vout.uri)!!.use { i -> vfile.outputStream().use { i.copyTo(it) } }
+        val mmr = MediaMetadataRetriever()
+        mmr.setDataSource(vfile.absolutePath)
+        val vw = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)!!.toInt()
+        val vh = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)!!.toInt()
+        val rot = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+        val (dw, dh) = if (rot % 180 == 0) vw to vh else vh to vw
+        mmr.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST)?.let { b ->
+            File(outDir, "12d_vertical_frame.png").outputStream().use { b.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        mmr.release()
+        note("vertical export ${dw}x$dh")
+        if (kotlin.math.abs(dw.toFloat() / dh - 9f / 16f) > 0.02f) fail("not 9:16: ${dw}x$dh")
+        inst.runOnMainSync { vm.prefs.updateExport(ExportOptions()) }
 
         inst.runOnMainSync { vm.closeEditor() }
         inst.runOnMainSync { vm.renameProject(p.id, "בדיקה") }

@@ -8,6 +8,8 @@ import com.elad.faceblur.edit.SubLang
 import com.elad.faceblur.i18n.I18n
 import com.elad.faceblur.i18n.Lang
 import com.elad.faceblur.pipeline.ExportCodec
+import com.elad.faceblur.edit.ExportAspect
+import com.elad.faceblur.pipeline.Watermark
 import com.elad.faceblur.pipeline.ExportOptions
 import com.elad.faceblur.pipeline.ExportQuality
 import com.elad.faceblur.subs.SubtitleStyle
@@ -34,6 +36,8 @@ class AppPrefs(context: Context) {
             codec = enumOr(sp.getString("export_codec", null), ExportCodec.SAME),
             subs = enumOr(sp.getString("export_subs", null), SubLang.ORIGINAL),
             saveSrt = sp.getBoolean("export_srt", true),
+            aspect = enumOr(sp.getString("export_aspect", null), ExportAspect.ORIGINAL),
+            watermark = Watermark.fromJson(sp.getString("export_watermark", null)),
         ),
     )
         private set
@@ -72,6 +76,8 @@ class AppPrefs(context: Context) {
             .putString("export_codec", v.codec.name)
             .putString("export_subs", v.subs.name)
             .putBoolean("export_srt", v.saveSrt)
+            .putString("export_aspect", v.aspect.name)
+            .putString("export_watermark", v.watermark.toJson())
             .apply()
     }
 

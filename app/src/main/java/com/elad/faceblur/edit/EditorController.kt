@@ -557,6 +557,32 @@ class EditorController(
     /** Words bleeped in all subtitles. */
     val bleepedCount get() = model.cues.sumOf { model.bleepedWords(it).size }
 
+    // ------------------------------------------------------------------ vertical / square frame
+
+    private var reframeCache: Triple<Int, ExportAspect, Pair<FloatArray, FloatArray>>? = null
+    private var reframeAt = 0L
+
+    /**
+     * The window a vertical / square export shows at frame [f] (normalized, top-left origin),
+     * or null for the frame as shot.
+     */
+    fun reframeWindow(aspect: ExportAspect, f: Int): android.graphics.RectF? {
+        if (aspect == ExportAspect.ORIGINAL || frameCount == 0) return null
+        val a = session.analysis
+        val (cw, ch) = Reframer.cropFraction(a.uprightW, a.uprightH, aspect.ratio)
+        var c = reframeCache
+        val now = android.os.SystemClock.uptimeMillis()
+        // While dragging, the path is worked out again at most a few times a second.
+        if (c == null || c.second != aspect || (c.first != model.version && now - reframeAt > 400)) {
+            c = Triple(model.version, aspect, model.reframePath(padding, cw, ch))
+            reframeCache = c
+            reframeAt = now
+        }
+        val (x, y) = c.third
+        val i = f.coerceIn(0, x.size - 1)
+        return android.graphics.RectF(x[i] - cw / 2, y[i] - ch / 2, x[i] + cw / 2, y[i] + ch / 2)
+    }
+
     // ------------------------------------------------------------------ speakers
 
     fun setSpeaker(id: Int, speaker: Int, wholeSentence: Boolean = true) {

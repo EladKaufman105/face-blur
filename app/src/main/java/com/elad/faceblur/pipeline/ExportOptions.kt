@@ -4,6 +4,8 @@ import androidx.media3.common.Effect
 import androidx.media3.common.MimeTypes
 import androidx.media3.effect.FrameDropEffect
 import androidx.media3.effect.Presentation
+import com.elad.faceblur.edit.ExportAspect
+import com.elad.faceblur.edit.Reframer
 import com.elad.faceblur.edit.SubLang
 import kotlin.math.max
 import kotlin.math.min
@@ -29,11 +31,19 @@ data class ExportOptions(
     val subs: SubLang = SubLang.ORIGINAL,
     /** Also save the subtitles as .srt files. */
     val saveSrt: Boolean = true,
+    /** Frame shape: as shot, or a vertical / square crop that follows the faces. */
+    val aspect: ExportAspect = ExportAspect.ORIGINAL,
+    /** A logo or text in a corner. */
+    val watermark: Watermark = Watermark(),
 ) {
+    /** The crop for [aspect] as fractions of the frame (1, 1 for as shot). */
+    fun crop(info: VideoInfo): Pair<Float, Float> = Reframer.cropFraction(info.displayWidth, info.displayHeight, aspect.ratio)
+
     /** Output size (display orientation), even dimensions. */
     fun outputSize(info: VideoInfo): Pair<Int, Int> {
-        val w = info.displayWidth
-        val h = info.displayHeight
+        val (cw, ch) = crop(info)
+        val w = even(info.displayWidth * cw)
+        val h = even(info.displayHeight * ch)
         val short = min(w, h)
         if (shortSide <= 0 || shortSide >= short || short <= 0) return w to h
         val s = shortSide.toFloat() / short
@@ -76,11 +86,16 @@ data class ExportOptions(
         ExportCodec.HEVC -> MimeTypes.VIDEO_H265
     }
 
-    /** Effects to apply after the blur: resize and frame rate. */
-    fun effects(info: VideoInfo): List<Effect> {
+    /** Effects to apply after the blur: the crop that follows the faces ([reframe]), resize and frame rate. */
+    fun effects(info: VideoInfo, reframe: Effect? = null): List<Effect> {
         val out = ArrayList<Effect>()
         val (w, h) = outputSize(info)
-        if (w != info.displayWidth || h != info.displayHeight) {
+        val cropped = aspect != ExportAspect.ORIGINAL && reframe != null
+        if (cropped) out += reframe!!
+        if (aspect != ExportAspect.ORIGINAL && !cropped) {
+            // No faces to follow: the middle.
+            out += Presentation.createForWidthAndHeight(w, h, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP)
+        } else if (cropped || w != info.displayWidth || h != info.displayHeight) {
             out += Presentation.createForWidthAndHeight(w, h, Presentation.LAYOUT_SCALE_TO_FIT)
         }
         val f = outputFps(info)

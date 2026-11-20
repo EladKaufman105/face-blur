@@ -311,6 +311,21 @@ class EditModel(
         return null
     }
 
+    /**
+     * Crop centers per frame for a vertical / square export that follows the faces
+     * ([cropW] x [cropH] as fractions of the frame).
+     */
+    fun reframePath(padding: Float, cropW: Float, cropH: Float): Pair<FloatArray, FloatArray> {
+        val faces = ArrayList<List<FloatArray>>(frameCount)
+        val ids = ArrayList<List<Int>>(frameCount)
+        for (i in 0 until frameCount) {
+            val sh = shapesAt(i, padding)
+            faces += sh.map { floatArrayOf(it.cx, it.cy, it.rx * it.ry) }
+            ids += sh.map { it.id }
+        }
+        return Reframer.path(faces, ids, shotStarts, fps, cropW, cropH)
+    }
+
     /** Final boxes of every blur, frame by frame, for the render pass. */
     fun renderTracks(): List<TreeMap<Int, Box>> = tracks.mapNotNull { t ->
         val m = TreeMap<Int, Box>()

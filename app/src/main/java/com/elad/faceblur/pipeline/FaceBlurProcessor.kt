@@ -27,6 +27,7 @@ import com.elad.faceblur.analysis.FaceAnalyzer
 import com.elad.faceblur.edit.EditModel
 import com.elad.faceblur.edit.toEditModel
 import com.elad.faceblur.audio.AudioEdit
+import com.elad.faceblur.edit.ExportAspect
 import com.elad.faceblur.audio.VoiceAudioProcessor
 import com.elad.faceblur.audio.VoiceDsp
 import com.elad.faceblur.audio.VoiceFx
@@ -160,11 +161,10 @@ class FaceBlurProcessor(private val context: Context) {
         val burn = cues.mapNotNull { c ->
             c.blocks(export.subs).takeIf { it.isNotEmpty() }?.let { BurnCue(c.startMs * 1000, c.endMs * 1000, it, c.blockTimes(export.subs), c.speaker) }
         }
-        val subsEffect = if (burn.isEmpty()) {
-            emptyList()
-        } else {
-            listOf<Effect>(OverlayEffect(ImmutableList.of<TextureOverlay>(SubtitleOverlay(burn, subStyle, SubtitleRenderer.get(context)))))
-        }
+        val overlays = ArrayList<TextureOverlay>()
+        if (burn.isNotEmpty()) overlays += SubtitleOverlay(burn, subStyle, SubtitleRenderer.get(context))
+        if (export.watermark.enabled(context)) overlays += WatermarkOverlay(context, export.watermark)
+        val subsEffect = if (overlays.isEmpty()) emptyList() else listOf<Effect>(OverlayEffect(ImmutableList.copyOf(overlays)))
         // The voice: the pitch, then bleeps and robot sound (so the beep isn't shifted).
         val audioFx = ArrayList<AudioProcessor>()
         val bleeps = model.bleeps.map { (a, b) -> longArrayOf(a, b) }
@@ -173,9 +173,17 @@ class FaceBlurProcessor(private val context: Context) {
             if (audio.voice.pitch != 1f) audioFx += SonicAudioProcessor().apply { setPitch(audio.voice.pitch) }
             if (dsp.active) audioFx += VoiceAudioProcessor(dsp)
         }
+        // A vertical / square frame follows the faces.
+        val reframe = if (export.aspect != ExportAspect.ORIGINAL) {
+            val (cw, ch) = export.crop(info)
+            val (px, py) = model.reframePath(settings.padding, cw, ch)
+            ReframeEffect(analysis.times, px, py, cw, ch)
+        } else {
+            null
+        }
         val item = EditedMediaItem.Builder(MediaItem.fromUri(info.uri))
             .setRemoveAudio(audio.voice == VoiceFx.MUTE)
-            .setEffects(Effects(audioFx, listOf<Effect>(blur) + export.effects(info) + subsEffect))
+            .setEffects(Effects(audioFx, listOf<Effect>(blur) + export.effects(info, reframe) + subsEffect))
             .build()
         val bitrate = export.videoBitrate(info)
         val modes = when {

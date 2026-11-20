@@ -351,4 +351,15 @@ internal val English: Map<String, String> = mapOf(
     "כמה מדברים בסרטון?" to "How many people speak?",
     "אוטומטי" to "Automatic",
     "זהה דוברים" to "Find speakers",
+    // Format and watermark
+    "פורמט" to "Format",
+    "מקור" to "Original",
+    "המסגרת עוקבת אחרי הפנים, כמו צלם. אפשר לראות אותה בעריכה." to "The frame follows the faces, like a camera operator. You can see it in the editor.",
+    "סימן מים" to "Watermark",
+    "לוגו" to "Logo",
+    "הטקסט" to "Text",
+    "בחר תמונה" to "Pick an image",
+    "החלף תמונה" to "Change image",
+    "קטן" to "Small",
+    "גדול" to "Large",
 )

@@ -42,6 +42,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.media3.common.PlaybackParameters
 import com.elad.faceblur.audio.VoiceFx
+import com.elad.faceblur.edit.ExportAspect
+import com.elad.faceblur.pipeline.Watermark
 import com.elad.faceblur.audio.VoicePreviewRenderers
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -198,7 +200,7 @@ fun EditorScreen(
         }
 
         Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
-            VideoWithOverlay(ctrl, export.subs, subStyle)
+            VideoWithOverlay(ctrl, export.subs, subStyle, export.aspect, export.watermark)
             // Messages at the top, where they don't cover the subtitles.
             Column(
                 Modifier.align(Alignment.TopCenter).padding(10.dp),
@@ -313,7 +315,13 @@ private fun Banner(text: String, action: String? = null, onAction: () -> Unit = 
 // ---------------------------------------------------------------------- video + overlay
 
 @Composable
-private fun VideoWithOverlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle) {
+private fun VideoWithOverlay(
+    ctrl: EditorController,
+    subs: SubLang,
+    style: SubtitleStyle,
+    aspect: ExportAspect = ExportAspect.ORIGINAL,
+    watermark: Watermark = Watermark(),
+) {
     val context = LocalContext.current
     val analysis = ctrl.session.analysis
     val settings = ctrl.session.settings
@@ -364,7 +372,7 @@ private fun VideoWithOverlay(ctrl: EditorController, subs: SubLang, style: Subti
             },
             modifier = Modifier.fillMaxSize(),
         )
-        Overlay(ctrl, subs, style, Modifier.fillMaxSize())
+        Overlay(ctrl, subs, style, aspect, watermark, Modifier.fillMaxSize())
     }
 }
 
@@ -486,8 +494,11 @@ private class PlayerSync(
 }
 
 @Composable
-private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle, modifier: Modifier) {
-    val renderer = SubtitleRenderer.get(LocalContext.current)
+private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle, aspect: ExportAspect, watermark: Watermark, modifier: Modifier) {
+    val context = LocalContext.current
+    val renderer = SubtitleRenderer.get(context)
+    // The watermark as it will be burned in, drawn once per size.
+    val wmCache = remember { arrayOfNulls<Any>(2) }
     val primary = MaterialTheme.colorScheme.primary
     val label = remember {
         Paint().apply {
@@ -517,19 +528,47 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
             emptyList()
         }
         subHit.rect = null
+        // A vertical / square export: what's outside its window is dimmed, subtitles go inside it.
+        val win = ctrl.reframeWindow(aspect, ctrl.shownFrame)
+        val fl = (win?.left ?: 0f) * size.width
+        val ft = (win?.top ?: 0f) * size.height
+        val fw = (win?.width() ?: 1f) * size.width
+        val fh = (win?.height() ?: 1f) * size.height
+        if (win != null) {
+            val dim = Color.Black.copy(alpha = 0.55f)
+            drawRect(dim, Offset.Zero, Size(fl, size.height))
+            drawRect(dim, Offset(fl + fw, 0f), Size(size.width - fl - fw, size.height))
+            drawRect(dim, Offset(fl, 0f), Size(fw, ft))
+            drawRect(dim, Offset(fl, ft + fh), Size(fw, size.height - ft - fh))
+            drawRect(Color.White.copy(alpha = 0.8f), Offset(fl, ft), Size(fw, fh), style = Stroke(1.5.dp.toPx()))
+        }
+        if (watermark.enabled(context) && fw >= 2f && fh >= 2f) {
+            val key = Triple(watermark, fw.toInt(), fh.toInt())
+            if (wmCache[0] != key) {
+                (wmCache[1] as? android.graphics.Bitmap)?.recycle()
+                wmCache[1] = android.graphics.Bitmap.createBitmap(fw.toInt(), fh.toInt(), android.graphics.Bitmap.Config.ARGB_8888).also {
+                    Watermark.draw(context, watermark, android.graphics.Canvas(it), it.width, it.height)
+                }
+                wmCache[0] = key
+            }
+            (wmCache[1] as? android.graphics.Bitmap)?.let { drawContext.canvas.nativeCanvas.drawBitmap(it, fl, ft, null) }
+        }
         if (blocks.isNotEmpty()) {
             val nc = drawContext.canvas.nativeCanvas
             if (faded) nc.saveLayerAlpha(0f, 0f, size.width, size.height, 120)
+            nc.save()
+            nc.translate(fl, ft)
             if (cue != null) {
                 subHit.rect = renderer.draw(
                     nc, blocks, cue.startMs * 1000, cue.endMs * 1000, nowMs * 1000, style.forSpeaker(cue.speaker),
-                    size.width.toInt(), size.height.toInt(), cue.blockTimes(lang),
-                )
+                    fw.toInt(), fh.toInt(), cue.blockTimes(lang),
+                )?.apply { offset(fl, ft) }
                 subHit.cueId = cue.id
             } else {
                 subHit.rect = null
-                renderer.draw(nc, blocks, 0L, 2_000_000L, 1_100_000L, style, size.width.toInt(), size.height.toInt())
+                renderer.draw(nc, blocks, 0L, 2_000_000L, 1_100_000L, style, fw.toInt(), fh.toInt())
             }
+            nc.restore()
             if (faded) nc.restore()
         }
         if (live && ctrl.playing) return@Canvas
