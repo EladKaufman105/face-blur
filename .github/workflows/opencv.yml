@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get install -y -qq ninja-build patchelf > /dev/null
+          sudo apt-get install -y -qq ninja-build > /dev/null
           git clone -q --depth 1 -b "$OPENCV_TAG" https://github.com/opencv/opencv ../opencv
           NDK="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
           echo "NDK: $NDK"
@@ -52,7 +52,7 @@ jobs:
               -DWITH_OPENEXR=OFF -DWITH_AVIF=OFF -DWITH_IMGCODEC_HDR=OFF -DWITH_IMGCODEC_SUNRASTER=OFF \
               -DWITH_IMGCODEC_PXM=OFF -DWITH_IMGCODEC_PFM=OFF -DWITH_JPEG=ON -DBUILD_JPEG=ON \
               -DWITH_PROTOBUF=ON -DBUILD_PROTOBUF=ON -DWITH_ANDROID_MEDIANDK=OFF \
-              -DWITH_ADE=OFF -DCV_TRACE=OFF -DWITH_FLATBUFFERS=OFF -DCPU_DISPATCH= \
+              -DOPENCV_JAVA_LIB_NAME_SUFFIX=_min -DWITH_ADE=OFF -DCV_TRACE=OFF -DWITH_FLATBUFFERS=OFF -DCPU_DISPATCH= \
               > "logs/cmake-$ABI.log" 2>&1 || { tail -120 "logs/cmake-$ABI.log"; exit 1; }
             grep -A3 "OpenCV modules:" "logs/cmake-$ABI.log" || true
             if ! cmake --build "../b-$ABI" -j 4 --target opencv_java > "logs/build-$ABI.log" 2>&1; then
@@ -60,12 +60,11 @@ jobs:
               echo "-- full build"
               cmake --build "../b-$ABI" -j 4 > "logs/build-$ABI-all.log" 2>&1 || { tail -120 "logs/build-$ABI-all.log"; exit 1; }
             fi
-            so=$(find "../b-$ABI" -name 'libopencv_java4.so' | head -1)
+            so=$(find "../b-$ABI" -name 'libopencv_java_min.so' | head -1)
             mkdir -p "out/$ABI"
-            "$STRIP" --strip-unneeded -o "out/$ABI/libopencv_min.so" "$so"
-            patchelf --set-soname libopencv_min.so "out/$ABI/libopencv_min.so"
-            readelf -d "out/$ABI/libopencv_min.so" | grep -E "NEEDED|SONAME"
-            readelf -lW "out/$ABI/libopencv_min.so" | grep LOAD | head -2
+            "$STRIP" --strip-unneeded -o "out/$ABI/libopencv_java_min.so" "$so"
+            readelf -d "out/$ABI/libopencv_java_min.so" | grep -E "NEEDED|SONAME"
+            readelf -lW "out/$ABI/libopencv_java_min.so" | grep LOAD
           done
           ls -la out/*
 
