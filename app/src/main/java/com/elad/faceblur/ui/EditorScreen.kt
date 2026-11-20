@@ -157,6 +157,9 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+/** Height of the timeline's filmstrip. */
+private val STRIP = 44.dp
+
 // Timeline lanes in the features' colors: blurs coral, subtitles amber, sound effects cyan.
 private val BlurClip = Color(0xFFC2304F)
 private val ManualClip = Color(0xFFFF8A65)
@@ -196,6 +199,14 @@ fun EditorScreen(
     }
     @Suppress("UNUSED_VARIABLE") val version = ctrl.version
     val busy = ctrl.trackingProgress != null
+    // The filmstrip is loaded once per editor: the timeline leaves the screen while a panel is open.
+    val context = LocalContext.current
+    val stripSize = with(LocalDensity.current) { STRIP.roundToPx() }
+    val thumbs = remember(ctrl) {
+        val dur = ctrl.timeOf(ctrl.frameCount - 1) + ctrl.frameUs
+        Thumbnails(context, ctrl.session.info.uri, dur, stepUs = 500_000L, sizePx = stripSize)
+    }
+    LaunchedEffect(thumbs) { thumbs.load() }
 
     // A Surface gives text and icons the theme's light-on-dark content color.
     Surface(color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground, modifier = Modifier.fillMaxSize()) {
@@ -307,7 +318,7 @@ fun EditorScreen(
                     3 -> BackgroundPanel(ctrl)
                     4 -> SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
                     else -> {
-                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Timeline(ctrl, busy, subStyle) }
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Timeline(ctrl, busy, subStyle, thumbs) }
                         val sel = ctrl.selected
                         Column(Modifier.animateContentSize(tween(220))) {
                             if (sel != null && ctrl.sizePanel) SizePanel(ctrl, sel, busy)
@@ -895,16 +906,10 @@ private class TimelineGeo(
 }
 
 @Composable
-private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle) {
-    val context = LocalContext.current
+private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle, thumbs: Thumbnails) {
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-    val stripPx = with(density) { 44.dp.toPx() }
-    val thumbs = remember(ctrl) {
-        val dur = ctrl.timeOf(ctrl.frameCount - 1) + ctrl.frameUs
-        Thumbnails(context, ctrl.session.info.uri, dur, stepUs = 500_000L, sizePx = stripPx.roundToInt())
-    }
-    LaunchedEffect(thumbs) { thumbs.load() }
+    val stripPx = with(density) { STRIP.toPx() }
 
     val pxPerSec = remember { mutableFloatStateOf(with(density) { 56.dp.toPx() }) }
     val rowScroll = remember { mutableFloatStateOf(0f) }
