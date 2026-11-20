@@ -33,6 +33,7 @@ adb install -r -g app/build/outputs/apk/release/app-release.apk || exit 1
 ST=/sdcard/Android/data/com.elad.faceblur/files/selftest
 adb shell mkdir -p $ST
 adb push app/src/androidTest/assets/samples/walk.mp4 $ST/walk.mp4
+adb push app/src/androidTest/assets/samples/speech_two.mp4 $ST/speech.mp4
 adb push app/src/androidTest/assets/models/ggml-tiny.bin $ST/ggml-tiny.bin
 adb push app/src/androidTest/assets/models/speaker.onnx $ST/speaker.onnx
 adb shell rm -f $ST/report.txt

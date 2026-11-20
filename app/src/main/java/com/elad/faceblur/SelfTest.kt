@@ -73,8 +73,12 @@ object SelfTest {
             val out = p.render(info, settings, analysis, m, 0, export, style, AudioEdit(VoiceFx.ROBOT), Background(fill = BgFill.BLUR), masks) {}
             line("render: ${out.uri}")
             masks.close()
-            val pcm = AudioDecoder.decode(context, uri, { true }) {}
+            // Sound: a clip with speech if CI copied one in (the face video may be silent).
+            val speech = File(d, "speech.mp4").takeIf { it.exists() }
+            val audioUri = speech?.let { Uri.fromFile(it) } ?: uri
+            val pcm = AudioDecoder.decode(context, audioUri, { true }) {}
             line("audio: ${pcm?.size ?: 0} samples")
+            if (speech != null) require((pcm?.size ?: 0) > 16000) { "speech not decoded" }
             // Speech recognition and speakers, if CI copied their models in.
             val whisper = File(d, "ggml-tiny.bin")
             if (whisper.exists() && pcm != null) {
@@ -89,8 +93,8 @@ object SelfTest {
                 require(r == 0) { "whisper failed" }
             }
             val speaker = File(d, "speaker.onnx")
-            if (speaker.exists()) {
-                val labels = SpeakerDetector.detect(context, uri, speaker.path, listOf(SpeakerDetector.Span(0, 3000), SpeakerDetector.Span(3000, 6000)), null) {}
+            if (speaker.exists() && pcm != null) {
+                val labels = SpeakerDetector.detect(context, audioUri, speaker.path, listOf(SpeakerDetector.Span(0, 3000), SpeakerDetector.Span(3000, 6000)), null) {}
                 line("speakers: ${labels.toList()}")
             }
             Translation.getClient(
