@@ -12,7 +12,7 @@ val buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
 // CI's emulator test overrides this with -PabiFilters=x86_64.
 val abiList = ((project.findProperty("abiFilters") as String?) ?: "arm64-v8a").split(",")
 // OpenCV with only the modules the app uses, when ci/fetch-opencv.sh put it in jniLibs.
-val minimalOpenCv = abiList.all { file("src/main/jniLibs/$it/libopencv_min.so").exists() }
+val minimalOpenCv = abiList.all { file("src/main/jniLibs/$it/libopencv_java_min.so").exists() }
 
 android {
     namespace = "com.elad.faceblur"

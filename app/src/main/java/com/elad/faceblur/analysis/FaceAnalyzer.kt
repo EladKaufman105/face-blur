@@ -23,9 +23,10 @@ object OpenCv {
         if (!loaded) synchronized(this) {
             if (!loaded) {
                 variant = try {
-                    System.loadLibrary("opencv_min")
+                    System.loadLibrary("opencv_java_min")
                     "minimal"
-                } catch (_: UnsatisfiedLinkError) {
+                } catch (e: UnsatisfiedLinkError) {
+                    android.util.Log.i("EDITIT", "minimal OpenCV not loaded: ${e.message}")
                     System.loadLibrary("opencv_java4")
                     "full"
                 }
