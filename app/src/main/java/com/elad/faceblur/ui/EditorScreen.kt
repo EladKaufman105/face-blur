@@ -319,7 +319,7 @@ private fun VideoWithOverlay(
     ctrl: EditorController,
     subs: SubLang,
     style: SubtitleStyle,
-    aspect: ExportAspect = ExportAspect.ORIGINAL,
+    frameShape: ExportAspect = ExportAspect.ORIGINAL,
     watermark: Watermark = Watermark(),
 ) {
     val context = LocalContext.current
@@ -372,7 +372,7 @@ private fun VideoWithOverlay(
             },
             modifier = Modifier.fillMaxSize(),
         )
-        Overlay(ctrl, subs, style, aspect, watermark, Modifier.fillMaxSize())
+        Overlay(ctrl, subs, style, frameShape, watermark, Modifier.fillMaxSize())
     }
 }
 
