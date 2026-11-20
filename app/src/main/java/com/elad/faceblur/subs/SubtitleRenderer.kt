@@ -203,7 +203,7 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?, pr
             }
             SubEffect.GLITCH -> if (since < GLITCH_MS) {
                 val fade = 1f - since / GLITCH_MS
-                glitch = base * 0.12f * fade * (if (((since / 45f).toInt() % 2) == 0) 1f else -1f)
+                glitch = base * 0.28f * fade * (if (((since / 45f).toInt() % 2) == 0) 1f else -1f)
             }
             SubEffect.FLICKER -> if (since < FLICKER_MS) {
                 alpha = FLICKER[((since / 50f).toInt()).coerceIn(0, FLICKER.size - 1)]
@@ -269,7 +269,8 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?, pr
                         }
                     }
                     SubEffect.ACTIVE_ZOOM -> if (i == active) {
-                        look.scale = 1.25f
+                        // As big as fits into the spaces around it without covering its neighbors.
+                        look.scale = 1.12f
                         look.accent = true
                     }
                     SubEffect.BOUNCE -> if (i == active) {
@@ -279,7 +280,7 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?, pr
                     }
                     SubEffect.SHAKE -> if (i == active) {
                         look.rotate = 7f * sin(2f * PI.toFloat() * inWord / 160f)
-                        look.scale = 1.1f
+                        look.scale = 1.04f
                         look.accent = true
                     }
                     else -> Unit
