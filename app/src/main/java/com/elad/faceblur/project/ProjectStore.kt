@@ -12,6 +12,7 @@ import com.elad.faceblur.analysis.FrameStore
 import com.elad.faceblur.edit.Cue
 import com.elad.faceblur.edit.EditState
 import com.elad.faceblur.edit.EditTrack
+import com.elad.faceblur.edit.SfxClip
 import com.elad.faceblur.edit.TimedWord
 import org.json.JSONObject
 import java.io.BufferedInputStream
@@ -52,7 +53,7 @@ class LoadedProject(val meta: ProjectMeta, val json: JSONObject, val analysis: A
  */
 object ProjectStore {
     private const val ANALYSIS_VERSION = 1
-    private const val EDITS_VERSION = 1
+    private const val EDITS_VERSION = 2
 
     fun root(context: Context) = File(context.filesDir, "projects")
 
@@ -284,10 +285,13 @@ object ProjectStore {
         }
         o.writeInt(e.bleeps.size)
         for (b in e.bleeps) { o.writeLong(b[0]); o.writeLong(b[1]) }
+        o.writeInt(e.sfx.size)
+        for (c in e.sfx) { o.writeInt(c.id); o.str(c.sound); o.writeLong(c.startMs); o.writeLong(c.durMs); o.writeFloat(c.gain) }
     }
 
     fun readEdits(f: File): EditState = input(f).use { i ->
-        require(i.readInt() == EDITS_VERSION) { "unknown project version" }
+        val version = i.readInt()
+        require(version in 1..EDITS_VERSION) { "unknown project version" }
         val nextId = i.readInt()
         val nextCueId = i.readInt()
         val tracks = List(i.readInt()) {
@@ -308,6 +312,7 @@ object ProjectStore {
             Cue(id, a, b, he, en, group, src, words, speaker)
         }
         val bleeps = List(i.readInt()) { longArrayOf(i.readLong(), i.readLong()) }
-        EditState(tracks, cues, bleeps, nextId, nextCueId)
+        val sfx = if (version >= 2) List(i.readInt()) { SfxClip(i.readInt(), i.str(), i.readLong(), i.readLong(), i.readFloat()) } else emptyList()
+        EditState(tracks, cues, bleeps, nextId, nextCueId, sfx)
     }
 }

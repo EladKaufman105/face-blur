@@ -36,6 +36,9 @@ import com.elad.faceblur.project.ProjectMeta
 import com.elad.faceblur.project.ProjectStore
 import com.elad.faceblur.subs.SubtitleStyle
 import org.json.JSONObject
+import com.elad.faceblur.analysis.MaskStore
+import com.elad.faceblur.effects.Background
+import java.io.File
 import java.util.concurrent.Executors
 
 sealed interface UiState {
@@ -99,12 +102,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         .put("split", JSONObject().put("words", ctrl.split.words).put("chars", ctrl.split.chars))
         .put("audio", ctrl.audio.toJson())
         .put("frame", ctrl.frame)
+        .put("background", ctrl.background.toJson())
 
     /** Every new editing session is saved as a project. */
     private fun beginProject(ctrl: EditorController) {
         val s = ctrl.session
         val id = ProjectStore.newId()
         projectId = id
+        s.projectDir = ProjectStore.dir(getApplication(), id)
         val st = s.settings
         val json = editorFields(ctrl)
             .put("v", 1)
@@ -128,7 +133,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun startAutosave(ctrl: EditorController) {
         autosave?.cancel()
         autosave = viewModelScope.launch {
-            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, prefs.subStyle) }
+            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, prefs.subStyle, ctrl.background, ctrl.masksReady) }
                 .drop(1)
                 .collectLatest {
                     delay(1500)
@@ -186,6 +191,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             )
             val session = EditSession(info, settings, loaded.analysis, j.optLong("analysisMs"), j.optBoolean("subtitlesOnly"))
             loaded.edits?.let { session.model.restore(it) }
+            val dir = ProjectStore.dir(app, id)
+            session.projectDir = dir
+            session.masks = withContext(Dispatchers.IO) { MaskStore.open(File(dir, "masks.bin"), File(dir, "masks.bin.idx")) }
             val ctrl = EditorController(session, viewModelScope, app, models, prefs)
             if (session.subtitlesOnly) ctrl.previewAvailable = false
             j.optString("style").takeIf { it.isNotBlank() }?.let { prefs.updateSubStyle(SubtitleStyle.fromJson(it)) }
@@ -194,6 +202,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 SplitRule(sp?.optInt("words") ?: 0, sp?.optInt("chars") ?: 0),
                 AudioEdit.fromJson(j.optJSONObject("audio")),
                 j.optInt("frame"),
+                Background.fromJson(j.optJSONObject("background")),
             )
             editor = ctrl
             projectId = id
@@ -333,6 +342,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         saveProject(ctrl)
         val saved = FaceBlurProcessor(getApplication()).render(
             s.info, s.settings, s.analysis, s.model, s.analysisMs, prefs.export, prefs.subStyle, ctrl.audio,
+            ctrl.background, s.masks,
         ) { p -> state = UiState.Working(s.info, 2, p, s.subtitlesOnly) }
         if (s.analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / s.analysisMs
         state = UiState.Done(s.info, saved, canEdit = true, subsOnly = s.subtitlesOnly)

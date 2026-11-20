@@ -42,6 +42,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.media3.common.PlaybackParameters
 import com.elad.faceblur.audio.VoiceFx
+import com.elad.faceblur.audio.SfxLibrary
+import com.elad.faceblur.effects.BackgroundEffect
+import com.elad.faceblur.edit.SfxClip
 import com.elad.faceblur.edit.ExportAspect
 import com.elad.faceblur.pipeline.Watermark
 import com.elad.faceblur.audio.VoicePreviewRenderers
@@ -166,7 +169,8 @@ fun EditorScreen(
             ctrl.listEditor -> ctrl.listEditor = false
             ctrl.splitPanel -> ctrl.splitPanel = false
             ctrl.voicePanel -> ctrl.voicePanel = false
-            ctrl.selectedId != null || ctrl.selectedCueId != null -> ctrl.deselect()
+            ctrl.bgPanel -> ctrl.bgPanel = false
+            ctrl.selectedId != null || ctrl.selectedCueId != null || ctrl.selectedSfxId != null -> ctrl.deselect()
             else -> onClose()
         }
     }
@@ -225,6 +229,9 @@ fun EditorScreen(
                 if (!ctrl.subsSheet) {
                     ctrl.speakersProgress?.let { p -> ProgressPill(t("מזהה דוברים…"), p, ctrl::cancelSpeakers) }
                 }
+                if (!ctrl.bgPanel) {
+                    ctrl.segmentProgress?.let { p -> ProgressPill(t("מזהה אנשים…"), p, ctrl::cancelFindPeople) }
+                }
                 if (!ctrl.subsSheet) {
                     val models = ctrl.models
                     val sp = ctrl.subsProgress
@@ -250,18 +257,34 @@ fun EditorScreen(
         // Video controls and timelines run left to right even in a Hebrew UI.
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Transport(ctrl, busy)
-            if (!ctrl.stylePanel && !ctrl.listEditor && !ctrl.voicePanel) Timeline(ctrl, busy, subStyle)
+            if (!ctrl.stylePanel && !ctrl.listEditor && !ctrl.voicePanel && !ctrl.bgPanel) Timeline(ctrl, busy, subStyle)
         }
 
         if (ctrl.listEditor) {
             AllSubtitlesPanel(ctrl, Modifier.fillMaxHeight(0.6f), subStyle)
         } else if (ctrl.voicePanel) {
             VoicePanel(ctrl)
+        } else if (ctrl.bgPanel) {
+            BackgroundPanel(ctrl)
         } else if (ctrl.stylePanel) {
             SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
         } else {
             val sel = ctrl.selected
             if (sel != null && ctrl.sizePanel) SizePanel(ctrl, sel, busy)
+            ctrl.selectedSfx?.takeIf { ctrl.sfxGainPanel }?.let { c ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(t("עוצמה"), style = MaterialTheme.typography.labelLarge)
+                    var g by remember(c.id) { mutableFloatStateOf(c.gain) }
+                    Slider(
+                        value = g,
+                        onValueChange = { g = it },
+                        onValueChangeFinished = { ctrl.setSelectedSfxGain(g) },
+                        valueRange = 0f..2f,
+                        modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                    )
+                    Text("\u200E${(g * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium)
+                }
+            }
             if (ctrl.splitPanel && ctrl.model.cues.isNotEmpty()) {
                 Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(horizontal = 16.dp, vertical = 8.dp)) {
                     SplitControls(ctrl)
@@ -331,9 +354,9 @@ private fun VideoWithOverlay(
     val player = remember(ctrl) {
         // Bleeps and the robot voice are heard live; the pitch is set on the player.
         ExoPlayer.Builder(context, VoicePreviewRenderers(context) { ctrl.voiceDsp }).build().apply {
-            if (ctrl.previewAvailable) {
-                setVideoEffects(listOf<Effect>(BlurEffect(preview, settings.mode, settings.strength)))
-            }
+            // The background (replaced or blurred live), then the faces' blur over it.
+            val bg = BackgroundEffect(ctrl.bgState)
+            setVideoEffects(if (ctrl.previewAvailable) listOf<Effect>(bg, BlurEffect(preview, settings.mode, settings.strength)) else listOf<Effect>(bg))
             setMediaItem(MediaItem.fromUri(ctrl.session.info.uri))
             prepare()
         }
@@ -345,7 +368,8 @@ private fun VideoWithOverlay(
         ctrl.voiceApplier = {
             val v = ctrl.audio.voice
             player.playbackParameters = PlaybackParameters(1f, v.pitch)
-            player.volume = if (v == VoiceFx.MUTE) 0f else 1f
+            // "No sound" is done in the sound processing, so sound effects still play.
+            player.volume = 1f
         }
         ctrl.voiceApplier()
         onDispose {
@@ -749,6 +773,9 @@ private class TimelineGeo(
     /** Top of the subtitle lane, or < 0 when there are no subtitles. */
     val subsTop: Float = -1f,
     val subsH: Float = 0f,
+    /** Top of the sound effects lane, or < 0 when there are none. */
+    val sfxTop: Float = -1f,
+    val sfxH: Float = 0f,
 ) {
     val cx = width / 2
     val nowUs = ctrl.timeOf(ctrl.frame)
@@ -769,6 +796,14 @@ private class TimelineGeo(
 
     fun cueX0(c: Cue) = x(ctrl.cueRelUs(c.startMs))
     fun cueX1(c: Cue) = x(ctrl.cueRelUs(c.endMs))
+
+    fun sfxX0(c: SfxClip) = x(ctrl.cueRelUs(c.startMs))
+    fun sfxX1(c: SfxClip) = max(x(ctrl.cueRelUs(c.endMs)), sfxX0(c) + sfxH * 1.6f)
+
+    fun sfxAt(p: Offset): SfxClip? {
+        if (sfxTop < 0 || p.y !in sfxTop..(sfxTop + sfxH)) return null
+        return ctrl.model.sfx.lastOrNull { p.x in sfxX0(it)..sfxX1(it) }
+    }
 
     fun cueAt(p: Offset): Cue? {
         if (subsTop < 0 || p.y !in subsTop..(subsTop + subsH)) return null
@@ -824,7 +859,10 @@ private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle
     val hasSubs = ctrl.model.cues.isNotEmpty()
     val subsTop = if (hasSubs) stripTop + stripPx + with(density) { 6.dp.toPx() } else -1f
     val subsH = with(density) { 22.dp.toPx() }
-    val rowsTop = (if (hasSubs) subsTop + subsH else stripTop + stripPx) + with(density) { 8.dp.toPx() }
+    val hasSfx = ctrl.model.sfx.isNotEmpty()
+    val sfxH = with(density) { 18.dp.toPx() }
+    val sfxTop = if (hasSfx) (if (hasSubs) subsTop + subsH else stripTop + stripPx) + with(density) { 5.dp.toPx() } else -1f
+    val rowsTop = (if (hasSfx) sfxTop + sfxH else if (hasSubs) subsTop + subsH else stripTop + stripPx) + with(density) { 8.dp.toPx() }
     val rowH = with(density) { 24.dp.toPx() }
     val rowPitch = rowH + with(density) { 5.dp.toPx() }
     val handleW = with(density) { 12.dp.toPx() }
@@ -855,21 +893,21 @@ private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle
     }
     val widthPx = remember { mutableFloatStateOf(1f) }
     val geo: () -> TimelineGeo = {
-        TimelineGeo(ctrl, widthPx.floatValue, pxPerSec.floatValue, rows, rowsTop, rowPitch, rowH, rowScroll.floatValue, handleW, subsTop, subsH)
+        TimelineGeo(ctrl, widthPx.floatValue, pxPerSec.floatValue, rows, rowsTop, rowPitch, rowH, rowScroll.floatValue, handleW, subsTop, subsH, sfxTop, sfxH)
     }
 
     Canvas(
         Modifier
             .fillMaxWidth()
             .height(heightDp)
-            .pointerInput(ctrl, rows, busy, maxScroll, hasSubs) {
+            .pointerInput(ctrl, rows, busy, maxScroll, hasSubs, hasSfx) {
                 if (!busy) timelineGestures(ctrl, geo, pxPerSec, rowScroll, maxScroll, scope, flingJob)
             },
     ) {
         widthPx.floatValue = size.width
         @Suppress("UNUSED_VARIABLE") val tv = thumbs.version
         @Suppress("UNUSED_VARIABLE") val vv = ctrl.version
-        val g = TimelineGeo(ctrl, size.width, pxPerSec.floatValue, rows, rowsTop, rowPitch, rowH, rowScroll.floatValue, handleW, subsTop, subsH)
+        val g = TimelineGeo(ctrl, size.width, pxPerSec.floatValue, rows, rowsTop, rowPitch, rowH, rowScroll.floatValue, handleW, subsTop, subsH, sfxTop, sfxH)
         val durUs = ctrl.timeOf(ctrl.frameCount - 1) + ctrl.frameUs
         val vx0 = g.x(0)
         val vx1 = g.x(durUs)
@@ -947,6 +985,27 @@ private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle
                 val x1 = max(g.x(ctrl.cueRelUs(b)), x0 + 2.dp.toPx())
                 if (x1 < 0 || x0 > size.width) continue
                 drawRect(BleepMark, Offset(x0, g.subsTop - 4.dp.toPx()), Size(x1 - x0, 3.dp.toPx()))
+            }
+        }
+
+        // Sound effects.
+        if (g.sfxTop >= 0) {
+            textPaint.textSize = 10.dp.toPx()
+            textPaint.color = android.graphics.Color.BLACK
+            val selSfx = ctrl.selectedSfxId
+            for (c in ctrl.model.sfx) {
+                val x0 = g.sfxX0(c)
+                val x1 = g.sfxX1(c)
+                if (x1 < 0 || x0 > size.width) continue
+                val y = g.sfxTop
+                drawRoundRect(SfxClipColor.copy(alpha = c.gain.coerceIn(0.35f, 1f)), Offset(x0, y), Size(x1 - x0, sfxH), CornerRadius(4.dp.toPx()))
+                val label = "♪ " + t(SfxLibrary.name(c.sound))
+                if (x1 - x0 > 18.dp.toPx()) {
+                    clipRect(left = x0 + 3.dp.toPx(), top = y, right = x1 - 3.dp.toPx(), bottom = y + sfxH) {
+                        drawContext.canvas.nativeCanvas.drawText(label, max(x0, 0f) + 5.dp.toPx(), y + sfxH / 2 + textPaint.textSize / 2.8f, textPaint)
+                    }
+                }
+                if (c.id == selSfx) drawRoundRect(Color.White, Offset(x0, y), Size(x1 - x0, sfxH), CornerRadius(4.dp.toPx()), style = Stroke(2.dp.toPx()))
             }
         }
 
@@ -1031,6 +1090,9 @@ private suspend fun PointerInputScope.timelineGestures(
         val g0 = geo()
         val cueHandle = g0.cueHandleAt(down.position)
         val handle = if (cueHandle == null) g0.handleAt(down.position) else null
+        // Dragging the selected sound effect moves it.
+        val sfxDrag = g0.sfxAt(down.position)?.takeIf { it.id == ctrl.selectedSfxId }
+        val sfxStart = sfxDrag?.startMs ?: 0L
         var mode = 0 // 0 undecided, 1 scrub, 2 rows, 3 trim, 4 zoom
         var acc = Offset.Zero
         val durUs = ctrl.timeOf(ctrl.frameCount - 1)
@@ -1057,6 +1119,7 @@ private suspend fun PointerInputScope.timelineGestures(
                 acc += pan
                 if (acc.getDistance() > slop) {
                     mode = when {
+                        sfxDrag != null && abs(acc.x) >= abs(acc.y) -> 6.also { ctrl.beginSfxDrag() }
                         cueHandle != null -> 5.also { ctrl.beginCueTrim() }
                         handle != null -> 3.also { ctrl.beginTrim() }
                         abs(acc.x) >= abs(acc.y) -> 1
@@ -1070,6 +1133,10 @@ private suspend fun PointerInputScope.timelineGestures(
                     ctrl.seek(ctrl.frameAt(tUs.toLong()))
                 }
                 2 -> rowScroll.floatValue = (rowScroll.floatValue - pan.y).coerceIn(0f, maxScroll)
+                6 -> {
+                    val dx = c0.position.x - down.position.x
+                    ctrl.dragSfxTo(sfxDrag!!.id, sfxStart + (dx / pxPerSec.floatValue * 1000f).toLong())
+                }
                 5 -> {
                     val (id, start) = cueHandle!!
                     ctrl.trimCueTo(id, start, geo().usAt(c0.position.x).coerceIn(0L, durUs + ctrl.frameUs))
@@ -1084,9 +1151,11 @@ private suspend fun PointerInputScope.timelineGestures(
         }
         when (mode) {
             0 -> {
-                val cue = g0.cueAt(down.position)
-                val hit = if (cue == null) g0.clipAt(down.position) else null
+                val sfxHit = g0.sfxAt(down.position)
+                val cue = if (sfxHit == null) g0.cueAt(down.position) else null
+                val hit = if (cue == null && sfxHit == null) g0.clipAt(down.position) else null
                 when {
+                    sfxHit != null -> ctrl.selectSfx(sfxHit.id)
                     cue != null -> ctrl.focusCue(cue.id)
                     hit != null -> ctrl.focus(hit.id)
                     down.position.y > g0.rowsTop - 4f -> ctrl.deselect()
@@ -1144,7 +1213,14 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
             Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (cue != null) {
+            val sfx = ctrl.selectedSfx
+            if (sfx != null) {
+                Tool(t("השמע"), Icons.Filled.PlayArrow, true) { ctrl.playSelectedSfx() }
+                Tool(t("העבר לכאן"), AppIcons.MoveHere, true) { ctrl.moveSelectedSfxHere() }
+                Tool(t("עוצמה"), AppIcons.Volume, true, active = ctrl.sfxGainPanel) { ctrl.sfxGainPanel = !ctrl.sfxGainPanel }
+                Tool(t("מחק"), Icons.Filled.Delete, true) { ctrl.deleteSelectedSfx() }
+                Tool(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
+            } else if (cue != null) {
                 Tool(t("ערוך טקסט"), Icons.Filled.Edit, true) { ctrl.pauser(); ctrl.cueEditor = true }
                 Tool(t("פצל כאן"), EditorIcons.Cut, true) { ctrl.pauser(); ctrl.splitSelectedCue() }
                 Tool(t("מזג"), AppIcons.MergeDown, true) { ctrl.mergeSelectedCue() }
@@ -1159,11 +1235,10 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
                     if (hasCues || subsOnly) {
                         Tool(t("עיצוב"), EditorIcons.TextFormat, !busy) { ctrl.pauser(); ctrl.stylePanel = true }
                     }
-                    if (hasCues) {
-                        Tool(t("כל הכתוביות"), AppIcons.ListLines, !busy) { ctrl.pauser(); ctrl.listEditor = true }
-                        Tool(t("חלוקה"), AppIcons.WrapText, !busy, active = ctrl.splitPanel) { ctrl.splitPanel = !ctrl.splitPanel }
-                    }
-                    Tool(t("קול"), AppIcons.Voice, !busy, active = ctrl.audio.voice != VoiceFx.NONE || ctrl.model.bleeps.isNotEmpty()) {
+                    // Words per subtitle is in the list too ("all subtitles").
+                    if (hasCues) Tool(t("כל הכתוביות"), AppIcons.ListLines, !busy) { ctrl.pauser(); ctrl.listEditor = true }
+                    Tool(t("רקע"), AppIcons.Background, !busy, active = ctrl.background.active) { ctrl.pauser(); ctrl.bgPanel = true }
+                    Tool(t("סאונד"), AppIcons.Voice, !busy, active = ctrl.audio.voice != VoiceFx.NONE || ctrl.model.bleeps.isNotEmpty() || ctrl.model.sfx.isNotEmpty()) {
                         ctrl.pauser(); ctrl.voicePanel = true
                     }
                 }
@@ -1226,6 +1301,7 @@ private fun RowScope.Tool(label: String, icon: ImageVector, enabled: Boolean, ac
 
 /** A few Material icons (Apache 2.0) not in the core icon set. */
 private val BleepMark = Color(0xFFFF4D6D)
+private val SfxClipColor = Color(0xFFFFB020)
 
 private object EditorIcons {
     private fun icon(name: String, path: String) = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)

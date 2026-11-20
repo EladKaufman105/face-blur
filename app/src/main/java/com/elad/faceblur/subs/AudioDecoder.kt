@@ -18,8 +18,8 @@ import kotlin.math.sin
 object AudioDecoder {
     const val RATE = 16_000
 
-    /** @return samples, or null if the video has no audio. */
-    fun decode(context: Context, uri: Uri, isActive: () -> Boolean, onProgress: (Float) -> Unit): FloatArray? {
+    /** @return samples at [outRate], or null if the video has no audio. */
+    fun decode(context: Context, uri: Uri, isActive: () -> Boolean, outRate: Int = RATE, onProgress: (Float) -> Unit): FloatArray? {
         val ex = MediaExtractor()
         try {
             ex.setDataSource(context, uri, null)
@@ -96,7 +96,7 @@ object AudioDecoder {
                 codec.stop()
                 codec.release()
             }
-            return resample(mono.toArray(), rate, RATE)
+            return resample(mono.toArray(), rate, outRate)
         } finally {
             ex.release()
         }

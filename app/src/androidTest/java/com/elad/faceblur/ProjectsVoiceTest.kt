@@ -16,6 +16,9 @@ import com.elad.faceblur.audio.AudioEdit
 import com.elad.faceblur.audio.VoiceFx
 import com.elad.faceblur.edit.EditSession
 import com.elad.faceblur.edit.ExportAspect
+import com.elad.faceblur.effects.Background
+import com.elad.faceblur.effects.BgFill
+import com.elad.faceblur.effects.BgKey
 import com.elad.faceblur.pipeline.Watermark
 import android.media.MediaMetadataRetriever
 import com.elad.faceblur.edit.EditorController
@@ -168,7 +171,13 @@ class ProjectsVoiceTest {
             val id = session.model.cues.first().id
             ctrl.toggleBleep(id, 1)
             ctrl.changeAudio(AudioEdit(VoiceFx.DEEP, tone = true, maskWords = true))
+            // A "ding" at 5 s (1568 Hz).
+            ctrl.seek(ctrl.frameAt(ctrl.cueRelUs(5000)))
+            ctrl.addSfx("builtin:ding")
         }
+        val sfx = inst.onMain { session.model.sfx.map { it.sound to it.startMs } }
+        note("sfx $sfx")
+        if (sfx.size != 1 || sfx[0].second !in 4900L..5100L) fail("sfx not added at the playhead: $sfx")
         val bleeps = inst.onMain { session.model.bleeps.toMap() }
         note("bleeps $bleeps")
         if (bleeps != mapOf(1500L to 1900L)) fail("bleep stretch $bleeps")
@@ -184,10 +193,24 @@ class ProjectsVoiceTest {
         rule.runOnIdle {
             ctrl.seek(ctrl.frameAt(ctrl.cueRelUs(1700)))
             ctrl.voicePanel = true
+            ctrl.soundTab = 0
         }
         rule.waitForIdle()
         Thread.sleep(1200)
+        shot("11a_sfx_panel.png")
+        rule.runOnIdle { ctrl.soundTab = 1 }
+        rule.waitForIdle()
+        Thread.sleep(800)
         shot("11_voice_panel.png")
+        rule.runOnIdle {
+            ctrl.voicePanel = false
+            ctrl.selectSfx(session.model.sfx.first().id)
+            ctrl.seek(ctrl.frameAt(ctrl.cueRelUs(5200)))
+        }
+        rule.waitForIdle()
+        Thread.sleep(1000)
+        shot("11c_sfx_timeline.png")
+        rule.runOnIdle { ctrl.deselect() }
         rule.runOnIdle {
             ctrl.voicePanel = false
             ctrl.bleepMode = true
@@ -210,12 +233,18 @@ class ProjectsVoiceTest {
         val pcm = AudioDecoder.decode(ctx, Uri.fromFile(video), { true }) {} ?: run { fail("export lost its sound"); return }
         val inBeep = toneShare(pcm, 1560, 1840, 1000.0)
         val outside = toneShare(pcm, 2060, 2340, 1000.0)
-        note("voice export: ${pcm.size / 16000f}s, 1 kHz share inside the bleep %.2f, outside %.2f".format(inBeep, outside))
+        val ding = toneShare(pcm, 5040, 5300, 1568.0)
+        val noDing = toneShare(pcm, 4500, 4900, 1568.0)
+        note("voice export: ${pcm.size / 16000f}s, 1 kHz share inside the bleep %.2f, outside %.2f; ding share %.2f (before it %.2f)".format(inBeep, outside, ding, noDing))
         if (pcm.size / 16000f < 10f) fail("audio too short")
         if (inBeep < 0.5 || outside > 0.3) fail("no beep where the word was ($inBeep / $outside)")
+        if (ding < 0.3 || noDing > 0.2) fail("sound effect not mixed in ($ding / $noDing)")
 
-        // No sound at all.
-        inst.runOnMainSync { ctrl.changeAudio(AudioEdit(VoiceFx.MUTE)) }
+        // No sound at all (no sound effects either).
+        inst.runOnMainSync {
+            session.model.deleteSfx(session.model.sfx.first().id)
+            ctrl.changeAudio(AudioEdit(VoiceFx.MUTE))
+        }
         val muted = runBlocking(Dispatchers.Main) {
             FaceBlurProcessor(ctx).render(info, settings, analysis, session.model, 0, ExportOptions(subs = SubLang.NONE, saveSrt = false), style, ctrl.audio) {}
         }
@@ -224,6 +253,69 @@ class ProjectsVoiceTest {
         if (AudioDecoder.decode(ctx, Uri.fromFile(mv), { true }) {} != null) fail("muted export still has sound")
         scope.cancel()
         session.close()
+    }
+
+    /** A green screen clip keyed out: the screen becomes blue, the box stays. */
+    @Test
+    fun backgroundKey() {
+        logName = "log_background.txt"
+        val src = sample("green_screen.mp4")
+        val uri = Uri.fromFile(src)
+        val info = VideoInfo.probe(ctx, uri)
+        val settings = Settings(BlurMode.BLUR, 0.6f, 1.6f, false)
+        val analysis = FaceBlurProcessor.framesOnly(ctx, info)
+        val session = EditSession(info, settings, analysis, 0, subtitlesOnly = true)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val ctrl = EditorController(session, scope, ctx, ModelManager(ctx))
+        val blue = 0xFF2050FF.toInt()
+        inst.runOnMainSync {
+            ctrl.changeBackground(Background(fill = BgFill.COLOR, key = BgKey.GREEN, color = blue))
+            ctrl.bgPanel = true
+        }
+        val style = SubPresets.all.first { it.name == "קלאסי" }.style
+        rule.setContent {
+            EditorTheme {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                    EditorScreen(ctrl, onClose = {}, onExport = {}, export = ExportOptions(subs = SubLang.NONE), subStyle = style)
+                }
+            }
+        }
+        rule.waitForIdle()
+        rule.runOnIdle { ctrl.seek(ctrl.frameAt(2_000_000)) }
+        rule.waitForIdle()
+        Thread.sleep(2500)
+        shot("14_green_screen_panel.png")
+        val bg = inst.onMain { ctrl.background }
+        val out = runBlocking(Dispatchers.Main) {
+            FaceBlurProcessor(ctx).render(info, settings, analysis, session.model, 0, ExportOptions(subs = SubLang.NONE, saveSrt = false), style, AudioEdit(), bg, null) {}
+        }
+        val f = File(outDir, "green_keyed.mp4")
+        ctx.contentResolver.openInputStream(out.uri)!!.use { i -> f.outputStream().use { i.copyTo(it) } }
+        val mmr = MediaMetadataRetriever()
+        mmr.setDataSource(f.absolutePath)
+        val frame = mmr.getFrameAtTime(2_000_000, MediaMetadataRetriever.OPTION_CLOSEST)
+        mmr.release()
+        if (frame == null) {
+            fail("no frame")
+            return
+        }
+        File(outDir, "14b_green_keyed_frame.png").outputStream().use { frame.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val sx = frame.width / 640f
+        val sy = frame.height / 360f
+        val corner = frame.getPixel((20 * sx).toInt(), (20 * sy).toInt())
+        val box = frame.getPixel((270 * sx).toInt(), (175 * sy).toInt())
+        note("green screen: corner ${Integer.toHexString(corner)}, box ${Integer.toHexString(box)}")
+        if (colorDistance(corner, blue) > 60) fail("screen not replaced: ${Integer.toHexString(corner)}")
+        if (colorDistance(box, 0xFFE0E0E0.toInt()) > 60) fail("subject changed: ${Integer.toHexString(box)}")
+        scope.cancel()
+        session.close()
+    }
+
+    private fun colorDistance(a: Int, b: Int): Int {
+        val dr = (a shr 16 and 255) - (b shr 16 and 255)
+        val dg = (a shr 8 and 255) - (b shr 8 and 255)
+        val db = (a and 255) - (b and 255)
+        return kotlin.math.sqrt((dr * dr + dg * dg + db * db).toDouble()).toInt()
     }
 
     /** Share of the energy in [fromMs, toMs) at [hz] (Goertzel), 16 kHz samples. */
@@ -282,6 +374,7 @@ class ProjectsVoiceTest {
             ctrl.changeSplit(SplitRule(words = 2))
             m.tracks.firstOrNull()?.let { m.setScale(it.id, 1.7f) }
             ctrl.seek(12)
+            ctrl.addSfx("builtin:whoosh")
         }
         val before = inst.onMain { ctrl.model.exportState() }
         val frames0 = ctrl.session.analysis.frames
@@ -305,6 +398,7 @@ class ProjectsVoiceTest {
         note("reopened cues=$got bleeps=${after.bleeps.map { it.toList() }} audio=${inst.onMain { c2.audio }} split=${inst.onMain { c2.split }} frame=${inst.onMain { c2.frame }}")
         if (got != want) fail("cues $got != $want")
         if (after.bleeps.map { it.toList() } != before.bleeps.map { it.toList() }) fail("bleeps")
+        if (after.sfx.map { it.sound to it.startMs } != before.sfx.map { it.sound to it.startMs } || after.sfx.isEmpty()) fail("sound effects")
         if (after.tracks.size != before.tracks.size || after.tracks.zip(before.tracks).any { (a, b) -> a.scale != b.scale || a.path.size != b.path.size }) fail("blurs")
         if (inst.onMain { c2.audio } != AudioEdit(VoiceFx.ROBOT, tone = false)) fail("voice")
         if (inst.onMain { c2.split } != SplitRule(words = 2)) fail("words per subtitle")
@@ -324,8 +418,10 @@ class ProjectsVoiceTest {
         Thread.sleep(1500)
         shot("12c_vertical_preview.png")
         val s2 = c2.session
+        val style2 = inst.onMain { vm.prefs.subStyle }
+        val audio2 = inst.onMain { c2.audio }
         val vout = runBlocking(Dispatchers.Main) {
-            FaceBlurProcessor(ctx).render(s2.info, s2.settings, s2.analysis, s2.model, 0, vexport, inst.onMain { vm.prefs.subStyle }, inst.onMain { c2.audio }) {}
+            FaceBlurProcessor(ctx).render(s2.info, s2.settings, s2.analysis, s2.model, 0, vexport, style2, audio2) {}
         }
         val vfile = File(outDir, "vertical.mp4")
         ctx.contentResolver.openInputStream(vout.uri)!!.use { i -> vfile.outputStream().use { i.copyTo(it) } }
@@ -342,6 +438,50 @@ class ProjectsVoiceTest {
         note("vertical export ${dw}x$dh")
         if (kotlin.math.abs(dw.toFloat() / dh - 9f / 16f) > 0.02f) fail("not 9:16: ${dw}x$dh")
         inst.runOnMainSync { vm.prefs.updateExport(ExportOptions()) }
+
+        // Background removal behind the people: find them, then a flat color behind.
+        inst.runOnMainSync {
+            c2.bgPanel = true
+            c2.findPeople()
+        }
+        Thread.sleep(300)
+        waitFor(240_000, "people found") { c2.segmentProgress == null }
+        if (!inst.onMain { c2.masksReady }) fail("people not found: ${inst.onMain { c2.notice }}")
+        if (!File(ProjectStore.dir(ctx, p.id), "masks.bin.idx").exists()) fail("masks not kept with the project")
+        val green = 0xFF00B140.toInt()
+        inst.runOnMainSync {
+            c2.changeBackground(Background(fill = BgFill.COLOR, key = BgKey.PERSON, color = green))
+            c2.seek(c2.frameAt(3_000_000))
+        }
+        rule.waitForIdle()
+        Thread.sleep(2500)
+        shot("13_background_panel.png")
+        val bg2 = inst.onMain { c2.background }
+        val bout = runBlocking(Dispatchers.Main) {
+            FaceBlurProcessor(ctx).render(s2.info, s2.settings, s2.analysis, s2.model, 0, ExportOptions(subs = SubLang.NONE, saveSrt = false), style2, audio2, bg2, s2.masks) {}
+        }
+        val bfile = File(outDir, "background.mp4")
+        ctx.contentResolver.openInputStream(bout.uri)!!.use { i -> bfile.outputStream().use { i.copyTo(it) } }
+        val bm = MediaMetadataRetriever()
+        bm.setDataSource(bfile.absolutePath)
+        val frame = bm.getFrameAtTime(3_000_000, MediaMetadataRetriever.OPTION_CLOSEST)
+        bm.release()
+        if (frame == null) fail("no frame") else {
+            File(outDir, "13b_background_frame.png").outputStream().use { frame.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            val corner = frame.getPixel((frame.width * 0.05f).toInt(), (frame.height * 0.08f).toInt())
+            note("background: corner ${Integer.toHexString(corner)} (want ~${Integer.toHexString(green)})")
+            if (colorDistance(corner, green) > 60) fail("background not replaced: ${Integer.toHexString(corner)}")
+            // Most of the frame is green now, but not all of it (the people stay).
+            var n = 0
+            var g = 0
+            for (y in 0 until frame.height step 8) for (x in 0 until frame.width step 8) {
+                n++
+                if (colorDistance(frame.getPixel(x, y), green) < 60) g++
+            }
+            note("background share ${g * 100 / n}%")
+            if (g * 100 / n !in 40..95) fail("background share ${g * 100 / n}%")
+        }
+        inst.runOnMainSync { c2.bgPanel = false }
 
         inst.runOnMainSync { vm.closeEditor() }
         inst.runOnMainSync { vm.renameProject(p.id, "בדיקה") }

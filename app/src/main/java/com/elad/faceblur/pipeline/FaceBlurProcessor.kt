@@ -28,8 +28,17 @@ import com.elad.faceblur.edit.EditModel
 import com.elad.faceblur.edit.toEditModel
 import com.elad.faceblur.audio.AudioEdit
 import com.elad.faceblur.edit.ExportAspect
+import com.elad.faceblur.analysis.MaskStore
+import com.elad.faceblur.analysis.Segmenter
+import com.elad.faceblur.effects.Background
+import com.elad.faceblur.effects.BackgroundEffect
+import com.elad.faceblur.effects.BackgroundState
+import com.elad.faceblur.effects.BgKey
+import com.elad.faceblur.effects.GrabEffect
 import com.elad.faceblur.audio.VoiceAudioProcessor
 import com.elad.faceblur.audio.VoiceDsp
+import com.elad.faceblur.audio.SfxLibrary
+import com.elad.faceblur.audio.SfxPlay
 import com.elad.faceblur.audio.VoiceFx
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.SonicAudioProcessor
@@ -135,6 +144,42 @@ class FaceBlurProcessor(private val context: Context) {
         }
     }
 
+    /**
+     * Finds the people in every frame (for background removal): a pass over the video that
+     * hands each frame, small, to the [Segmenter]. The masks go into [file].
+     */
+    suspend fun segment(info: VideoInfo, analysis: AnalysisResult, file: File, onProgress: (Float) -> Unit): MaskStore {
+        val out = File(context.cacheDir, "segment.mp4")
+        val store = MaskStore.create(file, analysis.frameCount)
+        val segmenter = withContext(Dispatchers.IO) { Segmenter(context, analysis.times, analysis.cuts, store) }
+        try {
+            val grab = GrabEffect(
+                MaskStore.SIZE, MaskStore.SIZE, info.rotation,
+                displayLandscape = info.displayWidth >= info.displayHeight,
+            ) { buf, w, h, t, rot -> segmenter.onFrame(buf, w, h, t, rot) }
+            val item = EditedMediaItem.Builder(MediaItem.fromUri(info.uri))
+                .setRemoveAudio(true)
+                .setEffects(Effects(emptyList(), listOf<Effect>(grab)))
+                .build()
+            runWithHdrFallback(
+                listOf(
+                    Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL,
+                    Composition.HDR_MODE_EXPERIMENTAL_FORCE_INTERPRET_HDR_AS_SDR,
+                ),
+            ) { hdrMode ->
+                export(composition(item, hdrMode), out, bitrate = 500_000, mime = MimeTypes.VIDEO_H264, onProgress)
+            }
+            store.saveIndex(File(file.parentFile, file.name + ".idx"))
+            return store
+        } catch (e: Throwable) {
+            store.close()
+            throw e
+        } finally {
+            segmenter.close()
+            out.delete()
+        }
+    }
+
     suspend fun render(
         info: VideoInfo,
         settings: Settings,
@@ -144,6 +189,8 @@ class FaceBlurProcessor(private val context: Context) {
         export: ExportOptions = ExportOptions(),
         subStyle: SubtitleStyle = SubtitleStyle(),
         audio: AudioEdit = AudioEdit(),
+        background: Background = Background(),
+        masks: MaskStore? = null,
         onProgress: (Float) -> Unit,
     ): Outcome.Saved {
         val t1 = SystemClock.elapsedRealtime()
@@ -168,10 +215,19 @@ class FaceBlurProcessor(private val context: Context) {
         // The voice: the pitch, then bleeps and robot sound (so the beep isn't shifted).
         val audioFx = ArrayList<AudioProcessor>()
         val bleeps = model.bleeps.map { (a, b) -> longArrayOf(a, b) }
-        val dsp = VoiceDsp(bleeps, audio.voice, audio.tone)
-        if (audio.voice != VoiceFx.MUTE) {
+        val sfx = model.sfx.mapNotNull { c -> SfxLibrary.load(context, c.sound)?.let { SfxPlay(c.startMs * 1000, it, c.gain) } }
+        val dsp = VoiceDsp(bleeps, audio.voice, audio.tone, sfx = sfx)
+        // No sound at all: the track is dropped, unless sound effects play over the silence.
+        val removeAudio = audio.voice == VoiceFx.MUTE && sfx.isEmpty()
+        if (!removeAudio) {
             if (audio.voice.pitch != 1f) audioFx += SonicAudioProcessor().apply { setPitch(audio.voice.pitch) }
             if (dsp.active) audioFx += VoiceAudioProcessor(dsp)
+        }
+        // The background: replaced or blurred first, then faces are blurred over it.
+        val bgEffect = if (background.active && (background.key != BgKey.PERSON || masks != null)) {
+            listOf<Effect>(BackgroundEffect(BackgroundState(background, masks, analysis.times)))
+        } else {
+            emptyList()
         }
         // A vertical / square frame follows the faces.
         val reframe = if (export.aspect != ExportAspect.ORIGINAL) {
@@ -182,8 +238,8 @@ class FaceBlurProcessor(private val context: Context) {
             null
         }
         val item = EditedMediaItem.Builder(MediaItem.fromUri(info.uri))
-            .setRemoveAudio(audio.voice == VoiceFx.MUTE)
-            .setEffects(Effects(audioFx, listOf<Effect>(blur) + export.effects(info, reframe) + subsEffect))
+            .setRemoveAudio(removeAudio)
+            .setEffects(Effects(audioFx, bgEffect + listOf<Effect>(blur) + export.effects(info, reframe) + subsEffect))
             .build()
         val bitrate = export.videoBitrate(info)
         val modes = when {
@@ -194,7 +250,8 @@ class FaceBlurProcessor(private val context: Context) {
         var keptHdr = info.isHdr
         runWithHdrFallback(modes) { hdrMode ->
             keptHdr = info.isHdr && hdrMode == Composition.HDR_MODE_KEEP_HDR
-            export(composition(item, hdrMode), out, bitrate, mime = export.mimeType(), onProgress)
+            // A video without sound still gets one for its sound effects.
+            export(composition(item, hdrMode, forceAudio = sfx.isNotEmpty()), out, bitrate, mime = export.mimeType(), onProgress)
         }
 
         val base = "${info.name}_blur_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
@@ -220,8 +277,9 @@ class FaceBlurProcessor(private val context: Context) {
         throw last ?: IllegalStateException("export failed")
     }
 
-    private fun composition(item: EditedMediaItem, hdrMode: Int): Composition =
+    private fun composition(item: EditedMediaItem, hdrMode: Int, forceAudio: Boolean = false): Composition =
         Composition.Builder(listOf(EditedMediaItemSequence(listOf(item))))
+            .experimentalSetForceAudioTrack(forceAudio)
             .setHdrMode(hdrMode)
             .build()
 

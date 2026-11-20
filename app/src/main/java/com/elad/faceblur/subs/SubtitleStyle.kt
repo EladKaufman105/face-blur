@@ -70,6 +70,9 @@ enum class SubEffect {
 
     /** The word being said shakes. */
     SHAKE,
+
+    /** Typed out letter by letter at a steady pace, with a blinking cursor. */
+    TYPING,
 }
 
 /**
@@ -204,6 +207,7 @@ object SubPresets {
         SubPreset("סיבוב", SubtitleStyle(font = SubFont.FREDOKA, size = 1.2f, textColor = YELLOW_TEXT, outline = 0.14f, effect = SubEffect.ROTATE, position = 0.66f)),
         SubPreset("ניאון מהבהב", SubtitleStyle(font = SubFont.FREDOKA, size = 1.15f, textColor = 0xFFFF6FB5.toInt(), outline = 0f, shadow = false, glow = true, effect = SubEffect.FLICKER, position = 0.7f)),
         SubPreset("אות אחר אות", SubtitleStyle(font = SubFont.VARELA, size = 1.05f, outline = 0.12f, effect = SubEffect.LETTERS, position = 0.78f)),
+        SubPreset("הקלדה", SubtitleStyle(font = SubFont.ASSISTANT, size = 1.05f, outline = 0f, shadow = false, box = true, boxColor = 0xE6000000.toInt(), effect = SubEffect.TYPING, position = 0.8f)),
         SubPreset("מילים בהדרגה", SubtitleStyle(font = SubFont.ASSISTANT, size = 1.1f, outline = 0.1f, shadow = true, effect = SubEffect.WORD_FADE, position = 0.75f)),
     )
 

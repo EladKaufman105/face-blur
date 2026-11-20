@@ -133,6 +133,16 @@ object Speakers {
     const val MAX = 6
 }
 
+/**
+ * A sound effect placed on the video.
+ * @param sound its id in the sound library ("builtin:whoosh", "user:file.wav").
+ * @param durMs how long it plays.
+ */
+class SfxClip(val id: Int, val sound: String, var startMs: Long, val durMs: Long, var gain: Float = 1f) {
+    fun copy() = SfxClip(id, sound, startMs, durMs, gain)
+    val endMs get() = startMs + durMs
+}
+
 /** Everything the user edited, copied out to be saved (see [EditModel.exportState]). */
 class EditState(
     val tracks: List<EditTrack>,
@@ -141,6 +151,7 @@ class EditState(
     val bleeps: List<LongArray>,
     val nextId: Int,
     val nextCueId: Int,
+    val sfx: List<SfxClip> = emptyList(),
 )
 
 /** Which subtitle text to show / burn in: as spoken, its translation, both, or none. */
@@ -184,7 +195,10 @@ class EditModel(
     private var nextCueId = 1
     /** Stretches of sound to bleep: start ms -> end ms. */
     val bleeps = TreeMap<Long, Long>()
-    private class Snap(val tracks: List<EditTrack>, val cues: List<Cue>, val bleeps: Map<Long, Long>)
+    /** Sound effects, by start. */
+    val sfx = ArrayList<SfxClip>()
+    private var nextSfxId = 1
+    private class Snap(val tracks: List<EditTrack>, val cues: List<Cue>, val bleeps: Map<Long, Long>, val sfx: List<SfxClip>)
     private val undo = ArrayDeque<Snap>()
 
     /** Bumped on every change. */
@@ -336,14 +350,14 @@ class EditModel(
     // ------------------------------------------------------------------ edits
 
     private fun snapshot() {
-        undo.addLast(Snap(tracks.map { it.copy() }, cues.map { it.copy() }, TreeMap(bleeps)))
+        undo.addLast(Snap(tracks.map { it.copy() }, cues.map { it.copy() }, TreeMap(bleeps), sfx.map { it.copy() }))
         while (undo.size > MAX_UNDO) undo.removeFirst()
     }
 
     /** A copy of everything edited, for saving. */
     fun exportState() = EditState(
         tracks.map { it.copy() }, cues.map { it.copy() },
-        bleeps.map { (a, b) -> longArrayOf(a, b) }, nextId, nextCueId,
+        bleeps.map { (a, b) -> longArrayOf(a, b) }, nextId, nextCueId, sfx.map { it.copy() },
     )
 
     /** Puts back a saved state (no undo history). */
@@ -356,6 +370,9 @@ class EditModel(
         for (b in st.bleeps) if (b.size == 2 && b[1] > b[0]) bleeps[b[0]] = b[1]
         nextId = max(st.nextId, (tracks.maxOfOrNull { it.id } ?: 0) + 1)
         nextCueId = max(st.nextCueId, (cues.maxOfOrNull { max(it.id, it.group) } ?: 0) + 1)
+        sfx.clear()
+        sfx += st.sfx.sortedBy { it.startMs }
+        nextSfxId = (sfx.maxOfOrNull { it.id } ?: 0) + 1
         undo.clear()
         changed()
     }
@@ -372,8 +389,55 @@ class EditModel(
         cues += u.cues
         bleeps.clear()
         bleeps.putAll(u.bleeps)
+        sfx.clear()
+        sfx += u.sfx
         changed()
         return true
+    }
+
+    // ------------------------------------------------------------------ sound effects
+
+    fun sfxClip(id: Int): SfxClip? = sfx.firstOrNull { it.id == id }
+
+    /** A sound effect at [ms]; returns its id. */
+    fun addSfx(sound: String, ms: Long, durMs: Long): Int {
+        snapshot()
+        val c = SfxClip(nextSfxId++, sound, max(0L, ms), max(1L, durMs))
+        sfx += c
+        sfx.sortBy { it.startMs }
+        changed()
+        return c.id
+    }
+
+    /** Moves a sound effect (one undo step). */
+    fun placeSfx(id: Int, ms: Long) {
+        val c = sfxClip(id) ?: return
+        snapshot()
+        c.startMs = max(0L, ms)
+        sfx.sortBy { it.startMs }
+        changed()
+    }
+
+    /** Moves a sound effect while dragging; no undo snapshot (see [beginGesture]). */
+    fun dragSfx(id: Int, ms: Long) {
+        val c = sfxClip(id) ?: return
+        c.startMs = max(0L, ms)
+        sfx.sortBy { it.startMs }
+        changed()
+    }
+
+    fun setSfxGain(id: Int, gain: Float) {
+        val c = sfxClip(id) ?: return
+        snapshot()
+        c.gain = gain.coerceIn(0f, 2f)
+        changed()
+    }
+
+    fun deleteSfx(id: Int) {
+        val c = sfxClip(id) ?: return
+        snapshot()
+        sfx.remove(c)
+        changed()
     }
 
     // ------------------------------------------------------------------ speakers, bleeps

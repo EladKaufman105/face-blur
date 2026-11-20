@@ -334,6 +334,22 @@ class SubtitlesTest {
             }
         }
         File(outDir, "7_effects.png").outputStream().use { fx.compress(Bitmap.CompressFormat.PNG, 100, it) }
+
+        // Letter by letter and typing, frame by frame: whole letters appear, nothing fades in.
+        val steps = (0 until 10).map { 60_000L + it * 110_000L }
+        val lt = Bitmap.createBitmap(ew * 5, eh * 4, Bitmap.Config.ARGB_8888)
+        val c3 = android.graphics.Canvas(lt)
+        listOf(SubEffect.LETTERS, SubEffect.TYPING).forEachIndexed { k, e ->
+            steps.forEachIndexed { i, t ->
+                c3.save()
+                c3.translate((i % 5) * ew.toFloat(), (k * 2 + i / 5) * eh.toFloat())
+                c3.drawRect(0f, 0f, ew.toFloat(), eh.toFloat(), bg)
+                r.draw(c3, listOf("שלום לכולם, מה שלומכם?"), 0L, 3_000_000L, t, SubtitleStyle(font = SubFont.RUBIK, effect = e, position = 0.6f, size = 1.3f), ew, eh)
+                c3.drawText("${e.name} ${t / 1000}ms", 8f, 24f, label)
+                c3.restore()
+            }
+        }
+        File(outDir, "7b_letters_typing.png").outputStream().use { lt.compress(Bitmap.CompressFormat.PNG, 100, it) }
         // Every font draws Hebrew and English.
         for (f in SubFont.entries) if (r.typeface(f) == android.graphics.Typeface.DEFAULT_BOLD && f.asset != null) fail("font ${f.name} didn't load")
     }

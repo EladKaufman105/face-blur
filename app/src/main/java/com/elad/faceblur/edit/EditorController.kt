@@ -21,6 +21,12 @@ import com.elad.faceblur.subs.SpeakerDetector
 import com.elad.faceblur.audio.AudioEdit
 import com.elad.faceblur.audio.VoiceDsp
 import com.elad.faceblur.audio.VoiceFx
+import com.elad.faceblur.analysis.MaskStore
+import com.elad.faceblur.effects.Background
+import com.elad.faceblur.effects.BackgroundState
+import com.elad.faceblur.pipeline.FaceBlurProcessor
+import com.elad.faceblur.audio.SfxLibrary
+import com.elad.faceblur.audio.SfxPlay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -43,7 +49,16 @@ class EditSession(
 ) : Closeable {
     val model = analysis.toEditModel()
 
-    override fun close() = analysis.close()
+    /** The project's folder (masks and such are kept there), once it has one. */
+    @Volatile var projectDir: java.io.File? = null
+
+    /** Person masks for background removal, once found. */
+    @Volatile var masks: MaskStore? = null
+
+    override fun close() {
+        analysis.close()
+        masks?.close()
+    }
 }
 
 /**
@@ -148,6 +163,7 @@ class EditorController(
         rebuildVoice()
         if (selectedId != null && model.track(selectedId!!) == null) selectedId = null
         if (selectedCueId != null && model.cue(selectedCueId!!) == null) selectedCueId = null
+        if (selectedSfxId != null && model.sfxClip(selectedSfxId!!) == null) selectedSfxId = null
         schedulePreview()
     }
 
@@ -229,6 +245,7 @@ class EditorController(
     fun focus(id: Int) {
         selectedId = id
         selectedCueId = null
+        selectedSfxId = null
         val t = model.track(id) ?: return
         if (frame !in t.start..t.end) seek(t.start)
     }
@@ -315,7 +332,9 @@ class EditorController(
     fun deselect() {
         selectedId = null
         selectedCueId = null
+        selectedSfxId = null
         sizePanel = false
+        sfxGainPanel = false
     }
 
     // ------------------------------------------------------------------ subtitles
@@ -331,7 +350,10 @@ class EditorController(
 
     fun selectCue(id: Int?) {
         selectedCueId = id
-        if (id != null) selectedId = null
+        if (id != null) {
+            selectedId = null
+            selectedSfxId = null
+        }
         sizePanel = false
     }
 
@@ -518,9 +540,11 @@ class EditorController(
 
     /** Re-cuts the subtitles (from their whole sentences, so nothing is lost). */
     /** Puts back a saved project's choices (no edits recorded). */
-    fun restore(rule: SplitRule, audio: AudioEdit, frame: Int) {
+    fun restore(rule: SplitRule, audio: AudioEdit, frame: Int, background: Background = Background()) {
         split = rule
         this.audio = audio
+        this.background = background
+        bgState.background = background
         this.frame = frame.coerceIn(0, max(0, frameCount - 1))
         sync()
     }
@@ -539,7 +563,73 @@ class EditorController(
         if (dspVersion == model.version) return
         dspVersion = model.version
         val b = model.bleeps.map { (x, y) -> longArrayOf(x, y) }
-        voiceDsp = VoiceDsp(b, audio.voice, audio.tone, pitchAfter = audio.voice.pitch).takeIf { it.active && audio.voice != VoiceFx.MUTE }
+        val ctx = appContext
+        val sfx = if (ctx == null) emptyList() else model.sfx.mapNotNull { c ->
+            SfxLibrary.load(ctx, c.sound)?.let { SfxPlay(c.startMs * 1000, it, c.gain) }
+        }
+        voiceDsp = VoiceDsp(b, audio.voice, audio.tone, pitchAfter = audio.voice.pitch, sfx = sfx).takeIf { it.active }
+    }
+
+    // ------------------------------------------------------------------ sound effects
+
+    /** The sound effects panel tab is showing (else the voice tab). */
+    var soundTab by mutableIntStateOf(0)
+    var selectedSfxId by mutableStateOf<Int?>(null)
+        private set
+    val selectedSfx get() = selectedSfxId?.let { model.sfxClip(it) }
+    var sfxGainPanel by mutableStateOf(false)
+
+    /** Adds a library sound at the playhead. */
+    fun addSfx(sound: String) {
+        val ctx = appContext ?: return
+        val dur = SfxLibrary.durationMs(ctx, sound)
+        if (dur <= 0) return
+        model.addSfx(sound, nowMs, dur)
+        sync()
+        notice = t("נוסף: %s").format(t(SfxLibrary.name(sound)))
+    }
+
+    fun selectSfx(id: Int?) {
+        selectedSfxId = id
+        if (id != null) {
+            selectedId = null
+            selectedCueId = null
+        }
+        sizePanel = false
+        sfxGainPanel = false
+    }
+
+    fun deleteSelectedSfx() {
+        val id = selectedSfxId ?: return
+        model.deleteSfx(id)
+        selectSfx(null)
+        sync()
+    }
+
+    fun moveSelectedSfxHere() {
+        val id = selectedSfxId ?: return
+        model.placeSfx(id, nowMs)
+        sync()
+    }
+
+    fun setSelectedSfxGain(g: Float) {
+        val id = selectedSfxId ?: return
+        model.setSfxGain(id, g)
+        sync()
+    }
+
+    /** Plays the selected sound effect where it is in the video. */
+    fun playSelectedSfx() {
+        val c = selectedSfx ?: return
+        seek(frameAt(cueRelUs(max(0L, c.startMs - 300))))
+        playToggler()
+    }
+
+    fun beginSfxDrag() = model.beginGesture()
+
+    fun dragSfxTo(id: Int, ms: Long) {
+        model.dragSfx(id, ms)
+        sync()
     }
 
     /** Bleeps spoken word [i] of subtitle [id] or puts it back. */
@@ -556,6 +646,71 @@ class EditorController(
 
     /** Words bleeped in all subtitles. */
     val bleepedCount get() = model.cues.sumOf { model.bleepedWords(it).size }
+
+    // ------------------------------------------------------------------ background
+
+    /** Background removal settings. */
+    var background by mutableStateOf(Background())
+        private set
+    /** The background panel is open (in place of the timeline). */
+    var bgPanel by mutableStateOf(false)
+    /** Progress of finding the people, while it runs. */
+    var segmentProgress by mutableStateOf<Float?>(null)
+        private set
+    /** The people have been found in every frame. */
+    var masksReady by mutableStateOf(session.masks != null)
+        private set
+    /** What the player's background effect draws (changed live). */
+    val bgState = BackgroundState(Background(), session.masks, session.analysis.times)
+    private var segmentJob: Job? = null
+
+    fun changeBackground(b: Background) {
+        if (b == background) return
+        background = b
+        bgState.background = b
+        if (!playing) refresher()
+    }
+
+    /** Masks loaded with a saved project. */
+    fun masksLoaded() {
+        bgState.masks = session.masks
+        masksReady = session.masks != null
+        if (!playing) refresher()
+    }
+
+    /** Finds the people in every frame (a pass over the video, on the device). */
+    fun findPeople() {
+        val ctx = appContext ?: return
+        if (segmentJob?.isActive == true) return
+        pauser()
+        segmentJob = scope.launch {
+            segmentProgress = 0f
+            try {
+                val dir = session.projectDir ?: java.io.File(ctx.cacheDir, "masks").apply { mkdirs() }
+                val old = session.masks
+                session.masks = null
+                bgState.masks = null
+                old?.close()
+                val store = FaceBlurProcessor(ctx).segment(session.info, session.analysis, java.io.File(dir, "masks.bin")) { p ->
+                    main.post { if (segmentProgress != null) segmentProgress = p }
+                }
+                session.masks = store
+                masksLoaded()
+                notice = t("האנשים בסרטון זוהו")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("EDITIT", "segmentation failed", e)
+                notice = t("זיהוי האנשים נכשל: %s").format(e.message ?: e.javaClass.simpleName)
+            } finally {
+                segmentProgress = null
+            }
+        }
+    }
+
+    fun cancelFindPeople() {
+        segmentJob?.cancel()
+    }
 
     // ------------------------------------------------------------------ vertical / square frame
 
@@ -677,6 +832,7 @@ class EditorController(
     fun cancelSubtitles() {
         subsJob?.cancel()
         speakersJob?.cancel()
+        segmentJob?.cancel()
     }
 
     // ------------------------------------------------------------------ who speaks

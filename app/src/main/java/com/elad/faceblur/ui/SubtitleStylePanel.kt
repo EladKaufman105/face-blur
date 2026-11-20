@@ -272,7 +272,7 @@ private fun FontCell(family: FontFamily?, label: String, selected: Boolean, onCl
 }
 
 @Composable
-private fun Swatches(colors: List<Int>, selected: Int, onPick: (Int) -> Unit) {
+internal fun Swatches(colors: List<Int>, selected: Int, onPick: (Int) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         for (row in colors.chunked(5)) {
             Row(Modifier.fillMaxWidth()) {
@@ -364,6 +364,7 @@ private fun EffectsTab(style: SubtitleStyle, onChange: (SubtitleStyle) -> Unit) 
         SubEffect.WORD_FADE to t("מילים בהדרגה"),
         SubEffect.TYPEWRITER to t("מכונת כתיבה"),
         SubEffect.LETTERS to t("אות אחר אות"),
+        SubEffect.TYPING to t("הקלדה"),
     )
     // The cards play their effect over and over.
     val loop by rememberInfiniteTransition(label = "effects").animateFloat(

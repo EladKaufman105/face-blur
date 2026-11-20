@@ -29,6 +29,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.elad.faceblur.audio.VoiceFx
+import com.elad.faceblur.audio.SfxLibrary
+import com.elad.faceblur.audio.SfxPlayer
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.elad.faceblur.edit.EditorController
 import com.elad.faceblur.i18n.t
 
@@ -39,6 +58,82 @@ private fun voiceLabel(v: VoiceFx) = when (v) {
     VoiceFx.ROBOT -> t("רובוט")
     VoiceFx.DISGUISE -> t("מוסווה")
     VoiceFx.MUTE -> t("ללא קול")
+}
+
+/** The sound effects library: tap one to add it at the playhead, the play button to hear it. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SfxTab(ctrl: EditorController) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var userVersion by remember { mutableIntStateOf(0) }
+    var importing by remember { mutableStateOf(false) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        importing = true
+        scope.launch {
+            val id = withContext(Dispatchers.IO) { runCatching { SfxLibrary.import(context, uri) }.getOrNull() }
+            importing = false
+            userVersion++
+            if (id == null) ctrl.notice = t("לא הצלחתי לקרוא את הקובץ")
+        }
+    }
+    val sounds = remember(userVersion) { SfxLibrary.all(context) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .height(272.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            t("הקש על צליל כדי להוסיף אותו במיקום הנוכחי. ▶ כדי לשמוע."),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (snd in sounds) {
+                Surface(
+                    onClick = { ctrl.addSfx(snd.id) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 10.dp)) {
+                        IconButton(onClick = { SfxPlayer.play(context, snd.id) }, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Filled.PlayArrow, t("השמע"), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                        }
+                        Text(t(snd.name), style = MaterialTheme.typography.labelLarge)
+                        if (!snd.builtin) {
+                            IconButton(onClick = { SfxLibrary.delete(context, snd.id); userVersion++ }, modifier = Modifier.size(28.dp)) {
+                                Icon(Icons.Filled.Close, t("מחק"), Modifier.size(14.dp))
+                            }
+                        }
+                    }
+                }
+            }
+            Surface(
+                onClick = { if (!importing) picker.launch(arrayOf("audio/*")) },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (importing) t("מייבא…") else t("ייבוא צליל"), style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+        val n = ctrl.model.sfx.size
+        if (n > 0) {
+            Text(
+                if (n == 1) t("צליל אחד בסרטון. הקש עליו בציר הזמן כדי להזיז, לשנות עוצמה או למחוק.")
+                else t("%d צלילים בסרטון. הקש על צליל בציר הזמן כדי להזיז, לשנות עוצמה או למחוק.").format(n),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
 }
 
 /**
@@ -53,14 +148,20 @@ fun VoicePanel(ctrl: EditorController) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(t("קול"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = { ctrl.voicePanel = false }) {
+                Text(t("סאונד"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                TextButton(onClick = { SfxPlayer.stop(); ctrl.voicePanel = false }) {
                     Icon(Icons.Filled.Check, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text(t("סיום"))
                 }
             }
-            Column(
+            Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(selected = ctrl.soundTab == 0, onClick = { ctrl.soundTab = 0 }, label = { Text(t("אפקטים קוליים")) })
+                FilterChip(selected = ctrl.soundTab == 1, onClick = { ctrl.soundTab = 1 }, label = { Text(t("קול וצפצופים")) })
+            }
+            if (ctrl.soundTab == 0) {
+                SfxTab(ctrl)
+            } else Column(
                 Modifier
                     .fillMaxWidth()
                     .height(272.dp)

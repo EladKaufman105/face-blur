@@ -13,6 +13,7 @@ import android.text.SpannableString
 import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.style.CharacterStyle
 import android.text.style.ForegroundColorSpan
 import java.io.File
 import kotlin.math.PI
@@ -111,6 +112,12 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?, pr
             val a = tm.active(tUs)
             k = k * 31 + a
             if (style.effect == SubEffect.LETTERS) k = k * 31 + visibleLetters(b, tm, tUs)
+            if (style.effect == SubEffect.TYPING) {
+                val typed = typedLetters(b, startUs, endUs, tUs)
+                k = k * 31 + typed
+                // The cursor blinks once typing is done.
+                k = k * 31 + if (typed >= b.length) ((tUs - startUs) / 1000 / CURSOR_MS) % 2 else 0
+            }
             if (a >= 0) {
                 val inWord = (tUs - tm.start(a)) / 1000f
                 anim = anim || when (style.effect) {
@@ -291,6 +298,7 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?, pr
                 oneWord -> text.length
                 effect == SubEffect.TYPEWRITER -> if (active < 0) 0 else wordRanges[active].last + 1
                 effect == SubEffect.LETTERS -> visibleLetters(text, tm, tUs)
+                effect == SubEffect.TYPING -> typedLetters(text, startUs, endUs, tUs)
                 else -> text.length
             }
             laid += Block(layout, tp, text, wordRanges, if (oneWord) 0 else active, size, looks, visibleEnd)
@@ -340,38 +348,23 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?, pr
                 canvas.drawRoundRect(rect, size * 0.24f, size * 0.24f, boxPaint)
             }
 
-            // Text not shown yet keeps its place in the layout but is clipped away (with its
-            // outline and shadow).
-            if (visibleEnd < b.text.length) {
-                val clip = Path()
-                for (line in 0 until layout.lineCount) {
-                    val s = layout.getLineStart(line)
-                    val e = min(layout.getLineEnd(line), visibleEnd)
-                    if (e <= s || b.text.substring(s, e).isBlank()) continue
-                    path.reset()
-                    layout.getSelectionPath(s, trimEnd(b.text, s, e), path)
-                    path.computeBounds(rect, true)
-                    rect.top = layout.getLineTop(line) - size * 0.2f
-                    rect.bottom = layout.getLineBottom(line) + size * 0.3f
-                    rect.left -= size * 0.12f
-                    rect.right += size * 0.12f
-                    clip.addRect(rect, Path.Direction.CW)
-                }
-                canvas.clipPath(clip)
-            }
+            // Text not shown yet keeps its place in the layout but isn't drawn at all (no
+            // outline or shadow either): whole letters appear, nothing fades or wipes in.
+            val hideFrom = if (visibleEnd < b.text.length) visibleEnd else -1
+            if (effect == SubEffect.TYPING) drawCursor(canvas, layout, b.text, visibleEnd, size, style, (tUs - startUs) / 1000)
 
             val highlight = if (effect == SubEffect.HIGHLIGHT && b.active >= 0) b.words[b.active] else null
             if (glitch != 0f) {
                 // Red and cyan copies on either side.
                 canvas.save()
                 canvas.translate(glitch, 0f)
-                drawText(canvas, b.text, b.paint, maxW, style, size, null, overrideColor = 0xCCFF2D55.toInt())
+                drawText(canvas, b.text, b.paint, maxW, style, size, null, overrideColor = 0xCCFF2D55.toInt(), hideFrom = hideFrom)
                 canvas.translate(-2f * glitch, 0f)
-                drawText(canvas, b.text, b.paint, maxW, style, size, null, overrideColor = 0xCC3DF2FF.toInt())
+                drawText(canvas, b.text, b.paint, maxW, style, size, null, overrideColor = 0xCC3DF2FF.toInt(), hideFrom = hideFrom)
                 canvas.restore()
             }
             if (b.looks.all { it.plain }) {
-                drawText(canvas, b.text, b.paint, maxW, style, size, highlight)
+                drawText(canvas, b.text, b.paint, maxW, style, size, highlight, hideFrom = hideFrom)
             } else {
                 // The plain words together, then each animated word on its own, transformed
                 // around its own center and clipped to itself.
@@ -385,7 +378,7 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?, pr
                 if (!plain.isEmpty) {
                     canvas.save()
                     canvas.clipPath(plain)
-                    drawText(canvas, b.text, b.paint, maxW, style, size, highlight)
+                    drawText(canvas, b.text, b.paint, maxW, style, size, highlight, hideFrom = hideFrom)
                     canvas.restore()
                 }
                 b.looks.forEachIndexed { i, look ->
@@ -400,7 +393,7 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?, pr
                     if (look.scale != 1f) canvas.scale(look.scale, look.scale, cx, wcy)
                     canvas.clipRect(rect)
                     val l = if (look.alpha < 0.999f) canvas.saveLayerAlpha(rect, (look.alpha * 255).toInt()) else -1
-                    drawText(canvas, b.text, b.paint, maxW, style, size, if (look.accent) r else highlight)
+                    drawText(canvas, b.text, b.paint, maxW, style, size, if (look.accent) r else highlight, hideFrom = hideFrom)
                     if (l >= 0) canvas.restoreToCount(l)
                     canvas.restore()
                 }
@@ -438,8 +431,15 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?, pr
         size: Float,
         accent: IntRange?,
         overrideColor: Int? = null,
+        /** Characters from here on aren't drawn (-1: all are). */
+        hideFrom: Int = -1,
     ) {
-        fun pass(t: CharSequence) {
+        fun pass(t0: CharSequence) {
+            val t = if (hideFrom in 0 until t0.length) {
+                SpannableString(t0).apply { setSpan(Hidden, hideFrom, t0.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+            } else {
+                t0
+            }
             StaticLayout.Builder.obtain(t, 0, t.length, tp, maxW)
                 .setAlignment(Layout.Alignment.ALIGN_CENTER)
                 .setIncludePad(false)
@@ -492,6 +492,45 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?, pr
         return end
     }
 
+    /** Draws nothing: no fill, no outline, no shadow or glow (letters not shown yet). */
+    private object Hidden : CharacterStyle() {
+        override fun updateDrawState(tp: TextPaint) {
+            tp.color = Color.TRANSPARENT
+            tp.clearShadowLayer()
+        }
+    }
+
+    /** Letters typed so far: at a steady pace from the start, done by 75% of the time. */
+    private fun typedLetters(text: String, startUs: Long, endUs: Long, tUs: Long): Int {
+        val n = text.length
+        if (n == 0) return 0
+        val perChar = ((endUs - startUs) / 1000f * 0.75f / n).coerceIn(28f, 75f)
+        val since = (tUs - startUs) / 1000f
+        return (since / perChar).toInt().coerceIn(0, n)
+    }
+
+    /** A text cursor right after the last typed letter: solid while typing, then blinking. */
+    private fun drawCursor(canvas: Canvas, layout: StaticLayout, text: String, typed: Int, size: Float, style: SubtitleStyle, sinceMs: Long) {
+        if (typed >= text.length && (sinceMs / CURSOR_MS) % 2 == 1L) return
+        val at = typed.coerceIn(0, text.length)
+        val line = layout.getLineForOffset(if (at > 0) at - 1 else 0)
+        // After the last letter, in the text's own direction (left of it in Hebrew).
+        val x = if (at > 0) {
+            path.reset()
+            layout.getSelectionPath(at - 1, at, path)
+            path.computeBounds(rect, true)
+            if (layout.isRtlCharAt(at - 1)) rect.left - size * 0.06f else rect.right + size * 0.06f
+        } else {
+            layout.getLineLeft(line) + layout.getLineWidth(line) / 2f
+        }
+        val top = layout.getLineTop(line) + size * 0.12f
+        val bottom = layout.getLineBottom(line) - size * 0.08f
+        cursorPaint.color = style.textColor
+        canvas.drawRect(x - size * 0.045f, top, x + size * 0.045f, bottom, cursorPaint)
+    }
+
+    private val cursorPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
     /** Characters shown so far, letter by letter through each word as it's said. */
     private fun visibleLetters(text: String, tm: Timing, tUs: Long): Int {
         val ws = words(text)
@@ -516,6 +555,7 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?, pr
         private const val ROTATE_MS = 320f
         private const val GLITCH_MS = 380f
         private const val FLICKER_MS = 500f
+        private const val CURSOR_MS = 450L
         private val FLICKER = floatArrayOf(0.1f, 0.9f, 0.2f, 1f, 0.35f, 1f, 0.6f, 1f, 0.8f, 1f)
 
         /** Words are spread over this part of the subtitle (speech ends a little before it does). */
