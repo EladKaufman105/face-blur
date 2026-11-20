@@ -18,7 +18,8 @@ class SfxSound(val id: String, val name: String) {
 
 /**
  * Sound effects: the built-in ones (classic shorts sounds, synthesized by scripts/make_sfx.py,
- * in assets/sfx) and ones the user imported (kept in the app's files). Samples are 48 kHz mono.
+ * Ogg Vorbis in assets/sfx) and ones the user imported (WAV in the app's files). Samples are
+ * 48 kHz mono.
  */
 object SfxLibrary {
     private const val MAX_IMPORT_SEC = 20
@@ -69,20 +70,23 @@ object SfxLibrary {
     /** The samples of [id], or null if it's gone. */
     fun load(context: Context, id: String): FloatArray? = synchronized(cache) {
         cache[id]?.let { return it }
-        val bytes = try {
+        val x = try {
             when {
-                id.startsWith("builtin:") -> context.assets.open("sfx/" + id.removePrefix("builtin:") + ".wav").use { it.readBytes() }
-                id.startsWith("user:") -> File(userDir(context), id.removePrefix("user:")).takeIf { it.exists() }?.readBytes()
+                // Built-in sounds are Ogg Vorbis (small); imported ones are kept as WAV.
+                id.startsWith("builtin:") -> AudioDecoder.decodeAsset(context, "sfx/" + id.removePrefix("builtin:") + ".ogg", SFX_RATE)
+                id.startsWith("user:") -> File(userDir(context), id.removePrefix("user:")).takeIf { it.exists() }?.readBytes()?.let { readWav(it) }
                 else -> null
             }
         } catch (e: Exception) {
             null
         } ?: return null
-        val x = runCatching { readWav(bytes) }.getOrNull() ?: return null
         cache[id] = x
         while (cache.size > 24) cache.remove(cache.keys.first())
         x
     }
+
+    /** The samples of [id] if they're already loaded (no decoding: safe on the main thread). */
+    fun peek(id: String): FloatArray? = synchronized(cache) { cache[id] }
 
     fun durationMs(context: Context, id: String): Long = (load(context, id)?.size ?: 0) * 1000L / SFX_RATE
 
@@ -156,9 +160,20 @@ object SfxLibrary {
 object SfxPlayer {
     private var track: AudioTrack? = null
 
+    /** Decoding happens off the main thread; the sound starts when it's ready. */
     fun play(context: Context, id: String) {
         stop()
-        val x = SfxLibrary.load(context, id) ?: return
+        val want = ++request
+        Thread {
+            val x = SfxLibrary.load(context, id) ?: return@Thread
+            synchronized(this) { if (want == request) start(x) }
+        }.start()
+    }
+
+    @Volatile private var request = 0
+
+    @Synchronized
+    private fun start(x: FloatArray) {
         val pcm = ShortArray(x.size) { (x[it].coerceIn(-1f, 1f) * 32767f).toInt().toShort() }
         val t = AudioTrack.Builder()
             .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
@@ -171,6 +186,7 @@ object SfxPlayer {
         track = t
     }
 
+    @Synchronized
     fun stop() {
         track?.let { runCatching { it.stop() }; it.release() }
         track = null

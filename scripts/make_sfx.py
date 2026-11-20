@@ -1,9 +1,12 @@
 """Synthesizes the app's built-in sound effects (classic shorts SFX) into app/src/main/assets/sfx.
 
 Everything is generated from oscillators and noise here, so the sounds carry no license.
-48 kHz mono 16-bit WAV.  Run: python3 scripts/make_sfx.py
+Written as 48 kHz mono WAV, then encoded to Ogg Vorbis with ffmpeg (a tenth of the size).
+Run: python3 scripts/make_sfx.py   (needs ffmpeg with libvorbis)
 """
 import os
+import subprocess
+import tempfile
 import wave
 
 import numpy as np
@@ -215,11 +218,15 @@ def make():
 def write(name, x):
     x = norm(np.asarray(x, dtype=np.float64))
     pcm = (np.clip(x, -1, 1) * 32767).astype('<i2')
-    with wave.open(os.path.join(OUT, name + '.wav'), 'wb') as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(SR)
-        w.writeframes(pcm.tobytes())
+    with tempfile.TemporaryDirectory() as tmp:
+        wav = os.path.join(tmp, name + '.wav')
+        with wave.open(wav, 'wb') as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(SR)
+            w.writeframes(pcm.tobytes())
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', wav, '-c:a', 'libvorbis', '-q:a', '4',
+                        os.path.join(OUT, name + '.ogg')], check=True)
 
 
 if __name__ == '__main__':

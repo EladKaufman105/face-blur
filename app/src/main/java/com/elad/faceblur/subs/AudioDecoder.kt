@@ -19,10 +19,17 @@ object AudioDecoder {
     const val RATE = 16_000
 
     /** @return samples at [outRate], or null if the video has no audio. */
-    fun decode(context: Context, uri: Uri, isActive: () -> Boolean, outRate: Int = RATE, onProgress: (Float) -> Unit): FloatArray? {
+    fun decode(context: Context, uri: Uri, isActive: () -> Boolean, outRate: Int = RATE, onProgress: (Float) -> Unit): FloatArray? =
+        decode({ it.setDataSource(context, uri, null) }, isActive, outRate, onProgress)
+
+    /** A sound in the app's assets (stored uncompressed in the APK), mono at [outRate]. */
+    fun decodeAsset(context: Context, path: String, outRate: Int): FloatArray? =
+        context.assets.openFd(path).use { fd -> decode({ it.setDataSource(fd) }, { true }, outRate) {} }
+
+    private fun decode(source: (MediaExtractor) -> Unit, isActive: () -> Boolean, outRate: Int, onProgress: (Float) -> Unit): FloatArray? {
         val ex = MediaExtractor()
         try {
-            ex.setDataSource(context, uri, null)
+            source(ex)
             val track = (0 until ex.trackCount).firstOrNull {
                 ex.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
             } ?: return null

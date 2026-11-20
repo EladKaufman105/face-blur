@@ -25,4 +25,25 @@ adb pull /sdcard/Android/data/com.elad.faceblur/files/editor "$OUT/" || true
 adb pull /sdcard/Android/data/com.elad.faceblur/files/subs "$OUT/" || true
 adb pull /sdcard/Android/data/com.elad.faceblur/files/projects "$OUT/" || true
 ls -la "$OUT" "$OUT/results" || true
-grep -q "^OK (10 tests)" "$OUT/instrument.txt"
+grep -q "^OK (10 tests)" "$OUT/instrument.txt" || exit 1
+
+# The shipped build (minified by R8): installed over the test build, it runs its self-test
+# (every native / library pipeline once) on a video copied into its folder.
+adb install -r -g app/build/outputs/apk/release/app-release.apk || exit 1
+ST=/sdcard/Android/data/com.elad.faceblur/files/selftest
+adb shell mkdir -p $ST
+adb push app/src/androidTest/assets/samples/walk.mp4 $ST/walk.mp4
+adb push app/src/androidTest/assets/models/ggml-tiny.bin $ST/ggml-tiny.bin
+adb push app/src/androidTest/assets/models/speaker.onnx $ST/speaker.onnx
+adb shell rm -f $ST/report.txt
+adb logcat -c
+adb shell am start -n com.elad.faceblur/.MainActivity --es selftest walk.mp4
+for i in $(seq 1 120); do
+  sleep 5
+  adb shell cat $ST/report.txt > "$OUT/selftest.txt" 2>/dev/null
+  grep -qE "^(PASS|FAIL)" "$OUT/selftest.txt" && break
+done
+adb shell screencap -p /sdcard/selftest.png && adb pull /sdcard/selftest.png "$OUT/selftest.png" || true
+adb logcat -d -v time | grep -iE "AndroidRuntime|FATAL|faceblur|EDITIT|R8|NoSuchMethod|ClassNotFound" | tail -n 300 > "$OUT/selftest_logcat.txt"
+cat "$OUT/selftest.txt"
+grep -q "^PASS" "$OUT/selftest.txt"

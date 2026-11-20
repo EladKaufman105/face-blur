@@ -106,7 +106,7 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
         acc.setTo(Scalar(0.0))
         wsum.setTo(Scalar(0.0))
         val wide = w >= h
-        val weight = feather(side)
+        val weights = tileWeights(side, wide, tiles)
         for (k in 0 until tiles) {
             val off = Math.round((long - side) * k / (tiles - 1).toFloat())
             val rect = if (wide) Rect(off, 0, side, side) else Rect(0, off, side, side)
@@ -114,35 +114,46 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
             infer(tile, tileProb)
             tile.release()
             Imgproc.resize(tileProb, tileBig, Size(side.toDouble(), side.toDouble()), 0.0, 0.0, Imgproc.INTER_LINEAR)
-            // Edges of a tile count less, except at the frame's own edges.
-            val wt = weight.clone()
-            if (k == 0) wt.submat(if (wide) Rect(0, 0, side / 2, side) else Rect(0, 0, side, side / 2)).setTo(Scalar(1.0))
-            if (k == tiles - 1) wt.submat(if (wide) Rect(side / 2, 0, side - side / 2, side) else Rect(0, side / 2, side, side - side / 2)).setTo(Scalar(1.0))
             val a = acc.submat(rect)
             val s = wsum.submat(rect)
-            val pw = Mat()
-            Core.multiply(tileBig, wt, pw)
-            Core.add(a, pw, a)
-            Core.add(s, wt, s)
-            pw.release(); wt.release(); a.release(); s.release()
+            Core.multiply(tileBig, weights[k], tileBig)
+            Core.add(a, tileBig, a)
+            Core.add(s, weights[k], s)
+            a.release(); s.release()
         }
-        weight.release()
         Core.max(wsum, Scalar(1e-6), wsum)
         Core.divide(acc, wsum, acc)
         return acc
     }
 
-    /** A square's weights: 1 in the middle, falling to 0 over the outer quarter on the tiling axis. */
-    private fun feather(side: Int): Mat {
-        val ramp = FloatArray(side) { i -> (minOf(i + 1, side - i) / (side * 0.25f)).coerceAtMost(1f) }
-        val m = Mat(side, side, CvType.CV_32F)
-        val row = FloatArray(side * side)
-        for (y in 0 until side) for (x in 0 until side) row[y * side + x] = ramp[x]
-        m.put(0, 0, row)
-        return m
-    }
+    private var weightsKey = ""
+    private var weightsCache: List<Mat> = emptyList()
 
-    private val tmpT = Mat()
+    /**
+     * Each tile's blend weights (made once per frame size): 1 in the middle, falling to 0 over
+     * the outer quarter along the tiling axis, except at the frame's own edges.
+     */
+    private fun tileWeights(side: Int, wide: Boolean, tiles: Int): List<Mat> {
+        val key = "$side $wide $tiles"
+        if (key == weightsKey) return weightsCache
+        weightsCache.forEach { it.release() }
+        val ramp = FloatArray(side) { i -> (minOf(i + 1, side - i) / (side * 0.25f)).coerceAtMost(1f) }
+        weightsCache = List(tiles) { k ->
+            val v = FloatArray(side * side)
+            for (y in 0 until side) for (x in 0 until side) {
+                val along = if (wide) x else y
+                val r = when {
+                    k == 0 && along < side / 2 -> 1f
+                    k == tiles - 1 && along >= side / 2 -> 1f
+                    else -> ramp[along]
+                }
+                v[y * side + x] = r
+            }
+            Mat(side, side, CvType.CV_32F).also { it.put(0, 0, v) }
+        }
+        weightsKey = key
+        return weightsCache
+    }
 
     /** The model on [img] (RGB): person probability, [IN] x [IN], into [out]. */
     private fun infer(img: Mat, out: Mat) {
@@ -176,7 +187,8 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
         tileBig.release()
         acc.release()
         wsum.release()
-        tmpT.release()
+        weightsCache.forEach { it.release() }
+        weightsCache = emptyList()
         prev?.release()
         prev = null
     }

@@ -28,6 +28,8 @@ android {
         val abis = (project.findProperty("abiFilters") as String?) ?: "arm64-v8a"
         ndk { abiFilters += abis.split(",") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // The app speaks Hebrew and English: other languages' library strings are left out.
+        resourceConfigurations += listOf("en", "iw", "he")
         externalNativeBuild {
             cmake { arguments += listOf("-DANDROID_STL=c++_static") }
         }
@@ -52,7 +54,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 drops unused library code (most of the APK's Java code); names are kept.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
         }
         debug {
@@ -78,7 +83,8 @@ android {
     }
 
     androidResources {
-        noCompress += "onnx"
+        // Read straight from the APK (models by OpenCV, sounds by MediaExtractor).
+        noCompress += listOf("onnx", "ogg")
     }
 }
 

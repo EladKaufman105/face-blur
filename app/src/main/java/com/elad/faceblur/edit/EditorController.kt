@@ -563,10 +563,17 @@ class EditorController(
         if (dspVersion == model.version) return
         dspVersion = model.version
         val b = model.bleeps.map { (x, y) -> longArrayOf(x, y) }
+        // Only sounds already decoded; the others are decoded in the background, then this runs again.
         val ctx = appContext
-        val sfx = if (ctx == null) emptyList() else model.sfx.mapNotNull { c ->
-            SfxLibrary.load(ctx, c.sound)?.let { SfxPlay(c.startMs * 1000, it, c.gain) }
+        val missing = model.sfx.map { it.sound }.distinct().filter { SfxLibrary.peek(it) == null }
+        if (ctx != null && missing.isNotEmpty()) {
+            scope.launch {
+                withContext(Dispatchers.IO) { for (id in missing) SfxLibrary.load(ctx, id) }
+                dspVersion = -1
+                rebuildVoice()
+            }
         }
+        val sfx = model.sfx.mapNotNull { c -> SfxLibrary.peek(c.sound)?.let { SfxPlay(c.startMs * 1000, it, c.gain) } }
         voiceDsp = VoiceDsp(b, audio.voice, audio.tone, pitchAfter = audio.voice.pitch, sfx = sfx).takeIf { it.active }
     }
 
@@ -579,14 +586,17 @@ class EditorController(
     val selectedSfx get() = selectedSfxId?.let { model.sfxClip(it) }
     var sfxGainPanel by mutableStateOf(false)
 
-    /** Adds a library sound at the playhead. */
+    /** Adds a library sound at the playhead (decoded first, off the main thread). */
     fun addSfx(sound: String) {
         val ctx = appContext ?: return
-        val dur = SfxLibrary.durationMs(ctx, sound)
-        if (dur <= 0) return
-        model.addSfx(sound, nowMs, dur)
-        sync()
-        notice = t("נוסף: %s").format(t(SfxLibrary.name(sound)))
+        val at = nowMs
+        scope.launch {
+            val dur = withContext(Dispatchers.IO) { SfxLibrary.durationMs(ctx, sound) }
+            if (dur <= 0) return@launch
+            model.addSfx(sound, at, dur)
+            sync()
+            notice = t("נוסף: %s").format(t(SfxLibrary.name(sound)))
+        }
     }
 
     fun selectSfx(id: Int?) {

@@ -14,6 +14,10 @@ import androidx.core.content.IntentCompat
 import com.elad.faceblur.i18n.Lang
 import com.elad.faceblur.ui.FaceBlurTheme
 import com.elad.faceblur.ui.MainScreen
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -23,6 +27,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) handleShare(intent)
+        // CI's check of the shipped build: a video it copied into the app's own folder.
+        intent?.getStringExtra("selftest")?.let { name ->
+            CoroutineScope(SupervisorJob() + Dispatchers.Main).launch { SelfTest.run(applicationContext, name) }
+        }
         setContent {
             val prefs = vm.prefs
             FaceBlurTheme(prefs.themeMode, prefs.palette) {

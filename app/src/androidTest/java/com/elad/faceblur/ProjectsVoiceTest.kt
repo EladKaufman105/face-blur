@@ -175,6 +175,8 @@ class ProjectsVoiceTest {
             ctrl.seek(ctrl.frameAt(ctrl.cueRelUs(5000)))
             ctrl.addSfx("builtin:ding")
         }
+        // The sound is decoded in the background, then added.
+        waitFor(10_000, "sound effect added") { session.model.sfx.isNotEmpty() }
         val sfx = inst.onMain { session.model.sfx.map { it.sound to it.startMs } }
         note("sfx $sfx")
         if (sfx.size != 1 || sfx[0].second !in 4900L..5100L) fail("sfx not added at the playhead: $sfx")
@@ -376,6 +378,7 @@ class ProjectsVoiceTest {
             ctrl.seek(12)
             ctrl.addSfx("builtin:whoosh")
         }
+        waitFor(10_000, "sound effect added") { ctrl.model.sfx.isNotEmpty() }
         val before = inst.onMain { ctrl.model.exportState() }
         val frames0 = ctrl.session.analysis.frames
         val sum0 = frames0?.read(5)?.let { m -> Core.sumElems(m).`val`[0].also { m.release() } }

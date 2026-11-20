@@ -96,7 +96,8 @@ jobs:
         run: |
           chmod +x gradlew
           set -o pipefail
-          ./gradlew assembleDebug assembleDebugAndroidTest -PabiFilters=x86_64 --no-daemon --stacktrace 2>&1 | tee e2e-build.log
+          # The release build too (minified by R8): CI runs its self-test after the tests.
+          ./gradlew assembleDebug assembleDebugAndroidTest assembleRelease -PabiFilters=x86_64 --no-daemon --stacktrace 2>&1 | tee e2e-build.log
 
       - name: Enable KVM
         shell: bash
