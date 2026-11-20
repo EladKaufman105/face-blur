@@ -76,7 +76,7 @@ fun BackgroundPanel(ctrl: EditorController) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(t("רקע"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                SectionTitle(t("רקע"), Feature.BACKGROUND.color, Modifier.weight(1f))
                 TextButton(onClick = { ctrl.bgPanel = false }) {
                     Icon(Icons.Filled.Check, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))

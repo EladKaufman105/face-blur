@@ -7,13 +7,22 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.using
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -32,19 +41,13 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.IconButton
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -55,21 +58,28 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.res.painterResource
-import com.elad.faceblur.R
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -80,8 +90,6 @@ import com.elad.faceblur.UiState
 import com.elad.faceblur.effects.BlurMode
 import com.elad.faceblur.pipeline.VideoInfo
 import kotlin.math.roundToInt
-
-private val CardShape = RoundedCornerShape(20.dp)
 
 @Composable
 fun MainScreen(vm: MainViewModel) {
@@ -127,87 +135,114 @@ fun MainScreen(vm: MainViewModel) {
     var showSettings by remember { mutableStateOf(false) }
     if (showSettings) AppSettingsSheet(vm.prefs) { showSettings = false }
 
+    val light = MaterialTheme.colorScheme.isLight
+    val glow = if (light) Color(0xFFFFD9E2) else Brand.Night
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { insets ->
         Column(
             Modifier
                 .fillMaxSize()
+                .drawBehind {
+                    // A soft glow of the logo's night blue behind the header.
+                    drawCircle(
+                        Brush.radialGradient(listOf(glow.copy(alpha = if (light) 0.7f else 0.55f), Color.Transparent), Offset(size.width * 0.8f, 0f), size.width * 0.95f),
+                        size.width * 0.95f,
+                        Offset(size.width * 0.8f, 0f),
+                    )
+                }
                 .padding(insets)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Header(onSettings = { showSettings = true })
-            when (state) {
-                UiState.Empty -> {
-                    PickCard(pick)
-                    SubtitlesCard(pickSubs)
-                    ProjectsSection(vm.projects, vm::openProject, vm::renameProject, vm::deleteProject)
-                    Text(
-                        t("אפשר גם לשתף סרטון מהגלריה ישירות לאפליקציה"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center,
-                    )
-                }
-                is UiState.Relink -> MessageCard(
-                    title = t("הסרטון של הפרויקט לא נמצא"),
-                    body = if (state.wrong) t("זה לא אותו סרטון (האורך שונה). בחר את הסרטון המקורי של \"%s\".").format(state.project.name)
-                    else t("ייתכן שהוא הועבר או נמחק, או שההרשאה אליו פגה. בחר אותו שוב כדי להמשיך לערוך את \"%s\".").format(state.project.name),
-                    primary = t("בחר את הסרטון") to { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
-                    secondary = t("חזרה") to vm::reset,
-                )
-                UiState.Loading -> Box(Modifier.fillMaxWidth().height(200.dp), Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-                is UiState.Ready -> {
-                    VideoCard(state.info, onReplace = pick)
-                    SettingsCard(vm)
-                    SectionCard {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(t("הגדרות ייצוא"), style = MaterialTheme.typography.titleMedium)
-                            ExportOptionsPanel(state.info, vm.prefs.export, vm.prefs::updateExport)
+            AnimatedContent(
+                targetState = state,
+                contentKey = { it::class },
+                transitionSpec = {
+                    (fadeIn(tween(260, delayMillis = 80)) + slideInVertically(tween(320, delayMillis = 80)) { it / 12 }) togetherWith
+                        fadeOut(tween(140)) using SizeTransform(clip = false)
+                },
+                label = "screen",
+            ) { s ->
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    when (s) {
+                        UiState.Empty -> {
+                            EnterUp(0) { HeroCard(pick) }
+                            EnterUp(1) { SubtitlesCard(pickSubs) }
+                            EnterUp(2) { ProjectsSection(vm.projects, vm::openProject, vm::renameProject, vm::deleteProject) }
+                            EnterUp(3) {
+                                Text(
+                                    t("אפשר גם לשתף סרטון מהגלריה ישירות לאפליקציה"),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
+                        is UiState.Relink -> MessageCard(
+                            title = t("הסרטון של הפרויקט לא נמצא"),
+                            body = if (s.wrong) t("זה לא אותו סרטון (האורך שונה). בחר את הסרטון המקורי של \"%s\".").format(s.project.name)
+                            else t("ייתכן שהוא הועבר או נמחק, או שההרשאה אליו פגה. בחר אותו שוב כדי להמשיך לערוך את \"%s\".").format(s.project.name),
+                            primary = t("בחר את הסרטון") to { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
+                            secondary = t("חזרה") to vm::reset,
+                        )
+                        UiState.Loading -> Box(Modifier.fillMaxWidth().height(220.dp), Alignment.Center) {
+                            LogoMark(64.dp)
+                        }
+                        is UiState.Ready -> {
+                            EnterUp(0) { VideoCard(s.info, onReplace = pick) }
+                            EnterUp(1) { SettingsCard(vm) }
+                            EnterUp(2) {
+                                SectionCard {
+                                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        SectionTitle(t("הגדרות ייצוא"), MaterialTheme.colorScheme.onSurfaceVariant)
+                                        ExportOptionsPanel(s.info, vm.prefs.export, vm.prefs::updateExport)
+                                    }
+                                }
+                            }
+                            EnterUp(3) {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    GradientButton(t("טשטש פנים"), vm::start, Modifier.fillMaxWidth(), icon = AppIcons.Face)
+                                    AccentOutlinedButton(
+                                        t("כתוביות בלבד, בלי טשטוש"), vm::startSubtitles, Modifier.fillMaxWidth(),
+                                        icon = AppIcons.Subtitles, accent = Feature.SUBTITLES.tint,
+                                    )
+                                }
+                            }
+                        }
+                        is UiState.Working -> {
+                            VideoCard(s.info, onReplace = null)
+                            WorkingCard(s, renderAfter = if (vm.review) null else vm.prefs.renderRatio, onCancel = vm::cancel)
+                        }
+                        is UiState.Editing -> Unit
+                        is UiState.Done -> DoneCard(
+                            s,
+                            onEdit = if (s.canEdit) vm::edit else null,
+                            onAgain = vm::backToSettings,
+                            onNew = { vm.reset(); pick() },
+                        )
+                        is UiState.NoFaces -> {
+                            VideoCard(s.info, onReplace = pick)
+                            MessageCard(
+                                title = t("לא זוהו פנים בסרטון"),
+                                body = t("אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב, או סמן אותן ידנית."),
+                                primary = if (s.canEdit) t("סמן טשטוש ידנית") to vm::edit else t("נסה עם זיהוי מורחב") to vm::retrySensitive,
+                                secondary = if (s.canEdit) t("נסה עם זיהוי מורחב") to vm::retrySensitive else t("חזרה") to vm::backToSettings,
+                                icon = AppIcons.Face,
+                                color = Feature.FACES.tint,
+                            )
+                        }
+                        is UiState.Failed -> {
+                            s.info?.let { VideoCard(it, onReplace = pick) }
+                            MessageCard(
+                                title = t("משהו השתבש"),
+                                body = s.message,
+                                primary = t("בחר סרטון אחר") to { vm.reset(); pick() },
+                                secondary = if (s.info != null) t("חזרה להגדרות") to vm::backToSettings else null,
+                            )
                         }
                     }
-                    Button(
-                        onClick = vm::start,
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        shape = RoundedCornerShape(16.dp),
-                    ) { Text(t("טשטש פנים"), style = MaterialTheme.typography.titleMedium) }
-                    OutlinedButton(
-                        onClick = vm::startSubtitles,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        shape = RoundedCornerShape(16.dp),
-                    ) { Text(t("כתוביות בלבד, בלי טשטוש"), style = MaterialTheme.typography.titleSmall) }
-                }
-                is UiState.Working -> {
-                    VideoCard(state.info, onReplace = null)
-                    WorkingCard(state, renderAfter = if (vm.review) null else vm.prefs.renderRatio, onCancel = vm::cancel)
-                }
-                is UiState.Editing -> Unit
-                is UiState.Done -> DoneCard(
-                    state,
-                    onEdit = if (state.canEdit) vm::edit else null,
-                    onAgain = vm::backToSettings,
-                    onNew = { vm.reset(); pick() },
-                )
-                is UiState.NoFaces -> {
-                    VideoCard(state.info, onReplace = pick)
-                    MessageCard(
-                        title = t("לא זוהו פנים בסרטון"),
-                        body = t("אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב, או סמן אותן ידנית."),
-                        primary = if (state.canEdit) t("סמן טשטוש ידנית") to vm::edit else t("נסה עם זיהוי מורחב") to vm::retrySensitive,
-                        secondary = if (state.canEdit) t("נסה עם זיהוי מורחב") to vm::retrySensitive else t("חזרה") to vm::backToSettings,
-                    )
-                }
-                is UiState.Failed -> {
-                    state.info?.let { VideoCard(it, onReplace = pick) }
-                    MessageCard(
-                        title = t("משהו השתבש"),
-                        body = state.message,
-                        primary = t("בחר סרטון אחר") to { vm.reset(); pick() },
-                        secondary = if (state.info != null) t("חזרה להגדרות") to vm::backToSettings else null,
-                    )
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -217,19 +252,20 @@ fun MainScreen(vm: MainViewModel) {
 
 @Composable
 private fun Header(onSettings: () -> Unit) {
-    Row(Modifier.padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.Top) {
+    Row(Modifier.padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        LogoMark(44.dp)
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
+            Text("EDITIT", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Image(painterResource(R.drawable.ic_logo), null, Modifier.size(36.dp))
-                Spacer(Modifier.width(10.dp))
-                Text("EDITIT", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                Icon(AppIcons.Lock, null, Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    t("הכל מעובד על המכשיר. שום דבר לא עולה לרשת."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            Spacer(Modifier.height(4.dp))
-            Text(
-                t("הכל מעובד על המכשיר. שום דבר לא עולה לרשת."),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
         IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, t("הגדרות")) }
     }
@@ -237,86 +273,59 @@ private fun Header(onSettings: () -> Unit) {
 
 @Composable
 private fun SectionCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = CardShape,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-    ) {
-        Box(
-            Modifier
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CardShape)
-                .padding(18.dp)
-        ) { content() }
-    }
+    ClipCard(modifier) { content() }
 }
 
+/** The way in: a night-blue card with the editor's timeline in miniature. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PickCard(onPick: () -> Unit) {
+private fun HeroCard(onPick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(236.dp)
-            .clip(CardShape)
-            .clickable(onClick = onPick),
-        shape = CardShape,
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+        onClick = onPick,
+        modifier = Modifier.fillMaxWidth().pressScale(source),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = Brand.Ink,
+        interactionSource = source,
     ) {
         Column(
-            Modifier.fillMaxSize().padding(horizontal = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+            Modifier
+                .background(Brush.linearGradient(listOf(Color(0xFF33237A), Brand.Night, Brand.Ink)))
+                .padding(horizontal = 22.dp, vertical = 24.dp),
         ) {
-            Box(
-                Modifier
-                    .size(64.dp)
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(MaterialTheme.colorScheme.primary),
-                Alignment.Center,
-            ) { Icon(AppIcons.Face, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(34.dp)) }
-            Spacer(Modifier.height(12.dp))
-            Text(t("טשטוש פנים בסרטון"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(4.dp))
+            MiniTimeline(Modifier.fillMaxWidth().height(70.dp))
+            Spacer(Modifier.height(22.dp))
+            Text(t("טשטוש פנים בסרטון"), style = MaterialTheme.typography.headlineSmall, color = Color.White)
+            Spacer(Modifier.height(6.dp))
             Text(
                 t("הפנים מזוהות ומטושטשות אוטומטית. אפשר לבדוק ולתקן לפני השמירה."),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
+                color = Color.White.copy(alpha = 0.72f),
             )
             Spacer(Modifier.height(14.dp))
-            Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primary) {
-                Row(Modifier.padding(horizontal = 18.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Add, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(t("בחר סרטון"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)
-                }
+            // What the lanes above are: the editor's tools, each in its color.
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                val c = Color.White.copy(alpha = 0.8f)
+                FeatureLabel(t("טשטוש"), Brand.Coral, c)
+                FeatureLabel(t("כתוביות"), Brand.Amber, c)
+                FeatureLabel(t("סאונד"), Brand.Cyan, c)
+                FeatureLabel(t("רקע"), Brand.Violet, c)
             }
+            Spacer(Modifier.height(20.dp))
+            GradientButton(t("בחר סרטון"), onPick, Modifier.fillMaxWidth(), icon = Icons.Filled.Add)
         }
     }
 }
 
 @Composable
 private fun SubtitlesCard(onPick: () -> Unit) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(CardShape)
-            .clickable(onClick = onPick),
-        shape = CardShape,
-        color = MaterialTheme.colorScheme.secondaryContainer,
-    ) {
-        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(26.dp))
-                    .background(MaterialTheme.colorScheme.primary),
-                Alignment.Center,
-            ) { Icon(AppIcons.Subtitles, null, tint = MaterialTheme.colorScheme.onPrimary) }
+    val color = Feature.SUBTITLES.tint
+    ClipCard(accent = color, onClick = onPick) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FeatureTile(AppIcons.Subtitles, color, 50.dp)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(t("כתוביות לסרטון"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(t("כתוביות לסרטון"), style = MaterialTheme.typography.titleMedium)
                 Text(
                     t("זיהוי דיבור ועיצוב בסגנון טיקטוק, בלי טשטוש."),
                     style = MaterialTheme.typography.bodyMedium,
@@ -328,36 +337,38 @@ private fun SubtitlesCard(onPick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun VideoCard(info: VideoInfo, onReplace: (() -> Unit)?) {
     SectionCard {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             info.thumbnail?.let { bmp ->
-                Box(Modifier.fillMaxWidth(), Alignment.Center) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(MaterialTheme.colorScheme.surfaceContainerLowest),
+                    Alignment.Center,
+                ) {
                     Image(
                         bitmap = bmp.asImageBitmap(),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .heightIn(max = 300.dp)
-                            .aspectRatio(info.aspect, matchHeightConstraintsFirst = true)
-                            .clip(RoundedCornerShape(14.dp)),
+                            .aspectRatio(info.aspect, matchHeightConstraintsFirst = true),
                     )
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(info.name, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-                    Text(
-                        listOfNotNull(
-                            "${info.displayWidth}×${info.displayHeight}",
-                            formatDuration(info.durationMs),
-                            "${info.fps.roundToInt()}fps",
-                            if (info.isHdr) "HDR" else null,
-                        ).joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(info.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        InfoChip("\u200E${info.displayWidth}×${info.displayHeight}")
+                        InfoChip(formatDuration(info.durationMs))
+                        InfoChip("${info.fps.roundToInt()}fps")
+                        if (info.isHdr) InfoChip("HDR", Brand.Amber.copy(alpha = 0.22f), Feature.SUBTITLES.tint)
+                    }
                 }
                 if (onReplace != null) TextButton(onClick = onReplace) { Text(t("החלף")) }
             }
@@ -369,6 +380,7 @@ private fun VideoCard(info: VideoInfo, onReplace: (() -> Unit)?) {
 private fun SettingsCard(vm: MainViewModel) {
     SectionCard {
         Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            SectionTitle(t("הגדרות טשטוש"), Feature.FACES.tint)
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Label(t("סגנון"))
                 Segments(
@@ -439,36 +451,43 @@ private fun WorkingCard(state: UiState.Working, renderAfter: Float?, onCancel: (
     val rem = eta.remainingMs(state.stage, state.progress)
     // During analysis, when the export follows on its own, count it in too.
     val left = if (rem != null && state.stage == 1 && renderAfter != null) rem + ((eta.elapsedMs + rem) * renderAfter).toLong() else rem
+    val feature = if (state.subsOnly) Feature.SUBTITLES else Feature.FACES
     SectionCard {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                FeatureTile(if (state.subsOnly) AppIcons.Subtitles else AppIcons.Face, feature.tint, 44.dp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        when {
+                            state.stage == 0 -> t("מכין את הסרטון…")
+                            state.subsOnly -> t("שומר את הסרטון עם הכתוביות")
+                            state.stage == 1 -> t("שלב 1 מתוך 2 · מזהה פנים")
+                            else -> t("שלב 2 מתוך 2 · מטשטש ושומר")
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    AnimatedContent(etaText(left) ?: t("מחשב זמן משוער…"), transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) }, label = "eta") { text ->
+                        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    when {
-                        state.stage == 0 -> t("מכין את הסרטון…")
-                        state.subsOnly -> t("שומר את הסרטון עם הכתוביות")
-                        state.stage == 1 -> t("שלב 1 מתוך 2 · מזהה פנים")
-                        else -> t("שלב 2 מתוך 2 · מטשטש ושומר")
-                    },
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f),
+                    "\u200E${(state.progress * 100).roundToInt()}%",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = feature.tint,
                 )
-                Text("${(state.progress * 100).roundToInt()}%", style = MaterialTheme.typography.titleSmall)
             }
-            LinearProgressIndicator(
-                progress = { state.progress.coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
-            )
-            Text(
-                etaText(left) ?: t("מחשב זמן משוער…"),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
+            TimelineProgress(
+                state.progress,
+                colors = if (state.subsOnly) listOf(Brand.Amber, Color(0xFFFFE08A)) else listOf(Brand.Coral, Brand.Amber),
             )
             Text(
                 t("השאר את האפליקציה פתוחה עד הסוף. המסך יישאר דלוק."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text(t("ביטול")) }
+            OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(50)) { Text(t("ביטול")) }
         }
     }
 }
@@ -479,14 +498,11 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
     val uri = state.result.uri
     SectionCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Box(Modifier.fillMaxWidth(), Alignment.Center) {
-                ResultPlayer(uri, state.info.aspect)
-            }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(8.dp))
+                SuccessBadge(Icons.Filled.Check)
+                Spacer(Modifier.width(14.dp))
                 Column {
-                    Text(t("נשמר בגלריה"), style = MaterialTheme.typography.titleSmall)
+                    Text(t("נשמר בגלריה"), style = MaterialTheme.typography.titleLarge)
                     Text(
                         buildString {
                             append("Movies/EDITIT")
@@ -502,6 +518,9 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                     )
                 }
             }
+            Box(Modifier.fillMaxWidth(), Alignment.Center) {
+                ResultPlayer(uri, state.info.aspect)
+            }
             Text(
                 if (state.subsOnly) {
                     t("כדאי לעבור על הכתוביות לפני פרסום: זיהוי דיבור ותרגום אוטומטיים עלולים לטעות.")
@@ -512,7 +531,8 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
+                GradientButton(
+                    t("שתף"),
                     onClick = {
                         val send = Intent(Intent.ACTION_SEND).apply {
                             type = "video/mp4"
@@ -522,12 +542,11 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                         context.startActivity(Intent.createChooser(send, null))
                     },
                     modifier = Modifier.weight(1f),
-                ) {
-                    Icon(Icons.Filled.Share, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(t("שתף"))
-                }
-                OutlinedButton(
+                    icon = Icons.Filled.Share,
+                    height = 52.dp,
+                )
+                AccentOutlinedButton(
+                    t("פתח"),
                     onClick = {
                         val view = Intent(Intent.ACTION_VIEW).apply {
                             setDataAndType(uri, "video/mp4")
@@ -536,18 +555,18 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                         runCatching { context.startActivity(view) }
                     },
                     modifier = Modifier.weight(1f),
-                ) {
-                    Icon(Icons.Filled.PlayArrow, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(t("פתח"))
-                }
+                    icon = Icons.Filled.PlayArrow,
+                    accent = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (onEdit != null) {
-                OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Filled.Edit, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(if (state.subsOnly) t("ערוך וייצא שוב") else t("ערוך טשטושים וייצא שוב"))
-                }
+                AccentOutlinedButton(
+                    if (state.subsOnly) t("ערוך וייצא שוב") else t("ערוך טשטושים וייצא שוב"),
+                    onEdit,
+                    Modifier.fillMaxWidth(),
+                    icon = Icons.Filled.Edit,
+                    accent = (if (state.subsOnly) Feature.SUBTITLES else Feature.FACES).tint,
+                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 TextButton(onClick = onAgain, modifier = Modifier.weight(1f)) {
@@ -581,7 +600,7 @@ private fun ResultPlayer(uri: Uri, aspect: Float) {
         modifier = Modifier
             .heightIn(max = 420.dp)
             .aspectRatio(aspect, matchHeightConstraintsFirst = true)
-            .clip(RoundedCornerShape(14.dp)),
+            .clip(MaterialTheme.shapes.medium),
     )
 }
 
@@ -591,18 +610,20 @@ private fun MessageCard(
     body: String,
     primary: Pair<String, () -> Unit>,
     secondary: Pair<String, () -> Unit>?,
+    icon: ImageVector = Icons.Filled.Warning,
+    color: Color = MaterialTheme.colorScheme.error,
 ) {
-    SectionCard {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ClipCard(accent = color) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Warning, null, tint = MaterialTheme.colorScheme.error)
-                Spacer(Modifier.width(8.dp))
-                Text(title, style = MaterialTheme.typography.titleMedium)
+                FeatureTile(icon, color, 44.dp)
+                Spacer(Modifier.width(12.dp))
+                Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             }
             Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Button(onClick = primary.second, modifier = Modifier.fillMaxWidth()) { Text(primary.first) }
+            GradientButton(primary.first, primary.second, Modifier.fillMaxWidth(), height = 52.dp)
             if (secondary != null) {
-                OutlinedButton(onClick = secondary.second, modifier = Modifier.fillMaxWidth()) { Text(secondary.first) }
+                AccentOutlinedButton(secondary.first, secondary.second, Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.onSurfaceVariant, height = 48.dp)
             }
         }
     }

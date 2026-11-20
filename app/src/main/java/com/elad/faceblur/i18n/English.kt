@@ -55,6 +55,7 @@ internal val English: Map<String, String> = mapOf(
     "החלף" to "Replace",
     "סגנון" to "Style",
     "טשטוש" to "Blur",
+    "הגדרות טשטוש" to "Blur settings",
     "פיקסלים" to "Pixelate",
     "כיסוי" to "Cover",
     "עוצמה" to "Strength",

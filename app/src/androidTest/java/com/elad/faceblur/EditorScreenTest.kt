@@ -280,7 +280,7 @@ class EditorScreenTest {
         // Leave the defaults for other runs.
         rule.runOnIdle {
             vm.prefs.updateLang(Lang.HE)
-            vm.prefs.updatePalette(Palette.BLUE)
+            vm.prefs.updatePalette(Palette.EDITIT)
             vm.prefs.updateThemeMode(ThemeMode.SYSTEM)
             vm.prefs.updateExport(ExportOptions())
         }

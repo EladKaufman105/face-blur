@@ -141,7 +141,7 @@ fun AllSubtitlesPanel(ctrl: EditorController, modifier: Modifier = Modifier, sty
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(t("כל הכתוביות (%d)").format(cues.size), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                SectionTitle(t("כל הכתוביות (%d)").format(cues.size), Feature.SUBTITLES.color, Modifier.weight(1f))
                 IconButton(onClick = { ctrl.bleepMode = !ctrl.bleepMode }) {
                     Icon(
                         AppIcons.Mute, t("צפצוף מילים"),

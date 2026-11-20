@@ -2,7 +2,9 @@ package com.elad.faceblur.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,7 +69,7 @@ fun ProjectsSection(
     var deleting by remember { mutableStateOf<ProjectMeta?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(t("הפרויקטים שלי"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            SectionTitle(t("הפרויקטים שלי"), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
             if (projects.size > FOLDED) {
                 TextButton(onClick = { all = !all }) {
                     Text(if (all) t("הצג פחות") else t("הצג הכל (%d)").format(projects.size))
@@ -112,15 +114,19 @@ private fun ProjectRow(p: ProjectMeta, onOpen: () -> Unit, onRename: () -> Unit,
         value = withContext(Dispatchers.IO) { ProjectStore.loadThumb(context, p.id)?.asImageBitmap() }
     }
     var menu by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(18.dp)
+    val feature = if (p.subtitlesOnly) Feature.SUBTITLES else Feature.FACES
+    val source = remember { MutableInteractionSource() }
+    val shape = MaterialTheme.shapes.medium
     Surface(
-        Modifier
+        onClick = onOpen,
+        modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .clickable(onClick = onOpen)
+            .pressScale(source)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
             .semantics { contentDescription = p.name },
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
+        interactionSource = source,
     ) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -131,10 +137,20 @@ private fun ProjectRow(p: ProjectMeta, onOpen: () -> Unit, onRename: () -> Unit,
                 Alignment.Center,
             ) {
                 thumb?.let { Image(it, null, contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp)) }
-                    ?: Icon(if (p.subtitlesOnly) AppIcons.Subtitles else AppIcons.Face, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    ?: Icon(if (p.subtitlesOnly) AppIcons.Subtitles else AppIcons.Face, null, tint = feature.tint)
+                // A clip bar in the project's color along the bottom of the thumbnail.
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 6.dp, vertical = 5.dp)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(feature.color),
+                )
             }
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(p.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     whenText(p.updated) + " · " + durationText(p.durationMs),
@@ -143,8 +159,8 @@ private fun ProjectRow(p: ProjectMeta, onOpen: () -> Unit, onRename: () -> Unit,
                 )
                 Text(
                     contentText(p),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = feature.tint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

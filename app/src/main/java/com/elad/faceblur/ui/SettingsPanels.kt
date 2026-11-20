@@ -8,6 +8,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -77,41 +83,56 @@ import com.elad.faceblur.prefs.ThemeMode
 import kotlin.math.roundToInt
 
 /**
- * Segmented choice: one pill outline, the selected part filled. (Material's SegmentedButton
- * mirrored its rounded ends in some layouts, and its check mark cut labels short.)
+ * Segmented choice: a track with a pill that slides to the selected option. (Material's
+ * SegmentedButton mirrored its rounded ends in some layouts, and its check mark cut labels short.)
  */
 @Composable
 internal fun <T> Segments(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
     val shape = RoundedCornerShape(50)
-    val outline = MaterialTheme.colorScheme.outline
-    Row(
+    val idx = options.indexOfFirst { it.first == selected }
+    val colors = MaterialTheme.colorScheme
+    BoxWithConstraints(
         Modifier
             .fillMaxWidth()
             .height(44.dp)
             .clip(shape)
-            .border(1.dp, outline, shape)
-            .selectableGroup(),
+            .background(colors.surfaceContainerHighest)
+            .padding(3.dp),
     ) {
-        options.forEachIndexed { i, (v, label) ->
-            if (i > 0) Box(Modifier.width(1.dp).fillMaxHeight().background(outline))
-            val sel = v == selected
+        val w = maxWidth / options.size.coerceAtLeast(1)
+        val x by animateDpAsState(w * idx.coerceAtLeast(0), spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), label = "segment")
+        if (idx >= 0) {
+            // offset() follows the layout direction, like the row's order.
             Box(
                 Modifier
-                    .weight(1f)
+                    .offset(x = x)
+                    .width(w)
                     .fillMaxHeight()
-                    .background(if (sel) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
-                    .selectable(selected = sel, role = Role.RadioButton, onClick = { onSelect(v) })
-                    .padding(horizontal = 6.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    label,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
-                    color = if (sel) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
-                )
+                    .clip(shape)
+                    .background(colors.primaryContainer),
+            )
+        }
+        Row(Modifier.fillMaxSize().selectableGroup()) {
+            options.forEach { (v, label) ->
+                val sel = v == selected
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(shape)
+                        .selectable(selected = sel, role = Role.RadioButton, onClick = { onSelect(v) })
+                        .padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
+                        color = if (sel) colors.onPrimaryContainer else colors.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
@@ -356,6 +377,7 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Caption(t("ערכת צבעים"))
                 val palettes = listOf(
+                    Palette.EDITIT to "EDITIT",
                     Palette.BLUE to t("כחול"),
                     Palette.PURPLE to t("סגול"),
                     Palette.GREEN to t("ירוק"),
@@ -370,7 +392,9 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit) {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            val fill = if (p == Palette.DYNAMIC) {
+                            val fill = if (p == Palette.EDITIT) {
+                                Modifier.background(Brush.sweepGradient(listOf(Brand.Coral, Brand.Amber, Brand.Cyan, Brand.Violet, Brand.Coral)), CircleShape)
+                            } else if (p == Palette.DYNAMIC) {
                                 Modifier.background(
                                     Brush.sweepGradient(listOf(Color(0xFF3355E0), Color(0xFF1F7A4D), Color(0xFFC2410C), Color(0xFFC2185B), Color(0xFF3355E0))),
                                     CircleShape,

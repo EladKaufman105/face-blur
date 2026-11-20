@@ -9,6 +9,24 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.LayoutInflater
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.using
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.animation.core.AnimationState
 import androidx.compose.animation.core.animateDecay
 import androidx.compose.animation.core.exponentialDecay
@@ -139,9 +157,11 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-private val ManualClip = Color(0xFFD99A1E)
-private val ManualOutline = Color(0xFFFFC857)
-private val SubsClip = Color(0xFF1E8C7E)
+// Timeline lanes in the features' colors: blurs coral, subtitles amber, sound effects cyan.
+private val BlurClip = Color(0xFFC2304F)
+private val ManualClip = Color(0xFFFF8A65)
+private val ManualOutline = Color(0xFFFFA48A)
+private val SubsClip = Color(0xFFA06F00)
 
 /**
  * Blur editor laid out like a video editor: the player on top (with the real blur applied, or
@@ -196,11 +216,14 @@ fun EditorScreen(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
-            Button(onClick = { ctrl.pauser(); exportSheet = true }, enabled = !busy, modifier = Modifier.padding(end = 8.dp)) {
-                Icon(EditorIcons.ExportIcon, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(t("ייצוא"))
-            }
+            GradientButton(
+                t("ייצוא"),
+                onClick = { ctrl.pauser(); exportSheet = true },
+                enabled = !busy,
+                icon = EditorIcons.ExportIcon,
+                height = 40.dp,
+                modifier = Modifier.padding(end = 8.dp),
+            )
         }
 
         Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
@@ -221,8 +244,12 @@ fun EditorScreen(
                         delay(4000)
                         if (ctrl.notice == msg) ctrl.notice = null
                     }
-                    Banner(msg)
                 }
+                AnimatedContent(
+                    ctrl.notice,
+                    transitionSpec = { (fadeIn(tween(200)) + slideInVertically(tween(240)) { -it / 2 }) togetherWith fadeOut(tween(180)) },
+                    label = "notice",
+                ) { msg -> if (msg != null) Banner(msg) }
                 ctrl.trackingProgress?.let { p ->
                     ProgressPill(t("עוקב אחרי הפנים…"), p, ctrl::cancelTracking)
                 }
@@ -255,42 +282,59 @@ fun EditorScreen(
         }
 
         // Video controls and timelines run left to right even in a Hebrew UI.
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-            Transport(ctrl, busy)
-            if (!ctrl.stylePanel && !ctrl.listEditor && !ctrl.voicePanel && !ctrl.bgPanel) Timeline(ctrl, busy, subStyle)
-        }
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
 
-        if (ctrl.listEditor) {
-            AllSubtitlesPanel(ctrl, Modifier.fillMaxHeight(0.6f), subStyle)
-        } else if (ctrl.voicePanel) {
-            VoicePanel(ctrl)
-        } else if (ctrl.bgPanel) {
-            BackgroundPanel(ctrl)
-        } else if (ctrl.stylePanel) {
-            SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
-        } else {
-            val sel = ctrl.selected
-            if (sel != null && ctrl.sizePanel) SizePanel(ctrl, sel, busy)
-            ctrl.selectedSfx?.takeIf { ctrl.sfxGainPanel }?.let { c ->
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(t("עוצמה"), style = MaterialTheme.typography.labelLarge)
-                    var g by remember(c.id) { mutableFloatStateOf(c.gain) }
-                    Slider(
-                        value = g,
-                        onValueChange = { g = it },
-                        onValueChangeFinished = { ctrl.setSelectedSfxGain(g) },
-                        valueRange = 0f..2f,
-                        modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                    )
-                    Text("\u200E${(g * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium)
+        // The timeline and its tools, or a panel in their place; they slide in when switching.
+        val panel = when {
+            ctrl.listEditor -> 1
+            ctrl.voicePanel -> 2
+            ctrl.bgPanel -> 3
+            ctrl.stylePanel -> 4
+            else -> 0
+        }
+        AnimatedContent(
+            panel,
+            transitionSpec = {
+                (fadeIn(tween(220, delayMillis = 60)) + slideInVertically(tween(300)) { it / 6 }) togetherWith
+                    fadeOut(tween(110)) using SizeTransform(clip = false)
+            },
+            label = "panel",
+        ) { p ->
+            Column {
+                when (p) {
+                    1 -> AllSubtitlesPanel(ctrl, Modifier.fillMaxHeight(0.6f), subStyle)
+                    2 -> VoicePanel(ctrl)
+                    3 -> BackgroundPanel(ctrl)
+                    4 -> SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
+                    else -> {
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Timeline(ctrl, busy, subStyle) }
+                        val sel = ctrl.selected
+                        Column(Modifier.animateContentSize(tween(220))) {
+                            if (sel != null && ctrl.sizePanel) SizePanel(ctrl, sel, busy)
+                            ctrl.selectedSfx?.takeIf { ctrl.sfxGainPanel }?.let { c ->
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(t("עוצמה"), style = MaterialTheme.typography.labelLarge)
+                                    var g by remember(c.id) { mutableFloatStateOf(c.gain) }
+                                    Slider(
+                                        value = g,
+                                        onValueChange = { g = it },
+                                        onValueChangeFinished = { ctrl.setSelectedSfxGain(g) },
+                                        valueRange = 0f..2f,
+                                        modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                                    )
+                                    Text("\u200E${(g * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                            if (ctrl.splitPanel && ctrl.model.cues.isNotEmpty()) {
+                                Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                    SplitControls(ctrl)
+                                }
+                            }
+                        }
+                        BottomBar(ctrl, sel, ctrl.selectedCue, busy)
+                    }
                 }
             }
-            if (ctrl.splitPanel && ctrl.model.cues.isNotEmpty()) {
-                Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    SplitControls(ctrl)
-                }
-            }
-            BottomBar(ctrl, sel, ctrl.selectedCue, busy)
         }
     }
     }
@@ -604,7 +648,7 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
             val tl = Offset((s.cx - s.rx) * size.width, (s.cy - s.ry) * size.height)
             val sz = Size(2 * s.rx * size.width, 2 * s.ry * size.height)
             val c = when {
-                sel -> primary
+                sel -> Brand.Coral
                 s.manual -> ManualOutline
                 else -> Color.White
             }
@@ -695,7 +739,10 @@ private suspend fun PointerInputScope.videoGestures(ctrl: EditorController, subH
 private fun Transport(ctrl: EditorController, busy: Boolean) {
     Box(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 8.dp)) {
         Text(
-            "${clock(ctrl.timeOf(ctrl.frame))} / ${clock(ctrl.timeOf(ctrl.frameCount - 1))}",
+            buildAnnotatedString {
+                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)) { append(clock(ctrl.timeOf(ctrl.frame))) }
+                append(" / ${clock(ctrl.timeOf(ctrl.frameCount - 1))}")
+            },
             style = MaterialTheme.typography.labelMedium,
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -703,19 +750,29 @@ private fun Transport(ctrl: EditorController, busy: Boolean) {
         )
         Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { ctrl.step(-1) }, enabled = !busy) { Icon(EditorIcons.ChevronLeft, t("פריים קודם")) }
+            val playSource = remember { MutableInteractionSource() }
             Surface(
                 onClick = { ctrl.playToggler() },
                 enabled = !busy,
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.size(42.dp),
+                color = if (busy) MaterialTheme.colorScheme.surfaceContainerHigh else Brand.Coral,
+                contentColor = Brand.Ink,
+                interactionSource = playSource,
+                modifier = Modifier.size(44.dp).pressScale(playSource),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        if (ctrl.playing) EditorIcons.Pause else Icons.Filled.PlayArrow,
-                        if (ctrl.playing) t("השהה") else t("נגן"),
-                        modifier = Modifier.size(26.dp),
-                    )
+                    // The icon turns as it changes between play and pause.
+                    AnimatedContent(
+                        ctrl.playing,
+                        transitionSpec = { (fadeIn(tween(150)) + scaleIn(tween(180), 0.6f)) togetherWith (fadeOut(tween(100)) + scaleOut(tween(120), 0.6f)) },
+                        label = "play",
+                    ) { playing ->
+                        Icon(
+                            if (playing) EditorIcons.Pause else Icons.Filled.PlayArrow,
+                            if (playing) t("השהה") else t("נגן"),
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
                 }
             }
             IconButton(onClick = { ctrl.step(1) }, enabled = !busy) { Icon(EditorIcons.ChevronRight, t("פריים הבא")) }
@@ -1022,8 +1079,9 @@ private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle
                     val x1 = max(g.clipX1(t), x0 + 3.dp.toPx())
                     if (x1 < -handleW || x0 > size.width + handleW) continue
                     val sel = t.id == selId
-                    drawRoundRect(if (t.manual) ManualClip else colors.primaryContainer, Offset(x0, y), Size(x1 - x0, rowH), CornerRadius(5.dp.toPx()))
+                    drawRoundRect(if (t.manual) ManualClip else BlurClip, Offset(x0, y), Size(x1 - x0, rowH), CornerRadius(5.dp.toPx()))
                     if (x1 - x0 > 26.dp.toPx()) {
+                        textPaint.color = if (t.manual) Brand.Ink.toArgb() else android.graphics.Color.WHITE
                         drawContext.canvas.nativeCanvas.drawText(
                             "#${t.id}", max(x0, 0f) + 6.dp.toPx(), y + rowH / 2 + textPaint.textSize / 2.8f, textPaint,
                         )
@@ -1207,7 +1265,21 @@ private fun SizePanel(ctrl: EditorController, t: EditTrack, busy: Boolean) {
 
 @Composable
 private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: Boolean) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+    // What's selected shows as a line in its feature's color along the top of the bar.
+    val selFeature = when {
+        ctrl.selectedSfx != null -> Feature.SOUND
+        cue != null -> Feature.SUBTITLES
+        sel != null -> Feature.FACES
+        else -> null
+    }
+    val line by animateColorAsState(selFeature?.color ?: Color.Transparent, tween(220), label = "bar")
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth().drawWithContent {
+            drawContent()
+            drawRect(line, size = Size(size.width, 2.dp.toPx()))
+        },
+    ) {
         // Every tool gets an equal share of the width: nothing hides off screen.
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
@@ -1215,30 +1287,30 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
         ) {
             val sfx = ctrl.selectedSfx
             if (sfx != null) {
-                Tool(t("השמע"), Icons.Filled.PlayArrow, true) { ctrl.playSelectedSfx() }
-                Tool(t("העבר לכאן"), AppIcons.MoveHere, true) { ctrl.moveSelectedSfxHere() }
-                Tool(t("עוצמה"), AppIcons.Volume, true, active = ctrl.sfxGainPanel) { ctrl.sfxGainPanel = !ctrl.sfxGainPanel }
+                Tool(t("השמע"), Icons.Filled.PlayArrow, true, feature = Feature.SOUND) { ctrl.playSelectedSfx() }
+                Tool(t("העבר לכאן"), AppIcons.MoveHere, true, feature = Feature.SOUND) { ctrl.moveSelectedSfxHere() }
+                Tool(t("עוצמה"), AppIcons.Volume, true, active = ctrl.sfxGainPanel, feature = Feature.SOUND) { ctrl.sfxGainPanel = !ctrl.sfxGainPanel }
                 Tool(t("מחק"), Icons.Filled.Delete, true) { ctrl.deleteSelectedSfx() }
                 Tool(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
             } else if (cue != null) {
-                Tool(t("ערוך טקסט"), Icons.Filled.Edit, true) { ctrl.pauser(); ctrl.cueEditor = true }
-                Tool(t("פצל כאן"), EditorIcons.Cut, true) { ctrl.pauser(); ctrl.splitSelectedCue() }
-                Tool(t("מזג"), AppIcons.MergeDown, true) { ctrl.mergeSelectedCue() }
-                Tool(t("עיצוב"), EditorIcons.TextFormat, true) { ctrl.pauser(); ctrl.stylePanel = true }
+                Tool(t("ערוך טקסט"), Icons.Filled.Edit, true, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.cueEditor = true }
+                Tool(t("פצל כאן"), EditorIcons.Cut, true, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.splitSelectedCue() }
+                Tool(t("מזג"), AppIcons.MergeDown, true, feature = Feature.SUBTITLES) { ctrl.mergeSelectedCue() }
+                Tool(t("עיצוב"), EditorIcons.TextFormat, true, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.stylePanel = true }
                 Tool(t("מחק"), Icons.Filled.Delete, true) { ctrl.deleteSelectedCue() }
                 Tool(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
             } else if (sel == null) {
                 val subsOnly = ctrl.session.subtitlesOnly
                 val hasCues = ctrl.model.cues.isNotEmpty()
                 val subsTools: @Composable RowScope.() -> Unit = {
-                    Tool(t("כתוביות"), EditorIcons.Subtitles, !busy) { ctrl.pauser(); ctrl.subsSheet = true }
+                    Tool(t("כתוביות"), EditorIcons.Subtitles, !busy, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.subsSheet = true }
                     if (hasCues || subsOnly) {
-                        Tool(t("עיצוב"), EditorIcons.TextFormat, !busy) { ctrl.pauser(); ctrl.stylePanel = true }
+                        Tool(t("עיצוב"), EditorIcons.TextFormat, !busy, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.stylePanel = true }
                     }
                     // Words per subtitle is in the list too ("all subtitles").
-                    if (hasCues) Tool(t("כל הכתוביות"), AppIcons.ListLines, !busy) { ctrl.pauser(); ctrl.listEditor = true }
-                    Tool(t("רקע"), AppIcons.Background, !busy, active = ctrl.background.active) { ctrl.pauser(); ctrl.bgPanel = true }
-                    Tool(t("סאונד"), AppIcons.Voice, !busy, active = ctrl.audio.voice != VoiceFx.NONE || ctrl.model.bleeps.isNotEmpty() || ctrl.model.sfx.isNotEmpty()) {
+                    if (hasCues) Tool(t("כל הכתוביות"), AppIcons.ListLines, !busy, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.listEditor = true }
+                    Tool(t("רקע"), AppIcons.Background, !busy, active = ctrl.background.active, feature = Feature.BACKGROUND) { ctrl.pauser(); ctrl.bgPanel = true }
+                    Tool(t("סאונד"), AppIcons.Voice, !busy, active = ctrl.audio.voice != VoiceFx.NONE || ctrl.model.bleeps.isNotEmpty() || ctrl.model.sfx.isNotEmpty(), feature = Feature.SOUND) {
                         ctrl.pauser(); ctrl.voicePanel = true
                     }
                 }
@@ -1248,6 +1320,7 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
                     if (ctrl.addMode) Icons.Filled.Close else Icons.Filled.Add,
                     !busy,
                     active = ctrl.addMode,
+                    feature = Feature.FACES,
                 ) {
                     ctrl.addMode = !ctrl.addMode
                     if (ctrl.addMode) ctrl.pauser()
@@ -1255,36 +1328,44 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
                 if (!subsOnly) subsTools()
             } else {
                 Tool(t("מחק"), Icons.Filled.Delete, !busy) { ctrl.deleteSelected() }
-                Tool(t("פצל"), EditorIcons.Cut, !busy) { ctrl.splitSelected() }
-                Tool(t("עקוב קדימה"), EditorIcons.TrackForward, !busy) { ctrl.trackSelected(1) }
-                Tool(t("עקוב אחורה"), EditorIcons.TrackBack, !busy) { ctrl.trackSelected(-1) }
-                Tool(t("גודל"), EditorIcons.Resize, !busy, active = ctrl.sizePanel) { ctrl.sizePanel = !ctrl.sizePanel }
+                Tool(t("פצל"), EditorIcons.Cut, !busy, feature = Feature.FACES) { ctrl.splitSelected() }
+                Tool(t("עקוב קדימה"), EditorIcons.TrackForward, !busy, feature = Feature.FACES) { ctrl.trackSelected(1) }
+                Tool(t("עקוב אחורה"), EditorIcons.TrackBack, !busy, feature = Feature.FACES) { ctrl.trackSelected(-1) }
+                Tool(t("גודל"), EditorIcons.Resize, !busy, active = ctrl.sizePanel, feature = Feature.FACES) { ctrl.sizePanel = !ctrl.sizePanel }
                 Tool(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
             }
         }
     }
 }
 
-/** A tool: icon over a one-line label; [active] for a toggle that's on. */
+/**
+ * A tool: icon over a one-line label; [active] for a toggle that's on. A tool that works on one
+ * [feature] shows its icon in that feature's color.
+ */
 @Composable
-private fun RowScope.Tool(label: String, icon: ImageVector, enabled: Boolean, active: Boolean = false, onClick: () -> Unit) {
+private fun RowScope.Tool(label: String, icon: ImageVector, enabled: Boolean, active: Boolean = false, feature: Feature? = null, onClick: () -> Unit) {
     val alpha = if (enabled) 1f else 0.38f
-    val tint = (if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface).copy(alpha = alpha)
+    val accent = feature?.color ?: MaterialTheme.colorScheme.primary
+    val iconTint = (feature?.color ?: if (active) accent else MaterialTheme.colorScheme.onSurface).copy(alpha = alpha)
+    val textTint = (if (active) accent else MaterialTheme.colorScheme.onSurface).copy(alpha = alpha)
+    val bg by animateColorAsState(if (active) accent.copy(alpha = 0.2f) else Color.Transparent, tween(200), label = "tool")
+    val source = remember { MutableInteractionSource() }
     Column(
         Modifier
             .weight(1f)
+            .pressScale(source)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(interactionSource = source, indication = LocalIndication.current, enabled = enabled, onClick = onClick)
             .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             Modifier
-                .size(width = 44.dp, height = 28.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(if (active) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent),
+                .size(width = 46.dp, height = 30.dp)
+                .clip(RoundedCornerShape(15.dp))
+                .background(bg),
             contentAlignment = Alignment.Center,
-        ) { Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp)) }
+        ) { Icon(icon, null, tint = iconTint, modifier = Modifier.size(22.dp)) }
         Spacer(Modifier.height(3.dp))
         Text(
             label,
@@ -1292,7 +1373,7 @@ private fun RowScope.Tool(label: String, icon: ImageVector, enabled: Boolean, ac
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            color = tint,
+            color = textTint,
         )
     }
 }
@@ -1301,7 +1382,7 @@ private fun RowScope.Tool(label: String, icon: ImageVector, enabled: Boolean, ac
 
 /** A few Material icons (Apache 2.0) not in the core icon set. */
 private val BleepMark = Color(0xFFFF4D6D)
-private val SfxClipColor = Color(0xFFFFB020)
+private val SfxClipColor = Brand.Cyan
 
 private object EditorIcons {
     private fun icon(name: String, path: String) = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
