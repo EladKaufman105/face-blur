@@ -206,6 +206,8 @@ private class BackgroundProgram(
         val (kr, kg, kb) = if (bg.key == BgKey.BLUE) Triple(0.1f, 0.25f, 0.85f) else Triple(0.15f, 0.75f, 0.2f)
         GLES20.glUniform2f(u["uKey"], -0.168736f * kr - 0.331264f * kg + 0.5f * kb, 0.5f * kr - 0.418688f * kg - 0.081312f * kb)
         GLES20.glUniform1f(u["uTol"], 0.08f + 0.22f * bg.tolerance)
+        // One mask pixel, in the frame's texture coordinates.
+        GLES20.glUniform2f(u["uMaskTexel"], 1f / MaskStore.SIZE, 1f / MaskStore.SIZE)
         val r = 0.03f
         GLES20.glUniform2f(u["uRadius"], r, r * w / max(1, h))
         // Picture: cover the frame, centered.
@@ -253,21 +255,42 @@ uniform vec2 uKey;
 uniform float uTol;
 uniform vec2 uRadius;
 uniform vec4 uBgMap;
+uniform vec2 uMaskTexel;
 
 vec2 cbcr(vec3 c) {
     return vec2(-0.168736 * c.r - 0.331264 * c.g + 0.5 * c.b, 0.5 * c.r - 0.418688 * c.g - 0.081312 * c.b);
 }
 
-// How much of the point is foreground (person, or not screen).
+// How much of the point is foreground (person, or not screen): quick, for the blur's samples.
 float fgAlpha(vec2 uv) {
     if (uSource == 0) return smoothstep(0.3, 0.7, texture2D(uMask, vec2(uv.x, 1.0 - uv.y)).r);
     float d = distance(cbcr(texture2D(uSrc, uv).rgb), uKey);
     return smoothstep(uTol, uTol + 0.08, d);
 }
 
+// The person mask is coarse: around each point it's averaged over neighbours that look alike
+// (joint bilateral), so its edge snaps to the picture's own edges.
+float personAlpha(vec2 uv) {
+    vec3 c0 = texture2D(uSrc, uv).rgb;
+    float acc = 0.0;
+    float wsum = 0.0;
+    for (int j = -2; j <= 2; j++) {
+        for (int i = -2; i <= 2; i++) {
+            vec2 o = vec2(float(i), float(j)) * uMaskTexel;
+            float m = texture2D(uMask, vec2(uv.x + o.x, 1.0 - uv.y - o.y)).r;
+            vec3 c = texture2D(uSrc, uv + o).rgb;
+            vec3 dc = c - c0;
+            float w = exp(-dot(dc, dc) * 40.0 - float(i * i + j * j) * 0.3);
+            acc += m * w;
+            wsum += w;
+        }
+    }
+    return smoothstep(0.38, 0.62, acc / wsum);
+}
+
 void main() {
     vec4 src = texture2D(uSrc, vTex);
-    float a = fgAlpha(vTex);
+    float a = uSource == 0 ? personAlpha(vTex) : fgAlpha(vTex);
     vec3 fg = src.rgb;
     if (uSource == 1) {
         // Spill: the screen's color reflected on the subject is taken out.

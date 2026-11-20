@@ -153,9 +153,13 @@ class FaceBlurProcessor(private val context: Context) {
         val store = MaskStore.create(file, analysis.frameCount)
         val segmenter = withContext(Dispatchers.IO) { Segmenter(context, analysis.times, analysis.cuts, store) }
         try {
+            // The frame, small but undistorted (the segmenter cuts square tiles from it).
+            val long = Segmenter.GRAB_LONG
+            val landscape = info.displayWidth >= info.displayHeight
+            val short = (long * minOf(info.displayWidth, info.displayHeight).toFloat() / maxOf(info.displayWidth, info.displayHeight, 1)).toInt().coerceAtLeast(16) / 2 * 2
             val grab = GrabEffect(
-                MaskStore.SIZE, MaskStore.SIZE, info.rotation,
-                displayLandscape = info.displayWidth >= info.displayHeight,
+                if (landscape) long else short, if (landscape) short else long, info.rotation,
+                displayLandscape = landscape,
             ) { buf, w, h, t, rot -> segmenter.onFrame(buf, w, h, t, rot) }
             val item = EditedMediaItem.Builder(MediaItem.fromUri(info.uri))
                 .setRemoveAudio(true)

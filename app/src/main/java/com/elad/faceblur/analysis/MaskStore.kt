@@ -94,7 +94,8 @@ class MaskStore private constructor(
     }
 
     companion object {
-        const val SIZE = 192
+        /** Masks are stored squeezed to this square (the model sees undistorted tiles, see Segmenter). */
+        const val SIZE = 320
 
         /** A new, empty store for [frames] frames (whatever was in [file] is deleted). */
         fun create(file: File, frames: Int): MaskStore {
