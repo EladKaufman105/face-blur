@@ -40,6 +40,12 @@ jobs:
           mkdir -p out
           cp app/build/outputs/apk/release/*.apk "out/EDITIT-${{ github.run_number }}.apk"
 
+      - name: APK size
+        shell: bash
+        run: |
+          ls -l out/*.apk
+          unzip -lv out/*.apk | sort -k3 -n -r | head -15
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
