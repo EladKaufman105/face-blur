@@ -9,6 +9,8 @@ adb install -r -g app/build/outputs/apk/androidTest/debug/app-debug-androidTest.
 adb logcat -c
 # A slow emulator can show "app isn't responding" dialogs over the test.
 adb shell settings put global hide_error_dialogs 1 || true
+# The home screen app isn't needed and its "not responding" dialog steals the keys.
+adb shell pm disable-user --user 0 com.google.android.apps.nexuslauncher || true
 
 timeout 2400 adb shell am instrument -w -e class com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.SubtitlesTest \
   com.elad.faceblur.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/instrument.txt"
