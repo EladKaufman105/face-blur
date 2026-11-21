@@ -27,9 +27,19 @@ class Det(val box: Box, val score: Float, var verify: Float = 0f)
  * RetinaFace with a MobileNetV2 backbone (yakhyo/retinaface-pytorch, MIT; trained on WIDER
  * FACE) through OpenCV DNN.
  */
-class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null) : Closeable {
+class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null, private val half: HalfPrecision? = null) : Closeable {
 
     private val net: Net = Dnn.readNetFromONNX(modelPath)
+    // The same model on OpenCV's fp16 CPU kernels (see [HalfPrecision]).
+    private val net16: Net? = half?.let {
+        try {
+            Dnn.readNetFromONNX(modelPath).apply { setPreferableTarget(Dnn.DNN_TARGET_CPU_FP16) }
+        } catch (t: Throwable) {
+            android.util.Log.w("EDITIT", "no fp16 face detection: $t")
+            it.disable()
+            null
+        }
+    }
     private val priorCache = HashMap<Long, FloatArray>()
     private val resized = Mat()
     // OpenCV's JNI layer calls java.util.ArrayList methods on this: must be a real ArrayList.
@@ -77,8 +87,8 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null)
             val r = g.run(input, iw, ih)
             if (r != null) {
                 if (g.trusted) return r
-                // Not trusted yet: also on the CPU, and compare what each finds.
-                val ref = cpuForward(input, iw, ih)
+                // Not trusted yet: also on the CPU (fp32), and compare what each finds.
+                val ref = cpuForward(net, input, iw, ih)
                 val a = decode(r.first, r.second, iw, ih, threshold, minBox)
                 val b = decode(ref.first, ref.second, iw, ih, threshold, minBox)
                 if (agree(a, b)) {
@@ -90,10 +100,35 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null)
                 return ref
             }
         }
-        return cpuForward(input, iw, ih)
+        val h = half
+        val n16 = net16
+        if (h != null && n16 != null && h.active) {
+            if (h.trusted) return cpuForward(n16, input, iw, ih)
+            // Not trusted yet: both ways, compared; fp32's answer is used meanwhile.
+            val r = try {
+                cpuForward(n16, input, iw, ih)
+            } catch (t: Throwable) {
+                android.util.Log.w("EDITIT", "fp16 face detection failed: $t")
+                h.disable()
+                null
+            }
+            val ref = cpuForward(net, input, iw, ih)
+            if (r != null) {
+                val a = decode(r.first, r.second, iw, ih, threshold, minBox)
+                val b = decode(ref.first, ref.second, iw, ih, threshold, minBox)
+                if (agree(a, b)) {
+                    if (b.isNotEmpty()) h.vouch()
+                } else {
+                    android.util.Log.w("EDITIT", "fp16 faces differ from fp32's (${a.size} vs ${b.size}): fp32 from now on")
+                    h.disable()
+                }
+            }
+            return ref
+        }
+        return cpuForward(net, input, iw, ih)
     }
 
-    private fun cpuForward(input: Mat, iw: Int, ih: Int): Pair<FloatArray, FloatArray> {
+    private fun cpuForward(net: Net, input: Mat, iw: Int, ih: Int): Pair<FloatArray, FloatArray> {
         val blob = Dnn.blobFromImage(input, 1.0, Size(iw.toDouble(), ih.toDouble()), Scalar(104.0, 117.0, 123.0), false, false)
         net.setInput(blob)
         val outs = ArrayList<Mat>()

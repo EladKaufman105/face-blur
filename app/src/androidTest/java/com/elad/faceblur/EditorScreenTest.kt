@@ -314,7 +314,8 @@ class EditorScreenTest {
         rule.mainClock.autoAdvance = false
         inst.runOnMainSync { vm.start() }
         val t1 = System.currentTimeMillis()
-        while (inst.onMain { vm.livePreview == null || vm.state !is UiState.Working } && System.currentTimeMillis() - t1 < 30_000) {
+        // Until the live frame shows faces found (the first detections take a moment).
+        while (inst.onMain { vm.livePreview?.faces.isNullOrEmpty() || vm.state !is UiState.Working } && System.currentTimeMillis() - t1 < 30_000) {
             rule.mainClock.advanceTimeByFrame()
             Thread.sleep(40)
         }

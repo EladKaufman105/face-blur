@@ -494,11 +494,12 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
     }
     val exporting = state.stage == 2
     val feature = if (state.subsOnly) Feature.SUBTITLES else Feature.FACES
+    // The frame and the progress together, in the middle: a wide video leaves no hole between them.
     Column(
         Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
     ) {
-        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().weight(1f, fill = false), contentAlignment = Alignment.Center) {
             LiveFrame(
                 live?.frame ?: state.info.thumbnail,
                 live?.faces.orEmpty(),
@@ -591,8 +592,8 @@ private fun LiveFrame(frame: android.graphics.Bitmap?, faces: List<com.elad.face
     if (frame == null) return
     val image = remember(frame) { frame.asImageBitmap() }
     val a = frame.width.toFloat() / frame.height.coerceAtLeast(1)
-    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        val w = if (maxWidth / maxHeight > a) maxHeight * a else maxWidth
+    BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val w = if (maxHeight != androidx.compose.ui.unit.Dp.Infinity && maxWidth / maxHeight > a) maxHeight * a else maxWidth
         val h = w / a
         Box(
             Modifier

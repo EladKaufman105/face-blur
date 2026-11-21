@@ -15,9 +15,9 @@ import kotlin.math.max
  *  - Every detection is re-checked on a centered 192 px crop: clutter (knees, gloves, walls)
  *    almost never survives that, real faces often do. The tracker uses it as evidence.
  */
-class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFaceNet? = null) : Closeable {
+class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFaceNet? = null, half: HalfPrecision? = null) : Closeable {
 
-    private val retina = RetinaFaceDetector(retinaPath, gpu)
+    private val retina = RetinaFaceDetector(retinaPath, gpu, half)
     private var yunet: FaceDetectorYN? = null
     private var yunetSize = Size(0.0, 0.0)
     private val faces = Mat()

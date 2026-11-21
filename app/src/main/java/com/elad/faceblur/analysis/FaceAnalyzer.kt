@@ -66,6 +66,11 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     private val yunetPath = asset(context, FaceDetector.YUNET_MODEL)
     // The big detection pass on the GPU, when the phone and the downloaded models allow it.
     private val gpu = GpuFaceNet.create(context)
+    // The rest on the CPU in fp16 once it's shown to agree with fp32 here.
+    private val half = HalfPrecision()
+
+    /** The CPU passes' precision: "fp16", "fp16-checking" or "fp32". */
+    val precision get() = half.state
 
     /** Where detection ran: "gpu", "gpu-checking" (still compared with the CPU), "cpu". */
     val accelerator: String
@@ -220,7 +225,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         }
     }
 
-    private fun detector(): FaceDetector = workerDetector.get() ?: FaceDetector(retinaPath, yunetPath, gpu).also {
+    private fun detector(): FaceDetector = workerDetector.get() ?: FaceDetector(retinaPath, yunetPath, gpu, half).also {
         workerDetector.set(it)
         detectors += it
     }
