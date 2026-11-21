@@ -1,0 +1,1500 @@
+11-21 19:34:34.390 D/MediaCodec( 3933): flushMediametrics
+11-21 19:34:34.390 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027440
+11-21 19:34:34.394 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#125] MediaCodec discarded an unknown buffer
+11-21 19:34:34.394 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#125] MediaCodec discarded an unknown buffer
+11-21 19:34:34.394 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#125] MediaCodec discarded an unknown buffer
+11-21 19:34:34.395 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#125] MediaCodec discarded an unknown buffer
+11-21 19:34:34.395 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#125] MediaCodec discarded an unknown buffer
+11-21 19:34:34.395 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#125] MediaCodec discarded an unknown buffer
+11-21 19:34:34.395 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#125] MediaCodec discarded an unknown buffer
+11-21 19:34:34.395 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#125] MediaCodec discarded an unknown buffer
+11-21 19:34:34.395 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#125] MediaCodec discarded an unknown buffer
+11-21 19:34:34.395 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#125] MediaCodec discarded an unknown buffer
+11-21 19:34:34.395 E/MediaCodec( 3933): Codec reported err 0xe/14 (Unknown error -14), actionCode 0, while in state 10/RELEASING
+11-21 19:34:34.395 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#125] MediaCodec discarded an unknown buffer
+11-21 19:34:34.397 D/MediaCodec( 3933): flushMediametrics
+11-21 19:34:34.397 D/MediaCodec( 3933): flushMediametrics
+11-21 19:34:34.409 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity} from uid 10174
+11-21 19:34:34.419 D/CoreBackPreview(  511): Window{87a8b62 u0 Splash Screen com.elad.faceblur.test}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@dfc35b0, mPriority=0}
+11-21 19:34:34.425 I/ActivityManager(  511): Start proc 4542:com.elad.faceblur.test/u0a175 for next-top-activity {com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}
+11-21 19:34:34.434 I/d.faceblur.test( 4542): Late-enabling -Xcheck:jni
+11-21 19:34:34.580 I/d.faceblur.test( 4542): Using CollectorTypeCC GC.
+11-21 19:34:34.581 W/d.faceblur.test( 4542): Unexpected CPU variant for x86: x86_64.
+11-21 19:34:34.581 W/d.faceblur.test( 4542): Known variants: atom, sandybridge, silvermont, kabylake, default
+11-21 19:34:34.677 D/nativeloader( 4542): Configuring classloader-namespace for other apk /system/framework/android.test.mock.jar. target_sdk_version=36, uses_libraries=ALL, library_path=/data/app/~~xUN3lKpE_PRqnq3NASPt7g==/com.elad.faceblur.test-tJmY0In2Dvg30pxTZcnVFA==/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/com.elad.faceblur.test
+11-21 19:34:34.722 W/d.faceblur.test( 4542): ClassLoaderContext shared library size mismatch. Expected=0, found=2 (PCL[] | PCL[]{PCL[/system/framework/android.test.base.jar*2876549756]#PCL[/system/framework/android.test.mock.jar*4109917914]})
+11-21 19:34:34.722 D/nativeloader( 4542): Configuring classloader-namespace for other apk /system/framework/android.test.runner.jar. target_sdk_version=36, uses_libraries=ALL, library_path=/data/app/~~xUN3lKpE_PRqnq3NASPt7g==/com.elad.faceblur.test-tJmY0In2Dvg30pxTZcnVFA==/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/com.elad.faceblur.test
+11-21 19:34:34.723 W/ziparchive( 4542): Unable to open '/data/app/~~xUN3lKpE_PRqnq3NASPt7g==/com.elad.faceblur.test-tJmY0In2Dvg30pxTZcnVFA==/base.dm': No such file or directory
+11-21 19:34:34.723 W/ziparchive( 4542): Unable to open '/data/app/~~xUN3lKpE_PRqnq3NASPt7g==/com.elad.faceblur.test-tJmY0In2Dvg30pxTZcnVFA==/base.dm': No such file or directory
+11-21 19:34:34.744 D/nativeloader( 4542): Configuring classloader-namespace for other apk /data/app/~~xUN3lKpE_PRqnq3NASPt7g==/com.elad.faceblur.test-tJmY0In2Dvg30pxTZcnVFA==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~xUN3lKpE_PRqnq3NASPt7g==/com.elad.faceblur.test-tJmY0In2Dvg30pxTZcnVFA==/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/com.elad.faceblur.test
+11-21 19:34:34.793 V/GraphicsEnvironment( 4542): ANGLE Developer option for 'com.elad.faceblur.test' set to: 'default'
+11-21 19:34:34.793 V/GraphicsEnvironment( 4542): ANGLE GameManagerService for com.elad.faceblur.test: false
+11-21 19:34:34.855 D/CoreBackPreview(  511): Window{ff536c5 u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@50c0f4b, mPriority=0}
+11-21 19:34:34.856 D/CoreBackPreview(  511): Window{ac16414 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback null
+11-21 19:34:34.857 W/InputManager-JNI(  511): Input channel object 'ac16414 com.elad.faceblur/androidx.activity.ComponentActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:34:34.863 I/TestRunner( 3933): finished: mainScreen(com.elad.faceblur.EditorScreenTest)
+11-21 19:34:34.864 I/TestRunner( 3933): started: editAndExport(com.elad.faceblur.EditorScreenTest)
+11-21 19:34:34.899 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=com.elad.faceblur/androidx.activity.ComponentActivity} from uid 10174
+11-21 19:34:34.905 I/ActivityTaskManager(  511): Add Task{cd32984 #10 type=standard A=10174:com.elad.faceblur} to hidden list because adding Task{a1ad940 #12 type=standard A=10174:com.elad.faceblur}
+11-21 19:34:34.922 D/CoreBackPreview(  511): Window{df275b1 u0 Splash Screen com.elad.faceblur}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@31cd617, mPriority=0}
+11-21 19:34:35.167 W/ActivityTaskManager(  511): Duplicate finish request for r=ActivityRecord{16bb175 u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity} t11 f}}
+11-21 19:34:35.197 W/InputManager-JNI(  511): Input channel object '87a8b62 Splash Screen com.elad.faceblur.test (client)' was disposed without first being removed with the input manager!
+11-21 19:34:35.223 D/CoreBackPreview(  511): Window{cfc4c34 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@2c038a3, mPriority=0}
+11-21 19:34:35.282 W/ziparchive(  511): Unable to open '/data/app/~~LPm8-n7AdiFQjoV_oSePGw==/com.elad.faceblur--tPp-NQqDEUudWhupjGy_A==/base.dm': No such file or directory
+11-21 19:34:35.283 I/ActivityTaskManager(  511): Displayed com.elad.faceblur/androidx.activity.ComponentActivity: +382ms
+11-21 19:34:35.303 D/CoreBackPreview(  511): Window{ff536c5 u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback null
+11-21 19:34:35.303 W/InputManager-JNI(  511): Input channel object 'ff536c5 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:34:35.308 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:34:35.321 D/CoreBackPreview(  511): Window{df275b1 u0 Splash Screen com.elad.faceblur EXITING}: Setting back callback null
+11-21 19:34:35.321 W/InputManager-JNI(  511): Input channel object 'df275b1 Splash Screen com.elad.faceblur (client)' was disposed without first being removed with the input manager!
+11-21 19:34:35.410 D/MediaCodec(  448): flushMediametrics
+11-21 19:34:35.544 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#979] MediaCodec discarded an unknown buffer
+11-21 19:34:35.544 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#979] MediaCodec discarded an unknown buffer
+11-21 19:34:35.550 D/MediaCodec(  448): flushMediametrics
+11-21 19:34:35.593 I/TransformerInternal( 3933): Init c3ccebd [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:34:35.594 I/ExoPlayerImpl( 3933): Init fccb2 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:34:35.719 D/MediaCodec( 3933): flushMediametrics
+11-21 19:34:35.721 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027441
+11-21 19:34:36.224 D/MediaCodec( 3933): shapeMediaFormat: deltas(1): AMessage(what = 0x00000000) = {
+11-21 19:34:36.224 D/MediaCodec( 3933):     int32_t android._encoding-quality-level = 0
+11-21 19:34:36.224 D/MediaCodec( 3933):   }
+11-21 19:34:36.224 D/MediaCodec( 3933): flushMediametrics
+11-21 19:34:36.225 W/OpenCV/4.10.0( 3933): [ WARN:40@1052.366] global net_impl_backend.cpp:248 setPreferableTarget DNN: fall back to DNN_TARGET_CPU. Only ARM v8 CPU is supported by DNN_TARGET_CPU_FP16.
+11-21 19:34:37.089 W/OpenCV/4.10.0( 3933): [ WARN:41@1053.230] global net_impl_backend.cpp:248 setPreferableTarget DNN: fall back to DNN_TARGET_CPU. Only ARM v8 CPU is supported by DNN_TARGET_CPU_FP16.
+11-21 19:34:37.329 W/OpenCV/4.10.0( 3933): [ WARN:42@1053.469] global net_impl_backend.cpp:248 setPreferableTarget DNN: fall back to DNN_TARGET_CPU. Only ARM v8 CPU is supported by DNN_TARGET_CPU_FP16.
+11-21 19:34:40.197 W/d.faceblur.test( 4542): Cleared Reference was only reachable from finalizer (only reported once)
+11-21 19:34:43.074 I/m.elad.faceblur( 3933): Background concurrent copying GC freed 46990(1670KB) AllocSpace objects, 32(30MB) LOS objects, 42% free, 32MB/56MB, paused 5.541ms,13us total 41.023ms
+11-21 19:35:40.603 I/TransformerInternal( 3933): Release c3ccebd [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect]
+11-21 19:35:40.612 I/ExoPlayerImpl( 3933): Release fccb2 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect]
+11-21 19:35:40.613 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027442
+11-21 19:35:40.613 D/MediaCodec( 3933): flushMediametrics
+11-21 19:35:40.614 D/MediaCodec( 3933): flushMediametrics
+11-21 19:35:40.625 D/MediaCodec( 3933): flushMediametrics
+11-21 19:35:40.626 D/MediaCodec( 3933): flushMediametrics
+11-21 19:35:42.330 I/ExoPlayerImpl( 3933): Init 59a06ca [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:35:42.336 W/m.elad.faceblur( 3933): Accessing hidden method Landroid/media/AudioTrack;->getLatency()I (unsupported, reflection, allowed)
+11-21 19:35:42.375 I/DMCodecAdapterFactory( 3933): Creating an asynchronous MediaCodec adapter for track type video
+11-21 19:35:42.391 I/MediaCodec( 3933): MediaCodec will operate in async mode
+11-21 19:35:42.391 D/MediaCodec( 3933): flushMediametrics
+11-21 19:35:42.391 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027443
+11-21 19:35:42.395 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:35:42.496 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:43.061 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:43.097 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:45.117 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#972] MediaCodec discarded an unknown buffer
+11-21 19:35:45.117 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#972] MediaCodec discarded an unknown buffer
+11-21 19:35:45.117 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#972] MediaCodec discarded an unknown buffer
+11-21 19:35:45.143 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:45.157 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:45.681 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#514] MediaCodec discarded an unknown buffer
+11-21 19:35:45.687 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:45.699 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:45.828 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#972] MediaCodec discarded an unknown buffer
+11-21 19:35:45.837 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:45.846 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:46.042 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#679] MediaCodec discarded an unknown buffer
+11-21 19:35:46.042 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#679] MediaCodec discarded an unknown buffer
+11-21 19:35:46.042 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#679] MediaCodec discarded an unknown buffer
+11-21 19:35:46.049 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:46.059 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:46.309 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#568] MediaCodec discarded an unknown buffer
+11-21 19:35:46.315 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:46.325 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:46.775 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#805] MediaCodec discarded an unknown buffer
+11-21 19:35:46.781 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:46.790 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:48.209 I/m.elad.faceblur( 3933): Compiler allocated 6647KB to compile kotlin.Unit com.elad.faceblur.ui.EditorScreenKt.Timeline$lambda$98$lambda$97(androidx.compose.runtime.MutableFloatState, com.elad.faceblur.ui.Thumbnails, com.elad.faceblur.edit.EditorController, androidx.compose.runtime.MutableFloatState, java.util.List, float, float, float, androidx.compose.runtime.MutableFloatState, float, float, float, float, float, android.graphics.Paint, androidx.compose.material3.ColorScheme, float, float, float, com.elad.faceblur.subs.SubtitleStyle, float, int, androidx.compose.ui.graphics.drawscope.DrawScope)
+11-21 19:35:49.224 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#39] MediaCodec discarded an unknown buffer
+11-21 19:35:49.224 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#39] MediaCodec discarded an unknown buffer
+11-21 19:35:49.234 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:49.249 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:49.864 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#683] MediaCodec discarded an unknown buffer
+11-21 19:35:49.864 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#683] MediaCodec discarded an unknown buffer
+11-21 19:35:49.872 D/MediaCodec(  448): flushMediametrics
+11-21 19:35:51.774 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:35:52.843 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#189] MediaCodec discarded an unknown buffer
+11-21 19:35:52.843 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#189] MediaCodec discarded an unknown buffer
+11-21 19:35:52.844 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:35:54.254 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:35:55.365 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:35:55.516 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:35:56.571 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#189] MediaCodec discarded an unknown buffer
+11-21 19:35:56.572 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#189] MediaCodec discarded an unknown buffer
+11-21 19:35:56.572 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#189] MediaCodec discarded an unknown buffer
+11-21 19:35:56.572 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#189] MediaCodec discarded an unknown buffer
+11-21 19:35:56.572 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:35:57.965 I/m.elad.faceblur( 3933): Background young concurrent copying GC freed 233587(7393KB) AllocSpace objects, 217(6588KB) LOS objects, 41% free, 19MB/32MB, paused 115us,24us total 231.664ms
+11-21 19:36:05.124 D/CoreBackPreview(  511): Window{a80037f u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@7f6ac11, mPriority=0}
+11-21 19:36:05.274 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:36:06.508 D/CoreBackPreview(  511): Window{a80037f u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback null
+11-21 19:36:06.516 W/InputManager-JNI(  511): Input channel object 'a80037f com.elad.faceblur/androidx.activity.ComponentActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:36:06.540 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:36:10.495 I/TransformerInternal( 3933): Init c5fb83d [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:36:10.495 I/ExoPlayerImpl( 3933): Init b123832 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:36:10.523 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:10.523 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027444
+11-21 19:36:11.646 D/MediaCodec( 3933): shapeMediaFormat: deltas(6): AMessage(what = 0x00000000) = {
+11-21 19:36:11.646 D/MediaCodec( 3933):     int32_t bitrate = 3939840
+11-21 19:36:11.646 D/MediaCodec( 3933):     int32_t android._encoding-quality-level = 0
+11-21 19:36:11.646 D/MediaCodec( 3933):     int32_t video-qp-max = 45
+11-21 19:36:11.646 D/MediaCodec( 3933):     int32_t video-qp-i-max = 45
+11-21 19:36:11.646 D/MediaCodec( 3933):     int32_t video-qp-p-max = 48
+11-21 19:36:11.646 D/MediaCodec( 3933):     int32_t video-qp-b-max = 51
+11-21 19:36:11.646 D/MediaCodec( 3933):   }
+11-21 19:36:11.646 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:31.117 I/TransformerInternal( 3933): Release c5fb83d [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:36:31.120 I/ExoPlayerImpl( 3933): Release b123832 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:36:31.120 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027445
+11-21 19:36:31.122 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:31.122 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:31.128 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:31.128 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:31.169 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity} from uid 10174
+11-21 19:36:31.195 D/CoreBackPreview(  511): Window{f24c73f u0 Splash Screen com.elad.faceblur.test}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@516c8f8, mPriority=0}
+11-21 19:36:31.201 D/CoreBackPreview(  511): Window{c09b436 u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@8963a0d, mPriority=0}
+11-21 19:36:31.375 I/ExoPlayerImpl( 3933): Release 59a06ca [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:36:31.376 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:36:31.377 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027446
+11-21 19:36:31.469 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#189] MediaCodec discarded an unknown buffer
+11-21 19:36:31.470 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#189] MediaCodec discarded an unknown buffer
+11-21 19:36:31.470 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#189] MediaCodec discarded an unknown buffer
+11-21 19:36:31.470 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#189] MediaCodec discarded an unknown buffer
+11-21 19:36:31.486 W/InputManager-JNI(  511): Input channel object 'f24c73f Splash Screen com.elad.faceblur.test (client)' was disposed without first being removed with the input manager!
+11-21 19:36:31.493 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:31.494 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:31.541 D/CoreBackPreview(  511): Window{cfc4c34 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback null
+11-21 19:36:31.545 D/CoreBackPreview(  511): Window{c09b436 u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback null
+11-21 19:36:31.545 W/InputManager-JNI(  511): Input channel object 'c09b436 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:36:31.552 W/InputManager-JNI(  511): Input channel object 'cfc4c34 com.elad.faceblur/androidx.activity.ComponentActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:36:31.563 I/TestRunner( 3933): finished: editAndExport(com.elad.faceblur.EditorScreenTest)
+11-21 19:36:31.564 I/TestRunner( 3933): started: subtitlesOnly(com.elad.faceblur.SubtitlesTest)
+11-21 19:36:31.575 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=com.elad.faceblur/androidx.activity.ComponentActivity} from uid 10174
+11-21 19:36:31.586 D/CoreBackPreview(  511): Window{42986f6 u0 Splash Screen com.elad.faceblur}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@7c06d64, mPriority=0}
+11-21 19:36:31.725 D/CoreBackPreview(  511): Window{4df1c82 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@a9af1ef, mPriority=0}
+11-21 19:36:31.933 W/ziparchive(  511): Unable to open '/data/app/~~LPm8-n7AdiFQjoV_oSePGw==/com.elad.faceblur--tPp-NQqDEUudWhupjGy_A==/base.dm': No such file or directory
+11-21 19:36:31.936 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:36:31.938 I/ActivityTaskManager(  511): Displayed com.elad.faceblur/androidx.activity.ComponentActivity: +352ms
+11-21 19:36:31.951 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:31.964 D/CoreBackPreview(  511): Window{42986f6 u0 Splash Screen com.elad.faceblur}: Setting back callback null
+11-21 19:36:31.964 W/InputManager-JNI(  511): Input channel object '42986f6 Splash Screen com.elad.faceblur (client)' was disposed without first being removed with the input manager!
+11-21 19:36:31.975 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#158] MediaCodec discarded an unknown buffer
+11-21 19:36:31.975 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#158] MediaCodec discarded an unknown buffer
+11-21 19:36:32.012 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:32.159 I/ExoPlayerImpl( 3933): Init a306f6f [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:36:32.251 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:32.311 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:32.322 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:32.323 I/DMCodecAdapterFactory( 3933): Creating an asynchronous MediaCodec adapter for track type video
+11-21 19:36:32.359 I/MediaCodec( 3933): MediaCodec will operate in async mode
+11-21 19:36:32.359 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:32.359 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027447
+11-21 19:36:32.368 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:36:32.373 I/DMCodecAdapterFactory( 3933): Creating an asynchronous MediaCodec adapter for track type audio
+11-21 19:36:32.390 I/MediaCodec( 3933): MediaCodec will operate in async mode
+11-21 19:36:32.390 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:32.392 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:36:33.119 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:33.156 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:33.304 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#740] MediaCodec discarded an unknown buffer
+11-21 19:36:33.306 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:33.329 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:33.503 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#742] MediaCodec discarded an unknown buffer
+11-21 19:36:33.503 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#742] MediaCodec discarded an unknown buffer
+11-21 19:36:33.503 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#742] MediaCodec discarded an unknown buffer
+11-21 19:36:33.505 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:33.543 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:33.566 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#620] MediaCodec discarded an unknown buffer
+11-21 19:36:33.566 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#620] MediaCodec discarded an unknown buffer
+11-21 19:36:33.567 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:33.576 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:33.688 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#860] MediaCodec discarded an unknown buffer
+11-21 19:36:33.688 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#860] MediaCodec discarded an unknown buffer
+11-21 19:36:33.688 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#860] MediaCodec discarded an unknown buffer
+11-21 19:36:33.688 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#860] MediaCodec discarded an unknown buffer
+11-21 19:36:33.688 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#860] MediaCodec discarded an unknown buffer
+11-21 19:36:33.688 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#860] MediaCodec discarded an unknown buffer
+11-21 19:36:33.688 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#860] MediaCodec discarded an unknown buffer
+11-21 19:36:33.689 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#860] MediaCodec discarded an unknown buffer
+11-21 19:36:33.689 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#860] MediaCodec discarded an unknown buffer
+11-21 19:36:33.690 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:33.719 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:33.764 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#803] MediaCodec discarded an unknown buffer
+11-21 19:36:33.764 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#803] MediaCodec discarded an unknown buffer
+11-21 19:36:33.764 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#803] MediaCodec discarded an unknown buffer
+11-21 19:36:33.765 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#803] MediaCodec discarded an unknown buffer
+11-21 19:36:33.765 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#803] MediaCodec discarded an unknown buffer
+11-21 19:36:33.765 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#803] MediaCodec discarded an unknown buffer
+11-21 19:36:33.765 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#803] MediaCodec discarded an unknown buffer
+11-21 19:36:33.765 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#803] MediaCodec discarded an unknown buffer
+11-21 19:36:33.765 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#803] MediaCodec discarded an unknown buffer
+11-21 19:36:33.766 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:33.774 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:33.838 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#803] MediaCodec discarded an unknown buffer
+11-21 19:36:33.840 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:33.854 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:34.058 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:36:34.058 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:36:34.058 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:36:34.058 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:36:34.058 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:36:34.060 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:34.068 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:34.201 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#268] MediaCodec discarded an unknown buffer
+11-21 19:36:34.202 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:34.210 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:34.339 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#972] MediaCodec discarded an unknown buffer
+11-21 19:36:34.339 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#972] MediaCodec discarded an unknown buffer
+11-21 19:36:34.339 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#972] MediaCodec discarded an unknown buffer
+11-21 19:36:34.339 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#972] MediaCodec discarded an unknown buffer
+11-21 19:36:34.339 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#972] MediaCodec discarded an unknown buffer
+11-21 19:36:34.340 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:34.351 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:34.467 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#796] MediaCodec discarded an unknown buffer
+11-21 19:36:34.467 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#796] MediaCodec discarded an unknown buffer
+11-21 19:36:34.469 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:34.477 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:34.636 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#274] MediaCodec discarded an unknown buffer
+11-21 19:36:34.636 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#274] MediaCodec discarded an unknown buffer
+11-21 19:36:34.636 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#274] MediaCodec discarded an unknown buffer
+11-21 19:36:34.638 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:34.646 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:34.798 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:36:34.800 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:36:34.881 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#855] MediaCodec discarded an unknown buffer
+11-21 19:36:34.881 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#855] MediaCodec discarded an unknown buffer
+11-21 19:36:34.881 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#855] MediaCodec discarded an unknown buffer
+11-21 19:36:34.881 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#855] MediaCodec discarded an unknown buffer
+11-21 19:36:34.884 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:34.910 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:35.257 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#565] MediaCodec discarded an unknown buffer
+11-21 19:36:35.257 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#565] MediaCodec discarded an unknown buffer
+11-21 19:36:35.258 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#565] MediaCodec discarded an unknown buffer
+11-21 19:36:35.258 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#565] MediaCodec discarded an unknown buffer
+11-21 19:36:35.258 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#565] MediaCodec discarded an unknown buffer
+11-21 19:36:35.258 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#565] MediaCodec discarded an unknown buffer
+11-21 19:36:35.258 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#565] MediaCodec discarded an unknown buffer
+11-21 19:36:35.258 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#565] MediaCodec discarded an unknown buffer
+11-21 19:36:35.258 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#565] MediaCodec discarded an unknown buffer
+11-21 19:36:35.261 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:35.271 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:35.491 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#218] MediaCodec discarded an unknown buffer
+11-21 19:36:35.491 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#218] MediaCodec discarded an unknown buffer
+11-21 19:36:35.493 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:35.501 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:35.720 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:36:35.720 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:36:35.720 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:36:35.720 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:36:35.720 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:36:35.721 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:35.730 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:35.964 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#745] MediaCodec discarded an unknown buffer
+11-21 19:36:35.966 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:35.975 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:36.126 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:36.135 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:36.223 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#571] MediaCodec discarded an unknown buffer
+11-21 19:36:36.226 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:36.234 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:36.285 I/TransformerInternal( 3933): Init 5f88a9d [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:36:36.285 I/ExoPlayerImpl( 3933): Init 77d0b12 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:36:36.316 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:36.316 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027448
+11-21 19:36:36.788 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#268] MediaCodec discarded an unknown buffer
+11-21 19:36:36.788 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#268] MediaCodec discarded an unknown buffer
+11-21 19:36:36.788 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#268] MediaCodec discarded an unknown buffer
+11-21 19:36:36.824 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#268] MediaCodec discarded an unknown buffer
+11-21 19:36:36.824 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#268] MediaCodec discarded an unknown buffer
+11-21 19:36:36.825 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#268] MediaCodec discarded an unknown buffer
+11-21 19:36:36.825 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#268] MediaCodec discarded an unknown buffer
+11-21 19:36:36.870 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:36.913 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:37.238 D/MediaCodec( 3933): shapeMediaFormat: deltas(1): AMessage(what = 0x00000000) = {
+11-21 19:36:37.238 D/MediaCodec( 3933):     int32_t android._encoding-quality-level = 0
+11-21 19:36:37.238 D/MediaCodec( 3933):   }
+11-21 19:36:37.238 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:37.539 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:37.568 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:38.206 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:38.232 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:38.941 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#924] MediaCodec discarded an unknown buffer
+11-21 19:36:38.952 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:39.713 W/m.elad.faceblur( 3933): Cleared Reference was only reachable from finalizer (only reported once)
+11-21 19:36:39.720 I/m.elad.faceblur( 3933): Background concurrent copying GC freed 201641(7631KB) AllocSpace objects, 33(2956KB) LOS objects, 49% free, 12MB/24MB, paused 40us,16us total 113.943ms
+11-21 19:36:41.659 I/TransformerInternal( 3933): Release 5f88a9d [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:36:41.663 I/ExoPlayerImpl( 3933): Release 77d0b12 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:36:41.663 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027449
+11-21 19:36:41.664 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:41.664 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:41.670 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:41.673 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:41.737 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:41.754 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#976] MediaCodec discarded an unknown buffer
+11-21 19:36:41.754 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#976] MediaCodec discarded an unknown buffer
+11-21 19:36:41.754 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#976] MediaCodec discarded an unknown buffer
+11-21 19:36:41.754 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#976] MediaCodec discarded an unknown buffer
+11-21 19:36:41.755 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:41.780 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:41.850 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#627] MediaCodec discarded an unknown buffer
+11-21 19:36:41.850 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#627] MediaCodec discarded an unknown buffer
+11-21 19:36:41.850 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#627] MediaCodec discarded an unknown buffer
+11-21 19:36:41.850 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#627] MediaCodec discarded an unknown buffer
+11-21 19:36:41.851 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#627] MediaCodec discarded an unknown buffer
+11-21 19:36:41.852 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:41.904 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity} from uid 10174
+11-21 19:36:41.920 D/CoreBackPreview(  511): Window{9ddcd59 u0 Splash Screen com.elad.faceblur.test}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@1aed9ff, mPriority=0}
+11-21 19:36:41.932 D/CoreBackPreview(  511): Window{56ace91 u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@6b009f7, mPriority=0}
+11-21 19:36:42.075 I/ExoPlayerImpl( 3933): Release a306f6f [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:36:42.089 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:36:42.091 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:36:42.092 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027450
+11-21 19:36:42.146 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#220] MediaCodec discarded an unknown buffer
+11-21 19:36:42.146 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#220] MediaCodec discarded an unknown buffer
+11-21 19:36:42.146 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#220] MediaCodec discarded an unknown buffer
+11-21 19:36:42.146 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#220] MediaCodec discarded an unknown buffer
+11-21 19:36:42.147 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#398] MediaCodec discarded an unknown buffer
+11-21 19:36:42.149 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#398] MediaCodec discarded an unknown buffer
+11-21 19:36:42.149 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#398] MediaCodec discarded an unknown buffer
+11-21 19:36:42.149 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#398] MediaCodec discarded an unknown buffer
+11-21 19:36:42.150 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:42.154 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:42.155 W/InputManager-JNI(  511): Input channel object '9ddcd59 Splash Screen com.elad.faceblur.test (client)' was disposed without first being removed with the input manager!
+11-21 19:36:42.172 D/CoreBackPreview(  511): Window{56ace91 u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback null
+11-21 19:36:42.181 W/InputManager-JNI(  511): Input channel object '56ace91 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:36:42.186 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:42.186 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:42.264 D/CoreBackPreview(  511): Window{4df1c82 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback null
+11-21 19:36:42.292 W/InputManager-JNI(  511): Input channel object '4df1c82 com.elad.faceblur/androidx.activity.ComponentActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:36:42.307 I/TestRunner( 3933): finished: subtitlesOnly(com.elad.faceblur.SubtitlesTest)
+11-21 19:36:42.313 I/TestRunner( 3933): started: styleGallery(com.elad.faceblur.SubtitlesTest)
+11-21 19:36:42.327 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=com.elad.faceblur/androidx.activity.ComponentActivity} from uid 10174
+11-21 19:36:42.340 D/CoreBackPreview(  511): Window{cd0d6db u0 Splash Screen com.elad.faceblur}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@359f451, mPriority=0}
+11-21 19:36:42.384 D/CoreBackPreview(  511): Window{8c19642 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@96a6b90, mPriority=0}
+11-21 19:36:42.636 W/ziparchive(  511): Unable to open '/data/app/~~LPm8-n7AdiFQjoV_oSePGw==/com.elad.faceblur--tPp-NQqDEUudWhupjGy_A==/base.dm': No such file or directory
+11-21 19:36:42.637 I/ActivityTaskManager(  511): Displayed com.elad.faceblur/androidx.activity.ComponentActivity: +306ms
+11-21 19:36:42.672 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:36:42.676 D/CoreBackPreview(  511): Window{cd0d6db u0 Splash Screen com.elad.faceblur EXITING}: Setting back callback null
+11-21 19:36:42.676 W/InputManager-JNI(  511): Input channel object 'cd0d6db Splash Screen com.elad.faceblur (client)' was disposed without first being removed with the input manager!
+11-21 19:36:43.527 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity} from uid 10174
+11-21 19:36:43.532 D/CoreBackPreview(  511): Window{43e729e u0 Splash Screen com.elad.faceblur.test}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@a7d3995, mPriority=0}
+11-21 19:36:43.539 D/CoreBackPreview(  511): Window{fa3d1e4 u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@4985502, mPriority=0}
+11-21 19:36:43.657 D/CoreBackPreview(  511): Window{8c19642 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback null
+11-21 19:36:43.658 W/InputManager-JNI(  511): Input channel object '8c19642 com.elad.faceblur/androidx.activity.ComponentActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:36:43.660 I/TestRunner( 3933): finished: styleGallery(com.elad.faceblur.SubtitlesTest)
+11-21 19:36:43.661 I/TestRunner( 3933): started: transcribeEditAndBurn(com.elad.faceblur.SubtitlesTest)
+11-21 19:36:43.695 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=com.elad.faceblur/androidx.activity.ComponentActivity} from uid 10174
+11-21 19:36:43.704 W/ActivityTaskManager(  511): Duplicate finish request for r=ActivityRecord{7eb720 u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity} t17 f}}
+11-21 19:36:43.723 D/CoreBackPreview(  511): Window{33bfcae u0 Splash Screen com.elad.faceblur}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@f9365dc, mPriority=0}
+11-21 19:36:43.838 D/CoreBackPreview(  511): Window{9a6bd9d u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@eaa4de3, mPriority=0}
+11-21 19:36:43.867 W/InputManager-JNI(  511): Input channel object '43e729e Splash Screen com.elad.faceblur.test (client)' was disposed without first being removed with the input manager!
+11-21 19:36:44.003 W/ziparchive(  511): Unable to open '/data/app/~~LPm8-n7AdiFQjoV_oSePGw==/com.elad.faceblur--tPp-NQqDEUudWhupjGy_A==/base.dm': No such file or directory
+11-21 19:36:44.004 I/ActivityTaskManager(  511): Displayed com.elad.faceblur/androidx.activity.ComponentActivity: +312ms
+11-21 19:36:44.020 D/CoreBackPreview(  511): Window{fa3d1e4 u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback null
+11-21 19:36:44.021 D/CoreBackPreview(  511): Window{33bfcae u0 Splash Screen com.elad.faceblur}: Setting back callback null
+11-21 19:36:44.024 W/InputManager-JNI(  511): Input channel object 'fa3d1e4 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:36:44.025 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:36:44.038 W/InputManager-JNI(  511): Input channel object '33bfcae Splash Screen com.elad.faceblur (client)' was disposed without first being removed with the input manager!
+11-21 19:36:44.591 D/MediaCodecList( 3933): codecHandlesFormat: no format, so no extra checks
+11-21 19:36:44.598 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:44.841 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#554] MediaCodec discarded an unknown buffer
+11-21 19:36:44.843 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:44.843 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:44.895 D/MediaCodecList( 3933): codecHandlesFormat: no format, so no extra checks
+11-21 19:36:44.896 I/m.elad.faceblur( 3933): Compiler allocated 4177KB to compile void com.elad.faceblur.SubtitlesTest.transcribeEditAndBurn()
+11-21 19:36:44.901 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:45.157 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#673] MediaCodec discarded an unknown buffer
+11-21 19:36:45.157 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#673] MediaCodec discarded an unknown buffer
+11-21 19:36:45.158 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:45.158 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:45.254 I/FaceBlurWhisper( 3933): model loaded: WHISPER : VITISAI = 0 | COREML = 0 | OPENVINO = 0 | CPU : SSE3 = 1 | SSSE3 = 1 | REPACK = 1 | 
+11-21 19:36:48.575 I/MLKitRemoteConfigSaver( 3933): remote config settings file not yet present: /data/user/0/com.elad.faceblur/no_backup/com.google.mlkit.RemoteConfig
+11-21 19:36:48.575 I/MLKitInstallationIdSaver( 3933): Installation id file not yet present: /data/user/0/com.elad.faceblur/no_backup/com.google.mlkit.InstallationId
+11-21 19:36:48.625 W/m.elad.faceblur( 3933): Accessing hidden method Lcom/android/org/conscrypt/ConscryptEngineSocket;->setUseSessionTickets(Z)V (max-target-q,core-platform-api, reflection, denied)
+11-21 19:36:48.625 W/m.elad.faceblur( 3933): Accessing hidden method Lcom/android/org/conscrypt/OpenSSLSocketImpl;->setUseSessionTickets(Z)V (max-target-q,core-platform-api, reflection, denied)
+11-21 19:36:48.625 W/m.elad.faceblur( 3933): Accessing hidden method Lcom/android/org/conscrypt/AbstractConscryptSocket;->setUseSessionTickets(Z)V (max-target-q, reflection, denied)
+11-21 19:36:48.625 W/m.elad.faceblur( 3933): Accessing hidden method Lcom/android/org/conscrypt/ConscryptEngineSocket;->setHostname(Ljava/lang/String;)V (max-target-q,core-platform-api, reflection, denied)
+11-21 19:36:48.625 W/m.elad.faceblur( 3933): Accessing hidden method Lcom/android/org/conscrypt/OpenSSLSocketImpl;->setHostname(Ljava/lang/String;)V (max-target-q,core-platform-api, reflection, denied)
+11-21 19:36:48.625 W/m.elad.faceblur( 3933): Accessing hidden method Lcom/android/org/conscrypt/AbstractConscryptSocket;->setHostname(Ljava/lang/String;)V (max-target-q, reflection, denied)
+11-21 19:36:48.625 W/m.elad.faceblur( 3933): Accessing hidden method Lcom/android/org/conscrypt/OpenSSLSocketImpl;->setAlpnProtocols([B)V (max-target-q,core-platform-api, reflection, denied)
+11-21 19:36:48.625 W/m.elad.faceblur( 3933): Accessing hidden method Lcom/android/org/conscrypt/AbstractConscryptSocket;->setAlpnProtocols([B)V (max-target-q, reflection, denied)
+11-21 19:36:48.710 W/m.elad.faceblur( 3933): Accessing hidden method Lcom/android/org/conscrypt/OpenSSLSocketImpl;->getAlpnSelectedProtocol()[B (max-target-q,core-platform-api, reflection, denied)
+11-21 19:36:48.710 W/m.elad.faceblur( 3933): Accessing hidden method Lcom/android/org/conscrypt/AbstractConscryptSocket;->getAlpnSelectedProtocol()[B (max-target-q, reflection, denied)
+11-21 19:36:48.869 I/MLKitInstallationIdSaver( 3933): Creating installation id: /data/user/0/com.elad.faceblur/no_backup/com.google.mlkit.InstallationId
+11-21 19:36:48.871 D/MLKitInstallationIdSaver( 3933): Succeeded writing installation id: /data/user/0/com.elad.faceblur/no_backup/com.google.mlkit.InstallationId:
+11-21 19:36:48.999 I/MLKitRemoteConfigSaver( 3933): Creating remote config settings: /data/user/0/com.elad.faceblur/no_backup/com.google.mlkit.RemoteConfig
+11-21 19:36:49.001 D/MLKitRemoteConfigSaver( 3933): Succeeded writing remote config settings: /data/user/0/com.elad.faceblur/no_backup/com.google.mlkit.RemoteConfig:
+11-21 19:36:51.489 W/ModernMediaScanner( 1677): Failed to visit /data/data/com.android.providers.downloads/cache/en_iw.zip: java.nio.file.NoSuchFileException: /data/data/com.android.providers.downloads/cache/en_iw.zip
+11-21 19:36:51.512 I/native  ( 3933): I0000 00:00:1795289811.512632   13202 package.cc:81] Load: No checksum: /data/user/0/com.elad.faceblur/no_backup/com.google.mlkit.translate.models/en_iw/merged_dict_en_iw_25_both.bin
+11-21 19:36:51.518 I/native  ( 3933): I0000 00:00:1795289811.518096   13202 package.cc:81] Load: No checksum: /data/user/0/com.elad.faceblur/no_backup/com.google.mlkit.translate.models/en_iw/merged_dict_en_iw_25_from_en.bin
+11-21 19:36:51.518 I/native  ( 3933): I0000 00:00:1795289811.518149   13202 package.cc:81] Load: No checksum: /data/user/0/com.elad.faceblur/no_backup/com.google.mlkit.translate.models/en_iw/merged_dict_en_iw_25_update.bin
+11-21 19:36:51.613 W/pool-35-thread-( 3933): type=1400 audit(0.0:58): avc: denied { read } for name="version" dev="proc" ino=4026532035 scontext=u:r:untrusted_app:s0:c174,c256,c512,c768 tcontext=u:object_r:proc_version:s0 tclass=file permissive=0 app=com.elad.faceblur
+11-21 19:36:51.714 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:51.724 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#505] MediaCodec discarded an unknown buffer
+11-21 19:36:51.724 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#505] MediaCodec discarded an unknown buffer
+11-21 19:36:51.726 D/MediaCodec(  448): flushMediametrics
+11-21 19:36:51.745 I/TransformerInternal( 3933): Init 1451113 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:36:51.745 I/ExoPlayerImpl( 3933): Init d4e3f50 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:36:51.777 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:51.777 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027451
+11-21 19:36:52.235 D/MediaCodec( 3933): shapeMediaFormat: deltas(1): AMessage(what = 0x00000000) = {
+11-21 19:36:52.235 D/MediaCodec( 3933):     int32_t android._encoding-quality-level = 0
+11-21 19:36:52.235 D/MediaCodec( 3933):   }
+11-21 19:36:52.235 D/MediaCodec( 3933): flushMediametrics
+11-21 19:36:52.377 W/OpenCV/4.10.0( 3933): [ WARN:43@1188.517] global net_impl_backend.cpp:248 setPreferableTarget DNN: fall back to DNN_TARGET_CPU. Only ARM v8 CPU is supported by DNN_TARGET_CPU_FP16.
+11-21 19:36:52.790 W/OpenCV/4.10.0( 3933): [ WARN:44@1188.930] global net_impl_backend.cpp:248 setPreferableTarget DNN: fall back to DNN_TARGET_CPU. Only ARM v8 CPU is supported by DNN_TARGET_CPU_FP16.
+11-21 19:36:52.929 W/OpenCV/4.10.0( 3933): [ WARN:45@1189.070] global net_impl_backend.cpp:248 setPreferableTarget DNN: fall back to DNN_TARGET_CPU. Only ARM v8 CPU is supported by DNN_TARGET_CPU_FP16.
+11-21 19:37:58.694 I/TransformerInternal( 3933): Release 1451113 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:37:58.754 I/ExoPlayerImpl( 3933): Release d4e3f50 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:37:58.754 D/MediaCodec( 3933): flushMediametrics
+11-21 19:37:58.754 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027452
+11-21 19:37:58.754 D/MediaCodec( 3933): flushMediametrics
+11-21 19:37:58.773 D/MediaCodec( 3933): flushMediametrics
+11-21 19:37:58.773 D/MediaCodec( 3933): flushMediametrics
+11-21 19:37:59.212 I/ExoPlayerImpl( 3933): Init 4613f4b [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:37:59.235 I/DMCodecAdapterFactory( 3933): Creating an asynchronous MediaCodec adapter for track type video
+11-21 19:37:59.243 I/MediaCodec( 3933): MediaCodec will operate in async mode
+11-21 19:37:59.243 D/MediaCodec( 3933): flushMediametrics
+11-21 19:37:59.243 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027453
+11-21 19:37:59.247 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:37:59.251 I/DMCodecAdapterFactory( 3933): Creating an asynchronous MediaCodec adapter for track type audio
+11-21 19:37:59.254 D/MediaCodec(  448): flushMediametrics
+11-21 19:37:59.280 I/MediaCodec( 3933): MediaCodec will operate in async mode
+11-21 19:37:59.281 D/MediaCodec( 3933): flushMediametrics
+11-21 19:37:59.284 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:37:59.290 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#982] MediaCodec discarded an unknown buffer
+11-21 19:37:59.337 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#982] MediaCodec discarded an unknown buffer
+11-21 19:37:59.339 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#982] MediaCodec discarded an unknown buffer
+11-21 19:37:59.340 D/MediaCodec(  448): flushMediametrics
+11-21 19:37:59.364 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:00.183 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#740] MediaCodec discarded an unknown buffer
+11-21 19:38:00.183 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#740] MediaCodec discarded an unknown buffer
+11-21 19:38:00.183 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#740] MediaCodec discarded an unknown buffer
+11-21 19:38:00.200 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:00.214 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:00.456 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#689] MediaCodec discarded an unknown buffer
+11-21 19:38:00.456 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#689] MediaCodec discarded an unknown buffer
+11-21 19:38:00.456 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#689] MediaCodec discarded an unknown buffer
+11-21 19:38:00.457 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:00.466 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:00.651 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#924] MediaCodec discarded an unknown buffer
+11-21 19:38:00.651 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#924] MediaCodec discarded an unknown buffer
+11-21 19:38:00.653 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:00.661 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:00.708 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:00.708 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:00.708 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:00.708 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:00.710 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:00.719 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:00.821 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:00.847 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:00.909 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#744] MediaCodec discarded an unknown buffer
+11-21 19:38:00.910 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:00.918 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:00.988 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#679] MediaCodec discarded an unknown buffer
+11-21 19:38:00.989 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#679] MediaCodec discarded an unknown buffer
+11-21 19:38:00.989 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#679] MediaCodec discarded an unknown buffer
+11-21 19:38:00.991 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:01.000 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:01.069 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#679] MediaCodec discarded an unknown buffer
+11-21 19:38:01.069 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#679] MediaCodec discarded an unknown buffer
+11-21 19:38:01.069 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#679] MediaCodec discarded an unknown buffer
+11-21 19:38:01.070 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:01.079 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:01.190 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#507] MediaCodec discarded an unknown buffer
+11-21 19:38:01.191 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:01.199 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:01.316 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#855] MediaCodec discarded an unknown buffer
+11-21 19:38:01.316 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#855] MediaCodec discarded an unknown buffer
+11-21 19:38:01.316 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#855] MediaCodec discarded an unknown buffer
+11-21 19:38:01.318 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:01.325 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:01.465 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#453] MediaCodec discarded an unknown buffer
+11-21 19:38:01.467 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:01.474 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:01.622 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:01.623 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:01.623 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:01.625 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:01.633 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:01.815 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#44] MediaCodec discarded an unknown buffer
+11-21 19:38:01.815 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#44] MediaCodec discarded an unknown buffer
+11-21 19:38:01.815 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#44] MediaCodec discarded an unknown buffer
+11-21 19:38:01.817 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:01.824 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:01.916 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:01.919 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:01.922 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#975] MediaCodec discarded an unknown buffer
+11-21 19:38:01.922 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#975] MediaCodec discarded an unknown buffer
+11-21 19:38:01.922 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#975] MediaCodec discarded an unknown buffer
+11-21 19:38:01.922 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:01.924 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:02.223 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:02.223 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:02.223 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:02.223 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:02.224 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:02.224 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:02.224 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:02.225 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:02.225 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:02.225 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:02.226 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:02.226 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:02.226 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:02.226 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:02.230 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:02.244 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:02.833 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:02.835 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:03.065 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#44] MediaCodec discarded an unknown buffer
+11-21 19:38:03.066 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#44] MediaCodec discarded an unknown buffer
+11-21 19:38:03.067 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#44] MediaCodec discarded an unknown buffer
+11-21 19:38:03.072 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:03.097 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:03.580 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:03.580 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:03.580 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:03.580 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:03.580 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#210] MediaCodec discarded an unknown buffer
+11-21 19:38:03.581 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:03.590 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:03.733 D/CoreBackPreview(  511): Window{222c32a u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@c5a3664, mPriority=0}
+11-21 19:38:03.903 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:38:04.236 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#156] MediaCodec discarded an unknown buffer
+11-21 19:38:04.236 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#156] MediaCodec discarded an unknown buffer
+11-21 19:38:04.238 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:04.265 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:04.325 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#569] MediaCodec discarded an unknown buffer
+11-21 19:38:04.325 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#569] MediaCodec discarded an unknown buffer
+11-21 19:38:04.327 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:04.334 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:04.424 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#214] MediaCodec discarded an unknown buffer
+11-21 19:38:04.424 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#214] MediaCodec discarded an unknown buffer
+11-21 19:38:04.424 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#214] MediaCodec discarded an unknown buffer
+11-21 19:38:04.426 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:04.434 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:04.532 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#215] MediaCodec discarded an unknown buffer
+11-21 19:38:04.532 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#215] MediaCodec discarded an unknown buffer
+11-21 19:38:04.533 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:04.541 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:04.690 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#100] MediaCodec discarded an unknown buffer
+11-21 19:38:04.690 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#100] MediaCodec discarded an unknown buffer
+11-21 19:38:04.690 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#100] MediaCodec discarded an unknown buffer
+11-21 19:38:04.690 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#100] MediaCodec discarded an unknown buffer
+11-21 19:38:04.690 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#100] MediaCodec discarded an unknown buffer
+11-21 19:38:04.691 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:04.700 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:04.835 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#972] MediaCodec discarded an unknown buffer
+11-21 19:38:04.837 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:04.845 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:04.975 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#681] MediaCodec discarded an unknown buffer
+11-21 19:38:04.976 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:05.378 D/CoreBackPreview(  511): Window{222c32a u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback null
+11-21 19:38:05.383 W/InputManager-JNI(  511): Input channel object '222c32a com.elad.faceblur/androidx.activity.ComponentActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:38:05.414 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:38:05.590 D/CoreBackPreview(  511): Window{38d1060 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@964a9ea, mPriority=0}
+11-21 19:38:05.704 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:38:07.028 D/CoreBackPreview(  511): Window{38d1060 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback null
+11-21 19:38:07.033 W/InputManager-JNI(  511): Input channel object '38d1060 com.elad.faceblur/androidx.activity.ComponentActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:38:07.071 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:38:09.552 D/MediaCodecList( 3933): codecHandlesFormat: no format, so no extra checks
+11-21 19:38:09.558 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:09.834 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#743] MediaCodec discarded an unknown buffer
+11-21 19:38:09.835 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:09.835 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:09.911 I/FaceBlurWhisper( 3933): model loaded: WHISPER : VITISAI = 0 | COREML = 0 | OPENVINO = 0 | CPU : SSE3 = 1 | SSSE3 = 1 | REPACK = 1 | 
+11-21 19:38:16.864 I/native  ( 3933): I1121 19:38:16.864152   19277 package.cc:81] Load: No checksum: /data/user/0/com.elad.faceblur/no_backup/com.google.mlkit.translate.models/en_iw/merged_dict_en_iw_25_both.bin
+11-21 19:38:16.872 I/native  ( 3933): I1121 19:38:16.872537   19277 package.cc:81] Load: No checksum: /data/user/0/com.elad.faceblur/no_backup/com.google.mlkit.translate.models/en_iw/merged_dict_en_iw_25_from_en.bin
+11-21 19:38:16.872 I/native  ( 3933): I1121 19:38:16.872612   19277 package.cc:81] Load: No checksum: /data/user/0/com.elad.faceblur/no_backup/com.google.mlkit.translate.models/en_iw/merged_dict_en_iw_25_update.bin
+11-21 19:38:17.148 I/TransformerInternal( 3933): Init 81a0f31 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:38:17.149 I/ExoPlayerImpl( 3933): Init 49f9616 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:38:17.179 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:17.179 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027454
+11-21 19:38:17.814 D/MediaCodec( 3933): shapeMediaFormat: deltas(1): AMessage(what = 0x00000000) = {
+11-21 19:38:17.814 D/MediaCodec( 3933):     int32_t android._encoding-quality-level = 0
+11-21 19:38:17.814 D/MediaCodec( 3933):   }
+11-21 19:38:17.814 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:25.975 I/TransformerInternal( 3933): Release 81a0f31 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:38:25.978 I/ExoPlayerImpl( 3933): Release 49f9616 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:38:25.978 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027455
+11-21 19:38:25.979 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:25.979 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:25.982 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#577] MediaCodec discarded an unknown buffer
+11-21 19:38:25.985 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:25.985 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:26.085 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:26.199 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#392] MediaCodec discarded an unknown buffer
+11-21 19:38:26.200 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#392] MediaCodec discarded an unknown buffer
+11-21 19:38:26.200 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#392] MediaCodec discarded an unknown buffer
+11-21 19:38:26.201 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:26.216 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:26.249 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#865] MediaCodec discarded an unknown buffer
+11-21 19:38:26.249 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#865] MediaCodec discarded an unknown buffer
+11-21 19:38:26.249 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#865] MediaCodec discarded an unknown buffer
+11-21 19:38:26.251 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:26.323 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity} from uid 10174
+11-21 19:38:26.337 D/CoreBackPreview(  511): Window{62b9a74 u0 Splash Screen com.elad.faceblur.test}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@3e98be3, mPriority=0}
+11-21 19:38:26.370 D/CoreBackPreview(  511): Window{196b76a u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@a1714f8, mPriority=0}
+11-21 19:38:26.453 D/CoreBackPreview(  511): Window{196b76a u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback null
+11-21 19:38:26.454 W/InputManager-JNI(  511): Input channel object '196b76a com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:38:26.465 D/CoreBackPreview(  511): Window{62b9a74 u0 Splash Screen com.elad.faceblur.test EXITING}: Setting back callback null
+11-21 19:38:26.465 W/InputManager-JNI(  511): Input channel object '62b9a74 Splash Screen com.elad.faceblur.test (client)' was disposed without first being removed with the input manager!
+11-21 19:38:26.627 I/ExoPlayerImpl( 3933): Release 4613f4b [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:38:26.632 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:26.639 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:26.640 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027456
+11-21 19:38:26.678 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#975] MediaCodec discarded an unknown buffer
+11-21 19:38:26.678 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#975] MediaCodec discarded an unknown buffer
+11-21 19:38:26.678 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#975] MediaCodec discarded an unknown buffer
+11-21 19:38:26.678 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#975] MediaCodec discarded an unknown buffer
+11-21 19:38:26.679 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#232] MediaCodec discarded an unknown buffer
+11-21 19:38:26.679 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#232] MediaCodec discarded an unknown buffer
+11-21 19:38:26.679 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#232] MediaCodec discarded an unknown buffer
+11-21 19:38:26.679 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#232] MediaCodec discarded an unknown buffer
+11-21 19:38:26.689 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:26.692 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:26.705 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:26.706 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:26.710 D/CoreBackPreview(  511): Window{9a6bd9d u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback null
+11-21 19:38:26.713 W/InputManager-JNI(  511): Input channel object '9a6bd9d com.elad.faceblur/androidx.activity.ComponentActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:38:26.717 I/TestRunner( 3933): finished: transcribeEditAndBurn(com.elad.faceblur.SubtitlesTest)
+11-21 19:38:26.720 I/TestRunner( 3933): started: speakers(com.elad.faceblur.ProjectsVoiceTest)
+11-21 19:38:26.727 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=com.elad.faceblur/androidx.activity.ComponentActivity} from uid 10174
+11-21 19:38:26.737 D/CoreBackPreview(  511): Window{12a949c u0 Splash Screen com.elad.faceblur}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@e70e27a, mPriority=0}
+11-21 19:38:26.757 D/CoreBackPreview(  511): Window{8b7e021 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@afcde07, mPriority=0}
+11-21 19:38:26.913 W/ziparchive(  511): Unable to open '/data/app/~~LPm8-n7AdiFQjoV_oSePGw==/com.elad.faceblur--tPp-NQqDEUudWhupjGy_A==/base.dm': No such file or directory
+11-21 19:38:26.914 I/ActivityTaskManager(  511): Displayed com.elad.faceblur/androidx.activity.ComponentActivity: +184ms
+11-21 19:38:26.921 W/InputManager-JNI(  511): Input channel object '12a949c Splash Screen com.elad.faceblur (client)' was disposed without first being removed with the input manager!
+11-21 19:38:26.922 D/CoreBackPreview(  511): Window{12a949c u0 Splash Screen com.elad.faceblur EXITING}: Setting back callback null
+11-21 19:38:26.938 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:38:27.019 D/MediaCodecList( 3933): codecHandlesFormat: no format, so no extra checks
+11-21 19:38:27.031 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:27.779 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#776] MediaCodec discarded an unknown buffer
+11-21 19:38:27.779 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#776] MediaCodec discarded an unknown buffer
+11-21 19:38:27.781 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:27.781 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:28.851 D/MediaCodecList( 3933): codecHandlesFormat: no format, so no extra checks
+11-21 19:38:28.857 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:29.307 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#378] MediaCodec discarded an unknown buffer
+11-21 19:38:29.308 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:29.309 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:30.354 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:30.363 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#453] MediaCodec discarded an unknown buffer
+11-21 19:38:30.363 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#453] MediaCodec discarded an unknown buffer
+11-21 19:38:30.364 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:30.477 I/ExoPlayerImpl( 3933): Init e8e4304 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:38:30.498 I/DMCodecAdapterFactory( 3933): Creating an asynchronous MediaCodec adapter for track type video
+11-21 19:38:30.504 I/m.elad.faceblur( 3933): Compiler allocated 4160KB to compile void android.widget.TextView.<init>(android.content.Context, android.util.AttributeSet, int, int)
+11-21 19:38:30.507 I/MediaCodec( 3933): MediaCodec will operate in async mode
+11-21 19:38:30.507 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:30.508 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027457
+11-21 19:38:30.514 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:30.516 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:30.522 I/DMCodecAdapterFactory( 3933): Creating an asynchronous MediaCodec adapter for track type audio
+11-21 19:38:30.538 I/MediaCodec( 3933): MediaCodec will operate in async mode
+11-21 19:38:30.539 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:30.554 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:30.560 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#282] MediaCodec discarded an unknown buffer
+11-21 19:38:30.560 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#282] MediaCodec discarded an unknown buffer
+11-21 19:38:30.560 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#282] MediaCodec discarded an unknown buffer
+11-21 19:38:30.565 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:30.584 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:30.656 D/MediaCodecList( 3933): codecHandlesFormat: no format, so no extra checks
+11-21 19:38:30.689 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:31.348 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#34] MediaCodec discarded an unknown buffer
+11-21 19:38:31.361 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:31.372 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:31.592 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#811] MediaCodec discarded an unknown buffer
+11-21 19:38:31.593 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:31.603 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:31.898 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#455] MediaCodec discarded an unknown buffer
+11-21 19:38:31.901 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:31.909 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:31.969 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#34] MediaCodec discarded an unknown buffer
+11-21 19:38:31.969 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#34] MediaCodec discarded an unknown buffer
+11-21 19:38:31.969 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#34] MediaCodec discarded an unknown buffer
+11-21 19:38:31.969 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#34] MediaCodec discarded an unknown buffer
+11-21 19:38:31.969 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#34] MediaCodec discarded an unknown buffer
+11-21 19:38:31.969 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#34] MediaCodec discarded an unknown buffer
+11-21 19:38:31.970 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:31.978 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:32.096 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#982] MediaCodec discarded an unknown buffer
+11-21 19:38:32.096 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#982] MediaCodec discarded an unknown buffer
+11-21 19:38:32.096 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#982] MediaCodec discarded an unknown buffer
+11-21 19:38:32.096 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#982] MediaCodec discarded an unknown buffer
+11-21 19:38:32.098 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:32.106 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:32.153 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#422] MediaCodec discarded an unknown buffer
+11-21 19:38:32.153 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#422] MediaCodec discarded an unknown buffer
+11-21 19:38:32.172 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:32.172 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:32.308 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#983] MediaCodec discarded an unknown buffer
+11-21 19:38:32.309 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:32.318 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:32.553 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#337] MediaCodec discarded an unknown buffer
+11-21 19:38:32.557 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:32.565 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:32.926 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#42] MediaCodec discarded an unknown buffer
+11-21 19:38:32.938 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:32.947 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:33.831 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#455] MediaCodec discarded an unknown buffer
+11-21 19:38:33.836 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:33.854 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.003 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#745] MediaCodec discarded an unknown buffer
+11-21 19:38:34.003 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#745] MediaCodec discarded an unknown buffer
+11-21 19:38:34.004 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#745] MediaCodec discarded an unknown buffer
+11-21 19:38:34.004 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#745] MediaCodec discarded an unknown buffer
+11-21 19:38:34.007 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.038 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.207 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#572] MediaCodec discarded an unknown buffer
+11-21 19:38:34.207 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#572] MediaCodec discarded an unknown buffer
+11-21 19:38:34.207 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#572] MediaCodec discarded an unknown buffer
+11-21 19:38:34.208 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.216 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.248 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#745] MediaCodec discarded an unknown buffer
+11-21 19:38:34.248 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#745] MediaCodec discarded an unknown buffer
+11-21 19:38:34.248 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#745] MediaCodec discarded an unknown buffer
+11-21 19:38:34.249 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.257 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.310 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:34.310 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:34.310 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:34.310 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:34.310 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:34.310 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:34.310 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:34.311 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:34.311 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:34.311 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:34.311 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:34.311 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:34.311 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#866] MediaCodec discarded an unknown buffer
+11-21 19:38:34.312 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.320 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.375 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#213] MediaCodec discarded an unknown buffer
+11-21 19:38:34.375 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#213] MediaCodec discarded an unknown buffer
+11-21 19:38:34.377 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.385 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.459 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#982] MediaCodec discarded an unknown buffer
+11-21 19:38:34.459 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#982] MediaCodec discarded an unknown buffer
+11-21 19:38:34.460 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#982] MediaCodec discarded an unknown buffer
+11-21 19:38:34.461 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.469 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.556 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#160] MediaCodec discarded an unknown buffer
+11-21 19:38:34.556 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#160] MediaCodec discarded an unknown buffer
+11-21 19:38:34.557 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.566 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.669 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#620] MediaCodec discarded an unknown buffer
+11-21 19:38:34.669 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#620] MediaCodec discarded an unknown buffer
+11-21 19:38:34.669 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#620] MediaCodec discarded an unknown buffer
+11-21 19:38:34.669 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#620] MediaCodec discarded an unknown buffer
+11-21 19:38:34.670 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#620] MediaCodec discarded an unknown buffer
+11-21 19:38:34.671 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.679 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.803 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#620] MediaCodec discarded an unknown buffer
+11-21 19:38:34.803 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#620] MediaCodec discarded an unknown buffer
+11-21 19:38:34.803 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#620] MediaCodec discarded an unknown buffer
+11-21 19:38:34.803 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#620] MediaCodec discarded an unknown buffer
+11-21 19:38:34.804 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.812 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.983 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#568] MediaCodec discarded an unknown buffer
+11-21 19:38:34.983 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#568] MediaCodec discarded an unknown buffer
+11-21 19:38:34.983 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#568] MediaCodec discarded an unknown buffer
+11-21 19:38:34.983 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#568] MediaCodec discarded an unknown buffer
+11-21 19:38:34.985 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:34.993 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:35.142 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#35] MediaCodec discarded an unknown buffer
+11-21 19:38:35.142 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#35] MediaCodec discarded an unknown buffer
+11-21 19:38:35.142 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#35] MediaCodec discarded an unknown buffer
+11-21 19:38:35.142 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#35] MediaCodec discarded an unknown buffer
+11-21 19:38:35.142 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#35] MediaCodec discarded an unknown buffer
+11-21 19:38:35.144 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:35.151 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:35.323 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#985] MediaCodec discarded an unknown buffer
+11-21 19:38:35.323 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#985] MediaCodec discarded an unknown buffer
+11-21 19:38:35.323 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#985] MediaCodec discarded an unknown buffer
+11-21 19:38:35.324 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:35.332 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:35.573 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:35.575 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:35.735 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#972] MediaCodec discarded an unknown buffer
+11-21 19:38:35.739 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:35.751 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.124 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#628] MediaCodec discarded an unknown buffer
+11-21 19:38:36.126 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.133 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.200 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#679] MediaCodec discarded an unknown buffer
+11-21 19:38:36.200 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#679] MediaCodec discarded an unknown buffer
+11-21 19:38:36.200 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#679] MediaCodec discarded an unknown buffer
+11-21 19:38:36.200 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#679] MediaCodec discarded an unknown buffer
+11-21 19:38:36.200 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#679] MediaCodec discarded an unknown buffer
+11-21 19:38:36.202 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.210 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.278 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#797] MediaCodec discarded an unknown buffer
+11-21 19:38:36.278 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#797] MediaCodec discarded an unknown buffer
+11-21 19:38:36.279 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.289 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.372 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#503] MediaCodec discarded an unknown buffer
+11-21 19:38:36.372 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#503] MediaCodec discarded an unknown buffer
+11-21 19:38:36.372 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#503] MediaCodec discarded an unknown buffer
+11-21 19:38:36.372 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#503] MediaCodec discarded an unknown buffer
+11-21 19:38:36.372 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#503] MediaCodec discarded an unknown buffer
+11-21 19:38:36.374 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.388 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.504 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#751] MediaCodec discarded an unknown buffer
+11-21 19:38:36.504 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#751] MediaCodec discarded an unknown buffer
+11-21 19:38:36.504 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#751] MediaCodec discarded an unknown buffer
+11-21 19:38:36.506 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.517 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.629 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#732] MediaCodec discarded an unknown buffer
+11-21 19:38:36.629 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#732] MediaCodec discarded an unknown buffer
+11-21 19:38:36.630 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.638 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.688 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#272] MediaCodec discarded an unknown buffer
+11-21 19:38:36.688 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#272] MediaCodec discarded an unknown buffer
+11-21 19:38:36.688 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#272] MediaCodec discarded an unknown buffer
+11-21 19:38:36.688 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#272] MediaCodec discarded an unknown buffer
+11-21 19:38:36.688 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#272] MediaCodec discarded an unknown buffer
+11-21 19:38:36.689 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.701 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.771 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#157] MediaCodec discarded an unknown buffer
+11-21 19:38:36.771 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#157] MediaCodec discarded an unknown buffer
+11-21 19:38:36.772 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.783 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.871 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#283] MediaCodec discarded an unknown buffer
+11-21 19:38:36.871 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#283] MediaCodec discarded an unknown buffer
+11-21 19:38:36.871 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#283] MediaCodec discarded an unknown buffer
+11-21 19:38:36.871 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#283] MediaCodec discarded an unknown buffer
+11-21 19:38:36.871 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#283] MediaCodec discarded an unknown buffer
+11-21 19:38:36.871 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#283] MediaCodec discarded an unknown buffer
+11-21 19:38:36.871 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#283] MediaCodec discarded an unknown buffer
+11-21 19:38:36.872 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#283] MediaCodec discarded an unknown buffer
+11-21 19:38:36.872 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#283] MediaCodec discarded an unknown buffer
+11-21 19:38:36.872 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#283] MediaCodec discarded an unknown buffer
+11-21 19:38:36.873 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:36.889 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:37.000 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#102] MediaCodec discarded an unknown buffer
+11-21 19:38:37.001 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#102] MediaCodec discarded an unknown buffer
+11-21 19:38:37.001 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#102] MediaCodec discarded an unknown buffer
+11-21 19:38:37.001 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#102] MediaCodec discarded an unknown buffer
+11-21 19:38:37.001 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#102] MediaCodec discarded an unknown buffer
+11-21 19:38:37.001 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#102] MediaCodec discarded an unknown buffer
+11-21 19:38:37.001 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#102] MediaCodec discarded an unknown buffer
+11-21 19:38:37.001 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#102] MediaCodec discarded an unknown buffer
+11-21 19:38:37.001 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#102] MediaCodec discarded an unknown buffer
+11-21 19:38:37.001 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#102] MediaCodec discarded an unknown buffer
+11-21 19:38:37.001 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#102] MediaCodec discarded an unknown buffer
+11-21 19:38:37.001 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#102] MediaCodec discarded an unknown buffer
+11-21 19:38:37.003 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:37.014 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:37.146 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#43] MediaCodec discarded an unknown buffer
+11-21 19:38:37.146 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#43] MediaCodec discarded an unknown buffer
+11-21 19:38:37.148 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:37.156 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:37.363 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#686] MediaCodec discarded an unknown buffer
+11-21 19:38:37.366 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:37.374 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:37.410 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity} from uid 10174
+11-21 19:38:37.417 D/CoreBackPreview(  511): Window{b4e7f28 u0 Splash Screen com.elad.faceblur.test}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@34a237d, mPriority=0}
+11-21 19:38:37.426 D/CoreBackPreview(  511): Window{829b6c u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@13b5b3b, mPriority=0}
+11-21 19:38:37.506 W/ziparchive(  511): Unable to open '/data/app/~~xUN3lKpE_PRqnq3NASPt7g==/com.elad.faceblur.test-tJmY0In2Dvg30pxTZcnVFA==/base.dm': No such file or directory
+11-21 19:38:37.510 I/ActivityTaskManager(  511): Displayed com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity: +94ms
+11-21 19:38:37.562 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur.test fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:38:37.569 D/CoreBackPreview(  511): Window{b4e7f28 u0 Splash Screen com.elad.faceblur.test}: Setting back callback null
+11-21 19:38:37.571 W/InputManager-JNI(  511): Input channel object 'b4e7f28 Splash Screen com.elad.faceblur.test (client)' was disposed without first being removed with the input manager!
+11-21 19:38:37.657 I/ExoPlayerImpl( 3933): Release e8e4304 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:38:37.657 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:37.659 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:37.661 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027458
+11-21 19:38:37.706 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#975] MediaCodec discarded an unknown buffer
+11-21 19:38:37.706 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#975] MediaCodec discarded an unknown buffer
+11-21 19:38:37.706 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#975] MediaCodec discarded an unknown buffer
+11-21 19:38:37.706 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#975] MediaCodec discarded an unknown buffer
+11-21 19:38:37.707 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#801] MediaCodec discarded an unknown buffer
+11-21 19:38:37.707 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#801] MediaCodec discarded an unknown buffer
+11-21 19:38:37.707 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#801] MediaCodec discarded an unknown buffer
+11-21 19:38:37.707 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#801] MediaCodec discarded an unknown buffer
+11-21 19:38:37.780 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:37.783 D/CoreBackPreview(  511): Window{829b6c u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback null
+11-21 19:38:37.784 W/InputManager-JNI(  511): Input channel object '829b6c com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:38:37.814 D/CoreBackPreview(  511): Window{8b7e021 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback null
+11-21 19:38:37.815 W/InputManager-JNI(  511): Input channel object '8b7e021 com.elad.faceblur/androidx.activity.ComponentActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:38:37.816 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:37.818 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:37.818 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:37.833 I/TestRunner( 3933): finished: speakers(com.elad.faceblur.ProjectsVoiceTest)
+11-21 19:38:37.834 I/TestRunner( 3933): started: backgroundKey(com.elad.faceblur.ProjectsVoiceTest)
+11-21 19:38:37.852 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=com.elad.faceblur/androidx.activity.ComponentActivity} from uid 10174
+11-21 19:38:37.907 D/CoreBackPreview(  511): Window{7963cc4 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@d10eae2, mPriority=0}
+11-21 19:38:38.034 W/ziparchive(  511): Unable to open '/data/app/~~LPm8-n7AdiFQjoV_oSePGw==/com.elad.faceblur--tPp-NQqDEUudWhupjGy_A==/base.dm': No such file or directory
+11-21 19:38:38.034 I/ActivityTaskManager(  511): Displayed com.elad.faceblur/androidx.activity.ComponentActivity: +180ms
+11-21 19:38:38.040 W/ShellStartingWindow(  829): java.lang.IllegalArgumentException: View=android.widget.FrameLayout{7874464 V.E...... ......I. 0,0-0,0} not attached to window manager
+11-21 19:38:38.081 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:38:38.581 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.581 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.581 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.581 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.581 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.581 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.581 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.581 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.582 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.582 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.582 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.582 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.582 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.583 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.583 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#856] MediaCodec discarded an unknown buffer
+11-21 19:38:38.583 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:38.590 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:38.600 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#507] MediaCodec discarded an unknown buffer
+11-21 19:38:38.600 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#507] MediaCodec discarded an unknown buffer
+11-21 19:38:38.601 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:38.619 I/ExoPlayerImpl( 3933): Init bfba945 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:38:38.629 I/DMCodecAdapterFactory( 3933): Creating an asynchronous MediaCodec adapter for track type video
+11-21 19:38:38.636 I/MediaCodec( 3933): MediaCodec will operate in async mode
+11-21 19:38:38.636 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:38.636 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027459
+11-21 19:38:38.638 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:38.652 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:38.811 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#331] MediaCodec discarded an unknown buffer
+11-21 19:38:38.811 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#331] MediaCodec discarded an unknown buffer
+11-21 19:38:38.814 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#331] MediaCodec discarded an unknown buffer
+11-21 19:38:38.816 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:38.888 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:39.482 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#819] MediaCodec discarded an unknown buffer
+11-21 19:38:39.482 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#819] MediaCodec discarded an unknown buffer
+11-21 19:38:39.482 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#819] MediaCodec discarded an unknown buffer
+11-21 19:38:39.483 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:39.512 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#449] MediaCodec discarded an unknown buffer
+11-21 19:38:39.512 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#449] MediaCodec discarded an unknown buffer
+11-21 19:38:39.512 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#449] MediaCodec discarded an unknown buffer
+11-21 19:38:39.514 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:39.526 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:40.031 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#98] MediaCodec discarded an unknown buffer
+11-21 19:38:40.038 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:40.053 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:40.115 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#101] MediaCodec discarded an unknown buffer
+11-21 19:38:40.118 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:40.135 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:40.185 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#983] MediaCodec discarded an unknown buffer
+11-21 19:38:40.185 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#983] MediaCodec discarded an unknown buffer
+11-21 19:38:40.185 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#983] MediaCodec discarded an unknown buffer
+11-21 19:38:40.187 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:40.194 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:40.256 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:40.267 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:40.348 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#334] MediaCodec discarded an unknown buffer
+11-21 19:38:40.348 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#334] MediaCodec discarded an unknown buffer
+11-21 19:38:40.348 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#334] MediaCodec discarded an unknown buffer
+11-21 19:38:40.348 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#334] MediaCodec discarded an unknown buffer
+11-21 19:38:40.348 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#334] MediaCodec discarded an unknown buffer
+11-21 19:38:40.348 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#334] MediaCodec discarded an unknown buffer
+11-21 19:38:40.350 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:40.358 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:40.445 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#98] MediaCodec discarded an unknown buffer
+11-21 19:38:40.445 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#98] MediaCodec discarded an unknown buffer
+11-21 19:38:40.445 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#98] MediaCodec discarded an unknown buffer
+11-21 19:38:40.446 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:40.454 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:40.551 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#569] MediaCodec discarded an unknown buffer
+11-21 19:38:40.552 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#569] MediaCodec discarded an unknown buffer
+11-21 19:38:40.553 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:41.691 I/TransformerInternal( 3933): Init 85813c6 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:38:41.692 I/ExoPlayerImpl( 3933): Init 4aaef87 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:38:41.717 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:41.717 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027460
+11-21 19:38:42.631 D/MediaCodec( 3933): shapeMediaFormat: deltas(1): AMessage(what = 0x00000000) = {
+11-21 19:38:42.631 D/MediaCodec( 3933):     int32_t android._encoding-quality-level = 0
+11-21 19:38:42.631 D/MediaCodec( 3933):   }
+11-21 19:38:42.631 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:44.096 I/TransformerInternal( 3933): Release 85813c6 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:38:44.100 I/ExoPlayerImpl( 3933): Release 4aaef87 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:38:44.100 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027461
+11-21 19:38:44.101 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:44.101 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:44.108 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:44.108 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:44.150 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:44.169 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#684] MediaCodec discarded an unknown buffer
+11-21 19:38:44.169 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#684] MediaCodec discarded an unknown buffer
+11-21 19:38:44.170 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#684] MediaCodec discarded an unknown buffer
+11-21 19:38:44.170 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#684] MediaCodec discarded an unknown buffer
+11-21 19:38:44.171 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:44.177 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity} from uid 10174
+11-21 19:38:44.182 D/CoreBackPreview(  511): Window{b6f875f u0 Splash Screen com.elad.faceblur.test}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@daba20a, mPriority=0}
+11-21 19:38:44.188 D/CoreBackPreview(  511): Window{2a2cb2d u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@3547df3, mPriority=0}
+11-21 19:38:44.269 D/CoreBackPreview(  511): Window{2a2cb2d u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback null
+11-21 19:38:44.272 W/InputManager-JNI(  511): Input channel object '2a2cb2d com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:38:44.307 W/InputManager-JNI(  511): Input channel object 'b6f875f Splash Screen com.elad.faceblur.test (client)' was disposed without first being removed with the input manager!
+11-21 19:38:44.560 I/ExoPlayerImpl( 3933): Release bfba945 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:38:44.561 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:44.563 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027462
+11-21 19:38:44.596 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#819] MediaCodec discarded an unknown buffer
+11-21 19:38:44.596 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#819] MediaCodec discarded an unknown buffer
+11-21 19:38:44.596 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#819] MediaCodec discarded an unknown buffer
+11-21 19:38:44.596 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#819] MediaCodec discarded an unknown buffer
+11-21 19:38:44.602 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:44.602 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:44.613 D/CoreBackPreview(  511): Window{7963cc4 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback null
+11-21 19:38:44.614 W/InputManager-JNI(  511): Input channel object '7963cc4 com.elad.faceblur/androidx.activity.ComponentActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:38:44.624 I/TestRunner( 3933): finished: backgroundKey(com.elad.faceblur.ProjectsVoiceTest)
+11-21 19:38:44.625 I/TestRunner( 3933): started: voiceExport(com.elad.faceblur.ProjectsVoiceTest)
+11-21 19:38:44.640 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=com.elad.faceblur/androidx.activity.ComponentActivity} from uid 10174
+11-21 19:38:44.651 D/CoreBackPreview(  511): Window{64a9e27 u0 Splash Screen com.elad.faceblur}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@cb8f5c3, mPriority=0}
+11-21 19:38:44.678 D/CoreBackPreview(  511): Window{a7c1ebe u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@b7efe6c, mPriority=0}
+11-21 19:38:44.766 W/ziparchive(  511): Unable to open '/data/app/~~LPm8-n7AdiFQjoV_oSePGw==/com.elad.faceblur--tPp-NQqDEUudWhupjGy_A==/base.dm': No such file or directory
+11-21 19:38:44.766 I/ActivityTaskManager(  511): Displayed com.elad.faceblur/androidx.activity.ComponentActivity: +125ms
+11-21 19:38:44.833 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:38:44.836 D/CoreBackPreview(  511): Window{64a9e27 u0 Splash Screen com.elad.faceblur}: Setting back callback null
+11-21 19:38:44.854 W/InputManager-JNI(  511): Input channel object '64a9e27 Splash Screen com.elad.faceblur (client)' was disposed without first being removed with the input manager!
+11-21 19:38:44.939 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:44.988 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#279] MediaCodec discarded an unknown buffer
+11-21 19:38:44.988 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#279] MediaCodec discarded an unknown buffer
+11-21 19:38:44.989 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:45.159 D/MediaCodecList( 3933): codecHandlesFormat: no format, so no extra checks
+11-21 19:38:45.195 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:45.264 D/CCodecBufferChannel( 3933): [c2.android.vorbis.decoder#871] MediaCodec discarded an unknown buffer
+11-21 19:38:45.264 D/CCodecBufferChannel( 3933): [c2.android.vorbis.decoder#871] MediaCodec discarded an unknown buffer
+11-21 19:38:45.264 D/CCodecBufferChannel( 3933): [c2.android.vorbis.decoder#871] MediaCodec discarded an unknown buffer
+11-21 19:38:45.265 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:45.265 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:45.336 I/ExoPlayerImpl( 3933): Init 7cce22 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:38:45.352 I/DMCodecAdapterFactory( 3933): Creating an asynchronous MediaCodec adapter for track type video
+11-21 19:38:45.367 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:45.374 I/MediaCodec( 3933): MediaCodec will operate in async mode
+11-21 19:38:45.374 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:45.374 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027463
+11-21 19:38:45.379 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:45.385 I/DMCodecAdapterFactory( 3933): Creating an asynchronous MediaCodec adapter for track type audio
+11-21 19:38:45.389 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#919] MediaCodec discarded an unknown buffer
+11-21 19:38:45.389 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#919] MediaCodec discarded an unknown buffer
+11-21 19:38:45.396 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:45.406 I/MediaCodec( 3933): MediaCodec will operate in async mode
+11-21 19:38:45.406 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:45.421 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:45.488 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:45.535 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:45.535 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:45.627 I/m.elad.faceblur( 3933): Background concurrent copying GC freed 484237(15MB) AllocSpace objects, 47(17MB) LOS objects, 49% free, 14MB/28MB, paused 1.449ms,16us total 131.176ms
+11-21 19:38:45.808 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#217] MediaCodec discarded an unknown buffer
+11-21 19:38:45.809 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#217] MediaCodec discarded an unknown buffer
+11-21 19:38:45.810 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:45.819 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:46.405 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#809] MediaCodec discarded an unknown buffer
+11-21 19:38:46.405 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#809] MediaCodec discarded an unknown buffer
+11-21 19:38:46.405 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#809] MediaCodec discarded an unknown buffer
+11-21 19:38:46.406 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:46.414 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:46.577 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#442] MediaCodec discarded an unknown buffer
+11-21 19:38:46.577 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#442] MediaCodec discarded an unknown buffer
+11-21 19:38:46.577 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#442] MediaCodec discarded an unknown buffer
+11-21 19:38:46.578 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:46.586 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:46.609 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#925] MediaCodec discarded an unknown buffer
+11-21 19:38:46.609 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#925] MediaCodec discarded an unknown buffer
+11-21 19:38:46.609 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#925] MediaCodec discarded an unknown buffer
+11-21 19:38:46.610 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#925] MediaCodec discarded an unknown buffer
+11-21 19:38:46.610 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#925] MediaCodec discarded an unknown buffer
+11-21 19:38:46.610 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#925] MediaCodec discarded an unknown buffer
+11-21 19:38:46.610 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#925] MediaCodec discarded an unknown buffer
+11-21 19:38:46.610 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#925] MediaCodec discarded an unknown buffer
+11-21 19:38:46.610 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#925] MediaCodec discarded an unknown buffer
+11-21 19:38:46.611 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:46.619 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:46.717 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#983] MediaCodec discarded an unknown buffer
+11-21 19:38:46.717 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#983] MediaCodec discarded an unknown buffer
+11-21 19:38:46.717 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#983] MediaCodec discarded an unknown buffer
+11-21 19:38:46.719 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:46.727 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:46.760 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#271] MediaCodec discarded an unknown buffer
+11-21 19:38:46.760 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#271] MediaCodec discarded an unknown buffer
+11-21 19:38:46.760 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#271] MediaCodec discarded an unknown buffer
+11-21 19:38:46.761 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#271] MediaCodec discarded an unknown buffer
+11-21 19:38:46.761 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#271] MediaCodec discarded an unknown buffer
+11-21 19:38:46.761 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#271] MediaCodec discarded an unknown buffer
+11-21 19:38:46.761 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#271] MediaCodec discarded an unknown buffer
+11-21 19:38:46.762 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:46.770 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:46.811 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#632] MediaCodec discarded an unknown buffer
+11-21 19:38:46.811 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#632] MediaCodec discarded an unknown buffer
+11-21 19:38:46.811 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#632] MediaCodec discarded an unknown buffer
+11-21 19:38:46.812 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:46.819 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:46.904 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#275] MediaCodec discarded an unknown buffer
+11-21 19:38:46.908 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:46.934 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:47.024 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#632] MediaCodec discarded an unknown buffer
+11-21 19:38:47.024 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#632] MediaCodec discarded an unknown buffer
+11-21 19:38:47.025 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:47.033 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:47.258 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#41] MediaCodec discarded an unknown buffer
+11-21 19:38:47.258 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#41] MediaCodec discarded an unknown buffer
+11-21 19:38:47.258 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#41] MediaCodec discarded an unknown buffer
+11-21 19:38:47.259 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:47.267 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:47.372 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#805] MediaCodec discarded an unknown buffer
+11-21 19:38:47.372 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#805] MediaCodec discarded an unknown buffer
+11-21 19:38:47.372 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#805] MediaCodec discarded an unknown buffer
+11-21 19:38:47.372 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#805] MediaCodec discarded an unknown buffer
+11-21 19:38:47.372 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#805] MediaCodec discarded an unknown buffer
+11-21 19:38:47.374 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:47.381 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:47.510 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#979] MediaCodec discarded an unknown buffer
+11-21 19:38:47.510 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#979] MediaCodec discarded an unknown buffer
+11-21 19:38:47.510 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#979] MediaCodec discarded an unknown buffer
+11-21 19:38:47.511 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:47.519 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:47.662 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#96] MediaCodec discarded an unknown buffer
+11-21 19:38:47.662 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#96] MediaCodec discarded an unknown buffer
+11-21 19:38:47.662 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#96] MediaCodec discarded an unknown buffer
+11-21 19:38:47.662 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#96] MediaCodec discarded an unknown buffer
+11-21 19:38:47.662 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#96] MediaCodec discarded an unknown buffer
+11-21 19:38:47.663 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:47.671 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:47.865 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#863] MediaCodec discarded an unknown buffer
+11-21 19:38:47.865 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#863] MediaCodec discarded an unknown buffer
+11-21 19:38:47.867 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:47.874 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:48.187 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#860] MediaCodec discarded an unknown buffer
+11-21 19:38:48.225 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:48.225 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:48.228 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:38:48.253 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:48.668 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#860] MediaCodec discarded an unknown buffer
+11-21 19:38:48.673 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:48.688 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:49.054 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#979] MediaCodec discarded an unknown buffer
+11-21 19:38:49.054 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#979] MediaCodec discarded an unknown buffer
+11-21 19:38:49.054 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#979] MediaCodec discarded an unknown buffer
+11-21 19:38:49.056 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:49.067 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:49.122 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#748] MediaCodec discarded an unknown buffer
+11-21 19:38:49.122 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#748] MediaCodec discarded an unknown buffer
+11-21 19:38:49.123 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#748] MediaCodec discarded an unknown buffer
+11-21 19:38:49.123 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#748] MediaCodec discarded an unknown buffer
+11-21 19:38:49.123 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#748] MediaCodec discarded an unknown buffer
+11-21 19:38:49.125 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:49.133 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:49.211 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#159] MediaCodec discarded an unknown buffer
+11-21 19:38:49.213 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:49.220 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:49.322 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#41] MediaCodec discarded an unknown buffer
+11-21 19:38:49.323 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#41] MediaCodec discarded an unknown buffer
+11-21 19:38:49.323 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#41] MediaCodec discarded an unknown buffer
+11-21 19:38:49.324 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:49.338 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:49.453 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#34] MediaCodec discarded an unknown buffer
+11-21 19:38:49.454 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#34] MediaCodec discarded an unknown buffer
+11-21 19:38:49.455 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:49.480 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:49.644 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#689] MediaCodec discarded an unknown buffer
+11-21 19:38:49.644 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#689] MediaCodec discarded an unknown buffer
+11-21 19:38:49.644 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#689] MediaCodec discarded an unknown buffer
+11-21 19:38:49.644 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#689] MediaCodec discarded an unknown buffer
+11-21 19:38:49.648 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:49.697 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:49.805 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#271] MediaCodec discarded an unknown buffer
+11-21 19:38:49.806 D/MediaCodec(  448): flushMediametrics
+11-21 19:38:50.895 I/TransformerInternal( 3933): Init e666e8a [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:38:50.896 I/ExoPlayerImpl( 3933): Init 74cfb [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:38:50.917 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:50.956 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:50.956 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027464
+11-21 19:38:50.973 D/MediaCodec( 3933): shapeMediaFormat: deltas(0): AMessage(what = 0x00000000) = {
+11-21 19:38:50.973 D/MediaCodec( 3933):   }
+11-21 19:38:50.973 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:51.618 D/MediaCodec( 3933): shapeMediaFormat: deltas(1): AMessage(what = 0x00000000) = {
+11-21 19:38:51.618 D/MediaCodec( 3933):     int32_t android._encoding-quality-level = 0
+11-21 19:38:51.618 D/MediaCodec( 3933):   }
+11-21 19:38:51.618 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:55.670 I/TransformerInternal( 3933): Release e666e8a [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:38:55.674 D/CCodecBufferChannel( 3933): [c2.android.aac.encoder#298] MediaCodec discarded an unknown buffer
+11-21 19:38:55.675 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:55.675 I/ExoPlayerImpl( 3933): Release 74cfb [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:38:55.675 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#388] MediaCodec discarded an unknown buffer
+11-21 19:38:55.675 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:55.675 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027465
+11-21 19:38:55.676 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:55.676 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:55.677 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:55.677 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:55.680 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#427] MediaCodec discarded an unknown buffer
+11-21 19:38:55.683 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:55.683 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:55.730 D/MediaCodecList( 3933): codecHandlesFormat: no format, so no extra checks
+11-21 19:38:55.737 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:55.939 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#675] MediaCodec discarded an unknown buffer
+11-21 19:38:55.940 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:55.941 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:55.957 I/TransformerInternal( 3933): Init b8fddde [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:38:55.957 I/ExoPlayerImpl( 3933): Init 98f4bbf [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:38:55.990 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:55.990 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027466
+11-21 19:38:56.664 D/MediaCodec( 3933): shapeMediaFormat: deltas(1): AMessage(what = 0x00000000) = {
+11-21 19:38:56.664 D/MediaCodec( 3933):     int32_t android._encoding-quality-level = 0
+11-21 19:38:56.664 D/MediaCodec( 3933):   }
+11-21 19:38:56.665 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:59.926 I/TransformerInternal( 3933): Release b8fddde [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:38:59.931 I/ExoPlayerImpl( 3933): Release 98f4bbf [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:38:59.932 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027467
+11-21 19:38:59.932 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:59.933 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:59.936 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#440] MediaCodec discarded an unknown buffer
+11-21 19:38:59.943 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:59.943 D/MediaCodec( 3933): flushMediametrics
+11-21 19:38:59.982 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity} from uid 10174
+11-21 19:38:59.988 D/CoreBackPreview(  511): Window{49614c3 u0 Splash Screen com.elad.faceblur.test}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@74de879, mPriority=0}
+11-21 19:39:00.006 D/CoreBackPreview(  511): Window{9e3593b u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@9244e17, mPriority=0}
+11-21 19:39:00.158 I/ExoPlayerImpl( 3933): Release 7cce22 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:39:00.160 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:39:00.166 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:39:00.171 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027468
+11-21 19:39:00.225 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#445] MediaCodec discarded an unknown buffer
+11-21 19:39:00.225 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#445] MediaCodec discarded an unknown buffer
+11-21 19:39:00.225 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#445] MediaCodec discarded an unknown buffer
+11-21 19:39:00.225 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#445] MediaCodec discarded an unknown buffer
+11-21 19:39:00.232 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:00.243 W/InputManager-JNI(  511): Input channel object '49614c3 Splash Screen com.elad.faceblur.test (client)' was disposed without first being removed with the input manager!
+11-21 19:39:00.246 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:00.247 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#36] MediaCodec discarded an unknown buffer
+11-21 19:39:00.247 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#36] MediaCodec discarded an unknown buffer
+11-21 19:39:00.247 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#36] MediaCodec discarded an unknown buffer
+11-21 19:39:00.247 D/CCodecBufferChannel( 3933): [c2.android.aac.decoder#36] MediaCodec discarded an unknown buffer
+11-21 19:39:00.263 W/InputManager-JNI(  511): Input channel object '9e3593b com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:39:00.268 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:00.268 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:00.295 E/WindowManager(  511): setOnBackInvokedCallback(): No window state for package:com.elad.faceblur.test
+11-21 19:39:00.297 D/CoreBackPreview(  511): Window{a7c1ebe u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback null
+11-21 19:39:00.316 W/InputManager-JNI(  511): Input channel object 'a7c1ebe com.elad.faceblur/androidx.activity.ComponentActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:39:00.332 I/TestRunner( 3933): finished: voiceExport(com.elad.faceblur.ProjectsVoiceTest)
+11-21 19:39:00.333 I/TestRunner( 3933): started: projectRoundTrip(com.elad.faceblur.ProjectsVoiceTest)
+11-21 19:39:00.342 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=com.elad.faceblur/androidx.activity.ComponentActivity} from uid 10174
+11-21 19:39:00.376 D/CoreBackPreview(  511): Window{8798a8a u0 Splash Screen com.elad.faceblur}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@a60ed18, mPriority=0}
+11-21 19:39:00.398 D/CoreBackPreview(  511): Window{b03c2c4 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@398e0e2, mPriority=0}
+11-21 19:39:00.548 W/ziparchive(  511): Unable to open '/data/app/~~LPm8-n7AdiFQjoV_oSePGw==/com.elad.faceblur--tPp-NQqDEUudWhupjGy_A==/base.dm': No such file or directory
+11-21 19:39:00.549 I/ActivityTaskManager(  511): Displayed com.elad.faceblur/androidx.activity.ComponentActivity: +203ms
+11-21 19:39:00.600 D/CoreBackPreview(  511): Window{8798a8a u0 Splash Screen com.elad.faceblur EXITING}: Setting back callback null
+11-21 19:39:00.601 W/InputManager-JNI(  511): Input channel object '8798a8a Splash Screen com.elad.faceblur (client)' was disposed without first being removed with the input manager!
+11-21 19:39:00.686 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:39:00.841 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:00.872 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#154] MediaCodec discarded an unknown buffer
+11-21 19:39:00.872 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#154] MediaCodec discarded an unknown buffer
+11-21 19:39:00.872 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#154] MediaCodec discarded an unknown buffer
+11-21 19:39:00.873 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#154] MediaCodec discarded an unknown buffer
+11-21 19:39:00.875 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:01.006 I/TransformerInternal( 3933): Init edaca0 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:39:01.007 I/ExoPlayerImpl( 3933): Init 38b7059 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:39:01.034 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:01.034 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027469
+11-21 19:39:01.514 D/MediaCodec( 3933): shapeMediaFormat: deltas(1): AMessage(what = 0x00000000) = {
+11-21 19:39:01.514 D/MediaCodec( 3933):     int32_t android._encoding-quality-level = 0
+11-21 19:39:01.514 D/MediaCodec( 3933):   }
+11-21 19:39:01.514 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:01.548 W/OpenCV/4.10.0( 3933): [ WARN:46@1317.688] global net_impl_backend.cpp:248 setPreferableTarget DNN: fall back to DNN_TARGET_CPU. Only ARM v8 CPU is supported by DNN_TARGET_CPU_FP16.
+11-21 19:39:02.125 W/OpenCV/4.10.0( 3933): [ WARN:47@1318.265] global net_impl_backend.cpp:248 setPreferableTarget DNN: fall back to DNN_TARGET_CPU. Only ARM v8 CPU is supported by DNN_TARGET_CPU_FP16.
+11-21 19:39:02.294 W/OpenCV/4.10.0( 3933): [ WARN:48@1318.434] global net_impl_backend.cpp:248 setPreferableTarget DNN: fall back to DNN_TARGET_CPU. Only ARM v8 CPU is supported by DNN_TARGET_CPU_FP16.
+11-21 19:39:32.045 I/TransformerInternal( 3933): Release edaca0 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:39:32.055 I/ExoPlayerImpl( 3933): Release 38b7059 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:39:32.056 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027470
+11-21 19:39:32.058 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:32.058 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:32.076 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:32.076 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:32.789 D/MediaCodecList( 3933): codecHandlesFormat: no format, so no extra checks
+11-21 19:39:32.794 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:32.822 D/CCodecBufferChannel( 3933): [c2.android.vorbis.decoder#400] MediaCodec discarded an unknown buffer
+11-21 19:39:32.822 D/CCodecBufferChannel( 3933): [c2.android.vorbis.decoder#400] MediaCodec discarded an unknown buffer
+11-21 19:39:32.822 D/CCodecBufferChannel( 3933): [c2.android.vorbis.decoder#400] MediaCodec discarded an unknown buffer
+11-21 19:39:32.823 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:32.823 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:34.528 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:34.538 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#804] MediaCodec discarded an unknown buffer
+11-21 19:39:34.538 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#804] MediaCodec discarded an unknown buffer
+11-21 19:39:34.539 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:34.618 I/ExoPlayerImpl( 3933): Init 8436cf3 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:39:34.636 I/DMCodecAdapterFactory( 3933): Creating an asynchronous MediaCodec adapter for track type video
+11-21 19:39:34.644 I/MediaCodec( 3933): MediaCodec will operate in async mode
+11-21 19:39:34.645 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:34.645 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027471
+11-21 19:39:34.648 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:39:34.720 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:34.950 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#923] MediaCodec discarded an unknown buffer
+11-21 19:39:34.984 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:35.051 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:35.510 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#921] MediaCodec discarded an unknown buffer
+11-21 19:39:35.510 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#921] MediaCodec discarded an unknown buffer
+11-21 19:39:35.515 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:35.535 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:35.583 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:39:35.891 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#631] MediaCodec discarded an unknown buffer
+11-21 19:39:35.901 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:36.019 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:36.420 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:36.427 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:36.591 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#43] MediaCodec discarded an unknown buffer
+11-21 19:39:36.592 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:36.600 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:36.815 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#857] MediaCodec discarded an unknown buffer
+11-21 19:39:36.815 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#857] MediaCodec discarded an unknown buffer
+11-21 19:39:36.815 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#857] MediaCodec discarded an unknown buffer
+11-21 19:39:36.815 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#857] MediaCodec discarded an unknown buffer
+11-21 19:39:36.816 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:36.826 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:36.888 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#160] MediaCodec discarded an unknown buffer
+11-21 19:39:36.889 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:36.897 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:36.955 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#625] MediaCodec discarded an unknown buffer
+11-21 19:39:36.956 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:36.971 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:37.033 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#625] MediaCodec discarded an unknown buffer
+11-21 19:39:37.033 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#625] MediaCodec discarded an unknown buffer
+11-21 19:39:37.033 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#625] MediaCodec discarded an unknown buffer
+11-21 19:39:37.035 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:37.042 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:37.125 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#805] MediaCodec discarded an unknown buffer
+11-21 19:39:37.125 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#805] MediaCodec discarded an unknown buffer
+11-21 19:39:37.127 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:37.136 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:37.228 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#985] MediaCodec discarded an unknown buffer
+11-21 19:39:37.228 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#985] MediaCodec discarded an unknown buffer
+11-21 19:39:37.228 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#985] MediaCodec discarded an unknown buffer
+11-21 19:39:37.228 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#985] MediaCodec discarded an unknown buffer
+11-21 19:39:37.229 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:37.237 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:37.333 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#743] MediaCodec discarded an unknown buffer
+11-21 19:39:37.333 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#743] MediaCodec discarded an unknown buffer
+11-21 19:39:37.335 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:37.343 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:37.519 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#216] MediaCodec discarded an unknown buffer
+11-21 19:39:37.520 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:37.537 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:37.752 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#925] MediaCodec discarded an unknown buffer
+11-21 19:39:37.752 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:37.762 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:37.913 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#46] MediaCodec discarded an unknown buffer
+11-21 19:39:37.917 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:37.926 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:38.067 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#683] MediaCodec discarded an unknown buffer
+11-21 19:39:38.069 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:38.077 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:38.222 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#796] MediaCodec discarded an unknown buffer
+11-21 19:39:38.223 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:38.246 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:38.390 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#100] MediaCodec discarded an unknown buffer
+11-21 19:39:38.390 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#100] MediaCodec discarded an unknown buffer
+11-21 19:39:38.390 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#100] MediaCodec discarded an unknown buffer
+11-21 19:39:38.392 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:38.401 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:38.572 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#159] MediaCodec discarded an unknown buffer
+11-21 19:39:38.572 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#159] MediaCodec discarded an unknown buffer
+11-21 19:39:38.573 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:38.583 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:38.771 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#87] MediaCodec discarded an unknown buffer
+11-21 19:39:38.773 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:38.788 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:39.006 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:39.366 I/TransformerInternal( 3933): Init 3dc3439 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:39:39.367 I/ExoPlayerImpl( 3933): Init 9c1ca7e [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:39:39.390 D/MediaCodec( 3933): shapeMediaFormat: deltas(0): AMessage(what = 0x00000000) = {
+11-21 19:39:39.390 D/MediaCodec( 3933):   }
+11-21 19:39:39.391 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:39.405 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:39.405 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027472
+11-21 19:39:40.213 D/MediaCodec( 3933): shapeMediaFormat: deltas(5): AMessage(what = 0x00000000) = {
+11-21 19:39:40.213 D/MediaCodec( 3933):     int32_t android._encoding-quality-level = 0
+11-21 19:39:40.213 D/MediaCodec( 3933):     int32_t video-qp-max = 38
+11-21 19:39:40.213 D/MediaCodec( 3933):     int32_t video-qp-i-max = 38
+11-21 19:39:40.213 D/MediaCodec( 3933):     int32_t video-qp-p-max = 41
+11-21 19:39:40.213 D/MediaCodec( 3933):     int32_t video-qp-b-max = 44
+11-21 19:39:40.213 D/MediaCodec( 3933):   }
+11-21 19:39:40.214 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:44.302 I/TransformerInternal( 3933): Release 3dc3439 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:39:44.311 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:44.311 D/CCodecBufferChannel( 3933): [c2.android.aac.encoder#743] MediaCodec discarded an unknown buffer
+11-21 19:39:44.311 D/CCodecBufferChannel( 3933): [c2.android.aac.encoder#743] MediaCodec discarded an unknown buffer
+11-21 19:39:44.311 D/CCodecBufferChannel( 3933): [c2.android.aac.encoder#743] MediaCodec discarded an unknown buffer
+11-21 19:39:44.311 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:44.311 I/ExoPlayerImpl( 3933): Release 9c1ca7e [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:39:44.312 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027473
+11-21 19:39:44.313 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:44.313 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:44.319 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:44.320 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:44.376 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:44.399 D/MediaCodec(  448): flushMediametrics
+11-21 19:39:44.427 I/TransformerInternal( 3933): Init 17ddedb [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:39:44.427 I/ExoPlayerImpl( 3933): Init 4e0cd78 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:39:44.458 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:44.458 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027474
+11-21 19:39:45.233 D/MediaCodec( 3933): shapeMediaFormat: deltas(1): AMessage(what = 0x00000000) = {
+11-21 19:39:45.233 D/MediaCodec( 3933):     int32_t android._encoding-quality-level = 0
+11-21 19:39:45.233 D/MediaCodec( 3933):   }
+11-21 19:39:45.233 D/MediaCodec( 3933): flushMediametrics
+11-21 19:39:51.200 E/AssistantConnector( 6177): java.lang.IllegalStateException: Failed to query AGSA value. This is most likely caused by a Google signature check failure. Please make sure both of the AGSA app and the client app are either release or dev builds.
+11-21 19:39:51.237 W/Bugle   ( 6177): java.lang.IllegalStateException: Failed to query AGSA value. This is most likely caused by a Google signature check failure. Please make sure both of the AGSA app and the client app are either release or dev builds.
+11-21 19:40:03.613 I/TransformerInternal( 3933): Release 17ddedb [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:40:03.616 I/ExoPlayerImpl( 3933): Release 4e0cd78 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:40:03.616 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027475
+11-21 19:40:03.617 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:03.617 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:03.623 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:03.623 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:03.686 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:40:06.400 I/TransformerInternal( 3933): Init 12169f8 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:40:06.400 I/ExoPlayerImpl( 3933): Init 753ded1 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33]
+11-21 19:40:06.425 D/MediaCodec( 3933): shapeMediaFormat: deltas(0): AMessage(what = 0x00000000) = {
+11-21 19:40:06.425 D/MediaCodec( 3933):   }
+11-21 19:40:06.425 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:06.437 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:06.437 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027476
+11-21 19:40:07.651 D/MediaCodec( 3933): shapeMediaFormat: deltas(6): AMessage(what = 0x00000000) = {
+11-21 19:40:07.651 D/MediaCodec( 3933):     int32_t bitrate = 995328
+11-21 19:40:07.651 D/MediaCodec( 3933):     int32_t android._encoding-quality-level = 0
+11-21 19:40:07.651 D/MediaCodec( 3933):     int32_t video-qp-max = 38
+11-21 19:40:07.651 D/MediaCodec( 3933):     int32_t video-qp-i-max = 38
+11-21 19:40:07.651 D/MediaCodec( 3933):     int32_t video-qp-p-max = 41
+11-21 19:40:07.651 D/MediaCodec( 3933):     int32_t video-qp-b-max = 44
+11-21 19:40:07.651 D/MediaCodec( 3933):   }
+11-21 19:40:07.651 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:20.394 I/TransformerInternal( 3933): Release 12169f8 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:40:20.398 D/CCodecBufferChannel( 3933): [c2.android.aac.encoder#745] MediaCodec discarded an unknown buffer
+11-21 19:40:20.398 D/CCodecBufferChannel( 3933): [c2.android.aac.encoder#745] MediaCodec discarded an unknown buffer
+11-21 19:40:20.398 I/ExoPlayerImpl( 3933): Release 753ded1 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:40:20.398 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:20.398 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027477
+11-21 19:40:20.398 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:20.399 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:20.399 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:20.405 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:20.405 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:20.459 D/MediaCodec(  448): flushMediametrics
+11-21 19:40:20.471 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#39] MediaCodec discarded an unknown buffer
+11-21 19:40:20.471 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#39] MediaCodec discarded an unknown buffer
+11-21 19:40:20.471 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#39] MediaCodec discarded an unknown buffer
+11-21 19:40:20.471 D/CCodecBufferChannel(  448): [c2.android.avc.decoder#39] MediaCodec discarded an unknown buffer
+11-21 19:40:20.473 D/MediaCodec(  448): flushMediametrics
+11-21 19:40:21.090 I/ActivityTaskManager(  511): START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity} from uid 10174
+11-21 19:40:21.103 D/CoreBackPreview(  511): Window{1e08143 u0 Splash Screen com.elad.faceblur.test}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@91968f9, mPriority=0}
+11-21 19:40:21.132 D/CoreBackPreview(  511): Window{7c22ad8 u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@cf59916, mPriority=0}
+11-21 19:40:21.353 I/ExoPlayerImpl( 3933): Release 8436cf3 [AndroidXMedia3/1.6.1] [emu64x, sdk_gphone64_x86_64, Google, 33] [media3.common, media3.transformer, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.effect, media3.ui]
+11-21 19:40:21.363 D/MediaCodec( 3933): keep callback message for reclaim
+11-21 19:40:21.370 I/MediaCodec( 3933): [c2.goldfish.h264.decoder] setting surface generation to 4027478
+11-21 19:40:21.407 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#112] MediaCodec discarded an unknown buffer
+11-21 19:40:21.407 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#112] MediaCodec discarded an unknown buffer
+11-21 19:40:21.407 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#112] MediaCodec discarded an unknown buffer
+11-21 19:40:21.407 D/CCodecBufferChannel( 3933): [c2.goldfish.h264.decoder#112] MediaCodec discarded an unknown buffer
+11-21 19:40:21.443 W/InputManager-JNI(  511): Input channel object '1e08143 Splash Screen com.elad.faceblur.test (client)' was disposed without first being removed with the input manager!
+11-21 19:40:21.443 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:21.443 D/MediaCodec( 3933): flushMediametrics
+11-21 19:40:21.486 D/CoreBackPreview(  511): Window{b03c2c4 u0 com.elad.faceblur/androidx.activity.ComponentActivity}: Setting back callback null
+11-21 19:40:21.507 D/CoreBackPreview(  511): Window{7c22ad8 u0 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity}: Setting back callback null
+11-21 19:40:21.510 W/InputManager-JNI(  511): Input channel object 'b03c2c4 com.elad.faceblur/androidx.activity.ComponentActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:40:21.519 I/TestRunner( 3933): finished: projectRoundTrip(com.elad.faceblur.ProjectsVoiceTest)
+11-21 19:40:21.523 W/InputManager-JNI(  511): Input channel object '7c22ad8 com.elad.faceblur.test/androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity (client)' was disposed without first being removed with the input manager!
+11-21 19:40:21.589 I/AndroidRuntime( 3850): VM exiting with result code 0.
+11-21 19:40:21.600 I/ActivityManager(  511): Force stopping com.elad.faceblur appid=10174 user=0: finished inst
+11-21 19:40:21.604 I/ActivityManager(  511): Killing 3933:com.elad.faceblur/u0a174 (adj 0): stop com.elad.faceblur due to finished inst
+11-21 19:40:21.680 V/ActivityManager(  511): Got obituary of 3933:com.elad.faceblur
+11-21 19:40:21.871 W/CorpusConfigHelper( 1832): android.util.MalformedJsonException: Use JsonReader.setLenient(true) to accept malformed JSON at line 123 column 2

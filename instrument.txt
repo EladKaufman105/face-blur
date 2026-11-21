@@ -1,0 +1,11 @@
+
+com.elad.faceblur.EndToEndTest:.
+com.elad.faceblur.EditorScreenTest:..
+com.elad.faceblur.SubtitlesTest:...
+com.elad.faceblur.ProjectsVoiceTest:....
+
+Time: 1,398.452
+
+OK (10 tests)
+
+

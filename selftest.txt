@@ -1,0 +1,12 @@
+video 768x432 10000ms
+analysis: 120 frames, 160 faces, 2 tracks
+opencv: minimal
+face detection on: cpu, cpu fp16
+sound effect: 76800 samples
+people: 120/120 masks (pphumanseg+lraspp)
+render: content://media/external_primary/video/media/1000000041
+audio: 351820 samples
+whisper: result 0, 45 segments, progress 100, "  And  so  my  fellow  Americans,  ask  not  what  your  cou"
+speakers: [1, 1]
+translator: ok
+PASS

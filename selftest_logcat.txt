@@ -1,0 +1,29 @@
+11-21 19:40:24.181 I/ActivityTaskManager(  511): START u0 {flg=0x10000000 cmp=com.elad.faceblur/.MainActivity (has extras)} from uid 2000
+11-21 19:40:24.195 I/m.elad.faceblur(10420): Using CollectorTypeCC GC.
+11-21 19:40:24.195 W/m.elad.faceblur(10420): Unexpected CPU variant for x86: x86_64.
+11-21 19:40:24.195 W/m.elad.faceblur(10420): Known variants: atom, sandybridge, silvermont, kabylake, default
+11-21 19:40:24.197 I/ActivityManager(  511): Start proc 10420:com.elad.faceblur/u0a174 for next-top-activity {com.elad.faceblur/com.elad.faceblur.MainActivity}
+11-21 19:40:24.202 D/CoreBackPreview(  511): Window{4c486dd u0 Splash Screen com.elad.faceblur}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@3725923, mPriority=0}
+11-21 19:40:24.259 D/nativeloader(10420): Configuring classloader-namespace for other apk /data/app/~~yhaxphsImSJORDNYW5-gVQ==/com.elad.faceblur-b73YvfT9ZkMhnI4yKNPvUg==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~yhaxphsImSJORDNYW5-gVQ==/com.elad.faceblur-b73YvfT9ZkMhnI4yKNPvUg==/lib/x86_64:/data/app/~~yhaxphsImSJORDNYW5-gVQ==/com.elad.faceblur-b73YvfT9ZkMhnI4yKNPvUg==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/com.elad.faceblur
+11-21 19:40:24.265 V/GraphicsEnvironment(10420): ANGLE Developer option for 'com.elad.faceblur' set to: 'default'
+11-21 19:40:24.266 V/GraphicsEnvironment(10420): ANGLE GameManagerService for com.elad.faceblur: false
+11-21 19:40:24.358 D/CoreBackPreview(  511): Window{b304549 u0 com.elad.faceblur/com.elad.faceblur.MainActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@e886b6f, mPriority=0}
+11-21 19:40:25.104 I/ActivityTaskManager(  511): Displayed com.elad.faceblur/.MainActivity: +909ms
+11-21 19:40:25.113 W/InputManager-JNI(  511): Input channel object '4c486dd Splash Screen com.elad.faceblur (client)' was disposed without first being removed with the input manager!
+11-21 19:40:25.115 D/CoreBackPreview(  511): Window{4c486dd u0 Splash Screen com.elad.faceblur EXITING}: Setting back callback null
+11-21 19:40:25.240 I/GoogleInputMethodService( 1633): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-21 19:40:26.343 E/cv::error()(10420): OpenCV(4.10.0) Error: Requested object was not found (could not open directory: /data/app/~~yhaxphsImSJORDNYW5-gVQ==/com.elad.faceblur-b73YvfT9ZkMhnI4yKNPvUg==/base.apk!/lib/x86_64) in glob_rec, file /home/runner/work/face-blur/opencv/modules/core/src/glob.cpp, line 279
+11-21 19:40:26.343 E/cv::error()(10420): OpenCV(4.10.0) Error: Requested object was not found (could not open directory: /data/app/~~yhaxphsImSJORDNYW5-gVQ==/com.elad.faceblur-b73YvfT9ZkMhnI4yKNPvUg==/base.apk!/lib/x86_64) in glob_rec, file /home/runner/work/face-blur/opencv/modules/core/src/glob.cpp, line 279
+11-21 19:40:26.343 E/cv::error()(10420): OpenCV(4.10.0) Error: Requested object was not found (could not open directory: /data/app/~~yhaxphsImSJORDNYW5-gVQ==/com.elad.faceblur-b73YvfT9ZkMhnI4yKNPvUg==/base.apk!/lib/x86_64) in glob_rec, file /home/runner/work/face-blur/opencv/modules/core/src/glob.cpp, line 279
+11-21 19:40:30.053 D/ProfileInstaller(10420): Installing profile for com.elad.faceblur
+11-21 19:40:30.499 I/MediaProvider( 1677): Open with lower FS for /storage/emulated/0/Movies/EDITIT/video_blur_20261121_194020.mp4. Uid: 10138
+11-21 19:40:30.506 I/MediaProvider( 1677): Open with lower FS for /storage/emulated/0/Movies/EDITIT/video_blur_20261121_194020.mp4. Uid: 10138
+11-21 19:40:30.512 I/MediaProvider( 1677): Open with lower FS for /storage/emulated/0/Movies/EDITIT/video_blur_20261121_194020.mp4. Uid: 10138
+11-21 19:40:30.538 I/MediaProvider( 1677): Open with lower FS for /storage/emulated/0/Movies/EDITIT/video_blur_20261121_194020.mp4. Uid: 10138
+11-21 19:40:30.578 I/MediaProvider( 1677): Open with lower FS for /storage/emulated/0/Movies/EDITIT/video_blur_20261121_194020.mp4. Uid: 10138
+11-21 19:40:30.619 I/MediaProvider( 1677): Open with lower FS for /storage/emulated/0/Movies/EDITIT/video_blur_20261121_194020.mp4. Uid: 10138
+11-21 19:40:30.625 I/MediaProvider( 1677): Open with lower FS for /storage/emulated/0/Movies/EDITIT/video_blur_20261121_194020.mp4. Uid: 10138
+11-21 19:40:42.868 I/m.elad.faceblur(10420): Background concurrent copying GC freed 12180(607KB) AllocSpace objects, 52(13MB) LOS objects, 49% free, 13MB/27MB, paused 10.062ms,10us total 30.226ms
+11-21 19:41:47.016 I/MediaProvider( 1677): Open with lower FS for /storage/emulated/0/Movies/EDITIT/.pending-1795894907-video_blur_20261121_194147.mp4. Uid: 10174
+11-21 19:41:47.019 D/MediaProvider( 1677): Moving /storage/emulated/0/Movies/EDITIT/.pending-1795894907-video_blur_20261121_194147.mp4 to /storage/emulated/0/Movies/EDITIT/video_blur_20261121_194147.mp4
+11-21 19:41:47.606 I/FaceBlurWhisper(10420): model loaded: WHISPER : VITISAI = 0 | COREML = 0 | OPENVINO = 0 | CPU : SSE3 = 1 | SSSE3 = 1 | REPACK = 1 | 

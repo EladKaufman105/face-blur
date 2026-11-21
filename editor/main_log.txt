@@ -1,0 +1,2 @@
+state at the screenshot: Working
+live preview during analysis: 480x270, 4 faces

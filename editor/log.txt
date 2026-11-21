@@ -1,0 +1,8 @@
+classroom.mp4: frames=120 tracks=4 store=120
+playback: frame 0 -> 9, playing=true, preview=true
+trim: end 119 -> 64, after undo 119
+tracking took 1364ms; notice=הטשטוש עוקב 4.0 שניות. בדוק וקצר אם צריך.
+auto track 0..119; manual 0..119; follows 1.00 of the face's frames
+after edits: 2:0-119x1.0, 3:0-119x1.0, 4:0-119x1.0, 5:0-119x1.0
+export sheet opened: true
+exported: blurs=4 frames=120 render=20669ms

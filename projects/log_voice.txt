@@ -1,0 +1,3 @@
+sfx [(builtin:ding, 5000)]
+bleeps {1500=1900}
+voice export: 11.192s, 1 kHz share inside the bleep 1.00, outside 0.00; ding share 0.79 (before it 0.00)
