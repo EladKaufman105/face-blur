@@ -28,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -36,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -54,6 +56,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -80,6 +83,11 @@ fun WatermarkControls(w: Watermark, onChange: (Watermark) -> Unit) {
     val scope = rememberCoroutineScope()
     // 0 none, 1 text, 2 logo.
     var kind by remember { mutableIntStateOf(if (w.image) 2 else if (w.text.isNotBlank()) 1 else 0) }
+    // Follow changes made elsewhere (the export sheet and the editor panel share the watermark),
+    // without hiding the text field while its text is being cleared.
+    LaunchedEffect(w.image, w.text.isNotBlank()) {
+        if (w.image) kind = 2 else if (w.text.isNotBlank() && kind != 1) kind = 1
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) scope.launch {
             val ok = withContext(Dispatchers.IO) { runCatching { Watermark.importImage(context, uri) }.getOrDefault(false) }
@@ -99,6 +107,8 @@ fun WatermarkControls(w: Watermark, onChange: (Watermark) -> Unit) {
             OutlinedTextField(
                 w.text, { onChange(w.copy(text = it.take(40), image = false)) },
                 singleLine = true, label = { Text(t("הטקסט")) }, modifier = Modifier.fillMaxWidth(),
+                // "@name" reads left to right in a Hebrew screen too.
+                textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Content),
             )
         }
         if (kind == 2) {

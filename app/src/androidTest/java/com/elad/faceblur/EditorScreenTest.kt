@@ -312,7 +312,9 @@ class EditorScreenTest {
         inst.runOnMainSync { vm.start() }
         val t1 = System.currentTimeMillis()
         while (inst.onMain { vm.livePreview == null || vm.state !is UiState.Working } && System.currentTimeMillis() - t1 < 30_000) Thread.sleep(100)
-        Thread.sleep(1200)
+        // The progress never idles: move the test clock by hand so the screen change plays out.
+        rule.mainClock.advanceTimeBy(1500)
+        Thread.sleep(300)
         screen(outDir, "12_working.png")
         File(outDir, "main_log.txt").writeText("live preview during analysis: ${inst.onMain { vm.livePreview?.let { "${it.frame.width}x${it.frame.height}, ${it.faces.size} faces" } }}\n")
         inst.runOnMainSync { vm.cancel() }
