@@ -1,0 +1,22 @@
+name: Detection benchmark (ARM)
+
+on:
+  push:
+    branches: [bench]
+
+jobs:
+  bench:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Benchmark
+        run: |
+          pip install -q opencv-python-headless==4.10.0.84 numpy
+          git fetch -q --depth 1 origin test-media
+          git show FETCH_HEAD:classroom.mp4 > /tmp/classroom.mp4
+          lscpu | grep -E "Model name|^CPU\(s\)|Flags" | cut -c1-200
+          python bench/detect_bench.py app/src/main/assets/retinaface_mv2.onnx app/src/main/assets/face_detection_yunet_2023mar.onnx /tmp/classroom.mp4
