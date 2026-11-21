@@ -1,0 +1,68 @@
+name: ML models (convert and benchmark)
+
+on:
+  push:
+    branches: [ml-src]
+
+permissions:
+  contents: write
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: |
+          pip install -q torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install -q "numpy<2" onnx==1.17.0 onnxsim onnxruntime==1.20.1 onnxconverter-common opencv-python-headless==4.10.0.84 \
+            tensorflow==2.17.1 tf_keras==2.17.0 onnx2tf==1.26.3 onnx_graphsurgeon sng4onnx psutil ai-edge-litert
+      - name: Test frames
+        run: |
+          git fetch -q --depth 1 origin test-media
+          git show FETCH_HEAD:classroom.mp4 > /tmp/classroom.mp4
+          git show FETCH_HEAD:walk.mp4 > /tmp/walk.mp4
+      - name: Segmentation models
+        run: python ml/export_seg.py 2>&1 | grep -v Warning
+      - name: Face detector to TFLite
+        run: |
+          mkdir -p out/retina
+          git show d220a08~1:app/src/main/assets/retinaface_mv2.onnx > out/retina/retina_fp32.onnx
+          python ml/convert_retina.py /tmp/classroom.mp4 2>&1 | grep -vE "Warning|^\s*$" | tail -60
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ml-out
+          path: out
+      - name: Publish to ml-models
+        run: |
+          cd out
+          rm -rf retina/tf/*.json retina/tf/saved_model* 2>/dev/null || true
+          git init -q -b ml-models
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          git add -A; git commit -qm "Converted models (${{ github.sha }})"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ml-models
+
+  bench-arm:
+    needs: convert
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: ml-out
+          path: out
+      - name: Benchmark
+        run: |
+          pip install -q "numpy<2" opencv-python-headless==4.10.0.84 ai-edge-litert
+          lscpu | grep -E "Model name|^CPU\(s\)"
+          python ml/bench_arm.py
