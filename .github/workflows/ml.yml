@@ -21,8 +21,7 @@ jobs:
       - name: Install
         run: |
           pip install -q torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
-          pip install -q "numpy<2" onnx==1.17.0 onnxsim onnxruntime==1.20.1 onnxconverter-common opencv-python-headless==4.10.0.84 \
-            tensorflow==2.17.1 tf_keras==2.17.0 onnx2tf==1.26.3 onnx_graphsurgeon sng4onnx psutil ai-edge-litert
+          pip install -q "numpy<2" onnx==1.17.0 onnxsim==0.4.36 onnxruntime==1.20.1 onnxconverter-common opencv-python-headless==4.10.0.84
       - name: Test frames
         run: |
           git fetch -q --depth 1 origin test-media
@@ -30,11 +29,6 @@ jobs:
           git show FETCH_HEAD:walk.mp4 > /tmp/walk.mp4
       - name: Segmentation models
         run: python ml/export_seg.py 2>&1 | grep -v Warning
-      - name: Face detector to TFLite
-        run: |
-          mkdir -p out/retina
-          git show d220a08~1:app/src/main/assets/retinaface_mv2.onnx > out/retina/retina_fp32.onnx
-          python ml/convert_retina.py /tmp/classroom.mp4 2>&1 | grep -vE "Warning|^\s*$" | tail -60
       - uses: actions/upload-artifact@v4
         with:
           name: ml-out
@@ -63,6 +57,6 @@ jobs:
           path: out
       - name: Benchmark
         run: |
-          pip install -q "numpy<2" opencv-python-headless==4.10.0.84 ai-edge-litert
+          pip install -q "numpy<2" opencv-python-headless==4.10.0.84
           lscpu | grep -E "Model name|^CPU\(s\)"
           python ml/bench_arm.py
