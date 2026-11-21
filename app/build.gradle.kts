@@ -92,7 +92,7 @@ android {
 
     androidResources {
         // Read straight from the APK (models by OpenCV, sounds by MediaExtractor).
-        noCompress += listOf("onnx", "ogg")
+        noCompress += listOf("onnx", "ogg", "tflite")
     }
 }
 
@@ -110,6 +110,10 @@ dependencies {
 
     // Face detection (YuNet via OpenCV DNN) + optical-flow tracking, fully on-device.
     implementation("org.opencv:opencv:4.10.0")
+    // Face detection on the GPU (LiteRT, formerly TensorFlow Lite, with its GPU delegate).
+    implementation("com.google.ai.edge.litert:litert:1.4.0")
+    implementation("com.google.ai.edge.litert:litert-gpu:1.4.0")
+    implementation("com.google.ai.edge.litert:litert-gpu-api:1.4.0")
 
     // Subtitle translation Hebrew <-> English, on the device.
     implementation("com.google.mlkit:translate:17.0.3")

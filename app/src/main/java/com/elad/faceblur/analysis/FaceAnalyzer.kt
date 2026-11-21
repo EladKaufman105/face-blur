@@ -64,6 +64,16 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
 
     private val retinaPath = asset(context, RetinaFaceDetector.MODEL)
     private val yunetPath = asset(context, FaceDetector.YUNET_MODEL)
+    // The big detection pass on the GPU, when the phone and the downloaded models allow it.
+    private val gpu = GpuFaceNet.create(context)
+
+    /** Where detection ran: "gpu", "gpu-checking" (still compared with the CPU), "cpu". */
+    val accelerator: String
+        get() = when {
+            gpu == null || !gpu.active -> "cpu"
+            gpu.trusted -> "gpu"
+            else -> "gpu-checking"
+        }
 
     // Detection workers: each thread keeps its own detector (OpenCV nets aren't shared).
     private val detectors = java.util.Collections.synchronizedList(ArrayList<FaceDetector>())
@@ -76,7 +86,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     @Volatile private var generation = 0
 
     /** Now and then, a small copy of the frame and the faces found lately (progress screen). */
-    var onPreview: ((Bitmap, List<Det>) -> Unit)? = null
+    var onPreview: ((Bitmap, List<Det>, String) -> Unit)? = null
     private var lastPreview = 0L
     @Volatile private var lastDets: List<Det> = emptyList()
     private val preview = Mat()
@@ -206,11 +216,11 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             preview.get(0, 0, px)
             val bmp = Bitmap.createBitmap(pw, ph, Bitmap.Config.ARGB_8888)
             bmp.copyPixelsFromBuffer(ByteBuffer.wrap(px))
-            cb(bmp, lastDets)
+            cb(bmp, lastDets, accelerator)
         }
     }
 
-    private fun detector(): FaceDetector = workerDetector.get() ?: FaceDetector(retinaPath, yunetPath).also {
+    private fun detector(): FaceDetector = workerDetector.get() ?: FaceDetector(retinaPath, yunetPath, gpu).also {
         workerDetector.set(it)
         detectors += it
     }
@@ -261,6 +271,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             detectors.forEach { it.close() }
             detectors.clear()
         }
+        gpu?.close()
         preview.release()
         frames?.close()
         frames = null

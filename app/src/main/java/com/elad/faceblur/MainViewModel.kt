@@ -45,7 +45,7 @@ import java.util.concurrent.Executors
 enum class QuickTool { SUBTITLES, BACKGROUND, SOUND }
 
 /** What the progress screen shows: a small copy of the frame being processed, and faces found on it. */
-class LivePreview(val frame: android.graphics.Bitmap, val faces: List<com.elad.faceblur.analysis.Box>)
+class LivePreview(val frame: android.graphics.Bitmap, val faces: List<com.elad.faceblur.analysis.Box>, val gpu: Boolean = false)
 
 sealed interface UiState {
     data object Empty : UiState
@@ -99,12 +99,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var livePreview by mutableStateOf<LivePreview?>(null)
         private set
 
-    private fun showLive(frame: android.graphics.Bitmap, faces: List<com.elad.faceblur.analysis.Box>) {
-        main.post { if (state is UiState.Working) livePreview = LivePreview(frame, faces) }
+    private fun showLive(frame: android.graphics.Bitmap, faces: List<com.elad.faceblur.analysis.Box>, gpu: Boolean = false) {
+        main.post { if (state is UiState.Working) livePreview = LivePreview(frame, faces, gpu) }
     }
 
     init {
         refreshProjects()
+        // Face detection on the GPU needs its models (12 MB, once): fetch them quietly.
+        viewModelScope.launch {
+            if (!models.gpuFaceReady) runCatching { models.downloadGpuFaceModels() }
+        }
     }
 
     fun refreshProjects() {
@@ -304,7 +308,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val t0 = SystemClock.elapsedRealtime()
                 val analysis = processor.analyze(
                     info, settings,
-                    onPreview = { frame, dets -> showLive(frame, dets.filter { it.score >= 0.5f }.map { it.box }) },
+                    onPreview = { frame, dets, acc -> showLive(frame, dets.filter { it.score >= 0.5f }.map { it.box }, acc == "gpu") },
                 ) { p -> state = UiState.Working(info, 1, p, auto = auto) }
                 val session = EditSession(info, settings, analysis, SystemClock.elapsedRealtime() - t0)
                 val ctrl = EditorController(session, viewModelScope, getApplication(), models, prefs)

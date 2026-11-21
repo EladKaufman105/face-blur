@@ -27,7 +27,7 @@ class Det(val box: Box, val score: Float, var verify: Float = 0f)
  * RetinaFace with a MobileNetV2 backbone (yakhyo/retinaface-pytorch, MIT; trained on WIDER
  * FACE) through OpenCV DNN.
  */
-class RetinaFaceDetector(modelPath: String) : Closeable {
+class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null) : Closeable {
 
     private val net: Net = Dnn.readNetFromONNX(modelPath)
     private val priorCache = HashMap<Long, FloatArray>()
@@ -66,6 +66,34 @@ class RetinaFaceDetector(modelPath: String) : Closeable {
             Imgproc.resize(bgr, resized, Size(iw.toDouble(), ih.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
             resized
         }
+        val (loc, conf) = forward(input, iw, ih, threshold, minBox)
+        out += decode(loc, conf, iw, ih, threshold, minBox)
+    }
+
+    /** The model's anchor offsets and scores for [input] ([iw] x [ih]): on the GPU when it can, else OpenCV. */
+    private fun forward(input: Mat, iw: Int, ih: Int, threshold: Float, minBox: Float): Pair<FloatArray, FloatArray> {
+        val g = gpu
+        if (g != null && g.supports(iw, ih)) {
+            val r = g.run(input, iw, ih)
+            if (r != null) {
+                if (g.trusted) return r
+                // Not trusted yet: also on the CPU, and compare what each finds.
+                val ref = cpuForward(input, iw, ih)
+                val a = decode(r.first, r.second, iw, ih, threshold, minBox)
+                val b = decode(ref.first, ref.second, iw, ih, threshold, minBox)
+                if (agree(a, b)) {
+                    if (b.isNotEmpty()) g.vouch()
+                } else {
+                    android.util.Log.w("EDITIT", "GPU faces differ from the CPU's (${a.size} vs ${b.size}): CPU from now on")
+                    g.disable()
+                }
+                return ref
+            }
+        }
+        return cpuForward(input, iw, ih)
+    }
+
+    private fun cpuForward(input: Mat, iw: Int, ih: Int): Pair<FloatArray, FloatArray> {
         val blob = Dnn.blobFromImage(input, 1.0, Size(iw.toDouble(), ih.toDouble()), Scalar(104.0, 117.0, 123.0), false, false)
         net.setInput(blob)
         val outs = ArrayList<Mat>()
@@ -74,10 +102,20 @@ class RetinaFaceDetector(modelPath: String) : Closeable {
         val loc = floats(outs[0])
         val conf = floats(outs[1])
         outs.forEach { it.release() }
+        return loc to conf
+    }
 
+    /** Same faces (by place) with nearly the same scores. */
+    private fun agree(a: List<Det>, b: List<Det>): Boolean {
+        if (a.size != b.size) return false
+        return b.all { d -> a.any { Geometry.iou(it.box, d.box) > 0.8f && kotlin.math.abs(it.score - d.score) < 0.08f } }
+    }
+
+    /** Boxes above [threshold] (and [minBox] px at the model's size), after NMS. */
+    private fun decode(loc: FloatArray, conf: FloatArray, iw: Int, ih: Int, threshold: Float, minBox: Float): List<Det> {
         val pri = priors(ih, iw)
         val n = pri.size / 4
-        if (loc.size < n * 4 || conf.size < n * 2) return
+        if (loc.size < n * 4 || conf.size < n * 2) return emptyList()
         val raw = ArrayList<Det>()
         for (i in 0 until n) {
             val score = conf[i * 2 + 1]
@@ -90,7 +128,7 @@ class RetinaFaceDetector(modelPath: String) : Closeable {
             if (min(bw * iw, bh * ih) < minBox) continue
             raw += Det(Box(cx, cy, bw, bh), score)
         }
-        out += Geometry.nmsIou(raw, 0.4f)
+        return Geometry.nmsIou(raw, 0.4f)
     }
 
     private fun floats(m: Mat): FloatArray {

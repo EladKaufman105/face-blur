@@ -503,7 +503,7 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
                 live?.frame ?: state.info.thumbnail,
                 live?.faces.orEmpty(),
                 isLive = live != null,
-                label = if (exporting) t("תצוגה חיה של הייצוא") else if (state.stage == 1) t("מחפש פנים") else null,
+                label = if (exporting) t("תצוגה חיה של הייצוא") else if (state.stage == 1) (if (live?.gpu == true) t("מחפש פנים · GPU") else t("מחפש פנים")) else null,
             )
         }
         SectionCard {

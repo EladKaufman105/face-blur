@@ -122,7 +122,7 @@ class FaceBlurProcessor(private val context: Context) {
     suspend fun analyze(
         info: VideoInfo,
         settings: Settings,
-        onPreview: ((android.graphics.Bitmap, List<Det>) -> Unit)? = null,
+        onPreview: ((android.graphics.Bitmap, List<Det>, String) -> Unit)? = null,
         onProgress: (Float) -> Unit,
     ): AnalysisResult {
         val analysisFile = File(context.cacheDir, "analysis.mp4")
@@ -146,6 +146,7 @@ class FaceBlurProcessor(private val context: Context) {
                 analyzer.reset()
                 export(composition(item, hdrMode), analysisFile, bitrate = 1_500_000, mime = MimeTypes.VIDEO_H264, onProgress)
             }
+            lastAccelerator = analyzer.accelerator
             return withContext(Dispatchers.Default) { analyzer.result() }
         } finally {
             analyzer.close()
@@ -383,6 +384,9 @@ class FaceBlurProcessor(private val context: Context) {
     }
 
     companion object {
+        /** Where the last analysis ran its face detection ("gpu", "gpu-checking" or "cpu"). */
+        @Volatile var lastAccelerator = "cpu"
+
         /**
          * The video's frame times only (from the container, no decoding), for editing
          * subtitles without face detection.

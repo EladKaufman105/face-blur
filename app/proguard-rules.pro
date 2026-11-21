@@ -10,3 +10,8 @@
 # OpenCV's Java classes are bound to its native library by name.
 -keep class org.opencv.** { *; }
 -dontwarn org.opencv.**
+
+# LiteRT (TensorFlow Lite) and its GPU delegate: bound to native code by name.
+-keep class org.tensorflow.lite.** { *; }
+-dontwarn org.tensorflow.lite.**
+-dontwarn com.google.ai.edge.litert.**

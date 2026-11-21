@@ -99,6 +99,36 @@ class ModelManager(context: Context) {
         }
     }
 
+    /** Face detection on the GPU: its models (2 x 6 MB) are here. */
+    val gpuFaceReady get() = GPU_FACE_FILES.all { (name, size) -> File(dir, name).length() == size }
+
+    /** Downloads the GPU face models once (checked by size and SHA-256). */
+    suspend fun downloadGpuFaceModels() {
+        for ((name, size) in GPU_FACE_FILES) {
+            val f = File(dir, name)
+            if (f.length() == size) continue
+            f.delete()
+            fetch(name, "$GPU_FACE_BASE/$name", size) {}
+            if (f.length() != size || sha256(f) != GPU_FACE_SHA256[name]) {
+                f.delete()
+                error("GPU face model damaged")
+            }
+        }
+    }
+
+    private fun sha256(f: File): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        f.inputStream().use { i ->
+            val buf = ByteArray(1 shl 16)
+            while (true) {
+                val n = i.read(buf)
+                if (n < 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
+
     /** Downloads [url] into [name] in the models folder, resuming a partial file. */
     private suspend fun fetch(name: String, urlText: String, minBytes: Long, onProgress: (Float) -> Unit) {
         withContext(Dispatchers.IO) {
@@ -158,6 +188,14 @@ class ModelManager(context: Context) {
     }
 
     companion object {
+        /** RetinaFace as TFLite for the GPU delegate; see the repo's gpu-model branch and ml/. */
+        const val GPU_FACE_BASE = "https://raw.githubusercontent.com/EladKaufman105/face-blur/gpu-model"
+        val GPU_FACE_FILES = listOf("retinaface-mv2-1280x736.tflite" to 6314616L, "retinaface-mv2-736x1280.tflite" to 6314616L)
+        val GPU_FACE_SHA256 = mapOf(
+            "retinaface-mv2-1280x736.tflite" to "e3d003315300f7297c28db24736d7465fa88e5407dc528942e5aff4693fc9d96",
+            "retinaface-mv2-736x1280.tflite" to "cdc93a8e1af969314ffa6d39e704bff6323c136569051f75be4a396acfd7f293",
+        )
+
         const val SPEAKER_FILE = "speaker-wespeaker-r34lm-fp16.onnx"
         /** WeSpeaker ResNet34-LM (CC BY 4.0), made fit for OpenCV; see the repo's speaker-model branch. */
         const val SPEAKER_URL = "https://raw.githubusercontent.com/EladKaufman105/face-blur/speaker-model/speaker-wespeaker-r34lm-fp16.onnx"

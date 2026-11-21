@@ -431,4 +431,5 @@ internal val English: Map<String, String> = mapOf(
     "שקיפות" to "Opacity",
     "תצוגה חיה של הייצוא" to "Live export preview",
     "תצוגה מקדימה של סימן המים" to "Watermark preview",
+    "מחפש פנים · GPU" to "Looking for faces · GPU",
 )
