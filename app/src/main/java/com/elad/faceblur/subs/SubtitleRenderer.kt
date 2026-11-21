@@ -29,21 +29,24 @@ import kotlin.math.sin
  * otherwise they're spread over the subtitle in proportion to word length.
  */
 class SubtitleRenderer private constructor(private val assets: AssetManager?, private val fontsDir: File?) {
-    private val typefaces = HashMap<SubFont, Typeface>()
+    private val typefaces = HashMap<String, Typeface>()
     private val custom = HashMap<String, Typeface?>()
     private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
     private val rect = RectF()
 
-    fun typeface(f: SubFont): Typeface = synchronized(typefaces) {
-        typefaces.getOrPut(f) {
+    /** [f] at [weight] (0: its default) and, for Allo, [round]ness. */
+    fun typeface(f: SubFont, weight: Int = 0, round: Int = SubFont.ROUND_DEFAULT): Typeface = synchronized(typefaces) {
+        val w = f.weightOf(weight)
+        val r = if (f.rounded) round.coerceIn(0, 100) else SubFont.ROUND_DEFAULT
+        typefaces.getOrPut("${f.name} $w $r") {
             val asset = f.asset
             if (asset == null || assets == null) {
                 Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             } else {
                 try {
                     val b = Typeface.Builder(assets, asset)
-                    if (f.weight > 0) b.setFontVariationSettings("'wght' ${f.weight}")
+                    if (f.variable) b.setFontVariationSettings(if (f.rounded) "'wght' $w, 'ROND' $r" else "'wght' $w")
                     b.build() ?: Typeface.DEFAULT_BOLD
                 } catch (e: Exception) {
                     Typeface.DEFAULT_BOLD
@@ -73,7 +76,7 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?, pr
     fun forget(name: String) = synchronized(custom) { custom.remove(name) }
 
     fun typeface(style: SubtitleStyle): Typeface =
-        style.customFont?.let { customTypeface(it) } ?: typeface(style.font)
+        style.customFont?.let { customTypeface(it) } ?: typeface(style.font, style.weight, style.round)
 
     /** Word start times of a block: the given ones, or spread by word length. */
     private class Timing(val starts: LongArray, val endUs: Long) {

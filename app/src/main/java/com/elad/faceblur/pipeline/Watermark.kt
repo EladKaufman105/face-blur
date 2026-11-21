@@ -45,6 +45,9 @@ data class Watermark(
     val font: SubFont = SubFont.RUBIK,
     val color: Int = Color.WHITE,
     val look: WatermarkLook = WatermarkLook.SHADOW,
+    /** Weight of a variable [font] (0: its default) and Allo's roundness. */
+    val weight: Int = 0,
+    val round: Int = SubFont.ROUND_DEFAULT,
 ) {
     fun enabled(context: Context) = if (image) imageFile(context).exists() else text.isNotBlank()
 
@@ -52,6 +55,7 @@ data class Watermark(
         .put("text", text).put("image", image).put("corner", position.name)
         .put("size", size.toDouble()).put("opacity", opacity.toDouble()).put("stamp", stamp)
         .put("font", font.name).put("color", color).put("look", look.name)
+        .put("weight", weight).put("round", round)
         .toString()
 
     companion object {
@@ -71,6 +75,8 @@ data class Watermark(
                     font = runCatching { SubFont.valueOf(o.optString("font")) }.getOrDefault(SubFont.RUBIK),
                     color = o.optInt("color", Color.WHITE),
                     look = runCatching { WatermarkLook.valueOf(o.optString("look")) }.getOrDefault(WatermarkLook.SHADOW),
+                    weight = o.optInt("weight", 0),
+                    round = o.optInt("round", SubFont.ROUND_DEFAULT).coerceIn(0, 100),
                 )
             } catch (e: Exception) {
                 Watermark()
@@ -117,7 +123,7 @@ data class Watermark(
                 return
             }
             if (w.text.isBlank()) return
-            paint.typeface = SubtitleRenderer.get(context).typeface(w.font)
+            paint.typeface = SubtitleRenderer.get(context).typeface(w.font, w.weight, w.round)
             paint.textSize = short * 0.04f * w.size
             val tw = paint.measureText(w.text)
             val fm = paint.fontMetrics

@@ -152,7 +152,8 @@ fun WatermarkControls(w: Watermark, onChange: (Watermark) -> Unit) {
 
         if (kind == 1) {
             Caption(t("פונט"))
-            FontRow(w.font) { change(w.copy(font = it)) }
+            FontRow(w.font) { change(w.copy(font = it, weight = 0)) }
+            FontAxes(w.font, w.weight, w.round) { wt, r -> change(w.copy(weight = wt, round = r)) }
             Caption(t("צבע"))
             Swatches(SubPresets.colors, w.color) { change(w.copy(color = it)) }
             Caption(t("בולטות"))

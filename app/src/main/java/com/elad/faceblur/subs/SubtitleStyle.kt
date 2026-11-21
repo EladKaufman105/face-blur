@@ -2,19 +2,34 @@ package com.elad.faceblur.subs
 
 import org.json.JSONObject
 
-/** Bundled fonts with Hebrew and Latin (SIL Open Font License, from Google Fonts). */
-enum class SubFont(val asset: String?, val label: String, val weight: Int) {
-    RUBIK("fonts/rubik.ttf", "Rubik", 800),
-    ALLO("fonts/allo_hebrew.ttf", "Allo", 800),
-    HEEBO("fonts/heebo.ttf", "Heebo", 800),
-    ASSISTANT("fonts/assistant.ttf", "Assistant", 800),
+/**
+ * Bundled fonts with Hebrew and Latin (SIL Open Font License). [weight] is the default weight of a
+ * variable font (0: a static font), adjustable within [minWeight]..[maxWeight]; [rounded]: Allo
+ * also has a roundness axis (ROND, 0 sharp .. 100 fully round).
+ */
+enum class SubFont(val asset: String?, val label: String, val weight: Int, val minWeight: Int = 0, val maxWeight: Int = 0, val rounded: Boolean = false) {
+    RUBIK("fonts/rubik.ttf", "Rubik", 800, 300, 900),
+    ALLO("fonts/allo_hebrew.ttf", "Allo", 800, 100, 900, rounded = true),
+    HEEBO("fonts/heebo.ttf", "Heebo", 800, 100, 900),
+    ASSISTANT("fonts/assistant.ttf", "Assistant", 800, 200, 800),
     SECULAR("fonts/secular_one.ttf", "Secular One", 0),
     SUEZ("fonts/suez_one.ttf", "Suez One", 0),
     VARELA("fonts/varela_round.ttf", "Varela Round", 0),
-    FREDOKA("fonts/fredoka.ttf", "Fredoka", 700),
+    FREDOKA("fonts/fredoka.ttf", "Fredoka", 700, 300, 700),
     KARANTINA("fonts/karantina.ttf", "Karantina", 0),
     AMATIC("fonts/amatic_sc.ttf", "Amatic SC", 0),
     SYSTEM(null, "System", 0),
+    ;
+
+    val variable get() = weight > 0
+
+    /** [w] (0: the default) within this font's range. */
+    fun weightOf(w: Int) = if (!variable) 0 else if (w <= 0) weight else w.coerceIn(minWeight, maxWeight)
+
+    companion object {
+        /** Roundness when none is chosen: Allo's own default. */
+        const val ROUND_DEFAULT = 50
+    }
 }
 
 /** How a subtitle appears and moves. */
@@ -100,6 +115,10 @@ data class SubtitleStyle(
     val position: Float = 0.86f,
     /** Text colors of speakers 2, 3, ... (speaker 1 uses [textColor]). */
     val speakerColors: List<Int> = DEFAULT_SPEAKERS,
+    /** Weight of a variable [font] (0: its default). */
+    val weight: Int = 0,
+    /** Roundness of a font that has it (Allo), 0..100. */
+    val round: Int = SubFont.ROUND_DEFAULT,
 ) {
     /** Text color for [speaker] (0 or 1: [textColor]); never the same as speaker 1's. */
     fun speakerColor(speaker: Int): Int {
@@ -137,6 +156,8 @@ data class SubtitleStyle(
         put("effect", effect.name)
         put("position", position.toDouble())
         put("speakers", org.json.JSONArray(speakerColors))
+        if (weight > 0) put("weight", weight)
+        if (round != SubFont.ROUND_DEFAULT) put("round", round)
     }.toString()
 
     companion object {
@@ -166,6 +187,8 @@ data class SubtitleStyle(
                     effect = runCatching { SubEffect.valueOf(o.optString("effect")) }.getOrDefault(d.effect),
                     position = o.optDouble("position", d.position.toDouble()).toFloat(),
                     speakerColors = o.optJSONArray("speakers")?.let { a -> List(a.length()) { a.getInt(it) } }?.takeIf { it.isNotEmpty() } ?: d.speakerColors,
+                    weight = o.optInt("weight", 0),
+                    round = o.optInt("round", SubFont.ROUND_DEFAULT).coerceIn(0, 100),
                 )
             } catch (e: Exception) {
                 SubtitleStyle()
@@ -210,6 +233,9 @@ object SubPresets {
         SubPreset("אות אחר אות", SubtitleStyle(font = SubFont.VARELA, size = 1.05f, outline = 0.12f, effect = SubEffect.LETTERS, position = 0.78f)),
         SubPreset("הקלדה", SubtitleStyle(font = SubFont.ASSISTANT, size = 1.05f, outline = 0f, shadow = false, box = true, boxColor = 0xE6000000.toInt(), effect = SubEffect.TYPING, position = 0.8f)),
         SubPreset("מילים בהדרגה", SubtitleStyle(font = SubFont.ASSISTANT, size = 1.1f, outline = 0.1f, shadow = true, effect = SubEffect.WORD_FADE, position = 0.75f)),
+        // Allo's axes: heaviest and fully round; light with sharp corners.
+        SubPreset("עגול", SubtitleStyle(font = SubFont.ALLO, weight = 900, round = 100, size = 1.2f, outline = 0.14f, effect = SubEffect.POP, position = 0.68f)),
+        SubPreset("אלגנטי", SubtitleStyle(font = SubFont.ALLO, weight = 300, round = 0, size = 1.1f, outline = 0f, shadow = true, effect = SubEffect.WORD_FADE, position = 0.8f)),
     )
 
     private const val YELLOW_TEXT = 0xFFFFE135.toInt()

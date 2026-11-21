@@ -155,36 +155,49 @@ private val Shapes = Shapes(
 
 /**
  * Allo Hebrew (Allo by Josh Puckett with a Hebrew set built to its rules; OFL; variable) for all
- * text: its "Display" optical size for big headings, the text size elsewhere.
+ * text, using its axes:
+ * - optical size (opsz 9..32) follows each style's text size, as the font intends: small text
+ *   gets the open spacing of its small-size design, headings the tighter display one;
+ * - roundness (ROND): headings and titles fully round, in step with the app's pill buttons and
+ *   rounded timeline bars; running text at the font's default, crisper at small sizes;
+ * - weight per style, as before.
  */
 @OptIn(ExperimentalTextApi::class)
 @Composable
 private fun typography(): Typography {
     val assets = LocalContext.current.assets
     return remember(assets) {
-        fun allo(opsz: Float) = runCatching {
-            FontFamily(
-                listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold, FontWeight.ExtraBold, FontWeight.Black).map {
-                    Font(
-                        "fonts/allo_hebrew.ttf", assets, weight = it,
-                        variationSettings = FontVariation.Settings(FontVariation.weight(it.weight), FontVariation.Setting("opsz", opsz)),
-                    )
-                },
-            )
-        }.getOrDefault(FontFamily.Default)
-        val family = allo(14f)
-        val display = allo(32f)
+        val families = HashMap<Pair<Int, Int>, FontFamily>()
+        fun allo(opsz: Int, round: Int) = families.getOrPut(opsz to round) {
+            runCatching {
+                FontFamily(
+                    listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold, FontWeight.ExtraBold, FontWeight.Black).map {
+                        Font(
+                            "fonts/allo_hebrew.ttf", assets, weight = it,
+                            variationSettings = FontVariation.Settings(
+                                FontVariation.weight(it.weight),
+                                FontVariation.Setting("opsz", opsz.toFloat()),
+                                FontVariation.Setting("ROND", round.toFloat()),
+                            ),
+                        )
+                    },
+                )
+            }.getOrDefault(FontFamily.Default)
+        }
         val base = Typography()
-        fun TextStyle.r(weight: FontWeight? = null, spacing: Float? = null, f: FontFamily = family) =
-            copy(fontFamily = f, fontWeight = weight ?: fontWeight, letterSpacing = spacing?.sp ?: letterSpacing)
+        fun TextStyle.r(weight: FontWeight? = null, spacing: Float? = null, round: Int = 50) = copy(
+            fontFamily = allo(fontSize.value.toInt().coerceIn(9, 32), round),
+            fontWeight = weight ?: fontWeight,
+            letterSpacing = spacing?.sp ?: letterSpacing,
+        )
         Typography(
-            displayLarge = base.displayLarge.r(FontWeight.Black, -1f, display),
-            displayMedium = base.displayMedium.r(FontWeight.Black, -0.5f, display),
-            displaySmall = base.displaySmall.r(FontWeight.ExtraBold, -0.5f, display),
-            headlineLarge = base.headlineLarge.r(FontWeight.ExtraBold, -0.5f, display),
-            headlineMedium = base.headlineMedium.r(FontWeight.ExtraBold, -0.25f, display),
-            headlineSmall = base.headlineSmall.r(FontWeight.Bold),
-            titleLarge = base.titleLarge.r(FontWeight.Bold),
+            displayLarge = base.displayLarge.r(FontWeight.Black, -1f, 100),
+            displayMedium = base.displayMedium.r(FontWeight.Black, -0.5f, 100),
+            displaySmall = base.displaySmall.r(FontWeight.ExtraBold, -0.5f, 100),
+            headlineLarge = base.headlineLarge.r(FontWeight.ExtraBold, -0.5f, 100),
+            headlineMedium = base.headlineMedium.r(FontWeight.ExtraBold, -0.25f, 100),
+            headlineSmall = base.headlineSmall.r(FontWeight.Bold, round = 100),
+            titleLarge = base.titleLarge.r(FontWeight.Bold, round = 100),
             titleMedium = base.titleMedium.r(FontWeight.SemiBold, 0f),
             titleSmall = base.titleSmall.r(FontWeight.SemiBold, 0f),
             bodyLarge = base.bodyLarge.r(spacing = 0f),

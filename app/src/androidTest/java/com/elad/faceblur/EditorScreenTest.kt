@@ -226,7 +226,7 @@ class EditorScreenTest {
             dir = LayoutDirection.Rtl
             ctrl.deselect()
             // A text watermark in the middle, in a box: the panel, and the video showing it.
-            export = export.copy(watermark = Watermark(text = "@editit", position = WatermarkPosition.CENTER, look = WatermarkLook.BOX, color = 0xFFFFD60A.toInt(), size = 1.6f))
+            export = export.copy(watermark = Watermark(text = "@editit", position = WatermarkPosition.CENTER, look = WatermarkLook.BOX, color = 0xFFFFD60A.toInt(), size = 1.6f, font = com.elad.faceblur.subs.SubFont.ALLO, weight = 900, round = 100))
             ctrl.watermarkPanel = true
         }
         Thread.sleep(1200)

@@ -246,8 +246,11 @@ private fun FontsTab(style: SubtitleStyle, onChange: (SubtitleStyle) -> Unit) {
         Grid(SubFont.entries.toList(), 3) { f ->
             val family = remember(f) { FontFamily(renderer.typeface(f)) }
             FontCell(family, if (f == SubFont.SYSTEM) t("של המכשיר") else f.label, style.customFont == null && style.font == f) {
-                onChange(style.copy(font = f, customFont = null))
+                onChange(style.copy(font = f, customFont = null, weight = 0))
             }
+        }
+        if (style.customFont == null) {
+            FontAxes(style.font, style.weight, style.round) { w, r -> onChange(style.copy(weight = w, round = r)) }
         }
     }
 }
