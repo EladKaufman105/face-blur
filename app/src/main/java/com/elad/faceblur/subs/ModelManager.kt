@@ -103,15 +103,23 @@ class ModelManager(context: Context) {
     val gpuFaceReady get() = GPU_FACE_FILES.all { (name, size) -> File(dir, name).length() == size }
 
     /** Downloads the GPU face models once (checked by size and SHA-256). */
-    suspend fun downloadGpuFaceModels() {
-        for ((name, size) in GPU_FACE_FILES) {
+    suspend fun downloadGpuFaceModels() = downloadChecked(GPU_FACE_FILES, GPU_FACE_BASE, GPU_FACE_SHA256)
+
+    /** Background removal's second model (LR-ASPP, 2 x 6.5 MB) is here. */
+    val segReady get() = SEG_FILES.all { (name, size) -> File(dir, name).length() == size }
+
+    /** Downloads background removal's second model once (checked by size and SHA-256). */
+    suspend fun downloadSegModels() = downloadChecked(SEG_FILES, SEG_BASE, SEG_SHA256)
+
+    private suspend fun downloadChecked(files: List<Pair<String, Long>>, base: String, sha: Map<String, String>) {
+        for ((name, size) in files) {
             val f = File(dir, name)
             if (f.length() == size) continue
             f.delete()
-            fetch(name, "$GPU_FACE_BASE/$name", size) {}
-            if (f.length() != size || sha256(f) != GPU_FACE_SHA256[name]) {
+            fetch(name, "$base/$name", size) {}
+            if (f.length() != size || sha256(f) != sha[name]) {
                 f.delete()
-                error("GPU face model damaged")
+                error("model $name damaged")
             }
         }
     }
@@ -195,6 +203,26 @@ class ModelManager(context: Context) {
             "retinaface-mv2-1280x736.tflite" to "e3d003315300f7297c28db24736d7465fa88e5407dc528942e5aff4693fc9d96",
             "retinaface-mv2-736x1280.tflite" to "cdc93a8e1af969314ffa6d39e704bff6323c136569051f75be4a396acfd7f293",
         )
+
+        /**
+         * LR-ASPP MobileNetV3 (torchvision, BSD-3; COCO with VOC labels) giving the person
+         * probability, one model per frame orientation; made by the repo's ml/export_seg.py.
+         * Pinned to the commit of the ml-models branch they were built on.
+         */
+        const val SEG_BASE = "https://raw.githubusercontent.com/EladKaufman105/face-blur/187ecd0f0bdb7e082b132a0e844e3a6785fb463b/seg"
+        const val SEG_LANDSCAPE = "lraspp_mbv3_512x288_fp16.onnx"
+        const val SEG_PORTRAIT = "lraspp_mbv3_288x512_fp16.onnx"
+        val SEG_FILES = listOf(SEG_LANDSCAPE to 6481264L, SEG_PORTRAIT to 6481264L)
+        val SEG_SHA256 = mapOf(
+            SEG_LANDSCAPE to "9f639c4dd0288bdafe736a2c62ee55d4f7fd26dc55af52ecc86fdbe68e2ae73a",
+            SEG_PORTRAIT to "b14720feee109c688b4639c73efa7a09063119ceefdc383308f45790af045a3b",
+        )
+
+        /** Background removal's second model for this orientation, if downloaded. */
+        fun segFile(context: Context, landscape: Boolean): File? {
+            val (name, size) = SEG_FILES[if (landscape) 0 else 1]
+            return File(File(context.filesDir, "models"), name).takeIf { it.length() == size }
+        }
 
         const val SPEAKER_FILE = "speaker-wespeaker-r34lm-fp16.onnx"
         /** WeSpeaker ResNet34-LM (CC BY 4.0), made fit for OpenCV; see the repo's speaker-model branch. */

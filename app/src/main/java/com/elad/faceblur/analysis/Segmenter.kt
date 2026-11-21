@@ -1,6 +1,8 @@
 package com.elad.faceblur.analysis
 
 import android.content.Context
+import android.util.Log
+import com.elad.faceblur.subs.ModelManager
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -13,12 +15,17 @@ import org.opencv.imgproc.Imgproc
 import java.io.Closeable
 import java.nio.ByteBuffer
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Finds the people in each frame: PP-HumanSeg (PaddleSeg, Apache 2.0, from OpenCV Zoo) through
  * OpenCV. The model takes a 192 x 192 square, so a wide (or tall) frame is covered by three
  * overlapping square tiles, blended with feathered edges: people aren't squeezed and are seen
  * bigger.
+ *
+ * When downloaded, a second model, LR-ASPP (see [ModelManager.SEG_FILES]), looks at the whole
+ * frame too, and a pixel is a person's if either model says so. On hard footage (rubble, seen
+ * from above) the two found mostly different people: together they covered nearly twice as much.
  *
  * The model looks at each frame on its own, so its masks shimmer from frame to frame even when
  * nothing moves. Each stored mask is therefore (within a shot) the per-pixel median of the
@@ -53,6 +60,18 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
     private val tileBig = Mat()
     private var acc = Mat()
     private var wsum = Mat()
+    // The second model, loaded for the first frame's orientation (null: not downloaded or failed).
+    private val context = context.applicationContext
+    private var lr: Net? = null
+    private var lrLandscape: Boolean? = null
+    private val lrSmall = Mat()
+    private val lrIn = Mat()
+    private val lrBig = Mat()
+    private var lrProb = Mat()
+    private var lrOut = FloatArray(0)
+
+    /** Which models looked at the frames (for the self-test's report). */
+    val models get() = if (lr != null) "pphumanseg+lraspp" else "pphumanseg"
 
     /** Frames done. */
     @Volatile var done = 0
@@ -185,6 +204,7 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
         if (tiles == 1) {
             infer(img, tileProb)
             Imgproc.resize(tileProb, acc, Size(w.toDouble(), h.toDouble()), 0.0, 0.0, Imgproc.INTER_LINEAR)
+            secondOpinion(img, acc)
             return acc
         }
         acc.setTo(Scalar(0.0))
@@ -207,7 +227,67 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
         }
         Core.max(wsum, Scalar(1e-6), wsum)
         Core.divide(acc, wsum, acc)
+        secondOpinion(img, acc)
         return acc
+    }
+
+    /** The second model for this orientation (loaded once), or null. */
+    private fun lrNet(landscape: Boolean): Net? {
+        if (lrLandscape == landscape) return lr
+        lr = null
+        lrLandscape = landscape
+        val file = ModelManager.segFile(context, landscape) ?: return null
+        lr = try {
+            Dnn.readNetFromONNX(file.path)
+        } catch (t: Throwable) {
+            Log.w("EDITIT", "LR-ASPP didn't load: $t")
+            null
+        }
+        return lr
+    }
+
+    /**
+     * LR-ASPP over the whole frame [img] (RGB), letterboxed to its input; where it sees a person
+     * more surely than [acc] (frame size), [acc] takes its value.
+     */
+    private fun secondOpinion(img: Mat, acc: Mat) {
+        val w = img.cols()
+        val h = img.rows()
+        val landscape = w >= h
+        val net = lrNet(landscape) ?: return
+        val mw = if (landscape) LR_LONG else LR_SHORT
+        val mh = if (landscape) LR_SHORT else LR_LONG
+        try {
+            val s = minOf(mw / w.toDouble(), mh / h.toDouble())
+            val rw = (w * s).roundToInt().coerceIn(1, mw)
+            val rh = (h * s).roundToInt().coerceIn(1, mh)
+            val ox = (mw - rw) / 2
+            val oy = (mh - rh) / 2
+            Imgproc.resize(img, lrSmall, Size(rw.toDouble(), rh.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
+            // Padding in the training mean: neutral to the model.
+            Core.copyMakeBorder(lrSmall, lrIn, oy, mh - rh - oy, ox, mw - rw - ox, Core.BORDER_CONSTANT, Scalar(124.0, 116.0, 104.0))
+            // RGB 0..1; the model normalizes itself.
+            val blob = Dnn.blobFromImage(lrIn, 1.0 / 255.0, Size(mw.toDouble(), mh.toDouble()), Scalar(0.0, 0.0, 0.0), false, false)
+            net.setInput(blob)
+            val o = net.forward()
+            if (lrOut.size != mw * mh) lrOut = FloatArray(mw * mh)
+            o.get(intArrayOf(0, 0, 0, 0), lrOut)
+            o.release()
+            blob.release()
+            if (lrProb.rows() != mh || lrProb.cols() != mw) {
+                lrProb.release()
+                lrProb = Mat(mh, mw, CvType.CV_32F)
+            }
+            lrProb.put(0, 0, lrOut)
+            val inner = lrProb.submat(Rect(ox, oy, rw, rh))
+            Imgproc.resize(inner, lrBig, Size(w.toDouble(), h.toDouble()), 0.0, 0.0, Imgproc.INTER_LINEAR)
+            inner.release()
+            Core.max(acc, lrBig, acc)
+        } catch (t: Throwable) {
+            // Not worth failing the pass over: PP-HumanSeg alone from here.
+            Log.w("EDITIT", "LR-ASPP failed: $t")
+            lr = null
+        }
     }
 
     private var weightsKey = ""
@@ -273,6 +353,11 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
         wsum.release()
         weightsCache.forEach { it.release() }
         weightsCache = emptyList()
+        lrSmall.release()
+        lrIn.release()
+        lrBig.release()
+        lrProb.release()
+        lr = null
         graySmall.release()
         grayBlur.release()
         m8.release()
@@ -285,6 +370,9 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
         private const val IN = 192
         /** Long side of the frame the tiles are cut from. */
         const val GRAB_LONG = 576
+        /** LR-ASPP's input: 512 x 288 for wide frames, 288 x 512 for tall ones. */
+        private const val LR_LONG = 512
+        private const val LR_SHORT = 288
 
         private const val N = MaskStore.SIZE * MaskStore.SIZE
         /** Neighbors on each side in the median. */

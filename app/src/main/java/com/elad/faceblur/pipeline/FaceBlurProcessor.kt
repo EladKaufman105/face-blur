@@ -184,6 +184,7 @@ class FaceBlurProcessor(private val context: Context) {
                 export(composition(item, hdrMode), out, bitrate = 500_000, mime = MimeTypes.VIDEO_H264, onProgress)
             }
             segmenter.finish()
+            lastSegModels = segmenter.models
             store.saveIndex(File(file.parentFile, file.name + ".idx"))
             return store
         } catch (e: Throwable) {
@@ -386,6 +387,10 @@ class FaceBlurProcessor(private val context: Context) {
     companion object {
         /** Where the last analysis ran its face detection ("gpu", "gpu-checking" or "cpu"). */
         @Volatile var lastAccelerator = "cpu"
+
+        /** The models the last background pass used (for the self-test's report). */
+        @Volatile
+        var lastSegModels = ""
 
         /**
          * The video's frame times only (from the container, no decoding), for editing

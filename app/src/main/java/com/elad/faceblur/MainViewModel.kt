@@ -105,9 +105,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshProjects()
-        // Face detection on the GPU needs its models (12 MB, once): fetch them quietly.
+        // Face detection on the GPU and background removal's second model need files (12 + 13
+        // MB, once): fetch them quietly.
         viewModelScope.launch {
             if (!models.gpuFaceReady) runCatching { models.downloadGpuFaceModels() }
+            if (!models.segReady) runCatching { models.downloadSegModels() }
         }
     }
 

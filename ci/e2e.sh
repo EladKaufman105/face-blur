@@ -36,6 +36,8 @@ adb push app/src/androidTest/assets/samples/walk.mp4 $ST/walk.mp4
 adb push app/src/androidTest/assets/samples/speech_two.mp4 $ST/speech.mp4
 adb push app/src/androidTest/assets/models/ggml-tiny.bin $ST/ggml-tiny.bin
 adb push app/src/androidTest/assets/models/speaker.onnx $ST/speaker.onnx
+adb push app/src/androidTest/assets/models/lraspp_mbv3_512x288_fp16.onnx $ST/
+adb push app/src/androidTest/assets/models/lraspp_mbv3_288x512_fp16.onnx $ST/
 adb shell rm -f $ST/report.txt
 adb logcat -c
 adb shell am start -n com.elad.faceblur/.MainActivity --es selftest walk.mp4

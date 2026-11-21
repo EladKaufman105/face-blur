@@ -67,8 +67,18 @@ object SelfTest {
             line("sound effect: ${ding?.size ?: 0} samples")
             require((ding?.size ?: 0) > 1000) { "sound effect not decoded" }
             m.addSfx("builtin:ding", 1000, 1600)
+            // Background removal's second model, if CI copied it in (the app downloads it).
+            var staged = false
+            for (name in listOf(com.elad.faceblur.subs.ModelManager.SEG_LANDSCAPE, com.elad.faceblur.subs.ModelManager.SEG_PORTRAIT)) {
+                val src = File(d, name)
+                if (src.exists()) {
+                    src.copyTo(File(File(context.filesDir, "models").apply { mkdirs() }, name), overwrite = true)
+                    staged = true
+                }
+            }
             val masks = p.segment(info, analysis, File(context.cacheDir, "selftest_masks.bin")) {}
-            line("people: ${masks.filled}/${masks.frameCount} masks")
+            line("people: ${masks.filled}/${masks.frameCount} masks (${FaceBlurProcessor.lastSegModels})")
+            require(!staged || "lraspp" in FaceBlurProcessor.lastSegModels) { "LR-ASPP not used" }
             val export = ExportOptions(subs = SubLang.ORIGINAL, saveSrt = false, aspect = ExportAspect.VERTICAL, watermark = Watermark(text = "@selftest"))
             val style = SubPresets.all.first { it.name == "טיקטוק" }.style
             val out = p.render(info, settings, analysis, m, 0, export, style, AudioEdit(VoiceFx.ROBOT), Background(fill = BgFill.BLUR), masks) {}
