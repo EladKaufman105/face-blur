@@ -266,10 +266,12 @@ private fun Header(onSettings: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(AppIcons.Lock, null, Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(4.dp))
-                Text(
+                // One line: a narrow screen gets it a little smaller rather than broken.
+                androidx.compose.foundation.text.BasicText(
                     t("הכל מעובד על המכשיר. שום דבר לא עולה לרשת."),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                    maxLines = 1,
+                    autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = 12.sp, stepSize = 0.5.sp),
                 )
             }
         }
