@@ -3,7 +3,7 @@ name: OpenCV minimal
 # OpenCV's Java library with only the modules EDITIT uses: core, imgproc, imgcodecs (JPEG
 # only), dnn (ONNX models), objdetect (YuNet), video (optical flow) and what they depend on.
 # Static C++ runtime, 16 KB page alignment. Built for arm64-v8a (phones) and x86_64 (the CI
-# emulator) and pushed to the opencv-min branch, which the app build copies into jniLibs.
+# emulator) and pushed to the opencv-min2 branch, which the app build copies into jniLibs.
 on:
   push:
     branches: [opencv-src]
@@ -37,6 +37,9 @@ jobs:
           STRIP="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
           mkdir -p out logs
           for ABI in arm64-v8a x86_64; do
+            # Phones: also OpenCV's fp16 kernels (ARMv8.2+, picked at run time), for
+            # DNN_TARGET_CPU_FP16. The emulator: none.
+            if [ "$ABI" = arm64-v8a ]; then DISPATCH=NEON_FP16; else DISPATCH=; fi
             cmake -S ../opencv -B "../b-$ABI" -G Ninja \
               -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
               -DANDROID_ABI=$ABI -DPYTHON_DEFAULT_EXECUTABLE="$(which python3)" -DANDROID_PLATFORM=android-29 -DANDROID_STL=c++_static \
@@ -52,9 +55,10 @@ jobs:
               -DWITH_OPENEXR=OFF -DWITH_AVIF=OFF -DWITH_IMGCODEC_HDR=OFF -DWITH_IMGCODEC_SUNRASTER=OFF \
               -DWITH_IMGCODEC_PXM=OFF -DWITH_IMGCODEC_PFM=OFF -DWITH_JPEG=ON -DBUILD_JPEG=ON \
               -DWITH_PROTOBUF=ON -DBUILD_PROTOBUF=ON -DWITH_ANDROID_MEDIANDK=OFF \
-              -DOPENCV_JAVA_LIB_NAME_SUFFIX=_min -DWITH_ADE=OFF -DCV_TRACE=OFF -DWITH_FLATBUFFERS=OFF -DCPU_DISPATCH= \
+              -DOPENCV_JAVA_LIB_NAME_SUFFIX=_min -DWITH_ADE=OFF -DCV_TRACE=OFF -DWITH_FLATBUFFERS=OFF -DCPU_DISPATCH="$DISPATCH" \
               > "logs/cmake-$ABI.log" 2>&1 || { tail -120 "logs/cmake-$ABI.log"; exit 1; }
             grep -A3 "OpenCV modules:" "logs/cmake-$ABI.log" || true
+            grep -iE "Dispatched code|requested:" "logs/cmake-$ABI.log" || true
             if ! cmake --build "../b-$ABI" -j 4 --target opencv_java > "logs/build-$ABI.log" 2>&1; then
               tail -60 "logs/build-$ABI.log"
               echo "-- full build"
@@ -68,7 +72,7 @@ jobs:
           done
           ls -la out/*
 
-      - name: Publish to opencv-min
+      - name: Publish to opencv-min2
         if: always()
         shell: bash
         env:
@@ -79,12 +83,12 @@ jobs:
           cat > out/README.md <<EOF
           OpenCV $OPENCV_TAG built by .github/workflows/opencv.yml (branch opencv-src): core, imgproc,
           imgcodecs (JPEG), dnn, objdetect, calib3d, features2d, flann, video and the Java bindings,
-          static libc++, 16 KB pages, no TFLite importer, no extra CPU dispatch variants (the app computes in fp32). Apache-2.0, https://github.com/opencv/opencv
+          static libc++, 16 KB pages, no TFLite importer; arm64 also has the NEON_FP16 dispatch (DNN_TARGET_CPU_FP16). Apache-2.0, https://github.com/opencv/opencv
           EOF
           cd out
-          git init -q -b opencv-min
+          git init -q -b opencv-min2
           git config user.name "ci"
           git config user.email "ci@users.noreply.github.com"
           git add -A
           git commit -qm "OpenCV $OPENCV_TAG minimal (${{ github.sha }})"
-          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" opencv-min
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" opencv-min2
