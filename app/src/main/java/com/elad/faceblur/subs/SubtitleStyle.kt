@@ -5,6 +5,7 @@ import org.json.JSONObject
 /** Bundled fonts with Hebrew and Latin (SIL Open Font License, from Google Fonts). */
 enum class SubFont(val asset: String?, val label: String, val weight: Int) {
     RUBIK("fonts/rubik.ttf", "Rubik", 800),
+    ALLO("fonts/allo_hebrew.ttf", "Allo", 800),
     HEEBO("fonts/heebo.ttf", "Heebo", 800),
     ASSISTANT("fonts/assistant.ttf", "Assistant", 800),
     SECULAR("fonts/secular_one.ttf", "Secular One", 0),

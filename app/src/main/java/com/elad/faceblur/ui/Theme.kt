@@ -18,7 +18,9 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -151,26 +153,36 @@ private val Shapes = Shapes(
     extraLarge = RoundedCornerShape(32.dp),
 )
 
-/** Rubik (from the app's fonts, variable weight) for all text. */
+/**
+ * Allo Hebrew (Allo by Josh Puckett with a Hebrew set built to its rules; OFL; variable) for all
+ * text: its "Display" optical size for big headings, the text size elsewhere.
+ */
+@OptIn(ExperimentalTextApi::class)
 @Composable
 private fun typography(): Typography {
     val assets = LocalContext.current.assets
     return remember(assets) {
-        val family = runCatching {
+        fun allo(opsz: Float) = runCatching {
             FontFamily(
-                listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold, FontWeight.ExtraBold, FontWeight.Black)
-                    .map { Font("fonts/rubik.ttf", assets, weight = it) },
+                listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold, FontWeight.ExtraBold, FontWeight.Black).map {
+                    Font(
+                        "fonts/allo_hebrew.ttf", assets, weight = it,
+                        variationSettings = FontVariation.Settings(FontVariation.weight(it.weight), FontVariation.Setting("opsz", opsz)),
+                    )
+                },
             )
         }.getOrDefault(FontFamily.Default)
+        val family = allo(14f)
+        val display = allo(32f)
         val base = Typography()
-        fun TextStyle.r(weight: FontWeight? = null, spacing: Float? = null) =
-            copy(fontFamily = family, fontWeight = weight ?: fontWeight, letterSpacing = spacing?.sp ?: letterSpacing)
+        fun TextStyle.r(weight: FontWeight? = null, spacing: Float? = null, f: FontFamily = family) =
+            copy(fontFamily = f, fontWeight = weight ?: fontWeight, letterSpacing = spacing?.sp ?: letterSpacing)
         Typography(
-            displayLarge = base.displayLarge.r(FontWeight.Black, -1f),
-            displayMedium = base.displayMedium.r(FontWeight.Black, -0.5f),
-            displaySmall = base.displaySmall.r(FontWeight.ExtraBold, -0.5f),
-            headlineLarge = base.headlineLarge.r(FontWeight.ExtraBold, -0.5f),
-            headlineMedium = base.headlineMedium.r(FontWeight.ExtraBold, -0.25f),
+            displayLarge = base.displayLarge.r(FontWeight.Black, -1f, display),
+            displayMedium = base.displayMedium.r(FontWeight.Black, -0.5f, display),
+            displaySmall = base.displaySmall.r(FontWeight.ExtraBold, -0.5f, display),
+            headlineLarge = base.headlineLarge.r(FontWeight.ExtraBold, -0.5f, display),
+            headlineMedium = base.headlineMedium.r(FontWeight.ExtraBold, -0.25f, display),
             headlineSmall = base.headlineSmall.r(FontWeight.Bold),
             titleLarge = base.titleLarge.r(FontWeight.Bold),
             titleMedium = base.titleMedium.r(FontWeight.SemiBold, 0f),
