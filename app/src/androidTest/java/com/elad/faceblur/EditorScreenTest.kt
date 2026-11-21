@@ -309,17 +309,31 @@ class EditorScreenTest {
             rule.waitForIdle()
             Thread.sleep(500)
         }
+        // The progress screen never idles (its animations run until the work ends): stop the test
+        // clock and step it by hand, a frame at a time, while the real work goes on.
+        rule.mainClock.autoAdvance = false
         inst.runOnMainSync { vm.start() }
         val t1 = System.currentTimeMillis()
-        while (inst.onMain { vm.livePreview == null || vm.state !is UiState.Working } && System.currentTimeMillis() - t1 < 30_000) Thread.sleep(100)
-        // The progress never idles: move the test clock by hand so the screen change plays out.
-        rule.mainClock.advanceTimeBy(1500)
-        Thread.sleep(300)
+        while (inst.onMain { vm.livePreview == null || vm.state !is UiState.Working } && System.currentTimeMillis() - t1 < 30_000) {
+            rule.mainClock.advanceTimeByFrame()
+            Thread.sleep(40)
+        }
+        repeat(60) {
+            rule.mainClock.advanceTimeByFrame()
+            Thread.sleep(30)
+        }
         screen(outDir, "12_working.png")
-        File(outDir, "main_log.txt").writeText("live preview during analysis: ${inst.onMain { vm.livePreview?.let { "${it.frame.width}x${it.frame.height}, ${it.faces.size} faces" } }}\n")
+        val st = inst.onMain { vm.state::class.simpleName }
+        File(outDir, "main_log.txt").writeText(
+            "state at the screenshot: $st\nlive preview during analysis: ${inst.onMain { vm.livePreview?.let { "${it.frame.width}x${it.frame.height}, ${it.faces.size} faces" } }}\n",
+        )
         inst.runOnMainSync { vm.cancel() }
         val t2 = System.currentTimeMillis()
-        while (inst.onMain { vm.state is UiState.Working } && System.currentTimeMillis() - t2 < 10_000) Thread.sleep(100)
+        while (inst.onMain { vm.state is UiState.Working } && System.currentTimeMillis() - t2 < 10_000) {
+            rule.mainClock.advanceTimeByFrame()
+            Thread.sleep(40)
+        }
+        rule.mainClock.autoAdvance = true
     }
 
     private fun <T> android.app.Instrumentation.onMain(block: () -> T): T {

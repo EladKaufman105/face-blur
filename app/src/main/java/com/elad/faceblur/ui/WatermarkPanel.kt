@@ -41,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -83,29 +84,34 @@ fun WatermarkControls(w: Watermark, onChange: (Watermark) -> Unit) {
     val scope = rememberCoroutineScope()
     // 0 none, 1 text, 2 logo.
     var kind by remember { mutableIntStateOf(if (w.image) 2 else if (w.text.isNotBlank()) 1 else 0) }
-    // Follow changes made elsewhere (the export sheet and the editor panel share the watermark),
-    // without hiding the text field while its text is being cleared.
-    LaunchedEffect(w.image, w.text.isNotBlank()) {
-        if (w.image) kind = 2 else if (w.text.isNotBlank() && kind != 1) kind = 1
+    // Follow changes made elsewhere (the export sheet and the editor panel share the watermark,
+    // settings can be reset), but not our own: clearing the text keeps the text field open.
+    var sent by remember { mutableStateOf<Watermark?>(null) }
+    val change = { n: Watermark ->
+        sent = n
+        onChange(n)
+    }
+    LaunchedEffect(w) {
+        if (w != sent) kind = if (w.image) 2 else if (w.text.isNotBlank()) 1 else 0
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) scope.launch {
             val ok = withContext(Dispatchers.IO) { runCatching { Watermark.importImage(context, uri) }.getOrDefault(false) }
-            if (ok) onChange(w.copy(image = true, stamp = System.currentTimeMillis()))
+            if (ok) change(w.copy(image = true, stamp = System.currentTimeMillis()))
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Segments(listOf(0 to t("בלי"), 1 to t("טקסט"), 2 to t("לוגו")), kind) { k ->
             kind = k
             when (k) {
-                0 -> onChange(w.copy(text = "", image = false))
-                1 -> onChange(w.copy(image = false, text = w.text.ifBlank { "@" }))
-                else -> if (Watermark.imageFile(context).exists()) onChange(w.copy(image = true)) else picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                0 -> change(w.copy(text = "", image = false))
+                1 -> change(w.copy(image = false, text = w.text.ifBlank { "@" }))
+                else -> if (Watermark.imageFile(context).exists()) change(w.copy(image = true)) else picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }
         }
         if (kind == 1) {
             OutlinedTextField(
-                w.text, { onChange(w.copy(text = it.take(40), image = false)) },
+                w.text, { change(w.copy(text = it.take(40), image = false)) },
                 singleLine = true, label = { Text(t("הטקסט")) }, modifier = Modifier.fillMaxWidth(),
                 // "@name" reads left to right in a Hebrew screen too.
                 textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Content),
@@ -132,23 +138,23 @@ fun WatermarkControls(w: Watermark, onChange: (Watermark) -> Unit) {
         Row(verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Caption(t("גודל"))
-                ValueSlider(w.size, 0.5f..3f) { onChange(w.copy(size = it)) }
+                ValueSlider(w.size, 0.5f..3f) { change(w.copy(size = it)) }
                 Caption(t("שקיפות"))
                 // Shown as opacity: 100% is fully visible.
-                ValueSlider(w.opacity, 0.15f..1f) { onChange(w.copy(opacity = it)) }
+                ValueSlider(w.opacity, 0.15f..1f) { change(w.copy(opacity = it)) }
             }
             Spacer(Modifier.width(14.dp))
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Caption(t("מיקום"))
-                PositionGrid(w.position) { onChange(w.copy(position = it)) }
+                PositionGrid(w.position) { change(w.copy(position = it)) }
             }
         }
 
         if (kind == 1) {
             Caption(t("פונט"))
-            FontRow(w.font) { onChange(w.copy(font = it)) }
+            FontRow(w.font) { change(w.copy(font = it)) }
             Caption(t("צבע"))
-            Swatches(SubPresets.colors, w.color) { onChange(w.copy(color = it)) }
+            Swatches(SubPresets.colors, w.color) { change(w.copy(color = it)) }
             Caption(t("בולטות"))
             Segments(
                 listOf(
@@ -158,7 +164,7 @@ fun WatermarkControls(w: Watermark, onChange: (Watermark) -> Unit) {
                     WatermarkLook.BOX to t("רקע"),
                 ),
                 w.look,
-            ) { onChange(w.copy(look = it)) }
+            ) { change(w.copy(look = it)) }
         }
     }
 }
