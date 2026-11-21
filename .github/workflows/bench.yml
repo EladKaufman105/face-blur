@@ -7,16 +7,21 @@ on:
 jobs:
   bench:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Benchmark
+      - name: fp16 vs fp32 detections
         run: |
           pip install -q opencv-python-headless==4.10.0.84 numpy
-          git fetch -q --depth 1 origin test-media
-          git show FETCH_HEAD:classroom.mp4 > /tmp/classroom.mp4
-          lscpu | grep -E "Model name|^CPU\(s\)|Flags" | cut -c1-200
-          python bench/detect_bench.py app/src/main/assets/retinaface_mv2.onnx app/src/main/assets/face_detection_yunet_2023mar.onnx /tmp/classroom.mp4
+          git fetch -q --depth 1 origin test-media main
+          mkdir -p /tmp/v
+          for f in classroom.mp4 classroom60.mp4 headpose.mp4 portrait_rot90.mp4 speech_en.mp4 speech_two.mp4 stress_cuts.mp4 walk.mp4; do
+            git show origin/test-media:$f > /tmp/v/$f
+          done
+          git show origin/main:app/src/main/assets/retinaface_mv2.onnx > /tmp/retina.onnx
+          lscpu | grep -E "Model name|^CPU\(s\)" | cut -c1-120
+          python -c "import cv2; print(cv2.getBuildInformation())" | grep -iE "dispatch|baseline" | head
+          python bench/fp16_parity.py /tmp/retina.onnx /tmp/v/*.mp4
