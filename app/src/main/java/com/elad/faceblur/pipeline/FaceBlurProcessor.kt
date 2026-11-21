@@ -108,7 +108,7 @@ class FaceBlurProcessor(private val context: Context) {
     ): Outcome {
         onStage(1)
         val t0 = SystemClock.elapsedRealtime()
-        analyze(info, settings, onProgress).use { analysis ->
+        analyze(info, settings, onProgress = onProgress).use { analysis ->
             val analysisMs = SystemClock.elapsedRealtime() - t0
             val model = analysis.toEditModel()
             if (model.tracks.isEmpty()) return Outcome.NoFaces
