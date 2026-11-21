@@ -182,6 +182,7 @@ class FaceBlurProcessor(private val context: Context) {
             ) { hdrMode ->
                 export(composition(item, hdrMode), out, bitrate = 500_000, mime = MimeTypes.VIDEO_H264, onProgress)
             }
+            segmenter.finish()
             store.saveIndex(File(file.parentFile, file.name + ".idx"))
             return store
         } catch (e: Throwable) {
