@@ -15,8 +15,10 @@ import com.elad.faceblur.prefs.Palette
 import com.elad.faceblur.prefs.ThemeMode
 import com.elad.faceblur.ui.FaceBlurTheme
 import com.elad.faceblur.ui.MainScreen
+import com.elad.faceblur.pipeline.WatermarkPosition
+import com.elad.faceblur.pipeline.WatermarkLook
+import com.elad.faceblur.pipeline.Watermark
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import com.elad.faceblur.i18n.I18n
@@ -222,6 +224,16 @@ class EditorScreenTest {
         rule.runOnIdle {
             I18n.lang = Lang.HE
             dir = LayoutDirection.Rtl
+            ctrl.deselect()
+            // A text watermark in the middle, in a box: the panel, and the video showing it.
+            export = export.copy(watermark = Watermark(text = "@editit", position = WatermarkPosition.CENTER, look = WatermarkLook.BOX, color = 0xFFFFD60A.toInt(), size = 1.6f))
+            ctrl.watermarkPanel = true
+        }
+        Thread.sleep(1200)
+        shot(outDir, "8b_watermark_panel.png")
+        rule.runOnIdle {
+            ctrl.watermarkPanel = false
+            export = export.copy(watermark = Watermark())
         }
 
         val saved = runBlocking(Dispatchers.Main) {
@@ -269,11 +281,16 @@ class EditorScreenTest {
         }
         Thread.sleep(800)
         shot(outDir, "10_settings_en.png")
+        rule.runOnIdle {
+            vm.prefs.updateExport(
+                ExportOptions(shortSide = 720, fps = 30, quality = ExportQuality.SAVER, watermark = Watermark(text = "@editit", position = WatermarkPosition.TOP_CENTER, look = WatermarkLook.OUTLINE)),
+            )
+        }
         repeat(2) { rule.onRoot().performTouchInput { swipeUp() } }
         rule.waitForIdle()
         Thread.sleep(600)
         shot(outDir, "10b_export_card.png")
-        rule.onNodeWithContentDescription("Settings").performScrollTo().performClick()
+        rule.onNodeWithContentDescription("Settings").performClick()
         rule.waitForIdle()
         runCatching { rule.waitUntil(5000) { rule.onAllNodes(isRoot()).fetchSemanticsNodes().size > 1 } }
         Thread.sleep(1000)
@@ -285,6 +302,22 @@ class EditorScreenTest {
             vm.prefs.updateThemeMode(ThemeMode.SYSTEM)
             vm.prefs.updateExport(ExportOptions())
         }
+        // Close the settings sheet, then watch the analysis: the live frame with faces found.
+        for (attempt in 0 until 4) {
+            if (rule.onAllNodes(isRoot()).fetchSemanticsNodes().size == 1) break
+            inst.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+            rule.waitForIdle()
+            Thread.sleep(500)
+        }
+        inst.runOnMainSync { vm.start() }
+        val t1 = System.currentTimeMillis()
+        while (inst.onMain { vm.livePreview == null || vm.state !is UiState.Working } && System.currentTimeMillis() - t1 < 30_000) Thread.sleep(100)
+        Thread.sleep(1200)
+        screen(outDir, "12_working.png")
+        File(outDir, "main_log.txt").writeText("live preview during analysis: ${inst.onMain { vm.livePreview?.let { "${it.frame.width}x${it.frame.height}, ${it.faces.size} faces" } }}\n")
+        inst.runOnMainSync { vm.cancel() }
+        val t2 = System.currentTimeMillis()
+        while (inst.onMain { vm.state is UiState.Working } && System.currentTimeMillis() - t2 < 10_000) Thread.sleep(100)
     }
 
     private fun <T> android.app.Instrumentation.onMain(block: () -> T): T {

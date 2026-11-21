@@ -17,28 +17,41 @@ import java.io.File
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-enum class WatermarkCorner { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT }
+/** Where the watermark sits: a 3x3 grid over the frame (left/right as on the video). */
+enum class WatermarkPosition(val col: Int, val row: Int) {
+    TOP_LEFT(0, 0), TOP_CENTER(1, 0), TOP_RIGHT(2, 0),
+    CENTER_LEFT(0, 1), CENTER(1, 1), CENTER_RIGHT(2, 1),
+    BOTTOM_LEFT(0, 2), BOTTOM_CENTER(1, 2), BOTTOM_RIGHT(2, 2),
+}
+
+/** How text stands out from the video. */
+enum class WatermarkLook { PLAIN, SHADOW, OUTLINE, BOX }
 
 /**
- * A logo or a line of text in a corner of the export.
+ * A logo or a line of text on the export.
  *
  * @param image use the picked logo image (see [Watermark.imageFile]) instead of [text].
  * @param size multiplier of the base size (logo: 10% of the short side high; text: 4%).
  * @param stamp changes when a new logo is picked (so its preview reloads).
+ * @param font, [color], [look]: the text's font, color and how it stands out.
  */
 data class Watermark(
     val text: String = "",
     val image: Boolean = false,
-    val corner: WatermarkCorner = WatermarkCorner.BOTTOM_RIGHT,
+    val position: WatermarkPosition = WatermarkPosition.BOTTOM_RIGHT,
     val size: Float = 1f,
     val opacity: Float = 0.8f,
     val stamp: Long = 0L,
+    val font: SubFont = SubFont.RUBIK,
+    val color: Int = Color.WHITE,
+    val look: WatermarkLook = WatermarkLook.SHADOW,
 ) {
     fun enabled(context: Context) = if (image) imageFile(context).exists() else text.isNotBlank()
 
     fun toJson(): String = JSONObject()
-        .put("text", text).put("image", image).put("corner", corner.name)
+        .put("text", text).put("image", image).put("corner", position.name)
         .put("size", size.toDouble()).put("opacity", opacity.toDouble()).put("stamp", stamp)
+        .put("font", font.name).put("color", color).put("look", look.name)
         .toString()
 
     companion object {
@@ -49,12 +62,15 @@ data class Watermark(
             return try {
                 val o = JSONObject(s)
                 Watermark(
-                    o.optString("text"),
-                    o.optBoolean("image"),
-                    runCatching { WatermarkCorner.valueOf(o.optString("corner")) }.getOrDefault(WatermarkCorner.BOTTOM_RIGHT),
-                    o.optDouble("size", 1.0).toFloat(),
-                    o.optDouble("opacity", 0.8).toFloat(),
-                    o.optLong("stamp"),
+                    text = o.optString("text"),
+                    image = o.optBoolean("image"),
+                    position = runCatching { WatermarkPosition.valueOf(o.optString("corner")) }.getOrDefault(WatermarkPosition.BOTTOM_RIGHT),
+                    size = o.optDouble("size", 1.0).toFloat(),
+                    opacity = o.optDouble("opacity", 0.8).toFloat(),
+                    stamp = o.optLong("stamp"),
+                    font = runCatching { SubFont.valueOf(o.optString("font")) }.getOrDefault(SubFont.RUBIK),
+                    color = o.optInt("color", Color.WHITE),
+                    look = runCatching { WatermarkLook.valueOf(o.optString("look")) }.getOrDefault(WatermarkLook.SHADOW),
                 )
             } catch (e: Exception) {
                 Watermark()
@@ -72,37 +88,72 @@ data class Watermark(
             return tmp.renameTo(f)
         }
 
+        /** Left (or top) edge of something [len] long along a side of [total], in grid cell [cell]. */
+        private fun place(cell: Int, len: Float, total: Float, margin: Float) = when (cell) {
+            0 -> margin
+            1 -> (total - len) / 2f
+            else -> total - margin - len
+        }
+
         /** Draws [w] on a [width] x [height] canvas. */
         fun draw(context: Context, w: Watermark, canvas: Canvas, width: Int, height: Int) {
             val short = min(width, height).toFloat()
             val margin = short * 0.035f
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { alpha = (w.opacity * 255).roundToInt().coerceIn(0, 255) }
-            val left = w.corner == WatermarkCorner.TOP_LEFT || w.corner == WatermarkCorner.BOTTOM_LEFT
-            val top = w.corner == WatermarkCorner.TOP_LEFT || w.corner == WatermarkCorner.TOP_RIGHT
+            val alpha = (w.opacity * 255).roundToInt().coerceIn(0, 255)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { this.alpha = alpha }
+            val pos = w.position
             if (w.image) {
                 val logo = BitmapFactory.decodeFile(imageFile(context).path) ?: return
                 var lh = short * 0.10f * w.size
                 var lw = lh * logo.width / logo.height
-                if (lw > width * 0.4f) {
-                    lw = width * 0.4f
+                if (lw > width * 0.6f) {
+                    lw = width * 0.6f
                     lh = lw * logo.height / logo.width
                 }
-                val x = if (left) margin else width - margin - lw
-                val y = if (top) margin else height - margin - lh
+                val x = place(pos.col, lw, width.toFloat(), margin)
+                val y = place(pos.row, lh, height.toFloat(), margin)
                 canvas.drawBitmap(logo, null, RectF(x, y, x + lw, y + lh), paint)
                 logo.recycle()
-            } else if (w.text.isNotBlank()) {
-                paint.typeface = SubtitleRenderer.get(context).typeface(SubFont.RUBIK)
-                paint.textSize = short * 0.04f * w.size
-                paint.color = Color.WHITE
-                paint.alpha = (w.opacity * 255).roundToInt().coerceIn(0, 255)
-                paint.setShadowLayer(paint.textSize * 0.12f, 0f, paint.textSize * 0.04f, Color.argb((w.opacity * 200).roundToInt(), 0, 0, 0))
-                val tw = paint.measureText(w.text)
-                val fm = paint.fontMetrics
-                val x = if (left) margin else width - margin - tw
-                val y = if (top) margin - fm.ascent else height - margin - fm.descent
-                canvas.drawText(w.text, x, y, paint)
+                return
             }
+            if (w.text.isBlank()) return
+            paint.typeface = SubtitleRenderer.get(context).typeface(w.font)
+            paint.textSize = short * 0.04f * w.size
+            val tw = paint.measureText(w.text)
+            val fm = paint.fontMetrics
+            val th = fm.descent - fm.ascent
+            // A box needs room around the text.
+            val pad = if (w.look == WatermarkLook.BOX) paint.textSize * 0.35f else 0f
+            val x = place(pos.col, tw + 2 * pad, width.toFloat(), margin) + pad
+            val top = place(pos.row, th + 2 * pad, height.toFloat(), margin) + pad
+            val baseline = top - fm.ascent
+            // Outline and box in black behind light text, white behind dark text.
+            val contrast = if (Color.luminance(w.color) > 0.45f) Color.BLACK else Color.WHITE
+            when (w.look) {
+                WatermarkLook.PLAIN -> Unit
+                WatermarkLook.SHADOW -> paint.setShadowLayer(paint.textSize * 0.12f, 0f, paint.textSize * 0.04f, Color.argb((w.opacity * 200).roundToInt(), 0, 0, 0))
+                WatermarkLook.OUTLINE -> {
+                    val stroke = Paint(paint).apply {
+                        style = Paint.Style.STROKE
+                        strokeWidth = textSize * 0.14f
+                        strokeJoin = Paint.Join.ROUND
+                        color = contrast
+                        this.alpha = alpha
+                    }
+                    canvas.drawText(w.text, x, baseline, stroke)
+                }
+                WatermarkLook.BOX -> {
+                    val box = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = contrast
+                        this.alpha = (alpha * 0.6f).roundToInt()
+                    }
+                    val r = RectF(x - pad, top - pad, x + tw + pad, top + th + pad)
+                    canvas.drawRoundRect(r, r.height() * 0.3f, r.height() * 0.3f, box)
+                }
+            }
+            paint.color = w.color
+            paint.alpha = alpha
+            canvas.drawText(w.text, x, baseline, paint)
         }
     }
 }

@@ -11,7 +11,6 @@ import org.opencv.dnn.Dnn
 import org.opencv.dnn.Net
 import org.opencv.imgproc.Imgproc
 import java.io.Closeable
-import java.io.File
 import java.nio.ByteBuffer
 import kotlin.math.abs
 
@@ -45,9 +44,7 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
 
     init {
         OpenCv.ensureLoaded()
-        val f = File(context.filesDir, MODEL)
-        if (!f.exists() || f.length() == 0L) context.assets.open(MODEL).use { i -> f.outputStream().use { i.copyTo(it) } }
-        net = Dnn.readNetFromONNX(f.absolutePath)
+        net = Dnn.readNetFromONNX(FaceAnalyzer.asset(context, MODEL))
     }
 
     /** One frame from the grab pass: RGBA, top row first; [rotation] makes it upright. */

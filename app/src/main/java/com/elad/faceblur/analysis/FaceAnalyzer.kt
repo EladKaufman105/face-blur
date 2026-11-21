@@ -1,6 +1,8 @@
 package com.elad.faceblur.analysis
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.os.SystemClock
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -9,6 +11,10 @@ import org.opencv.imgproc.Imgproc
 import java.io.Closeable
 import java.io.File
 import java.nio.ByteBuffer
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.Semaphore
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -41,6 +47,10 @@ object OpenCv {
  * detection on ~30 frames per second of video and measures camera motion and hard cuts on
  * every frame. When the pass is done, [result] links everything into face tracks
  * offline. Called on the video pipeline's GL thread; the timeline is read after the pass.
+ *
+ * Detection runs on [WORKERS] threads of its own, each with its own detector, a few frames at
+ * a time: the decoder and the motion measurement don't wait for it, and the CPU's cores are
+ * kept busier than by one detector alone.
  */
 class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val fps: Float) : Closeable {
 
@@ -54,13 +64,28 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
 
     private val retinaPath = asset(context, RetinaFaceDetector.MODEL)
     private val yunetPath = asset(context, FaceDetector.YUNET_MODEL)
-    private var detector: FaceDetector? = null
+
+    // Detection workers: each thread keeps its own detector (OpenCV nets aren't shared).
+    private val detectors = java.util.Collections.synchronizedList(ArrayList<FaceDetector>())
+    private val workerDetector = ThreadLocal<FaceDetector>()
+    private val pool = Executors.newFixedThreadPool(WORKERS) { r -> Thread(r, "face-detect").apply { priority = Thread.NORM_PRIORITY + 1 } }
+    // Frames waiting for or in detection (bounds the memory they take).
+    private val slots = Semaphore(WORKERS + 1)
+    private val failure = AtomicReference<Throwable?>(null)
+    // Bumped by reset(): results of an abandoned pass are dropped.
+    @Volatile private var generation = 0
+
+    /** Now and then, a small copy of the frame and the faces found lately (progress screen). */
+    var onPreview: ((Bitmap, List<Det>) -> Unit)? = null
+    private var lastPreview = 0L
+    @Volatile private var lastDets: List<Det> = emptyList()
+    private val preview = Mat()
     private val camera = CameraMotion()
     private val cutDetector = CutDetector()
     private var frames: FrameStore? = FrameStore(File(context.cacheDir, "frames.bin"))
 
     private val times = ArrayList<Long>()
-    private val dets = HashMap<Int, List<Det>>()
+    private val dets = ConcurrentHashMap<Int, List<Det>>()
     private var motion = FloatArray(1024)
     private val cuts = ArrayList<Int>()
     private var uprightW = 0
@@ -83,8 +108,10 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
 
     @Synchronized
     fun reset() {
-        detector?.close()
-        detector = FaceDetector(retinaPath, yunetPath)
+        generation++
+        drain()
+        failure.set(null)
+        lastDets = emptyList()
         camera.reset()
         cutDetector.reset()
         frames?.reset()
@@ -139,9 +166,59 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         motion[2 * idx + 1] = m[1]
 
         if (idx % detectEvery == 0) {
+            failure.get()?.let { throw it }
             Imgproc.cvtColor(src, bgr, Imgproc.COLOR_RGBA2BGR)
-            dets[idx] = detector!!.detect(bgr)
+            val frame = ByteArray((bgr.total() * bgr.channels()).toInt())
+            bgr.get(0, 0, frame)
+            val fw = bgr.cols()
+            val fh = bgr.rows()
+            val gen = generation
+            slots.acquire()
+            pool.execute {
+                var m: Mat? = null
+                try {
+                    if (gen == generation) {
+                        m = Mat(fh, fw, CvType.CV_8UC3).also { it.put(0, 0, frame) }
+                        val found = detector().detect(m)
+                        if (gen == generation) {
+                            dets[idx] = found
+                            lastDets = found
+                        }
+                    }
+                } catch (t: Throwable) {
+                    failure.compareAndSet(null, t)
+                } finally {
+                    m?.release()
+                    slots.release()
+                }
+            }
         }
+
+        val cb = onPreview
+        val now = SystemClock.elapsedRealtime()
+        if (cb != null && now - lastPreview >= PREVIEW_MS) {
+            lastPreview = now
+            val ps = minOf(1f, PREVIEW_SIDE.toFloat() / max(uprightW, uprightH))
+            val pw = max(2, (uprightW * ps).roundToInt())
+            val ph = max(2, (uprightH * ps).roundToInt())
+            Imgproc.resize(src, preview, Size(pw.toDouble(), ph.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
+            val px = ByteArray(pw * ph * 4)
+            preview.get(0, 0, px)
+            val bmp = Bitmap.createBitmap(pw, ph, Bitmap.Config.ARGB_8888)
+            bmp.copyPixelsFromBuffer(ByteBuffer.wrap(px))
+            cb(bmp, lastDets)
+        }
+    }
+
+    private fun detector(): FaceDetector = workerDetector.get() ?: FaceDetector(retinaPath, yunetPath).also {
+        workerDetector.set(it)
+        detectors += it
+    }
+
+    /** Waits until every frame handed to the workers is done. */
+    private fun drain() {
+        slots.acquireUninterruptibly(WORKERS + 1)
+        slots.release(WORKERS + 1)
     }
 
     @Synchronized
@@ -150,6 +227,8 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     /** Everything the analysis found; takes over the frame store (closing the result frees it). */
     @Synchronized
     fun result(): AnalysisResult {
+        drain()
+        failure.get()?.let { throw it }
         val n = times.size
         val diffs = (1 until n).map { times[it] - times[it - 1] }.filter { it > 0 }.sorted()
         val measuredFps = (if (diffs.isEmpty()) fps else 1_000_000f / diffs[diffs.size / 2]).coerceIn(5f, 240f)
@@ -174,8 +253,15 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
 
     @Synchronized
     override fun close() {
-        detector?.close()
-        detector = null
+        generation++
+        drain()
+        pool.shutdown()
+        pool.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)
+        synchronized(detectors) {
+            detectors.forEach { it.close() }
+            detectors.clear()
+        }
+        preview.release()
         frames?.close()
         frames = null
         camera.close()
@@ -186,15 +272,27 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         small.release()
     }
 
-    private fun asset(context: Context, name: String): String {
-        val file = File(context.filesDir, name)
-        if (!file.exists() || file.length() == 0L) {
-            context.assets.open(name).use { input -> file.outputStream().use { input.copyTo(it) } }
-        }
-        return file.absolutePath
-    }
-
     companion object {
         private const val MOTION_SIDE = 640
+        private const val PREVIEW_SIDE = 480
+        private const val PREVIEW_MS = 200L
+
+        /** Detection threads (measured on ARM: 3 keep the cores busiest). */
+        const val WORKERS = 3
+
+        /**
+         * The model file to load: the asset, copied out once. Copied again when the app ships a
+         * different one (sizes differ), or an update would keep using the old model.
+         */
+        fun asset(context: Context, name: String): String {
+            val file = File(context.filesDir, name)
+            val size = runCatching { context.assets.openFd(name).use { it.length } }.getOrDefault(-1L)
+            if (!file.exists() || file.length() == 0L || (size > 0 && file.length() != size)) {
+                val tmp = File(context.filesDir, "$name.tmp")
+                context.assets.open(name).use { input -> tmp.outputStream().use { input.copyTo(it) } }
+                tmp.renameTo(file)
+            }
+            return file.absolutePath
+        }
     }
 }

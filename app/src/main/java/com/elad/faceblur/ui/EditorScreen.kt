@@ -10,6 +10,8 @@ import android.os.SystemClock
 import android.view.LayoutInflater
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -192,6 +194,7 @@ fun EditorScreen(
             ctrl.splitPanel -> ctrl.splitPanel = false
             ctrl.voicePanel -> ctrl.voicePanel = false
             ctrl.bgPanel -> ctrl.bgPanel = false
+            ctrl.watermarkPanel -> ctrl.watermarkPanel = false
             ctrl.selectedId != null || ctrl.selectedCueId != null || ctrl.selectedSfxId != null -> ctrl.deselect()
             else -> onClose()
         }
@@ -221,7 +224,7 @@ fun EditorScreen(
             // Everything is saved in the project as it's edited.
             IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, t("חזרה")) }
             Text(
-                if (ctrl.session.subtitlesOnly) t("כתוביות") else t("עריכה"),
+                t("עריכה"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
@@ -300,6 +303,7 @@ fun EditorScreen(
             ctrl.voicePanel -> 2
             ctrl.bgPanel -> 3
             ctrl.stylePanel -> 4
+            ctrl.watermarkPanel -> 5
             else -> 0
         }
         AnimatedContent(
@@ -316,6 +320,7 @@ fun EditorScreen(
                     2 -> VoicePanel(ctrl)
                     3 -> BackgroundPanel(ctrl)
                     4 -> SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
+                    5 -> WatermarkPanel(export.watermark, { onExportChange(export.copy(watermark = it)) }) { ctrl.watermarkPanel = false }
                     else -> {
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Timeline(ctrl, busy, subStyle, thumbs) }
                         val sel = ctrl.selected
@@ -341,7 +346,7 @@ fun EditorScreen(
                                 }
                             }
                         }
-                        BottomBar(ctrl, sel, ctrl.selectedCue, busy)
+                        BottomBar(ctrl, sel, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current))
                     }
                 }
             }
@@ -1267,7 +1272,7 @@ private fun SizePanel(ctrl: EditorController, t: EditTrack, busy: Boolean) {
 }
 
 @Composable
-private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: Boolean) {
+private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: Boolean, watermarkOn: Boolean = false) {
     // What's selected shows as a line in its feature's color along the top of the bar.
     val selFeature = when {
         ctrl.selectedSfx != null -> Feature.SOUND
@@ -1305,30 +1310,40 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
             } else if (sel == null) {
                 val subsOnly = ctrl.session.subtitlesOnly
                 val hasCues = ctrl.model.cues.isNotEmpty()
-                val subsTools: @Composable RowScope.() -> Unit = {
-                    Tool(t("כתוביות"), EditorIcons.Subtitles, !busy, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.subsSheet = true }
-                    if (hasCues || subsOnly) {
-                        Tool(t("עיצוב"), EditorIcons.TextFormat, !busy, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.stylePanel = true }
-                    }
-                    // Words per subtitle is in the list too ("all subtitles").
-                    if (hasCues) Tool(t("כל הכתוביות"), AppIcons.ListLines, !busy, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.listEditor = true }
-                    Tool(t("רקע"), AppIcons.Background, !busy, active = ctrl.background.active, feature = Feature.BACKGROUND) { ctrl.pauser(); ctrl.bgPanel = true }
-                    Tool(t("סאונד"), AppIcons.Voice, !busy, active = ctrl.audio.voice != VoiceFx.NONE || ctrl.model.bleeps.isNotEmpty() || ctrl.model.sfx.isNotEmpty(), feature = Feature.SOUND) {
-                        ctrl.pauser(); ctrl.voicePanel = true
+                // More tools than fit: they keep a usable width and the row scrolls (the
+                // last one shows cut off, so it's clear there's more).
+                val count = 5 + (if (hasCues || subsOnly) 1 else 0) + (if (hasCues) 1 else 0)
+                BoxWithConstraints(Modifier.weight(1f)) {
+                    val w = maxOf(68.dp, maxWidth / count)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                        val subsTools: @Composable RowScope.() -> Unit = {
+                            Tool(t("כתוביות"), EditorIcons.Subtitles, !busy, feature = Feature.SUBTITLES, width = w) { ctrl.pauser(); ctrl.subsSheet = true }
+                            if (hasCues || subsOnly) {
+                                Tool(t("עיצוב"), EditorIcons.TextFormat, !busy, feature = Feature.SUBTITLES, width = w) { ctrl.pauser(); ctrl.stylePanel = true }
+                            }
+                            // Words per subtitle is in the list too ("all subtitles").
+                            if (hasCues) Tool(t("כל הכתוביות"), AppIcons.ListLines, !busy, feature = Feature.SUBTITLES, width = w) { ctrl.pauser(); ctrl.listEditor = true }
+                            Tool(t("רקע"), AppIcons.Background, !busy, active = ctrl.background.active, feature = Feature.BACKGROUND, width = w) { ctrl.pauser(); ctrl.bgPanel = true }
+                            Tool(t("סאונד"), AppIcons.Voice, !busy, active = ctrl.audio.voice != VoiceFx.NONE || ctrl.model.bleeps.isNotEmpty() || ctrl.model.sfx.isNotEmpty(), feature = Feature.SOUND, width = w) {
+                                ctrl.pauser(); ctrl.voicePanel = true
+                            }
+                            Tool(t("סימן מים"), AppIcons.Watermark, !busy, active = watermarkOn, width = w) { ctrl.pauser(); ctrl.watermarkPanel = true }
+                        }
+                        if (subsOnly) subsTools()
+                        Tool(
+                            if (ctrl.addMode) t("ביטול") else t("הוסף טשטוש"),
+                            if (ctrl.addMode) Icons.Filled.Close else Icons.Filled.Add,
+                            !busy,
+                            active = ctrl.addMode,
+                            feature = Feature.FACES,
+                            width = w,
+                        ) {
+                            ctrl.addMode = !ctrl.addMode
+                            if (ctrl.addMode) ctrl.pauser()
+                        }
+                        if (!subsOnly) subsTools()
                     }
                 }
-                if (subsOnly) subsTools()
-                Tool(
-                    if (ctrl.addMode) t("ביטול") else t("הוסף טשטוש"),
-                    if (ctrl.addMode) Icons.Filled.Close else Icons.Filled.Add,
-                    !busy,
-                    active = ctrl.addMode,
-                    feature = Feature.FACES,
-                ) {
-                    ctrl.addMode = !ctrl.addMode
-                    if (ctrl.addMode) ctrl.pauser()
-                }
-                if (!subsOnly) subsTools()
             } else {
                 Tool(t("מחק"), Icons.Filled.Delete, !busy) { ctrl.deleteSelected() }
                 Tool(t("פצל"), EditorIcons.Cut, !busy, feature = Feature.FACES) { ctrl.splitSelected() }
@@ -1346,7 +1361,7 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
  * [feature] shows its icon in that feature's color.
  */
 @Composable
-private fun RowScope.Tool(label: String, icon: ImageVector, enabled: Boolean, active: Boolean = false, feature: Feature? = null, onClick: () -> Unit) {
+private fun RowScope.Tool(label: String, icon: ImageVector, enabled: Boolean, active: Boolean = false, feature: Feature? = null, width: Dp? = null, onClick: () -> Unit) {
     val alpha = if (enabled) 1f else 0.38f
     val accent = feature?.color ?: MaterialTheme.colorScheme.primary
     val iconTint = (feature?.color ?: if (active) accent else MaterialTheme.colorScheme.onSurface).copy(alpha = alpha)
@@ -1354,8 +1369,7 @@ private fun RowScope.Tool(label: String, icon: ImageVector, enabled: Boolean, ac
     val bg by animateColorAsState(if (active) accent.copy(alpha = 0.2f) else Color.Transparent, tween(200), label = "tool")
     val source = remember { MutableInteractionSource() }
     Column(
-        Modifier
-            .weight(1f)
+        (if (width != null) Modifier.width(width) else Modifier.weight(1f))
             .pressScale(source)
             .clip(RoundedCornerShape(12.dp))
             .clickable(interactionSource = source, indication = LocalIndication.current, enabled = enabled, onClick = onClick)
@@ -1387,7 +1401,7 @@ private fun RowScope.Tool(label: String, icon: ImageVector, enabled: Boolean, ac
 private val BleepMark = Color(0xFFFF4D6D)
 private val SfxClipColor = Brand.Cyan
 
-private object EditorIcons {
+internal object EditorIcons {
     private fun icon(name: String, path: String) = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
         .addPath(pathData = addPathNodes(path), fill = SolidColor(Color.Black))
         .build()

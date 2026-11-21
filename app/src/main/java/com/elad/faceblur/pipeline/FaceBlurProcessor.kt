@@ -23,6 +23,7 @@ import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
 import com.elad.faceblur.analysis.AnalysisResult
+import com.elad.faceblur.analysis.Det
 import com.elad.faceblur.analysis.FaceAnalyzer
 import com.elad.faceblur.edit.EditModel
 import com.elad.faceblur.edit.toEditModel
@@ -35,6 +36,7 @@ import com.elad.faceblur.effects.BackgroundEffect
 import com.elad.faceblur.effects.BackgroundState
 import com.elad.faceblur.effects.BgKey
 import com.elad.faceblur.effects.GrabEffect
+import com.elad.faceblur.effects.PreviewEffect
 import com.elad.faceblur.audio.VoiceAudioProcessor
 import com.elad.faceblur.audio.VoiceDsp
 import com.elad.faceblur.audio.SfxLibrary
@@ -116,9 +118,16 @@ class FaceBlurProcessor(private val context: Context) {
         }
     }
 
-    suspend fun analyze(info: VideoInfo, settings: Settings, onProgress: (Float) -> Unit): AnalysisResult {
+    /** @param onPreview now and then: a small copy of the frame being analyzed and the faces found lately. */
+    suspend fun analyze(
+        info: VideoInfo,
+        settings: Settings,
+        onPreview: ((android.graphics.Bitmap, List<Det>) -> Unit)? = null,
+        onProgress: (Float) -> Unit,
+    ): AnalysisResult {
         val analysisFile = File(context.cacheDir, "analysis.mp4")
         val analyzer = withContext(Dispatchers.IO) { FaceAnalyzer(context, settings.sensitive, info.fps) }
+        analyzer.onPreview = onPreview
         try {
             val detect = DetectEffect(
                 analyzer, info.rotation,
@@ -195,6 +204,8 @@ class FaceBlurProcessor(private val context: Context) {
         audio: AudioEdit = AudioEdit(),
         background: Background = Background(),
         masks: MaskStore? = null,
+        /** Now and then, a small copy of the finished frame being saved. */
+        onPreview: ((android.graphics.Bitmap) -> Unit)? = null,
         onProgress: (Float) -> Unit,
     ): Outcome.Saved {
         val t1 = SystemClock.elapsedRealtime()
@@ -243,7 +254,13 @@ class FaceBlurProcessor(private val context: Context) {
         }
         val item = EditedMediaItem.Builder(MediaItem.fromUri(info.uri))
             .setRemoveAudio(removeAudio)
-            .setEffects(Effects(audioFx, bgEffect + listOf<Effect>(blur) + export.effects(info, reframe) + subsEffect))
+            .setEffects(
+                Effects(
+                    audioFx,
+                    bgEffect + listOf<Effect>(blur) + export.effects(info, reframe) + subsEffect +
+                        listOfNotNull<Effect>(onPreview?.let { PreviewEffect(onFrame = it) }),
+                ),
+            )
             .build()
         val bitrate = export.videoBitrate(info)
         val modes = when {

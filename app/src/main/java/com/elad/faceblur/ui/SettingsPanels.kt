@@ -54,7 +54,6 @@ import com.elad.faceblur.i18n.Lang
 import com.elad.faceblur.i18n.t
 import com.elad.faceblur.pipeline.ExportCodec
 import com.elad.faceblur.pipeline.Watermark
-import com.elad.faceblur.pipeline.WatermarkCorner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -239,7 +238,16 @@ fun ExportOptionsPanel(info: VideoInfo, options: ExportOptions, onChange: (Expor
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        WatermarkOptions(options.watermark) { onChange(options.copy(watermark = it)) }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Caption(t("סימן מים"))
+            if (options.watermark.enabled(LocalContext.current)) {
+                val aspect = if (options.aspect == ExportAspect.ORIGINAL) info.displayWidth.toFloat() / info.displayHeight.coerceAtLeast(1) else options.aspect.ratio
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    WatermarkPreview(options.watermark, info.thumbnail, aspect)
+                }
+            }
+            WatermarkControls(options.watermark) { onChange(options.copy(watermark = it)) }
+        }
         val (w, h) = options.outputSize(info)
         Text(
             t("יוצא: %s · %s · גודל משוער %s").format(
@@ -248,69 +256,6 @@ fun ExportOptionsPanel(info: VideoInfo, options: ExportOptions, onChange: (Expor
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
         )
-    }
-}
-
-/** A logo or a line of text in a corner of the export. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun WatermarkOptions(w: Watermark, onChange: (Watermark) -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    // 0 none, 1 text, 2 logo.
-    var kind by remember { mutableIntStateOf(if (w.image) 2 else if (w.text.isNotBlank()) 1 else 0) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) scope.launch {
-            val ok = withContext(Dispatchers.IO) { runCatching { Watermark.importImage(context, uri) }.getOrDefault(false) }
-            if (ok) onChange(w.copy(image = true, stamp = System.currentTimeMillis()))
-        }
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Caption(t("סימן מים"))
-        Segments(listOf(0 to t("בלי"), 1 to t("טקסט"), 2 to t("לוגו")), kind) { k ->
-            kind = k
-            when (k) {
-                0 -> onChange(w.copy(text = "", image = false))
-                1 -> onChange(w.copy(image = false, text = w.text.ifBlank { "@" }))
-                else -> if (Watermark.imageFile(context).exists()) onChange(w.copy(image = true)) else picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-            }
-        }
-        if (kind == 1) {
-            OutlinedTextField(
-                w.text, { onChange(w.copy(text = it.take(40), image = false)) },
-                singleLine = true, label = { Text(t("הטקסט")) }, modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        if (kind == 2) {
-            val logo by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, w.stamp) {
-                value = withContext(Dispatchers.IO) {
-                    Watermark.imageFile(context).takeIf { it.exists() }?.let { android.graphics.BitmapFactory.decodeFile(it.path)?.asImageBitmap() }
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(
-                    Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF3A3F4B)),
-                    contentAlignment = Alignment.Center,
-                ) { logo?.let { Image(it, null, Modifier.size(48.dp), contentScale = ContentScale.Fit) } }
-                OutlinedButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-                    Text(if (logo == null) t("בחר תמונה") else t("החלף תמונה"))
-                }
-            }
-        }
-        if (kind != 0) {
-            Segments(
-                listOf(
-                    WatermarkCorner.TOP_LEFT to "↖",
-                    WatermarkCorner.TOP_RIGHT to "↗",
-                    WatermarkCorner.BOTTOM_LEFT to "↙",
-                    WatermarkCorner.BOTTOM_RIGHT to "↘",
-                ),
-                w.corner,
-            ) { onChange(w.copy(corner = it)) }
-            Segments(listOf(0.7f to t("קטן"), 1f to t("בינוני"), 1.5f to t("גדול")), listOf(0.7f, 1f, 1.5f).minBy { kotlin.math.abs(it - w.size) }) {
-                onChange(w.copy(size = it))
-            }
-        }
     }
 }
 

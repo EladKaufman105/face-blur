@@ -96,6 +96,9 @@ class EditorController(
     var previewOn by mutableStateOf(true)
         private set
     var previewAvailable by mutableStateOf(true)
+
+    /** The watermark panel is open. */
+    var watermarkPanel by mutableStateOf(false)
     var sizePanel by mutableStateOf(false)
     var selectedCueId by mutableStateOf<Int?>(null)
         private set

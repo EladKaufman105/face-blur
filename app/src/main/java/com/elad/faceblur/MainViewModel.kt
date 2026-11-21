@@ -41,12 +41,21 @@ import com.elad.faceblur.effects.Background
 import java.io.File
 import java.util.concurrent.Executors
 
+/** Where a quick tool on the home screen takes the video: the editor, without face detection. */
+enum class QuickTool { SUBTITLES, BACKGROUND, SOUND }
+
+/** What the progress screen shows: a small copy of the frame being processed, and faces found on it. */
+class LivePreview(val frame: android.graphics.Bitmap, val faces: List<com.elad.faceblur.analysis.Box>)
+
 sealed interface UiState {
     data object Empty : UiState
     data object Loading : UiState
     data class Ready(val info: VideoInfo) : UiState
-    /** @param stage 0 preparing, 1 analysis, 2 export. */
-    data class Working(val info: VideoInfo, val stage: Int, val progress: Float, val subsOnly: Boolean = false) : UiState
+    /**
+     * @param stage 0 preparing, 1 analysis, 2 export.
+     * @param auto the export follows the analysis on its own (two steps in one go).
+     */
+    data class Working(val info: VideoInfo, val stage: Int, val progress: Float, val subsOnly: Boolean = false, val auto: Boolean = false) : UiState
     data class Editing(val info: VideoInfo, val editor: EditorController) : UiState
     data class Done(val info: VideoInfo, val result: Outcome.Saved, val canEdit: Boolean, val subsOnly: Boolean = false) : UiState
     data class NoFaces(val info: VideoInfo, val canEdit: Boolean) : UiState
@@ -85,6 +94,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Writes projects one at a time, also after the screen is gone. */
     private val saver = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
+
+    /** The frame being processed right now (progress screen); null before the first one. */
+    var livePreview by mutableStateOf<LivePreview?>(null)
+        private set
+
+    private fun showLive(frame: android.graphics.Bitmap, faces: List<com.elad.faceblur.analysis.Box>) {
+        main.post { if (state is UiState.Working) livePreview = LivePreview(frame, faces) }
+    }
 
     init {
         refreshProjects()
@@ -259,8 +276,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshProjects()
     }
 
-    /** @param thenSubtitles go straight to the subtitles editor (no blurring). */
-    fun load(uri: Uri, thenSubtitles: Boolean = false) {
+    /** @param tool go straight to the editor on that tool (no face detection). */
+    fun load(uri: Uri, tool: QuickTool? = null) {
         if (state is UiState.Working) return
         closeSession()
         state = UiState.Loading
@@ -270,7 +287,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 UiState.Failed(null, e.message ?: t("לא ניתן לפתוח את הסרטון"))
             }
-            if (thenSubtitles && state is UiState.Ready) startSubtitles()
+            if (tool != null && state is UiState.Ready) startTool(tool)
         }
     }
 
@@ -278,12 +295,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val info = currentInfo() ?: return
         closeSession()
         val settings = Settings(mode, strength, padding, sensitive)
-        state = UiState.Working(info, 1, 0f)
+        val auto = !review
+        livePreview = null
+        state = UiState.Working(info, 1, 0f, auto = auto)
         job = viewModelScope.launch {
             guard(info, onCancel = { UiState.Ready(info) }) {
                 val processor = FaceBlurProcessor(getApplication())
                 val t0 = SystemClock.elapsedRealtime()
-                val analysis = processor.analyze(info, settings) { p -> state = UiState.Working(info, 1, p) }
+                val analysis = processor.analyze(
+                    info, settings,
+                    onPreview = { frame, dets -> showLive(frame, dets.filter { it.score >= 0.5f }.map { it.box }) },
+                ) { p -> state = UiState.Working(info, 1, p, auto = auto) }
                 val session = EditSession(info, settings, analysis, SystemClock.elapsedRealtime() - t0)
                 val ctrl = EditorController(session, viewModelScope, getApplication(), models, prefs)
                 editor = ctrl
@@ -293,14 +315,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } else if (session.model.tracks.isEmpty()) {
                     state = UiState.NoFaces(info, canEdit = true)
                 } else {
-                    render(ctrl)
+                    render(ctrl, auto = true)
                 }
             }
         }
     }
 
     /** Subtitles without blurring: the editor on the video's frames, no face detection. */
-    fun startSubtitles() {
+    fun startSubtitles() = startTool(QuickTool.SUBTITLES)
+
+    /** The editor on the video's frames, without face detection, open on [tool]. */
+    fun startTool(tool: QuickTool) {
         val info = currentInfo() ?: return
         closeSession()
         state = UiState.Working(info, 0, 0f)
@@ -310,7 +335,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val session = EditSession(info, Settings(mode, strength, padding, sensitive), analysis, 0, subtitlesOnly = true)
                 val ctrl = EditorController(session, viewModelScope, getApplication(), models, prefs)
                 ctrl.previewAvailable = false
-                ctrl.subsSheet = true
+                when (tool) {
+                    QuickTool.SUBTITLES -> ctrl.subsSheet = true
+                    QuickTool.BACKGROUND -> ctrl.bgPanel = true
+                    QuickTool.SOUND -> ctrl.voicePanel = true
+                }
                 editor = ctrl
                 beginProject(ctrl)
                 state = UiState.Editing(info, ctrl)
@@ -336,14 +365,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun render(ctrl: EditorController) {
+    private suspend fun render(ctrl: EditorController, auto: Boolean = false) {
         val s = ctrl.session
-        state = UiState.Working(s.info, 2, 0f, s.subtitlesOnly)
+        if (!auto) livePreview = null
+        state = UiState.Working(s.info, 2, 0f, s.subtitlesOnly, auto)
         saveProject(ctrl)
         val saved = FaceBlurProcessor(getApplication()).render(
             s.info, s.settings, s.analysis, s.model, s.analysisMs, prefs.export, prefs.subStyle, ctrl.audio,
             ctrl.background, s.masks,
-        ) { p -> state = UiState.Working(s.info, 2, p, s.subtitlesOnly) }
+            onPreview = { frame -> showLive(frame, emptyList()) },
+        ) { p -> state = UiState.Working(s.info, 2, p, s.subtitlesOnly, auto) }
         if (s.analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / s.analysisMs
         state = UiState.Done(s.info, saved, canEdit = true, subsOnly = s.subtitlesOnly)
     }

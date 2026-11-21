@@ -178,7 +178,7 @@ private fun ProjectRow(p: ProjectMeta, onOpen: () -> Unit, onRename: () -> Unit,
 
 private fun contentText(p: ProjectMeta): String {
     val parts = ArrayList<String>()
-    if (p.subtitlesOnly) parts += t("כתוביות בלבד")
+    if (p.subtitlesOnly) parts += t("בלי זיהוי פנים")
     else parts += when (p.blurs) {
         0 -> t("בלי טשטושים")
         1 -> t("טשטוש אחד")

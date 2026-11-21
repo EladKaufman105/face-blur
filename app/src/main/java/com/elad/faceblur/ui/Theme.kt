@@ -28,7 +28,7 @@ import com.elad.faceblur.prefs.ThemeMode
 /**
  * EDITIT's look. The logo is an "E" of three timeline clips (coral, amber, cyan) with a
  * playhead, on deep ink: those clip colors also mark what each tool works on (see [Feature]),
- * shapes are rounded like clips, and the type is Rubik, which has Hebrew and Latin.
+ * shapes are rounded like clips, and the type is IBM Plex Sans Hebrew.
  */
 object Brand {
     val Coral = Color(0xFFFF4D6D)
@@ -151,20 +151,25 @@ private val Shapes = Shapes(
     extraLarge = RoundedCornerShape(32.dp),
 )
 
-/** Rubik (from the app's fonts, variable weight) for all text. */
+/**
+ * IBM Plex Sans Hebrew for all text: Hebrew and Latin drawn together, engineered rather than
+ * round, and not on every other Israeli app. Its heaviest weight is Bold (heavier asks get it).
+ */
 @Composable
 private fun typography(): Typography {
     val assets = LocalContext.current.assets
     return remember(assets) {
-        val rubik = runCatching {
+        val family = runCatching {
             FontFamily(
-                listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold, FontWeight.ExtraBold, FontWeight.Black)
-                    .map { Font("fonts/rubik.ttf", assets, weight = it) },
+                Font("fonts/plex_regular.ttf", assets, weight = FontWeight.Normal),
+                Font("fonts/plex_medium.ttf", assets, weight = FontWeight.Medium),
+                Font("fonts/plex_semibold.ttf", assets, weight = FontWeight.SemiBold),
+                Font("fonts/plex_bold.ttf", assets, weight = FontWeight.Bold),
             )
         }.getOrDefault(FontFamily.Default)
         val base = Typography()
         fun TextStyle.r(weight: FontWeight? = null, spacing: Float? = null) =
-            copy(fontFamily = rubik, fontWeight = weight ?: fontWeight, letterSpacing = spacing?.sp ?: letterSpacing)
+            copy(fontFamily = family, fontWeight = weight ?: fontWeight, letterSpacing = spacing?.sp ?: letterSpacing)
         Typography(
             displayLarge = base.displayLarge.r(FontWeight.Black, -1f),
             displayMedium = base.displayMedium.r(FontWeight.Black, -0.5f),

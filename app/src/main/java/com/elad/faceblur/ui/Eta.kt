@@ -31,6 +31,29 @@ class Eta {
         if (elapsedMs < 2000 || dp < 0.02f) return null
         return ((1f - p) / dp * elapsedMs).roundToLong().coerceAtLeast(0)
     }
+
+    private var shown: Long? = null
+    private var shownAt = 0L
+
+    /** When the whole job started (for "elapsed"). */
+    val startedAt = SystemClock.elapsedRealtime()
+
+    /**
+     * [raw] eased into the last estimate counted down by the time since: no jumps from one
+     * reading to the next, and between steps (no raw estimate yet) it keeps counting down.
+     */
+    fun smooth(raw: Long?, now: Long = SystemClock.elapsedRealtime()): Long? {
+        val prev = shown
+        val counted = prev?.let { (it - (now - shownAt)).coerceAtLeast(0) }
+        val v = when {
+            raw == null -> counted ?: return null
+            counted == null -> raw
+            else -> (counted * 0.85 + raw * 0.15).roundToLong()
+        }
+        shown = v
+        shownAt = now
+        return v
+    }
 }
 
 @Composable

@@ -8,7 +8,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -16,9 +15,11 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -36,7 +37,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
@@ -84,7 +84,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.elad.faceblur.LivePreview
 import com.elad.faceblur.MainViewModel
+import com.elad.faceblur.QuickTool
 import com.elad.faceblur.UiState
 import com.elad.faceblur.effects.BlurMode
 import com.elad.faceblur.pipeline.VideoInfo
@@ -94,17 +96,17 @@ import kotlin.math.roundToInt
 fun MainScreen(vm: MainViewModel) {
     // What the picked video is for: blurring (and the settings screen), subtitles only, or a
     // saved project whose video went missing.
-    var pickForSubs by rememberSaveable { mutableStateOf(false) }
+    var pickFor by rememberSaveable { mutableStateOf<QuickTool?>(null) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        if (vm.state is UiState.Relink) vm.relink(uri) else vm.load(uri, thenSubtitles = pickForSubs)
+        if (vm.state is UiState.Relink) vm.relink(uri) else vm.load(uri, pickFor)
     }
     val pick = {
-        pickForSubs = false
+        pickFor = null
         picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
     }
-    val pickSubs = {
-        pickForSubs = true
+    val pickTool = { tool: QuickTool ->
+        pickFor = tool
         picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
     }
     val state = vm.state
@@ -148,26 +150,35 @@ fun MainScreen(vm: MainViewModel) {
                         Offset(size.width * 0.8f, 0f),
                     )
                 }
-                .padding(insets)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(insets),
         ) {
-            Header(onSettings = { showSettings = true })
+            Box(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp)) { Header(onSettings = { showSettings = true }) }
             AnimatedContent(
                 targetState = state,
                 contentKey = { it::class },
                 transitionSpec = {
                     (fadeIn(tween(260, delayMillis = 80)) + slideInVertically(tween(320, delayMillis = 80)) { it / 12 }) togetherWith
-                        fadeOut(tween(140)) using SizeTransform(clip = false)
+                        fadeOut(tween(140))
                 },
+                modifier = Modifier.weight(1f),
                 label = "screen",
             ) { s ->
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (s is UiState.Working) {
+                    // Fills the screen: the video as it's processed, the progress under it.
+                    WorkingScreen(s, vm.livePreview, renderRatio = vm.prefs.renderRatio, onCancel = vm::cancel)
+                    return@AnimatedContent
+                }
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
                     when (s) {
                         UiState.Empty -> {
                             EnterUp(0) { HeroCard(pick) }
-                            EnterUp(1) { SubtitlesCard(pickSubs) }
+                            EnterUp(1) { ToolsSection(pickTool) }
                             EnterUp(2) { ProjectsSection(vm.projects, vm::openProject, vm::renameProject, vm::deleteProject) }
                             EnterUp(3) {
                                 Text(
@@ -210,11 +221,7 @@ fun MainScreen(vm: MainViewModel) {
                                 }
                             }
                         }
-                        is UiState.Working -> {
-                            VideoCard(s.info, onReplace = null)
-                            WorkingCard(s, renderAfter = if (vm.review) null else vm.prefs.renderRatio, onCancel = vm::cancel)
-                        }
-                        is UiState.Editing -> Unit
+                        is UiState.Working, is UiState.Editing -> Unit
                         is UiState.Done -> DoneCard(
                             s,
                             onEdit = if (s.canEdit) vm::edit else null,
@@ -242,9 +249,9 @@ fun MainScreen(vm: MainViewModel) {
                             )
                         }
                     }
+                    Spacer(Modifier.height(8.dp))
                 }
             }
-            Spacer(Modifier.height(8.dp))
         }
     }
 }
@@ -275,8 +282,7 @@ private fun SectionCard(modifier: Modifier = Modifier, content: @Composable () -
     ClipCard(modifier) { content() }
 }
 
-/** The way in: a night-blue card with the editor's timeline in miniature. */
-@OptIn(ExperimentalLayoutApi::class)
+/** The main tool: a night-blue card with a miniature timeline of blurs. */
 @Composable
 private fun HeroCard(onPick: () -> Unit) {
     val source = remember { MutableInteractionSource() }
@@ -292,7 +298,15 @@ private fun HeroCard(onPick: () -> Unit) {
                 .background(Brush.linearGradient(listOf(Color(0xFF33237A), Brand.Night, Brand.Ink)))
                 .padding(horizontal = 22.dp, vertical = 24.dp),
         ) {
-            MiniTimeline(Modifier.fillMaxWidth().height(70.dp))
+            // Lanes of blurs, as in the editor: found automatically (coral), marked by hand (peach).
+            MiniTimeline(
+                Modifier.fillMaxWidth().height(58.dp),
+                lanes = listOf(
+                    Brand.Coral to listOf(0.03f..0.34f, 0.42f..0.74f, 0.80f..0.97f),
+                    Color(0xFFFF8A65) to listOf(0.12f..0.30f, 0.52f..0.88f),
+                    Brand.Coral.copy(alpha = 0.55f) to listOf(0.06f..0.22f, 0.62f..0.79f),
+                ),
+            )
             Spacer(Modifier.height(22.dp))
             Text(t("טשטוש פנים בסרטון"), style = MaterialTheme.typography.headlineSmall, color = Color.White)
             Spacer(Modifier.height(6.dp))
@@ -301,37 +315,51 @@ private fun HeroCard(onPick: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.72f),
             )
-            Spacer(Modifier.height(14.dp))
-            // What the lanes above are: the editor's tools, each in its color.
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                val c = Color.White.copy(alpha = 0.8f)
-                FeatureLabel(t("טשטוש"), Brand.Coral, c)
-                FeatureLabel(t("כתוביות"), Brand.Amber, c)
-                FeatureLabel(t("סאונד"), Brand.Cyan, c)
-                FeatureLabel(t("רקע"), Brand.Violet, c)
-            }
             Spacer(Modifier.height(20.dp))
             GradientButton(t("בחר סרטון"), onPick, Modifier.fillMaxWidth(), icon = Icons.Filled.Add)
         }
     }
 }
 
+/** Quick ways into the editor without face detection, one per tool. */
 @Composable
-private fun SubtitlesCard(onPick: () -> Unit) {
-    val color = Feature.SUBTITLES.tint
-    ClipCard(accent = color, onClick = onPick) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            FeatureTile(AppIcons.Subtitles, color, 50.dp)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(t("כתוביות לסרטון"), style = MaterialTheme.typography.titleMedium)
-                Text(
-                    t("זיהוי דיבור ועיצוב בסגנון טיקטוק, בלי טשטוש."),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun ToolsSection(onTool: (QuickTool) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column {
+            SectionTitle(t("עריכה בלי טשטוש"), MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                t("ישר לעורך, בלי זיהוי פנים"),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 22.dp),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ToolTile(Modifier.weight(1f), AppIcons.Subtitles, t("כתוביות"), Feature.SUBTITLES) { onTool(QuickTool.SUBTITLES) }
+            ToolTile(Modifier.weight(1f), AppIcons.Person, t("הסרת רקע"), Feature.BACKGROUND) { onTool(QuickTool.BACKGROUND) }
+            ToolTile(Modifier.weight(1f), AppIcons.Voice, t("קול ואפקטים"), Feature.SOUND) { onTool(QuickTool.SOUND) }
+        }
+    }
+}
+
+@Composable
+private fun ToolTile(modifier: Modifier, icon: ImageVector, label: String, feature: Feature, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val shape = MaterialTheme.shapes.large
+    Surface(
+        onClick = onClick,
+        modifier = modifier.pressScale(source).border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
+        shape = shape,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        interactionSource = source,
+    ) {
+        Column(
+            Modifier.padding(vertical = 16.dp, horizontal = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            FeatureTile(icon, feature.tint, 48.dp)
+            Spacer(Modifier.height(10.dp))
+            Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
         }
     }
 }
@@ -444,51 +472,181 @@ private fun SliderRow(
     }
 }
 
+/**
+ * The progress screen: the video as it's being processed (faces as they're found, then the
+ * finished frames as they're saved, like a render preview), the progress of the whole job and
+ * the time left.
+ */
 @Composable
-private fun WorkingCard(state: UiState.Working, renderAfter: Float?, onCancel: () -> Unit) {
+private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRatio: Float, onCancel: () -> Unit) {
     val eta = rememberEta()
+    val ratio = renderRatio.coerceIn(0.2f, 5f)
     val rem = eta.remainingMs(state.stage, state.progress)
     // During analysis, when the export follows on its own, count it in too.
-    val left = if (rem != null && state.stage == 1 && renderAfter != null) rem + ((eta.elapsedMs + rem) * renderAfter).toLong() else rem
+    val raw = if (rem != null && state.stage == 1 && state.auto) rem + ((eta.elapsedMs + rem) * ratio).toLong() else rem
+    val left = eta.smooth(raw)
+    // Both steps on one bar, each by its usual share of the time.
+    val first = 1f / (1f + ratio)
+    val overall = when {
+        !state.auto -> state.progress
+        state.stage == 1 -> state.progress * first
+        else -> first + state.progress * (1f - first)
+    }
+    val exporting = state.stage == 2
     val feature = if (state.subsOnly) Feature.SUBTITLES else Feature.FACES
-    SectionCard {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                FeatureTile(if (state.subsOnly) AppIcons.Subtitles else AppIcons.Face, feature.tint, 44.dp)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+            LiveFrame(
+                live?.frame ?: state.info.thumbnail,
+                live?.faces.orEmpty(),
+                isLive = live != null,
+                label = if (exporting) t("תצוגה חיה של הייצוא") else if (state.stage == 1) t("מחפש פנים") else null,
+            )
+        }
+        SectionCard {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FeatureTile(if (state.subsOnly) AppIcons.Subtitles else if (exporting) EditorIcons.ExportIcon else AppIcons.Face, feature.tint, 44.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            when {
+                                state.stage == 0 -> t("מכין את הסרטון…")
+                                state.subsOnly -> t("שומר את הסרטון עם הכתוביות")
+                                state.stage == 1 && state.auto -> t("שלב 1 מתוך 2 · מזהה פנים")
+                                state.stage == 1 -> t("מזהה פנים")
+                                state.auto -> t("שלב 2 מתוך 2 · מטשטש ושומר")
+                                else -> t("מייצא את הסרטון")
+                            },
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Text(
+                            t("עברו %s").format(clockText(android.os.SystemClock.elapsedRealtime() - eta.startedAt)) + " · " +
+                                (etaText(left) ?: t("מחשב זמן משוער…")),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        when {
-                            state.stage == 0 -> t("מכין את הסרטון…")
-                            state.subsOnly -> t("שומר את הסרטון עם הכתוביות")
-                            state.stage == 1 -> t("שלב 1 מתוך 2 · מזהה פנים")
-                            else -> t("שלב 2 מתוך 2 · מטשטש ושומר")
-                        },
-                        style = MaterialTheme.typography.titleSmall,
+                        "‎${(overall * 100).roundToInt()}%",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = feature.tint,
                     )
-                    AnimatedContent(etaText(left) ?: t("מחשב זמן משוער…"), transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) }, label = "eta") { text ->
-                        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                TimelineProgress(
+                    overall,
+                    colors = if (state.subsOnly) listOf(Brand.Amber, Color(0xFFFFE08A)) else listOf(Brand.Coral, Brand.Amber),
+                )
+                if (state.auto) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StepChip(t("זיהוי פנים"), done = exporting, current = !exporting)
+                        StepChip(t("טשטוש ושמירה"), done = false, current = exporting)
                     }
                 }
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "\u200E${(state.progress * 100).roundToInt()}%",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = feature.tint,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        t("השאר את האפליקציה פתוחה עד הסוף. המסך יישאר דלוק."),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    OutlinedButton(onClick = onCancel, shape = RoundedCornerShape(50)) { Text(t("ביטול")) }
+                }
             }
-            TimelineProgress(
-                state.progress,
-                colors = if (state.subsOnly) listOf(Brand.Amber, Color(0xFFFFE08A)) else listOf(Brand.Coral, Brand.Amber),
-            )
-            Text(
-                t("השאר את האפליקציה פתוחה עד הסוף. המסך יישאר דלוק."),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(50)) { Text(t("ביטול")) }
         }
     }
+}
+
+/** A step of a two-step job: done (check), current (filled) or still to come. */
+@Composable
+private fun StepChip(text: String, done: Boolean, current: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (current) colors.primaryContainer else colors.surfaceContainerHighest)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (done) {
+            Icon(Icons.Filled.Check, null, Modifier.size(16.dp), tint = colors.primary)
+            Spacer(Modifier.width(4.dp))
+        }
+        Text(
+            text,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (current) colors.onPrimaryContainer else colors.onSurfaceVariant,
+        )
+    }
+}
+
+/** A frame fitted into the space, with the faces found on it outlined and a small label. */
+@Composable
+private fun LiveFrame(frame: android.graphics.Bitmap?, faces: List<com.elad.faceblur.analysis.Box>, isLive: Boolean, label: String?) {
+    if (frame == null) return
+    val image = remember(frame) { frame.asImageBitmap() }
+    val a = frame.width.toFloat() / frame.height.coerceAtLeast(1)
+    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        val w = if (maxWidth / maxHeight > a) maxHeight * a else maxWidth
+        val h = w / a
+        Box(
+            Modifier
+                .size(w, h)
+                .clip(MaterialTheme.shapes.large)
+                .background(Color.Black),
+        ) {
+            Image(
+                image, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit,
+                alpha = if (isLive) 1f else 0.55f,
+            )
+            if (faces.isNotEmpty()) {
+                androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                    val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                    for (f in faces) {
+                        val bw = f.w * size.width
+                        val bh = f.h * size.height
+                        drawRoundRect(
+                            Brand.Coral,
+                            Offset(f.cx * size.width - bw / 2, f.cy * size.height - bh / 2),
+                            androidx.compose.ui.geometry.Size(bw, bh),
+                            androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
+                            style = stroke,
+                        )
+                    }
+                }
+            }
+            if (label != null && isLive) {
+                Row(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(10.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(Brand.Coral))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (faces.isEmpty()) label else "$label · ${faces.size}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** "1:05" */
+private fun clockText(ms: Long): String {
+    val s = (ms / 1000).coerceAtLeast(0)
+    return "‎%d:%02d".format(s / 60, s % 60)
 }
 
 @Composable
