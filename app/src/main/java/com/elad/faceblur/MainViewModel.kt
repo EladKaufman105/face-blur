@@ -20,6 +20,7 @@ import com.elad.faceblur.pipeline.Outcome
 import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.plus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -96,6 +97,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val main = Handler(Looper.getMainLooper())
 
     /** The frame being processed right now (progress screen); null before the first one. */
+    /** The last crash's report (shown once, to send to the developer), or null. */
+    var crashReport by mutableStateOf<String?>(runCatching { CrashLog.pending(app) }.getOrNull())
+        private set
+
+    fun dismissCrash() {
+        crashReport = null
+        CrashLog.clear(getApplication())
+    }
+
+    /** A failure in the editor's background work: shown with its details, not a crash. */
+    private val editorErrors = kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+        android.util.Log.w("EDITIT", "editor task failed", e)
+        val sw = java.io.StringWriter()
+        e.printStackTrace(java.io.PrintWriter(sw))
+        main.post { crashReport = "editor task\n\n" + sw.toString().take(20_000) }
+    }
+    private val editorScope get() = viewModelScope + editorErrors
+
     var livePreview by mutableStateOf<LivePreview?>(null)
         private set
 
@@ -204,6 +223,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 state = UiState.Relink(loaded.meta)
                 return@launch
             }
+            // Anything that goes wrong from here (an old or damaged project) is reported, not a crash.
+            try {
             val j = loaded.json
             val sj = j.optJSONObject("settings") ?: JSONObject()
             val settings = Settings(
@@ -217,7 +238,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val dir = ProjectStore.dir(app, id)
             session.projectDir = dir
             session.masks = withContext(Dispatchers.IO) { MaskStore.open(File(dir, "masks.bin"), File(dir, "masks.bin.idx")) }
-            val ctrl = EditorController(session, viewModelScope, app, models, prefs)
+            val ctrl = EditorController(session, editorScope, app, models, prefs)
             if (session.subtitlesOnly) ctrl.previewAvailable = false
             j.optString("style").takeIf { it.isNotBlank() }?.let { prefs.updateSubStyle(SubtitleStyle.fromJson(it)) }
             val sp = j.optJSONObject("split")
@@ -231,6 +252,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             projectId = id
             startAutosave(ctrl)
             state = UiState.Editing(info, ctrl)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                android.util.Log.w("EDITIT", "project not opened", e)
+                runCatching { loaded.analysis.close() }
+                val sw = java.io.StringWriter()
+                e.printStackTrace(java.io.PrintWriter(sw))
+                crashReport = "opening project $id\n\n" + sw.toString().take(20_000)
+                state = UiState.Failed(null, t("לא ניתן לפתוח את הפרויקט"))
+            }
         }
     }
 
@@ -313,7 +344,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     onPreview = { frame, dets, acc -> showLive(frame, dets.filter { it.score >= 0.5f }.map { it.box }, acc == "gpu") },
                 ) { p -> state = UiState.Working(info, 1, p, auto = auto) }
                 val session = EditSession(info, settings, analysis, SystemClock.elapsedRealtime() - t0)
-                val ctrl = EditorController(session, viewModelScope, getApplication(), models, prefs)
+                val ctrl = EditorController(session, editorScope, getApplication(), models, prefs)
                 editor = ctrl
                 beginProject(ctrl)
                 if (review) {
@@ -339,7 +370,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             guard(info, onCancel = { UiState.Ready(info) }) {
                 val analysis = withContext(Dispatchers.IO) { FaceBlurProcessor.framesOnly(getApplication(), info) }
                 val session = EditSession(info, Settings(mode, strength, padding, sensitive), analysis, 0, subtitlesOnly = true)
-                val ctrl = EditorController(session, viewModelScope, getApplication(), models, prefs)
+                val ctrl = EditorController(session, editorScope, getApplication(), models, prefs)
                 ctrl.previewAvailable = false
                 when (tool) {
                     QuickTool.SUBTITLES -> ctrl.subsSheet = true

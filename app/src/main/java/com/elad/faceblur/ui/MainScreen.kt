@@ -135,6 +135,7 @@ fun MainScreen(vm: MainViewModel) {
     }
     var showSettings by remember { mutableStateOf(false) }
     if (showSettings) AppSettingsSheet(vm.prefs) { showSettings = false }
+    vm.crashReport?.let { report -> CrashDialog(report, onClose = vm::dismissCrash) }
 
     val light = MaterialTheme.colorScheme.isLight
     val glow = if (light) Color(0xFFFFD9E2) else Brand.Night
@@ -792,4 +793,40 @@ private fun MessageCard(
 private fun formatDuration(ms: Long): String {
     val s = (ms / 1000).toInt()
     return "%d:%02d".format(s / 60, s % 60)
+}
+
+/** What went wrong last time, to send (the app can't send anything on its own). */
+@Composable
+private fun CrashDialog(report: String, onClose: () -> Unit) {
+    val context = LocalContext.current
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(t("משהו השתבש")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(t("האפליקציה נתקלה בשגיאה. שלח את הפרטים כדי שאפשר יהיה לתקן אותה."), style = MaterialTheme.typography.bodyMedium)
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(
+                        report,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, textDirection = androidx.compose.ui.text.style.TextDirection.Ltr),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 280.dp)
+                            .clip(MaterialTheme.shapes.small)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                            .verticalScroll(rememberScrollState())
+                            .padding(10.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, report)
+                runCatching { context.startActivity(Intent.createChooser(send, null)) }
+                onClose()
+            }) { Text(t("שלח")) }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text(t("סגור")) } },
+    )
 }

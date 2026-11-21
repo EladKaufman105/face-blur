@@ -24,6 +24,7 @@ class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        CrashLog.install(applicationContext)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) handleShare(intent)

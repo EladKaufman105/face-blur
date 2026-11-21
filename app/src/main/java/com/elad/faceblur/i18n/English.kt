@@ -430,6 +430,8 @@ internal val English: Map<String, String> = mapOf(
     "קול ואפקטים" to "Voice & effects",
     "שקיפות" to "Opacity",
     "עובי" to "Weight",
+    "האפליקציה נתקלה בשגיאה. שלח את הפרטים כדי שאפשר יהיה לתקן אותה." to "The app hit an error. Send the details so it can be fixed.",
+    "שלח" to "Send",
     "עגול" to "Round",
     "אלגנטי" to "Elegant",
     "עיגול" to "Roundness",
