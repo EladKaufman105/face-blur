@@ -55,7 +55,6 @@ internal val English: Map<String, String> = mapOf(
     "החלף" to "Replace",
     "סגנון" to "Style",
     "טשטוש" to "Blur",
-    "הגדרות טשטוש" to "Blur settings",
     "פיקסלים" to "Pixelate",
     "כיסוי" to "Cover",
     "עוצמה" to "Strength",
@@ -541,4 +540,12 @@ internal val English: Map<String, String> = mapOf(
     "התמונה מוגדלת ב-%d%% כדי להסתיר את השוליים. נראה מיד בנגן." to "The picture is zoomed in %d%% to hide the edges. You see it right away in the player.",
     "קל: רעידות קטנות, כמעט בלי חיתוך. חזק: הליכה וצילום ביד, עם יותר חיתוך של השוליים." to "Light: small shakes, almost no cropping. Strong: walking and handheld shots, with more of the edges cropped.",
     "לא ניתן לשמור את הקובץ" to "Can't save the file",
+    // Home and the screen after picking a video (redesign step 2).
+    "הגדרות טשטוש" to "Blur settings",
+    "נשמרים תוך כדי עריכה" to "Saved as you edit",
+    "עדיין אין פרויקטים. כל סרטון שתפתח נשמר כאן תוך כדי עריכה, ואפשר לחזור אליו ולהמשיך מאיפה שעצרת." to "No projects yet. Every video you open is saved here as you edit, so you can come back and pick up where you left off.",
+    "זיהוי רגיל" to "Standard detection",
+    "פתוח" to "Expanded",
+    "מקופל" to "Collapsed",
+    "הפנים יזוהו ויטושטשו, ואז ייפתח העורך לבדיקה ולתיקון לפני השמירה." to "Faces are found and blurred, then the editor opens so you can check and fix them before saving.",
 )

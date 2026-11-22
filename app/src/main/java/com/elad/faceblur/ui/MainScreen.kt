@@ -159,7 +159,7 @@ fun MainScreen(vm: MainViewModel) {
                 }
                 .padding(insets),
         ) {
-            Box(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp)) { Header(onSettings = { showSettings = true }) }
+            Box(Modifier.padding(start = if (wide) Space.XL else Space.L, end = if (wide) Space.XL else Space.L, top = Space.L)) { Header(onSettings = { showSettings = true }) }
             AnimatedContent(
                 targetState = state,
                 contentKey = { it::class },
@@ -179,54 +179,17 @@ fun MainScreen(vm: MainViewModel) {
                     Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = if (wide) 28.dp else 20.dp, vertical = 16.dp),
+                        .padding(horizontal = if (wide) Space.XL else Space.L, vertical = Space.L),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                 Column(
                     Modifier
                         .widthIn(max = if (!wide) (if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600) 680.dp else androidx.compose.ui.unit.Dp.Unspecified) else if (s is UiState.Empty || s is UiState.Ready || s is UiState.Done) 1200.dp else 760.dp)
                         .fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(Space.L),
                 ) {
                     when (s) {
-                        UiState.Empty -> {
-                            val hint: @Composable () -> Unit = {
-                                Text(
-                                    t("אפשר גם לשתף סרטון מהגלריה ישירות לאפליקציה"),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textAlign = TextAlign.Center,
-                                )
-                            }
-                            if (wide && vm.projects.isEmpty()) {
-                                // Nothing saved yet: a new video on one side, the other tools on the other.
-                                Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1.15f)) { EnterUp(0) { HeroCard(pick) } }
-                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                        EnterUp(1) { ToolsSection(pickTool) }
-                                        EnterUp(3) { hint() }
-                                    }
-                                }
-                            } else if (wide) {
-                                // Start a new video on one side, the saved projects on the other.
-                                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                                    Column(Modifier.weight(1.15f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                        EnterUp(0) { HeroCard(pick) }
-                                        EnterUp(1) { ToolsSection(pickTool) }
-                                        EnterUp(3) { hint() }
-                                    }
-                                    Column(Modifier.weight(1f)) {
-                                        EnterUp(2) { ProjectsSection(vm.projects, vm::openProject, vm::renameProject, vm::deleteProject) }
-                                    }
-                                }
-                            } else {
-                                EnterUp(0) { HeroCard(pick) }
-                                EnterUp(1) { ToolsSection(pickTool) }
-                                EnterUp(2) { ProjectsSection(vm.projects, vm::openProject, vm::renameProject, vm::deleteProject) }
-                                EnterUp(3) { hint() }
-                            }
-                        }
+                        UiState.Empty -> HomeContent(vm, wide, onPick = pick, onTool = pickTool)
                         is UiState.Relink -> MessageCard(
                             title = t("הסרטון של הפרויקט לא נמצא"),
                             body = if (s.wrong) t("זה לא אותו סרטון (האורך שונה). בחר את הסרטון המקורי של \"%s\".").format(s.project.name)
@@ -237,50 +200,7 @@ fun MainScreen(vm: MainViewModel) {
                         UiState.Loading -> Box(Modifier.fillMaxWidth().height(220.dp), Alignment.Center) {
                             LogoMark(64.dp)
                         }
-                        is UiState.Ready -> {
-                            // Before detection: only what it needs. Export settings come with saving
-                            // (in the editor, or in the sheet of "blur and save").
-                            var saveSheet by remember { mutableStateOf(false) }
-                            val actions: @Composable () -> Unit = {
-                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    GradientButton(
-                                        t("טשטש פנים"),
-                                        { vm.review = true; vm.start() },
-                                        Modifier.fillMaxWidth().testTag(Tags.BLUR_FACES),
-                                        icon = AppIcons.Face,
-                                    )
-                                    Text(
-                                        t("הפנים יזוהו ויטושטשו, ואז ייפתח העורך: אפשר לבדוק, לתקן ולהוסיף כתוביות, רקע, סאונד וסימן מים לפני השמירה."),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    TextButton(onClick = { saveSheet = true }, modifier = Modifier.fillMaxWidth().testTag(Tags.BLUR_AND_SAVE)) {
-                                        Text(t("או: טשטש ושמור ישר, בלי עורך"))
-                                    }
-                                }
-                            }
-                            if (wide) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                                    Column(Modifier.weight(1.3f)) { EnterUp(0) { VideoCard(s.info, onReplace = pick) } }
-                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                        EnterUp(1) { SettingsCard(vm) }
-                                        EnterUp(2) { actions() }
-                                    }
-                                }
-                            } else {
-                                EnterUp(0) { VideoCard(s.info, onReplace = pick) }
-                                EnterUp(1) { SettingsCard(vm) }
-                                EnterUp(2) { actions() }
-                            }
-                            if (saveSheet) {
-                                ExportSheet(
-                                    s.info, vm.prefs.export, vm.prefs::updateExport,
-                                    onExport = { saveSheet = false; vm.review = false; vm.start() },
-                                    onDismiss = { saveSheet = false },
-                                    action = t("טשטש ושמור"),
-                                )
-                            }
-                        }
+                        is UiState.Ready -> ReadyContent(vm, s, wide, onReplace = pick)
                         is UiState.Working, is UiState.Editing -> Unit
                         is UiState.Done -> DoneCard(
                             s,
@@ -304,7 +224,7 @@ fun MainScreen(vm: MainViewModel) {
                             val context = androidx.compose.ui.platform.LocalContext.current
                             MessageCard(
                                 title = t("נשמר כ-MP3"),
-                                body = t("%s · %.1f MB · בתיקייה Download/ONIT").format(s.result.name, s.result.bytes / 1e6f),
+                                body = t("%s · %.1f MB · בתיקייה Download/ONIT").format(ltr(s.result.name), s.result.bytes / 1e6f),
                                 primary = t("שתף") to {
                                     val send = Intent(Intent.ACTION_SEND).apply {
                                         type = "audio/mpeg"
@@ -328,34 +248,11 @@ fun MainScreen(vm: MainViewModel) {
                             )
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(Space.S))
                 }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun Header(onSettings: () -> Unit) {
-    Row(Modifier.padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        LogoMark(44.dp)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text("ONIT", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(AppIcons.Lock, null, Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.width(4.dp))
-                // One line: a narrow screen gets it a little smaller rather than broken.
-                androidx.compose.foundation.text.BasicText(
-                    t("הכל מעובד על המכשיר. שום דבר לא עולה לרשת."),
-                    style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
-                    maxLines = 1,
-                    autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = 12.sp, stepSize = 0.5.sp),
-                )
-            }
-        }
-        IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, t("הגדרות")) }
     }
 }
 
@@ -363,166 +260,6 @@ private fun Header(onSettings: () -> Unit) {
 private fun SectionCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     ClipCard(modifier) { content() }
 }
-
-/** The main tool: a night-blue card with a miniature timeline of blurs. */
-@Composable
-private fun HeroCard(onPick: () -> Unit) {
-    val source = remember { MutableInteractionSource() }
-    Surface(
-        onClick = onPick,
-        modifier = Modifier.fillMaxWidth().pressScale(source),
-        shape = MaterialTheme.shapes.extraLarge,
-        color = Brand.Ink,
-        interactionSource = source,
-    ) {
-        Column(
-            Modifier
-                .background(Brush.linearGradient(listOf(Color(0xFF33237A), Brand.Night, Brand.Ink)))
-                .padding(horizontal = 22.dp, vertical = 24.dp),
-        ) {
-            // Lanes of blurs, as in the editor: found automatically (coral), marked by hand (peach).
-            MiniTimeline(
-                Modifier.fillMaxWidth().height(58.dp),
-                lanes = listOf(
-                    Brand.Coral to listOf(0.03f..0.34f, 0.42f..0.74f, 0.80f..0.97f),
-                    Color(0xFFFF8A65) to listOf(0.12f..0.30f, 0.52f..0.88f),
-                    Brand.Coral.copy(alpha = 0.55f) to listOf(0.06f..0.22f, 0.62f..0.79f),
-                ),
-            )
-            Spacer(Modifier.height(22.dp))
-            Text(t("טשטוש פנים בסרטון"), style = MaterialTheme.typography.headlineSmall, color = Color.White)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                t("הפנים מזוהות ומטושטשות אוטומטית. אפשר לבדוק ולתקן לפני השמירה."),
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.72f),
-            )
-            Spacer(Modifier.height(20.dp))
-            GradientButton(t("בחר סרטון"), onPick, Modifier.fillMaxWidth().testTag(Tags.PICK_VIDEO), icon = Icons.Filled.Add)
-        }
-    }
-}
-
-/** Quick ways into the editor without face detection, one per tool. */
-@Composable
-private fun ToolsSection(onTool: (QuickTool) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Column {
-            SectionTitle(t("כלים נוספים"), MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(
-                t("פותח את העורך ישר, בלי זיהוי פנים"),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 22.dp),
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ToolTile(Modifier.weight(1f), AppIcons.Subtitles, t("כתוביות"), Feature.SUBTITLES) { onTool(QuickTool.SUBTITLES) }
-            ToolTile(Modifier.weight(1f), AppIcons.Person, t("הסרת רקע"), Feature.BACKGROUND) { onTool(QuickTool.BACKGROUND) }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ToolTile(Modifier.weight(1f), AppIcons.Voice, t("קול ואפקטים"), Feature.SOUND) { onTool(QuickTool.SOUND) }
-            ToolTile(Modifier.weight(1f), AppIcons.Music, t("המרה ל-MP3"), Feature.SOUND) { onTool(QuickTool.MP3) }
-        }
-    }
-}
-
-@Composable
-private fun ToolTile(modifier: Modifier, icon: ImageVector, label: String, feature: Feature, onClick: () -> Unit) {
-    val source = remember { MutableInteractionSource() }
-    val shape = MaterialTheme.shapes.large
-    Surface(
-        onClick = onClick,
-        modifier = modifier.pressScale(source).border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
-        shape = shape,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        interactionSource = source,
-    ) {
-        Column(
-            Modifier.padding(vertical = 16.dp, horizontal = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            FeatureTile(icon, feature.tint, 48.dp)
-            Spacer(Modifier.height(10.dp))
-            Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun VideoCard(info: VideoInfo, onReplace: (() -> Unit)?) {
-    SectionCard {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            info.thumbnail?.let { bmp ->
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(MaterialTheme.shapes.medium)
-                        .background(MaterialTheme.colorScheme.surfaceContainerLowest),
-                    Alignment.Center,
-                ) {
-                    Image(
-                        bitmap = bmp.asImageBitmap(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .heightIn(max = 300.dp)
-                            .aspectRatio(info.aspect, matchHeightConstraintsFirst = true),
-                    )
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(info.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        InfoChip(ltr("${info.displayWidth}×${info.displayHeight}"))
-                        InfoChip(formatDuration(info.durationMs))
-                        InfoChip("${info.fps.roundToInt()}fps")
-                        if (info.isHdr) InfoChip("HDR", Brand.Amber.copy(alpha = 0.22f), Feature.SUBTITLES.tint)
-                    }
-                }
-                if (onReplace != null) TextButton(onClick = onReplace) { Text(t("החלף")) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingsCard(vm: MainViewModel) {
-    SectionCard {
-        Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            Column {
-                SectionTitle(t("טשטוש פנים"), Feature.FACES.tint)
-                Text(
-                    t("אפשר לשנות את המראה גם אחר כך, בעורך."),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 22.dp),
-                )
-            }
-            BlurLookControls(
-                vm.mode, vm.strength, vm.padding,
-                onMode = { vm.mode = it },
-                onStrength = { vm.strength = it },
-                onPadding = { vm.padding = it },
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(t("זיהוי מורחב"), style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        t("בודק כל פריים ומטשטש גם פנים שהמערכת פחות בטוחה בהן. מפספס פחות, אבל עלול לטשטש גם דברים מיותרים, ואיטי יותר."),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Switch(checked = vm.sensitive, onCheckedChange = { vm.sensitive = it })
-            }
-        }
-    }
-}
-
 
 /**
  * The progress screen: the video as it's being processed (faces as they're found, then the
@@ -857,10 +594,10 @@ private fun MessageCard(
     color: Color = MaterialTheme.colorScheme.error,
 ) {
     ClipCard(accent = color) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 FeatureTile(icon, color, 44.dp)
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(Space.M))
                 Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             }
             Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -870,11 +607,6 @@ private fun MessageCard(
             }
         }
     }
-}
-
-private fun formatDuration(ms: Long): String {
-    val s = (ms / 1000).toInt()
-    return "%d:%02d".format(s / 60, s % 60)
 }
 
 /** What went wrong last time, to send (the app can't send anything on its own). */

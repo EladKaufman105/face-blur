@@ -32,6 +32,7 @@ import com.elad.faceblur.pipeline.WatermarkPosition
 import com.elad.faceblur.pipeline.WatermarkLook
 import com.elad.faceblur.pipeline.Watermark
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import com.elad.faceblur.i18n.I18n
@@ -54,6 +55,7 @@ import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
 import com.elad.faceblur.ui.EditorScreen
 import com.elad.faceblur.ui.EditorTheme
+import com.elad.faceblur.ui.Tags
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -354,6 +356,11 @@ class EditorScreenTest {
         rule.waitForIdle()
         Thread.sleep(800)
         shot(outDir, "9_settings_he.png")
+        // The blur's settings are folded away; open them.
+        rule.onNodeWithTag(Tags.BLUR_SETTINGS).performScrollTo().performClick()
+        rule.waitForIdle()
+        Thread.sleep(700)
+        shot(outDir, "9b_ready_settings_open.png")
         rule.runOnIdle { tablet = true }
         Thread.sleep(1200)
         tabletShot(outDir, "9u_tablet_ready.png")

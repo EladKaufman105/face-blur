@@ -238,6 +238,9 @@ fun EnterUp(index: Int = 0, content: @Composable () -> Unit) {
     ) { content() }
 }
 
+/** Where a section title's text starts (past its bar): a line under the title lines up with it. */
+val SectionTitleInset: Dp = 14.dp + Space.S
+
 /** A small colored dot with a section title. */
 @Composable
 fun SectionTitle(text: String, color: Color = MaterialTheme.colorScheme.primary, modifier: Modifier = Modifier) {

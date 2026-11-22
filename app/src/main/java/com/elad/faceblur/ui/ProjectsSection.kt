@@ -36,6 +36,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -63,13 +67,15 @@ fun ProjectsSection(
     onRename: (String, String) -> Unit,
     onDelete: (String) -> Unit,
 ) {
-    if (projects.isEmpty()) return
+    if (projects.isEmpty()) {
+        NoProjects()
+        return
+    }
     var all by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<ProjectMeta?>(null) }
     var deleting by remember { mutableStateOf<ProjectMeta?>(null) }
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            SectionTitle(t("הפרויקטים שלי"), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+    Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
+        SectionHeader(t("הפרויקטים שלי"), t("נשמרים תוך כדי עריכה"), MaterialTheme.colorScheme.primary) {
             if (projects.size > FOLDED) {
                 TextButton(onClick = { all = !all }) {
                     Text(if (all) t("הצג פחות") else t("הצג הכל (%d)").format(projects.size))
@@ -128,11 +134,11 @@ private fun ProjectRow(p: ProjectMeta, onOpen: () -> Unit, onRename: () -> Unit,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         interactionSource = source,
     ) {
-        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(Space.S), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
                     .size(64.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(Radius.Control))
                     .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                 Alignment.Center,
             ) {
@@ -149,12 +155,12 @@ private fun ProjectRow(p: ProjectMeta, onOpen: () -> Unit, onRename: () -> Unit,
                         .background(feature.color),
                 )
             }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Spacer(Modifier.width(Space.M))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(p.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    whenText(p.updated) + " · " + durationText(p.durationMs),
-                    style = MaterialTheme.typography.bodySmall,
+                    whenText(p.updated) + " · " + ltr(durationText(p.durationMs)),
+                    style = MaterialTheme.typography.bodySmall.tnum(),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
@@ -193,10 +199,10 @@ private fun whenText(ms: Long): String {
     val c = Calendar.getInstance().apply { timeInMillis = ms }
     val time = String.format(Locale.US, "%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE))
     fun sameDay(a: Calendar, b: Calendar) = a.get(Calendar.YEAR) == b.get(Calendar.YEAR) && a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR)
-    if (sameDay(now, c)) return t("היום") + " " + time
+    if (sameDay(now, c)) return t("היום") + " " + ltr(time)
     val y = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
-    if (sameDay(y, c)) return t("אתמול") + " " + time
-    return String.format(Locale.US, "%d.%d.%02d", c.get(Calendar.DAY_OF_MONTH), c.get(Calendar.MONTH) + 1, c.get(Calendar.YEAR) % 100)
+    if (sameDay(y, c)) return t("אתמול") + " " + ltr(time)
+    return ltr(String.format(Locale.US, "%d.%d.%02d", c.get(Calendar.DAY_OF_MONTH), c.get(Calendar.MONTH) + 1, c.get(Calendar.YEAR) % 100))
 }
 
 private fun durationText(ms: Long): String {
@@ -207,5 +213,39 @@ private fun durationText(ms: Long): String {
 
 private fun sizeText(bytes: Long): String {
     val mb = bytes / (1024.0 * 1024.0)
-    return if (mb >= 10) String.format(Locale.US, "%.0f MB", mb) else String.format(Locale.US, "%.1f MB", mb)
+    return ltr(if (mb >= 10) String.format(Locale.US, "%.0f MB", mb) else String.format(Locale.US, "%.1f MB", mb))
+}
+
+/**
+ * Before anything is saved: where projects will appear, and that they save themselves, so the
+ * first one isn't a surprise and nobody looks for a save button.
+ */
+@Composable
+private fun NoProjects() {
+    Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
+        SectionHeader(t("הפרויקטים שלי"), null, MaterialTheme.colorScheme.primary)
+        val line = MaterialTheme.colorScheme.outline
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .drawBehind {
+                    val r = Radius.Card.toPx()
+                    drawRoundRect(
+                        line,
+                        cornerRadius = CornerRadius(r),
+                        style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx()))),
+                    )
+                }
+                .padding(Space.L),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(AppIcons.Folder, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(Space.M))
+            Text(
+                t("עדיין אין פרויקטים. כל סרטון שתפתח נשמר כאן תוך כדי עריכה, ואפשר לחזור אליו ולהמשיך מאיפה שעצרת."),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }

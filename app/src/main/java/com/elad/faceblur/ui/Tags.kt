@@ -7,9 +7,11 @@ import com.elad.faceblur.edit.EditorPanel
  * language and when a label is reworded.
  */
 object Tags {
+    const val SETTINGS = "home.settings"
     const val PICK_VIDEO = "home.pick"
     const val BLUR_FACES = "ready.blur"
     const val BLUR_AND_SAVE = "ready.blurAndSave"
+    const val BLUR_SETTINGS = "ready.blurSettings"
     const val BACK = "editor.back"
     const val PROPERTIES = "editor.properties"
     const val EXPORT = "editor.export"
