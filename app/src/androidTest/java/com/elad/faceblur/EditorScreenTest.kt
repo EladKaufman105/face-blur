@@ -404,6 +404,7 @@ class EditorScreenTest {
                     if (on) {
                         screenWidthDp = 1280
                         screenHeightDp = 800
+                        smallestScreenWidthDp = 800
                         orientation = android.content.res.Configuration.ORIENTATION_LANDSCAPE
                     }
                 }

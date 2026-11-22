@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
         CrashLog.install(applicationContext)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        lockPhoneUpright()
         if (savedInstanceState == null) handleShare(intent)
         // CI's check of the shipped build: a video it copied into the app's own folder.
         intent?.getStringExtra("selftest")?.let { name ->
@@ -59,5 +60,20 @@ class MainActivity : ComponentActivity() {
         if (intent?.action != Intent.ACTION_SEND) return
         val uri = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java) ?: return
         vm.load(uri)
+    }
+
+    /** Phones stay upright (the editor isn't made for a phone on its side); tablets turn freely. */
+    private fun lockPhoneUpright() {
+        requestedOrientation = if (com.elad.faceblur.ui.isTablet(resources.configuration)) {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        } else {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
+    // A foldable opened or closed: phone <-> tablet.
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        lockPhoneUpright()
     }
 }

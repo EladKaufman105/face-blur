@@ -1183,10 +1183,16 @@ private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle
                     if (x1 < -handleW || x0 > size.width + handleW) continue
                     val sel = t.id == selId
                     drawRoundRect(if (t.manual) ManualClip else BlurClip, Offset(x0, y), Size(x1 - x0, rowH), CornerRadius(5.dp.toPx()))
-                    if (x1 - x0 > 26.dp.toPx()) {
+                    // The number stays in view while the clip is, and never past the clip's end:
+                    // near the end it rides along with it, then goes when there's no room.
+                    val text = "#${t.id}"
+                    val pad = 6.dp.toPx()
+                    val tw = textPaint.measureText(text)
+                    val lx = min(max(x0, 0f) + pad, x1 - pad - tw)
+                    if (lx >= x0 + pad - 0.5f) {
                         textPaint.color = if (t.manual) Brand.Ink.toArgb() else android.graphics.Color.WHITE
                         drawContext.canvas.nativeCanvas.drawText(
-                            "#${t.id}", max(x0, 0f) + 6.dp.toPx(), y + rowH / 2 + textPaint.textSize / 2.8f, textPaint,
+                            text, lx, y + rowH / 2 + textPaint.textSize / 2.8f, textPaint,
                         )
                     }
                     if (sel) {
