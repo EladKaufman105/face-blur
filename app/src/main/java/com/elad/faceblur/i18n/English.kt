@@ -110,7 +110,7 @@ internal val English: Map<String, String> = mapOf(
     "ורוד" to "Pink",
     "מהטפט" to "Wallpaper",
     // Subtitles
-    " · כתוביות SRT ב-Download/EDITIT" to " · SRT subtitles in Download/EDITIT",
+    " · כתוביות SRT ב-Download/ONIT" to " · SRT subtitles in Download/ONIT",
     "אין קול בסרטון" to "The video has no sound",
     "אנגלית" to "English",
     "בלי" to "None",
@@ -138,7 +138,7 @@ internal val English: Map<String, String> = mapOf(
     "נוצרו %d כתוביות. התרגום לא הצליח (צריך אינטרנט פעם אחת להורדת חבילת השפה)." to "Created %d subtitles. Translation failed (needs internet once to download the language pack).",
     "עברית" to "Hebrew",
     "עברית (ivrit.ai)" to "Hebrew (ivrit.ai)",
-    "עברית ואנגלית, בתיקייה Download/EDITIT" to "Hebrew and English, in Download/EDITIT",
+    "עברית ואנגלית, בתיקייה Download/ONIT" to "Hebrew and English, in Download/ONIT",
     "עדיין אין כתוביות. המערכת תזהה את הדיבור ותתרגם, הכול במכשיר." to "No subtitles yet. Speech is recognized and translated, all on the device.",
     "ערוך טקסט" to "Edit text",
     "עריכת כתובית" to "Edit subtitle",
@@ -226,7 +226,7 @@ internal val English: Map<String, String> = mapOf(
     "משפט שלם" to "Whole sentence",
     "עריכת כל הכתוביות ברשימה" to "Edit all subtitles in a list",
     // Translation opt-in, split
-    "בתיקייה Download/EDITIT" to "In Download/EDITIT",
+    "בתיקייה Download/ONIT" to "In Download/ONIT",
     "הוסף תרגום" to "Add a translation",
     "חלוקה" to "Split",
     "חלוקת הכתוביות" to "Subtitle length",

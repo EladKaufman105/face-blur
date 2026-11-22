@@ -71,7 +71,7 @@ object CrashLog {
 
     private fun header(context: Context): String {
         val v = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
-        return "EDITIT $v · ${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (${Build.VERSION.SDK_INT}) · ${stamp(System.currentTimeMillis())}\n"
+        return "ONIT $v · ${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (${Build.VERSION.SDK_INT}) · ${stamp(System.currentTimeMillis())}\n"
     }
 
     private fun stamp(t: Long) = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(t))

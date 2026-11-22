@@ -35,7 +35,7 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
         try {
             Dnn.readNetFromONNX(modelPath).apply { setPreferableTarget(Dnn.DNN_TARGET_CPU_FP16) }
         } catch (t: Throwable) {
-            android.util.Log.w("EDITIT", "no fp16 face detection: $t")
+            android.util.Log.w("ONIT", "no fp16 face detection: $t")
             it.disable()
             null
         }
@@ -94,7 +94,7 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
                 if (agree(a, b)) {
                     if (b.isNotEmpty()) g.vouch()
                 } else {
-                    android.util.Log.w("EDITIT", "GPU faces differ from the CPU's (${a.size} vs ${b.size}): CPU from now on")
+                    android.util.Log.w("ONIT", "GPU faces differ from the CPU's (${a.size} vs ${b.size}): CPU from now on")
                     g.disable()
                 }
                 return ref
@@ -108,7 +108,7 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
             val r = try {
                 cpuForward(n16, input, iw, ih)
             } catch (t: Throwable) {
-                android.util.Log.w("EDITIT", "fp16 face detection failed: $t")
+                android.util.Log.w("ONIT", "fp16 face detection failed: $t")
                 h.disable()
                 null
             }
@@ -119,7 +119,7 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
                 if (agree(a, b)) {
                     if (b.isNotEmpty()) h.vouch()
                 } else {
-                    android.util.Log.w("EDITIT", "fp16 faces differ from fp32's (${a.size} vs ${b.size}): fp32 from now on")
+                    android.util.Log.w("ONIT", "fp16 faces differ from fp32's (${a.size} vs ${b.size}): fp32 from now on")
                     h.disable()
                 }
             }

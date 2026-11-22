@@ -349,7 +349,7 @@ fun SubtitleExportOptions(export: ExportOptions, onExportChange: (ExportOptions)
             Column(Modifier.weight(1f)) {
                 Text(t("שמור גם קובצי SRT"), style = MaterialTheme.typography.titleSmall)
                 Text(
-                    t("בתיקייה Download/EDITIT"),
+                    t("בתיקייה Download/ONIT"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

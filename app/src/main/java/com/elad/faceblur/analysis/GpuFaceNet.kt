@@ -128,7 +128,7 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
     }
 
     companion object {
-        private const val TAG = "EDITIT"
+        private const val TAG = "ONIT"
 
         /** Frames with faces checked against OpenCV before the GPU's results are used alone. */
         const val CHECK_FRAMES = 3

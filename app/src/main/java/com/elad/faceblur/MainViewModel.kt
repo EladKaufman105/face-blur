@@ -108,7 +108,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** A failure in the editor's background work: shown with its details, not a crash. */
     private val editorErrors = kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
-        android.util.Log.w("EDITIT", "editor task failed", e)
+        android.util.Log.w("ONIT", "editor task failed", e)
         val sw = java.io.StringWriter()
         e.printStackTrace(java.io.PrintWriter(sw))
         main.post { crashReport = "editor task\n\n" + sw.toString().take(20_000) }
@@ -172,7 +172,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         saver.execute {
             runCatching { ProjectStore.create(app, id, s.analysis, s.info.thumbnail, json, edits) }
-                .onFailure { android.util.Log.w("EDITIT", "project not saved", it) }
+                .onFailure { android.util.Log.w("ONIT", "project not saved", it) }
             main.post { refreshProjects() }
         }
         startAutosave(ctrl)
@@ -199,7 +199,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         saver.execute {
             runCatching { ProjectStore.save(app, id, fields, edits) }
-                .onFailure { android.util.Log.w("EDITIT", "project not saved", it) }
+                .onFailure { android.util.Log.w("ONIT", "project not saved", it) }
             main.post { if (state !is UiState.Editing) refreshProjects() }
         }
     }
@@ -216,7 +216,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 throw e
             } catch (e: Throwable) {
                 // Errors too (a native library that didn't load): reported, not a crash.
-                android.util.Log.w("EDITIT", "project not loaded", e)
+                android.util.Log.w("ONIT", "project not loaded", e)
                 val sw = java.io.StringWriter()
                 e.printStackTrace(java.io.PrintWriter(sw))
                 crashReport = "loading project $id\n\n" + sw.toString().take(20_000)
@@ -265,7 +265,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                android.util.Log.w("EDITIT", "project not opened", e)
+                android.util.Log.w("ONIT", "project not opened", e)
                 runCatching { loaded.analysis.close() }
                 val sw = java.io.StringWriter()
                 e.printStackTrace(java.io.PrintWriter(sw))

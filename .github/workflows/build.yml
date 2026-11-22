@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/*.apk "out/EDITIT-${{ github.run_number }}.apk"
+          cp app/build/outputs/apk/release/*.apk "out/ONIT-${{ github.run_number }}.apk"
 
       - name: APK size
         shell: bash
@@ -50,7 +50,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: EDITIT ${{ github.run_number }}
+          name: ONIT ${{ github.run_number }}
           body: "APK for arm64 (vivo X300 Pro). Commit ${{ github.sha }}"
           files: out/*.apk
           make_latest: true

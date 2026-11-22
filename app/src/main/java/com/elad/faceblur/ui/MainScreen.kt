@@ -263,7 +263,7 @@ private fun Header(onSettings: () -> Unit) {
         LogoMark(44.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text("EDITIT", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
+            Text("ONIT", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(AppIcons.Lock, null, Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(4.dp))
@@ -666,13 +666,13 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                     Text(t("נשמר בגלריה"), style = MaterialTheme.typography.titleLarge)
                     Text(
                         buildString {
-                            append("Movies/EDITIT")
+                            append("Movies/ONIT")
                             if (!state.subsOnly) {
                                 append(" · ")
                                 append(if (state.result.faces == 1) t("פנים אחת") else t("%d פנים").format(state.result.faces))
                             }
                             if (state.result.keptHdr) append(t(" · HDR נשמר"))
-                            if (state.result.srtFiles > 0) append(t(" · כתוביות SRT ב-Download/EDITIT"))
+                            if (state.result.srtFiles > 0) append(t(" · כתוביות SRT ב-Download/ONIT"))
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

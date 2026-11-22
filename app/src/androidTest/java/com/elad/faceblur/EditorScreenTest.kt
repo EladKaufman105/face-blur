@@ -226,7 +226,7 @@ class EditorScreenTest {
             dir = LayoutDirection.Rtl
             ctrl.deselect()
             // A text watermark in the middle, in a box: the panel, and the video showing it.
-            export = export.copy(watermark = Watermark(text = "@editit", position = WatermarkPosition.CENTER, look = WatermarkLook.BOX, color = 0xFFFFD60A.toInt(), size = 1.6f, font = com.elad.faceblur.subs.SubFont.ALLO, weight = 900, round = 100))
+            export = export.copy(watermark = Watermark(text = "@onit", position = WatermarkPosition.CENTER, look = WatermarkLook.BOX, color = 0xFFFFD60A.toInt(), size = 1.6f, font = com.elad.faceblur.subs.SubFont.ALLO, weight = 900, round = 100))
             ctrl.watermarkPanel = true
         }
         Thread.sleep(1200)
@@ -283,7 +283,7 @@ class EditorScreenTest {
         shot(outDir, "10_settings_en.png")
         rule.runOnIdle {
             vm.prefs.updateExport(
-                ExportOptions(shortSide = 720, fps = 30, quality = ExportQuality.SAVER, watermark = Watermark(text = "@editit", position = WatermarkPosition.TOP_CENTER, look = WatermarkLook.OUTLINE)),
+                ExportOptions(shortSide = 720, fps = 30, quality = ExportQuality.SAVER, watermark = Watermark(text = "@onit", position = WatermarkPosition.TOP_CENTER, look = WatermarkLook.OUTLINE)),
             )
         }
         repeat(2) { rule.onRoot().performTouchInput { swipeUp() } }
@@ -298,7 +298,7 @@ class EditorScreenTest {
         // Leave the defaults for other runs.
         rule.runOnIdle {
             vm.prefs.updateLang(Lang.HE)
-            vm.prefs.updatePalette(Palette.EDITIT)
+            vm.prefs.updatePalette(Palette.ONIT)
             vm.prefs.updateThemeMode(ThemeMode.SYSTEM)
             vm.prefs.updateExport(ExportOptions())
         }

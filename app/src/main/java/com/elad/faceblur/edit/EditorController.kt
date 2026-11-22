@@ -713,7 +713,7 @@ class EditorController(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                android.util.Log.w("EDITIT", "segmentation failed", e)
+                android.util.Log.w("ONIT", "segmentation failed", e)
                 notice = t("זיהוי האנשים נכשל: %s").format(e.message ?: e.javaClass.simpleName)
             } finally {
                 segmentProgress = null
@@ -885,7 +885,7 @@ class EditorController(
             } catch (e: SubtitleEngine.NoAudioException) {
                 notice = t("אין קול בסרטון")
             } catch (e: Exception) {
-                android.util.Log.w("EDITIT", "speakers failed", e)
+                android.util.Log.w("ONIT", "speakers failed", e)
                 notice = t("זיהוי הדוברים נכשל: %s").format(e.message ?: e.javaClass.simpleName)
             } finally {
                 speakersProgress = null

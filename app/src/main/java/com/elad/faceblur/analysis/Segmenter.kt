@@ -240,7 +240,7 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
         lr = try {
             Dnn.readNetFromONNX(file.path)
         } catch (t: Throwable) {
-            Log.w("EDITIT", "LR-ASPP didn't load: $t")
+            Log.w("ONIT", "LR-ASPP didn't load: $t")
             null
         }
         return lr
@@ -285,7 +285,7 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
             Core.max(acc, lrBig, acc)
         } catch (t: Throwable) {
             // Not worth failing the pass over: PP-HumanSeg alone from here.
-            Log.w("EDITIT", "LR-ASPP failed: $t")
+            Log.w("ONIT", "LR-ASPP failed: $t")
             lr = null
         }
     }

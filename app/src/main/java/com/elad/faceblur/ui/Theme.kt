@@ -28,9 +28,9 @@ import com.elad.faceblur.prefs.Palette
 import com.elad.faceblur.prefs.ThemeMode
 
 /**
- * EDITIT's look. The logo is an "E" of three timeline clips (coral, amber, cyan) with a
- * playhead, on deep ink: those clip colors also mark what each tool works on (see [Feature]),
- * shapes are rounded like clips, and the type is Rubik, which has Hebrew and Latin.
+ * ONIT's look. The logo is a power ("on") symbol: a ring of three timeline clips (coral, amber,
+ * cyan) whose stroke is a playhead, on deep ink. The clip colors also mark what each tool works
+ * on (see [Feature]), shapes are rounded like clips, and the type is Allo Hebrew.
  */
 object Brand {
     val Coral = Color(0xFFFF4D6D)
@@ -72,7 +72,7 @@ private class Accent(
 )
 
 private val Accents = mapOf(
-    Palette.EDITIT to Accent(Color(0xFFE2345A), Color(0xFFFFDEE5), Color(0xFF3F0013), Color(0xFFFF5C7A), Color(0xFF2A0711), Color(0xFF4A1A2C), Color(0xFFFFD9E1)),
+    Palette.ONIT to Accent(Color(0xFFE2345A), Color(0xFFFFDEE5), Color(0xFF3F0013), Color(0xFFFF5C7A), Color(0xFF2A0711), Color(0xFF4A1A2C), Color(0xFFFFD9E1)),
     Palette.BLUE to Accent(Color(0xFF3355E0), Color(0xFFDEE4FF), Color(0xFF0D1A5C), Color(0xFF9DB0FF), Color(0xFF0D1A5C), Color(0xFF263C9C), Color(0xFFDEE4FF)),
     Palette.PURPLE to Accent(Color(0xFF7246D8), Color(0xFFEADDFF), Color(0xFF25005A), Color(0xFFD0BCFF), Color(0xFF3B1E7A), Color(0xFF5634A8), Color(0xFFEADDFF)),
     Palette.GREEN to Accent(Color(0xFF1F7A4D), Color(0xFFB6F2CF), Color(0xFF00210F), Color(0xFF8FD8AE), Color(0xFF00391E), Color(0xFF0D5A36), Color(0xFFB6F2CF)),
@@ -141,7 +141,7 @@ private fun scheme(palette: Palette, darkMode: Boolean): ColorScheme {
         val ctx = LocalContext.current
         return if (darkMode) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
     }
-    val a = Accents[palette] ?: Accents.getValue(Palette.EDITIT)
+    val a = Accents[palette] ?: Accents.getValue(Palette.ONIT)
     return if (darkMode) dark(a) else light(a)
 }
 
@@ -213,7 +213,7 @@ private fun typography(): Typography {
 @Composable
 fun FaceBlurTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,
-    palette: Palette = Palette.EDITIT,
+    palette: Palette = Palette.ONIT,
     content: @Composable () -> Unit,
 ) {
     val darkMode = when (mode) {
@@ -226,6 +226,6 @@ fun FaceBlurTheme(
 
 /** The editor is always dark, like video editors: the footage is what should stand out. */
 @Composable
-fun EditorTheme(palette: Palette = Palette.EDITIT, content: @Composable () -> Unit) {
+fun EditorTheme(palette: Palette = Palette.ONIT, content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = scheme(palette, true), typography = typography(), shapes = Shapes, content = content)
 }

@@ -16,7 +16,7 @@ import com.elad.faceblur.subs.SubtitleStyle
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
-enum class Palette { EDITIT, BLUE, PURPLE, GREEN, ORANGE, ROSE, DYNAMIC }
+enum class Palette { ONIT, BLUE, PURPLE, GREEN, ORANGE, ROSE, DYNAMIC }
 
 /** App-wide choices that persist between launches. */
 class AppPrefs(context: Context) {
@@ -26,7 +26,7 @@ class AppPrefs(context: Context) {
         private set
     var themeMode by mutableStateOf(enumOr(sp.getString("theme_mode", null), ThemeMode.SYSTEM))
         private set
-    var palette by mutableStateOf(enumOr(sp.getString("palette", null), Palette.EDITIT))
+    var palette by mutableStateOf(enumOr(sp.getString("palette", null), Palette.ONIT))
         private set
     var export by mutableStateOf(
         ExportOptions(

@@ -415,7 +415,7 @@ class ProjectsVoiceTest {
         shot("12b_reopened.png")
 
         // A vertical export that follows the faces, with a text watermark.
-        val vexport = ExportOptions(aspect = ExportAspect.VERTICAL, subs = SubLang.ORIGINAL, saveSrt = false, watermark = Watermark(text = "@editit"))
+        val vexport = ExportOptions(aspect = ExportAspect.VERTICAL, subs = SubLang.ORIGINAL, saveSrt = false, watermark = Watermark(text = "@onit"))
         inst.runOnMainSync { vm.prefs.updateExport(vexport) }
         rule.waitForIdle()
         Thread.sleep(1500)

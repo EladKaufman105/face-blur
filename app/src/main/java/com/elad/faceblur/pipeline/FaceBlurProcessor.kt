@@ -82,7 +82,7 @@ sealed interface Outcome {
         val frames: Int,
         val analysisMs: Long,
         val renderMs: Long,
-        /** Number of .srt files saved (Download/EDITIT). */
+        /** Number of .srt files saved (Download/ONIT). */
         val srtFiles: Int = 0,
     ) : Outcome
     data object NoFaces : Outcome
@@ -372,7 +372,7 @@ class FaceBlurProcessor(private val context: Context) {
         val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, "$baseName.mp4")
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/EDITIT")
+            put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/ONIT")
             put(MediaStore.Video.Media.IS_PENDING, 1)
         }
         val resolver = context.contentResolver

@@ -1,14 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- EDITIT: an "E" made of timeline clips, with a playhead. -->
+<!-- ONIT: a power ("on") symbol of three timeline clips, its stroke a playhead. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path android:fillColor="#FFFFFF" android:pathData="M33.5,33h4a3.5,3.5 0,0 1,3.5,3.5v35a3.5,3.5 0,0 1,-3.5,3.5h-4a3.5,3.5 0,0 1,-3.5,-3.5v-35a3.5,3.5 0,0 1,3.5,-3.5z" />
-    <path android:fillColor="#FF4D6D" android:pathData="M47.5,33h26a3.5,3.5 0,0 1,3.5,3.5v4a3.5,3.5 0,0 1,-3.5,3.5h-26a3.5,3.5 0,0 1,-3.5,-3.5v-4a3.5,3.5 0,0 1,3.5,-3.5z" />
-    <path android:fillColor="#FFC53D" android:pathData="M47.5,48.5h14a3.5,3.5 0,0 1,3.5,3.5v4a3.5,3.5 0,0 1,-3.5,3.5h-14a3.5,3.5 0,0 1,-3.5,-3.5v-4a3.5,3.5 0,0 1,3.5,-3.5z" />
-    <path android:fillColor="#3DDCFF" android:pathData="M47.5,64h26a3.5,3.5 0,0 1,3.5,3.5v4a3.5,3.5 0,0 1,-3.5,3.5h-26a3.5,3.5 0,0 1,-3.5,-3.5v-4a3.5,3.5 0,0 1,3.5,-3.5z" />
-    <path android:fillColor="#FFFFFF" android:pathData="M69.8,30h0a1.8,1.8 0,0 1,1.8,1.8v46.4a1.8,1.8 0,0 1,-1.8,1.8h-0a1.8,1.8 0,0 1,-1.8,-1.8v-46.4a1.8,1.8 0,0 1,1.8,-1.8z" />
-    <path android:fillColor="#FFFFFF" android:pathData="M63.8,24h12a1.5,1.5 0,0 1,1.5,1.5v3l-7.5,5.5l-7.5,-5.5v-3a1.5,1.5 0,0 1,1.5,-1.5z" />
+    <path android:strokeColor="#FF4D6D" android:strokeWidth="9.5" android:strokeLineCap="round" android:pathData="M65.76,42.82 A20,20 0 0 1 72.90,65.53" />
+    <path android:strokeColor="#FFC53D" android:strokeWidth="9.5" android:strokeLineCap="round" android:pathData="M65.91,75.07 A20,20 0 0 1 42.09,75.07" />
+    <path android:strokeColor="#3DDCFF" android:strokeWidth="9.5" android:strokeLineCap="round" android:pathData="M35.10,65.53 A20,20 0 0 1 42.24,42.82" />
+    <path android:fillColor="#FFFFFF" android:pathData="M54.00,30.00 a2.2,2.2 0 0 1 2.2,2.2 v24.60 a2.2,2.2 0 0 1 -2.2,2.2 a2.2,2.2 0 0 1 -2.2,-2.2 v-24.60 a2.2,2.2 0 0 1 2.2,-2.2 z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M47.5,24.5 h13 a1.5,1.5,0,0,1,1.5,1.5 v3 l-8,5.5 l-8,-5.5 v-3 a1.5,1.5,0,0,1,1.5,-1.5 z" />
 </vector>

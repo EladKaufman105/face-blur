@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "EDITIT"
+rootProject.name = "ONIT"
 include(":app")

@@ -322,7 +322,7 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Caption(t("ערכת צבעים"))
                 val palettes = listOf(
-                    Palette.EDITIT to "EDITIT",
+                    Palette.ONIT to "ONIT",
                     Palette.BLUE to t("כחול"),
                     Palette.PURPLE to t("סגול"),
                     Palette.GREEN to t("ירוק"),
@@ -337,7 +337,7 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit) {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            val fill = if (p == Palette.EDITIT) {
+                            val fill = if (p == Palette.ONIT) {
                                 Modifier.background(Brush.sweepGradient(listOf(Brand.Coral, Brand.Amber, Brand.Cyan, Brand.Violet, Brand.Coral)), CircleShape)
                             } else if (p == Palette.DYNAMIC) {
                                 Modifier.background(

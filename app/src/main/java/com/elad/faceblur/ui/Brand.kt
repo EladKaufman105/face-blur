@@ -43,6 +43,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -71,13 +73,13 @@ fun Modifier.pressScale(source: MutableInteractionSource): Modifier {
  */
 @Composable
 fun LogoMark(size: Dp, animate: Boolean = true) {
-    val parts = remember { List(5) { Animatable(if (animate) 0f else 1f) } }
+    val parts = remember { List(4) { Animatable(if (animate) 0f else 1f) } }
     if (animate) {
         LaunchedEffect(Unit) {
             parts.forEachIndexed { i, a ->
                 launch {
-                    delay(80L * i)
-                    a.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessLow))
+                    delay(90L * i)
+                    a.animateTo(1f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessLow))
                 }
             }
         }
@@ -88,24 +90,32 @@ fun LogoMark(size: Dp, animate: Boolean = true) {
             .clip(RoundedCornerShape(size * 0.26f))
             .background(Brush.linearGradient(listOf(Color(0xFF3A2A8C), Brand.Ink))),
     ) {
-        // Drawn left to right, as in the app icon, whatever the language.
+        // As the app icon (on a 72-unit square): a power ("on") symbol whose ring is three
+        // timeline clips and whose stroke is a playhead. Same in either language.
         val u = this.size.width / 72f
-        val r = CornerRadius(3.5f * u)
-        drawRoundRect(Color.White, Offset(12f * u, 15f * u), Size(11f * u, 42f * u * parts[0].value.coerceIn(0f, 1.1f)), r)
-        val bars = listOf(Triple(15f, 33f, Brand.Coral), Triple(30.5f, 21f, Brand.Amber), Triple(46f, 33f, Brand.Cyan))
-        bars.forEachIndexed { i, (top, w, c) ->
-            drawRoundRect(c, Offset(26f * u, top * u), Size(w * u * parts[i + 1].value.coerceIn(0f, 1.15f), 11f * u), r)
+        val c = Offset(36f * u, 40.66f * u)
+        val r = 19f * u
+        val clips = listOf(Triple(36f, 109.07f, Brand.Coral), Triple(143.47f, 216.53f, Brand.Amber), Triple(250.93f, 324f, Brand.Cyan))
+        clips.forEachIndexed { i, (a0, a1, color) ->
+            val p = parts[i].value.coerceIn(0f, 1.05f)
+            if (p > 0f) {
+                drawArc(
+                    color, startAngle = a0 - 90f, sweepAngle = (a1 - a0) * p, useCenter = false,
+                    topLeft = Offset(c.x - r, c.y - r), size = Size(2 * r, 2 * r),
+                    style = Stroke(width = 9f * u, cap = StrokeCap.Round),
+                )
+            }
         }
-        val ph = parts[4].value.coerceIn(0f, 1f)
-        drawRoundRect(Color.White.copy(alpha = ph), Offset(50f * u, 12f * u), Size(3.6f * u, 50f * u), CornerRadius(1.8f * u))
-        // The playhead's head, as in the app icon, drops into place.
+        val ph = parts[3].value.coerceIn(0f, 1f)
+        // The playhead drops into place.
         val drop = (1f - ph) * -6f * u
+        drawRoundRect(Color.White.copy(alpha = ph), Offset(33.91f * u, 13.1f * u + drop), Size(4.18f * u, 27.56f * u), CornerRadius(2.09f * u))
         val head = Path().apply {
-            moveTo(44.3f * u, 6f * u + drop)
-            lineTo(59.3f * u, 6f * u + drop)
-            lineTo(59.3f * u, 10.5f * u + drop)
-            lineTo(51.8f * u, 16f * u + drop)
-            lineTo(44.3f * u, 10.5f * u + drop)
+            moveTo(28.4f * u, 7.88f * u + drop)
+            lineTo(43.6f * u, 7.88f * u + drop)
+            lineTo(43.6f * u, 12.16f * u + drop)
+            lineTo(36f * u, 17.38f * u + drop)
+            lineTo(28.4f * u, 12.16f * u + drop)
             close()
         }
         drawPath(head, Color.White.copy(alpha = ph))

@@ -47,6 +47,6 @@ for i in $(seq 1 120); do
   grep -qE "^(PASS|FAIL)" "$OUT/selftest.txt" && break
 done
 adb shell screencap -p /sdcard/selftest.png && adb pull /sdcard/selftest.png "$OUT/selftest.png" || true
-adb logcat -d -v time | grep -iE "AndroidRuntime|FATAL|faceblur|EDITIT|R8|NoSuchMethod|ClassNotFound" | tail -n 300 > "$OUT/selftest_logcat.txt"
+adb logcat -d -v time | grep -iE "AndroidRuntime|FATAL|faceblur|ONIT|R8|NoSuchMethod|ClassNotFound" | tail -n 300 > "$OUT/selftest_logcat.txt"
 cat "$OUT/selftest.txt"
 grep -q "^PASS" "$OUT/selftest.txt"

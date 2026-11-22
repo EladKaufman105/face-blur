@@ -32,7 +32,7 @@ object OpenCv {
                     System.loadLibrary("opencv_java_min")
                     "minimal"
                 } catch (e: UnsatisfiedLinkError) {
-                    android.util.Log.i("EDITIT", "minimal OpenCV not loaded: ${e.message}")
+                    android.util.Log.i("ONIT", "minimal OpenCV not loaded: ${e.message}")
                     System.loadLibrary("opencv_java4")
                     "full"
                 }
