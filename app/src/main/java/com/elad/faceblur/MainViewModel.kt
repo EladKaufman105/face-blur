@@ -63,7 +63,11 @@ sealed interface UiState {
     data class NoFaces(val info: VideoInfo, val canEdit: Boolean) : UiState
     /** A saved project whose video can't be read any more: pick it again. [wrong]: the last pick was another video. */
     data class Relink(val project: ProjectMeta, val wrong: Boolean = false) : UiState
-    data class Failed(val info: VideoInfo?, val message: String) : UiState
+    /**
+     * [message]: what happened, in words to act on; [details]: the technical part, for a report;
+     * [canEdit]: the editor is still there to go back to (an export that failed).
+     */
+    data class Failed(val info: VideoInfo?, val message: String, val details: String? = null, val canEdit: Boolean = false) : UiState
     /** A video's sound saved as an MP3. */
     data class AudioDone(val info: VideoInfo, val result: com.elad.faceblur.audio.Mp3Export.Result) : UiState
 }
@@ -456,11 +460,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: CancellationException) {
             state = onCancel()
             throw e
-        } catch (e: ExportException) {
-            state = UiState.Failed(info, t("העיבוד נכשל (%s): %s").format(e.errorCodeName, e.cause?.message ?: e.message))
         } catch (e: Exception) {
-            state = UiState.Failed(info, e.message ?: e.javaClass.simpleName)
+            android.util.Log.w("FaceBlur", "processing failed", e)
+            state = UiState.Failed(info, friendlyError(e), technical(e), canEdit = editor != null)
         }
+    }
+
+    /** What went wrong, said so that it's clear what to try next. */
+    private fun friendlyError(e: Exception): String {
+        if (e is ExportException) {
+            return when (e.errorCode) {
+                in 2000..2999 -> t("לא הצלחתי לקרוא או לכתוב את הקובץ. בדוק שיש מקום פנוי במכשיר ושהסרטון עדיין בגלריה, ונסה שוב.")
+                in 3000..3999 -> t("המכשיר לא הצליח לפענח את הסרטון הזה. נסה רזולוציה נמוכה יותר בהגדרות הייצוא.")
+                in 4000..4999 -> t("המכשיר לא הצליח לשמור ברזולוציה הזו. בחר 1080p או 720p בהגדרות הייצוא ונסה שוב.")
+                in 7000..7999 -> t("השמירה נעצרה באמצע. נסה שוב; אם זה חוזר, בחר רזולוציה נמוכה יותר בהגדרות הייצוא.")
+                else -> t("העיבוד נכשל. נסה שוב; אם זה חוזר, בחר רזולוציה נמוכה יותר בהגדרות הייצוא.")
+            }
+        }
+        if (e is java.io.IOException) return t("לא הצלחתי לקרוא או לכתוב את הקובץ. בדוק שיש מקום פנוי במכשיר ושהסרטון עדיין בגלריה, ונסה שוב.")
+        return t("משהו השתבש בעיבוד. נסה שוב; אם זה חוזר, שלח את הפרטים הטכניים.")
+    }
+
+    /** The technical details of [e], for sending. */
+    private fun technical(e: Throwable): String = buildString {
+        append(e.javaClass.simpleName)
+        if (e is ExportException) append(" ").append(e.errorCodeName).append(" (").append(e.errorCode).append(")")
+        (e.cause?.message ?: e.message)?.let { append(": ").append(it) }
     }
 
     fun cancel() {

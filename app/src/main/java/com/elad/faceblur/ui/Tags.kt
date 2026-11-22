@@ -15,6 +15,7 @@ object Tags {
     const val BACK = "editor.back"
     const val PROPERTIES = "editor.properties"
     const val EXPORT = "editor.export"
+    const val EXPORT_GO = "export.go"
     const val PLAY = "editor.play"
     const val UNDO = "editor.undo"
     const val ADD_BLUR = "tool.addBlur"
@@ -25,6 +26,7 @@ object Tags {
     const val ZOOM_IN = "timeline.zoomIn"
     const val ZOOM_OUT = "timeline.zoomOut"
     const val DESELECT = "context.done"
+    const val SCRUBBER = "panel.scrubber"
 
     /** A group of tools in the editor's bar. */
     fun group(name: String) = "group." + name.lowercase()

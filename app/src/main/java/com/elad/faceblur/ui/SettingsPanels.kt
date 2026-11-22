@@ -46,6 +46,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -99,7 +100,7 @@ internal fun <T> Segments(options: List<Pair<T, String>>, selected: T, onSelect:
             .height(44.dp)
             .clip(shape)
             .background(colors.surfaceContainerHighest)
-            .padding(3.dp),
+            .padding(Space.XS),
     ) {
         val w = maxWidth / options.size.coerceAtLeast(1)
         val x by animateDpAsState(w * idx.coerceAtLeast(0), spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), label = "segment")
@@ -123,7 +124,7 @@ internal fun <T> Segments(options: List<Pair<T, String>>, selected: T, onSelect:
                         .fillMaxHeight()
                         .clip(shape)
                         .selectable(selected = sel, role = Role.RadioButton, onClick = { onSelect(v) })
-                        .padding(horizontal = 6.dp),
+                        .padding(horizontal = Space.S),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -146,7 +147,7 @@ internal fun <T> Segments(options: List<Pair<T, String>>, selected: T, onSelect:
 private fun <T> Chips(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
     FlowRow(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(Space.S),
     ) {
         for ((v, label) in options) {
             FilterChip(selected = v == selected, onClick = { onSelect(v) }, label = { Text(label) })
@@ -172,15 +173,15 @@ fun ExportOptionsPanel(
     onEditWatermark: (() -> Unit)? = null,
 ) {
     val short = minOf(info.displayWidth, info.displayHeight)
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
             Caption(t("רזולוציה"))
             Chips(
                 listOf(0 to t("מקור (%s)").format("${short}p")) + ExportOptions.resolutionChoices(info).map { it to "${it}p" },
                 if (options.shortSide in ExportOptions.resolutionChoices(info)) options.shortSide else 0,
             ) { onChange(options.copy(shortSide = it)) }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
             Caption(t("פורמט"))
             Segments(
                 listOf(
@@ -199,14 +200,14 @@ fun ExportOptionsPanel(
                 )
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
             Caption(t("קצב פריימים"))
             Chips(
                 listOf(0 to t("מקור (%s)").format(ltr("${info.fps.roundToInt()} fps"))) + ExportOptions.fpsChoices(info).map { it to ltr("$it fps") },
                 if (options.fps in ExportOptions.fpsChoices(info)) options.fps else 0,
             ) { onChange(options.copy(fps = it)) }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
             Caption(t("איכות וגודל קובץ"))
             Segments(
                 listOf(
@@ -226,7 +227,7 @@ fun ExportOptionsPanel(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
             Caption(t("קידוד"))
             Segments(
                 listOf(
@@ -264,7 +265,7 @@ fun ExportOptionsPanel(
                 }
                 TextButton(onClick = onEditWatermark) { Text(t("ערוך")) }
             }
-        } else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        } else Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
             Caption(t("סימן מים"))
             if (options.watermark.enabled(LocalContext.current)) {
                 val aspect = if (options.aspect == ExportAspect.ORIGINAL) info.displayWidth.toFloat() / info.displayHeight.coerceAtLeast(1) else options.aspect.ratio
@@ -307,18 +308,19 @@ fun ExportSheet(
             Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 16.dp)
+                .padding(horizontal = Space.XL)
+                .padding(bottom = Space.L)
                 .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(Space.L),
         ) {
-            Text(t("הגדרות ייצוא"), style = MaterialTheme.typography.titleLarge)
+            Text(t("הגדרות ייצוא"), style = AppType.Title)
             ExportOptionsPanel(info, options, onChange, onEditWatermark)
             if (hasSubs) {
                 HorizontalDivider()
                 SubtitleExportOptions(options, onChange, hasTranslation)
             }
-            Button(onClick = onExport, modifier = Modifier.fillMaxWidth()) { Text(action) }
+            // The one place the video leaves the editor: the brand's main button.
+            GradientButton(action, onExport, Modifier.fillMaxWidth().testTag(Tags.EXPORT_GO), icon = EditorIcons.ExportIcon)
         }
     }
 }
@@ -331,24 +333,24 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 20.dp)
+                .padding(horizontal = Space.XL)
+                .padding(bottom = Space.XL)
                 .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+            verticalArrangement = Arrangement.spacedBy(Space.L),
         ) {
-            Text(t("הגדרות"), style = MaterialTheme.typography.titleLarge)
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(t("הגדרות"), style = AppType.Title)
+            Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
                 Caption(t("שפה"))
                 Segments(listOf(Lang.HE to "עברית", Lang.EN to "English"), prefs.lang) { prefs.updateLang(it) }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
                 Caption(t("מצב תצוגה"))
                 Segments(
                     listOf(ThemeMode.DARK to t("כהה"), ThemeMode.LIGHT to t("בהיר"), ThemeMode.SYSTEM to t("לפי המכשיר")),
                     prefs.themeMode,
                 ) { prefs.updateThemeMode(it) }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
                 Caption(t("ערכת צבעים"))
                 val palettes = listOf(
                     Palette.ONIT to "ONIT",
@@ -362,9 +364,9 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit) {
                     for ((p, label) in palettes) {
                         val sel = prefs.palette == p
                         Column(
-                            Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable { prefs.updatePalette(p) }.padding(vertical = 4.dp),
+                            Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable { prefs.updatePalette(p) }.padding(vertical = Space.XS),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(Space.XS),
                         ) {
                             val fill = if (p == Palette.ONIT) {
                                 Modifier.background(Brush.sweepGradient(listOf(Brand.Coral, Brand.Amber, Brand.Cyan, Brand.Violet, Brand.Coral)), CircleShape)
@@ -431,8 +433,8 @@ internal fun BlurLookControls(
     onPadding: (Float) -> Unit,
     onDone: (() -> Unit)? = null,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(Space.L)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
             Text(t("סגנון"), style = MaterialTheme.typography.titleSmall)
             Segments(
                 listOf(

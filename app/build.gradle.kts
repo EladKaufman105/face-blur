@@ -31,7 +31,9 @@ android {
         minSdk = 29
         targetSdk = 36
         versionCode = buildNumber
-        versionName = "1.0.$buildNumber"
+        // 2.0: the redesign (six groups of tools, one design system), with cuts, steadying,
+        // voice cleanup and MP3 out of the test build.
+        versionName = "2.0.$buildNumber"
         ndk { abiFilters += abiList }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The app speaks Hebrew and English: other languages' library strings are left out.

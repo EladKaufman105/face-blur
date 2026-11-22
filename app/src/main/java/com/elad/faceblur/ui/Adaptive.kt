@@ -62,14 +62,21 @@ val LocalSidePanel = staticCompositionLocalOf { false }
 val LocalPanelHide = staticCompositionLocalOf<(() -> Unit)?> { null }
 
 /**
- * A panel's scrolling body: [phone] tall on a phone (where it takes the timeline's place under
- * the video), the rest of the height in the tablet's side panel. [upTo]: at most that tall.
+ * Every panel's body on a phone is this tall (under its title row), so switching between tools
+ * doesn't move the video up and down.
  */
+val PanelBodyHeight: Dp = 300.dp
+
+/**
+ * A panel's scrolling body: [PanelBodyHeight] on a phone (where it takes the timeline's place
+ * under the video), less [less] taken by a row of its own above it; the rest of the height in the
+ * tablet's side panel. ([phone] and [upTo] were each panel's own height, before they were one.)
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
-fun panelBody(phone: Dp, upTo: Boolean = false): Modifier = when {
+fun panelBody(phone: Dp = PanelBodyHeight, upTo: Boolean = false, less: Dp = 0.dp): Modifier = when {
     LocalSidePanel.current -> Modifier.fillMaxHeight()
-    upTo -> Modifier.heightIn(max = phone)
-    else -> Modifier.height(phone)
+    else -> Modifier.height(PanelBodyHeight - less)
 }
 
 /**

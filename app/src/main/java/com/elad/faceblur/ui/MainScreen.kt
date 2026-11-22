@@ -239,12 +239,21 @@ fun MainScreen(vm: MainViewModel) {
                             )
                         }
                         is UiState.Failed -> {
-                            s.info?.let { VideoCard(it, onReplace = pick) }
+                            if (!s.canEdit) s.info?.let { VideoCard(it, onReplace = pick) }
                             MessageCard(
                                 title = t("משהו השתבש"),
                                 body = s.message,
-                                primary = t("בחר סרטון אחר") to { vm.reset(); pick() },
-                                secondary = if (s.info != null) t("חזרה להגדרות") to vm::backToSettings else null,
+                                // An export that failed: the edits are all there; go back, or try again.
+                                primary = when {
+                                    s.canEdit -> t("נסה שוב") to vm::export
+                                    else -> t("בחר סרטון אחר") to { vm.reset(); pick() }
+                                },
+                                secondary = when {
+                                    s.canEdit -> t("חזרה לעריכה") to vm::edit
+                                    s.info != null -> t("חזרה להגדרות") to vm::backToSettings
+                                    else -> null
+                                },
+                                details = s.details,
                             )
                         }
                     }
@@ -295,10 +304,10 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
     }
     val progress: @Composable () -> Unit = {
         SectionCard {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FeatureTile(if (state.stage == 3) AppIcons.Music else if (state.subsOnly) AppIcons.Subtitles else if (exporting) EditorIcons.ExportIcon else AppIcons.Face, feature.tint, 44.dp)
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(Space.M))
                     Column(Modifier.weight(1f)) {
                         Text(
                             when {
@@ -319,7 +328,7 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(Space.S))
                     Text(
                         ltr("${(overall * 100).roundToInt()}%"),
                         style = MaterialTheme.typography.headlineMedium.tnum(),
@@ -331,7 +340,7 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
                     colors = if (state.subsOnly) listOf(Brand.Amber, Color(0xFFFFE08A)) else listOf(Brand.Coral, Brand.Amber),
                 )
                 if (state.auto) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Space.S)) {
                         StepChip(t("זיהוי פנים"), done = exporting, current = !exporting)
                         StepChip(t("טשטוש ושמירה"), done = false, current = exporting)
                     }
@@ -343,7 +352,7 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
                     )
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(Space.M))
                     OutlinedButton(onClick = onCancel, shape = RoundedCornerShape(50)) { Text(t("ביטול")) }
                 }
             }
@@ -352,8 +361,8 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
     if (wide) {
         // Side by side: the video as tall as the screen allows, the progress beside it.
         Row(
-            Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(20.dp),
+            Modifier.fillMaxSize().padding(horizontal = Space.XL, vertical = Space.L),
+            horizontalArrangement = Arrangement.spacedBy(Space.XL),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             frame(Modifier.weight(1f).fillMaxHeight())
@@ -362,8 +371,8 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
     } else {
         // The frame and the progress together, in the middle: a wide video leaves no hole between them.
         Column(
-            Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+            Modifier.fillMaxSize().padding(horizontal = Space.XL, vertical = Space.L),
+            verticalArrangement = Arrangement.spacedBy(Space.L, Alignment.CenterVertically),
         ) {
             frame(Modifier.fillMaxWidth().weight(1f, fill = false))
             progress()
@@ -379,12 +388,12 @@ private fun StepChip(text: String, done: Boolean, current: Boolean) {
         Modifier
             .clip(RoundedCornerShape(50))
             .background(if (current) colors.primaryContainer else colors.surfaceContainerHighest)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = Space.M, vertical = Space.S),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (done) {
             Icon(Icons.Filled.Check, null, Modifier.size(16.dp), tint = colors.primary)
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(Space.XS))
         }
         Text(
             text,
@@ -433,14 +442,14 @@ private fun LiveFrame(frame: android.graphics.Bitmap?, faces: List<com.elad.face
                 Row(
                     Modifier
                         .align(Alignment.TopStart)
-                        .padding(10.dp)
+                        .padding(Space.M)
                         .clip(RoundedCornerShape(50))
                         .background(Color.Black.copy(alpha = 0.55f))
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                        .padding(horizontal = Space.M, vertical = Space.XS),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(Brand.Coral))
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(Space.S))
                     Text(
                         if (faces.isEmpty()) label else "$label · ${faces.size}",
                         style = MaterialTheme.typography.labelMedium,
@@ -459,7 +468,7 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onHome: () -> U
     val header: @Composable () -> Unit = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SuccessBadge(Icons.Filled.Check)
-                Spacer(Modifier.width(14.dp))
+                Spacer(Modifier.width(Space.M))
                 Column {
                     Text(t("נשמר בגלריה"), style = MaterialTheme.typography.titleLarge)
                     Text(
@@ -493,7 +502,7 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onHome: () -> U
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.M)) {
                 GradientButton(
                     t("שתף"),
                     onClick = {
@@ -531,15 +540,15 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onHome: () -> U
                     accent = (if (state.subsOnly) Feature.SUBTITLES else Feature.FACES).tint,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.M)) {
                 TextButton(onClick = onHome, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Filled.Home, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(Space.S))
                     Text(t("למסך הבית"))
                 }
                 TextButton(onClick = onNew, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(Space.S))
                     Text(t("סרטון חדש"))
                 }
             }
@@ -547,15 +556,15 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onHome: () -> U
     SectionCard {
         if (wide) {
             // The video on one side, what to do with it on the other.
-            Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.XL), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1.3f)) { player() }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.M)) {
                     header()
                     actions()
                 }
             }
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
                 header()
                 player()
                 actions()
@@ -592,6 +601,8 @@ private fun MessageCard(
     secondary: Pair<String, () -> Unit>?,
     icon: ImageVector = Icons.Filled.Warning,
     color: Color = MaterialTheme.colorScheme.error,
+    /** Technical details, folded away (to send if it keeps happening). */
+    details: String? = null,
 ) {
     ClipCard(accent = color) {
         Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
@@ -605,6 +616,32 @@ private fun MessageCard(
             if (secondary != null) {
                 AccentOutlinedButton(secondary.first, secondary.second, Modifier.fillMaxWidth(), accent = MaterialTheme.colorScheme.onSurfaceVariant, height = 48.dp)
             }
+            if (details != null) {
+                var open by remember { mutableStateOf(false) }
+                val context = LocalContext.current
+                TextButton(onClick = { open = !open }) { Text(if (open) t("הסתר פרטים טכניים") else t("פרטים טכניים")) }
+                if (open) {
+                    androidx.compose.foundation.text.selection.SelectionContainer {
+                        Text(
+                            details,
+                            style = MaterialTheme.typography.bodySmall.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Ltr),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(Radius.Control))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                .padding(Space.M),
+                        )
+                    }
+                    TextButton(onClick = {
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, "ONIT: $details")
+                        }
+                        runCatching { context.startActivity(Intent.createChooser(send, null)) }
+                    }) { Text(t("שלח את הפרטים")) }
+                }
+            }
         }
     }
 }
@@ -617,7 +654,7 @@ private fun CrashDialog(report: String, onClose: () -> Unit) {
         onDismissRequest = onClose,
         title = { Text(t("משהו השתבש")) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
                 Text(t("האפליקציה נתקלה בשגיאה. שלח את הפרטים כדי שאפשר יהיה לתקן אותה."), style = MaterialTheme.typography.bodyMedium)
                 androidx.compose.foundation.text.selection.SelectionContainer {
                     Text(
@@ -629,7 +666,7 @@ private fun CrashDialog(report: String, onClose: () -> Unit) {
                             .clip(MaterialTheme.shapes.small)
                             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                             .verticalScroll(rememberScrollState())
-                            .padding(10.dp),
+                            .padding(Space.M),
                     )
                 }
             }

@@ -84,7 +84,7 @@ private fun SfxTab(ctrl: EditorController) {
     val mine = remember(userVersion) { SfxLibrary.user(context) }
     var category by rememberSaveable { mutableStateOf(SfxCategory.TRANSITIONS) }
     val sounds = if (category == SfxCategory.MINE) mine else SfxLibrary.builtins.filter { it.category == category }
-    Column(Modifier.fillMaxWidth().then(panelBody(272.dp))) {
+    Column(Modifier.fillMaxWidth().then(panelBody(less = MinTouch))) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -180,7 +180,7 @@ fun VoicePanel(ctrl: EditorController) {
             } else Column(
                 Modifier
                     .fillMaxWidth()
-                    .then(panelBody(272.dp))
+                    .then(panelBody(less = MinTouch))
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),

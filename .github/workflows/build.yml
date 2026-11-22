@@ -57,8 +57,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: ONIT ${{ github.run_number }}
-          body: "APK for arm64 (vivo X300 Pro). Commit ${{ github.sha }}"
+          name: ONIT 2.0 (${{ github.run_number }})
+          body: "ONIT 2.0, build ${{ github.run_number }}. APK for arm64 (vivo X300 Pro). Commit ${{ github.sha }}"
           files: out/*.apk
           make_latest: true
 

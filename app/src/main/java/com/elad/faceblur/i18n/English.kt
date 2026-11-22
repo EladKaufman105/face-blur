@@ -560,4 +560,15 @@ internal val English: Map<String, String> = mapOf(
     "לא זוהו פנים" to "No faces found",
     "הסרטון יישמר בצורה המקורית שלו." to "The video keeps its original shape.",
     "המסגרת עוקבת אחרי הפנים, כמו צלם. רואים אותה על הסרטון." to "The frame follows the faces, like a camera operator. You can see it on the video.",
+    // Errors in words to act on (redesign step 5).
+    "לא הצלחתי לקרוא או לכתוב את הקובץ. בדוק שיש מקום פנוי במכשיר ושהסרטון עדיין בגלריה, ונסה שוב." to "Couldn't read or write the file. Check there's free space on the device and the video is still in the gallery, then try again.",
+    "המכשיר לא הצליח לפענח את הסרטון הזה. נסה רזולוציה נמוכה יותר בהגדרות הייצוא." to "The device couldn't decode this video. Try a lower resolution in the export settings.",
+    "המכשיר לא הצליח לשמור ברזולוציה הזו. בחר 1080p או 720p בהגדרות הייצוא ונסה שוב." to "The device couldn't save at this resolution. Choose 1080p or 720p in the export settings and try again.",
+    "השמירה נעצרה באמצע. נסה שוב; אם זה חוזר, בחר רזולוציה נמוכה יותר בהגדרות הייצוא." to "Saving stopped halfway. Try again; if it happens again, choose a lower resolution in the export settings.",
+    "העיבוד נכשל. נסה שוב; אם זה חוזר, בחר רזולוציה נמוכה יותר בהגדרות הייצוא." to "Processing failed. Try again; if it happens again, choose a lower resolution in the export settings.",
+    "משהו השתבש בעיבוד. נסה שוב; אם זה חוזר, שלח את הפרטים הטכניים." to "Something went wrong while processing. Try again; if it happens again, send the technical details.",
+    "נסה שוב" to "Try again",
+    "הסתר פרטים טכניים" to "Hide technical details",
+    "פרטים טכניים" to "Technical details",
+    "שלח את הפרטים" to "Send the details",
 )

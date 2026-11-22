@@ -208,10 +208,13 @@ fun EditorScreen(
     onSubStyleChange: (SubtitleStyle) -> Unit = {},
 ) {
     var exportSheet by remember { mutableStateOf(false) }
+    // A phone: the selected clip's properties in the timeline's place (the tablet has them beside).
+    var propsOpen by remember { mutableStateOf(false) }
     BackHandler {
         when {
             ctrl.addMode -> ctrl.addMode = false
             ctrl.splitPanel -> ctrl.splitPanel = false
+            propsOpen -> propsOpen = false
             ctrl.panel != null -> ctrl.closePanel()
             ctrl.selectedId != null || ctrl.selectedCueId != null || ctrl.selectedSfxId != null -> ctrl.deselect()
             else -> onClose()
@@ -231,6 +234,7 @@ fun EditorScreen(
     // A tablet's side panel can be closed (the video gets the room); any tool opens it again.
     var hidden by rememberSaveable { mutableStateOf(false) }
     val selecting = ctrl.selected != null || ctrl.selectedCue != null || ctrl.selectedSfx != null
+    LaunchedEffect(selecting) { if (!selecting) propsOpen = false }
     val zoom = rememberTimelineZoom(ctrl)
     val watermarkOn = export.watermark.enabled(LocalContext.current)
     // A group opens the tool used last in it (or its first).
@@ -307,7 +311,7 @@ fun EditorScreen(
                         visible = selecting,
                         enter = slideInVertically(tween(Motion.STATE)) { it / 2 } + fadeIn(tween(Motion.STATE)),
                         exit = fadeOut(tween(Motion.CONTENT)),
-                    ) { ContextBar(ctrl, busy, Modifier.padding(start = Space.S, end = Space.S, bottom = Space.S)) }
+                    ) { ContextBar(ctrl, busy, onProperties = { propsOpen = true }, modifier = Modifier.padding(start = Space.S, end = Space.S, bottom = Space.S)) }
                 }
             }
         }
@@ -341,7 +345,7 @@ fun EditorScreen(
         val tabs = PanelTabs(panelsOf(group, ctrl).map { it to panelLabel(it) }, p, group.tint) { ctrl.openPanel(it) }
         CompositionLocalProvider(LocalPanelTabs provides tabs) { when (p) {
             EditorPanel.SUBTITLES -> SubtitlesPanel(ctrl, export, onExportChange)
-            EditorPanel.LIST -> AllSubtitlesPanel(ctrl, if (LocalSidePanel.current) Modifier.fillMaxHeight() else Modifier.fillMaxHeight(0.6f), subStyle)
+            EditorPanel.LIST -> AllSubtitlesPanel(ctrl, if (LocalSidePanel.current) Modifier.fillMaxHeight() else Modifier.height(PanelBodyHeight + MinTouch), subStyle)
             EditorPanel.VOICE -> VoicePanel(ctrl)
             EditorPanel.BACKGROUND -> BackgroundPanel(ctrl)
             EditorPanel.STYLE -> SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
@@ -434,14 +438,15 @@ fun EditorScreen(
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         topBar()
-        videoArea(Modifier.weight(1f), export, subStyle, ctrl.panel != null)
+        val phoneShows: Any? = if (propsOpen && selecting) PROPS else ctrl.panel
+        videoArea(Modifier.weight(1f), export, subStyle, phoneShows != null)
 
         // Video controls and timelines run left to right even in a Hebrew UI.
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy, zoom) }
 
         // The timeline and its tools, or a panel in their place; they slide in when switching.
         AnimatedContent(
-            ctrl.panel,
+            phoneShows,
             transitionSpec = {
                 if (initialState != null && targetState != null) {
                     // A tab of the same group: the content changes, nothing moves.
@@ -454,7 +459,14 @@ fun EditorScreen(
             label = "panel",
         ) { p ->
             Column {
-                if (p == null) timelineArea(true, null) else panelArea(p)
+                when (p) {
+                    null -> timelineArea(true, null)
+                    else -> {
+                        // A panel in the timeline's place keeps a way to move through the video.
+                        MiniScrubber(ctrl, busy)
+                        if (p is EditorPanel) panelArea(p) else PropertiesPanel(ctrl, busy, subStyle)
+                    }
+                }
             }
         }
     }

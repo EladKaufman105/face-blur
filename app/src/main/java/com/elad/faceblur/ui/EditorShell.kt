@@ -263,31 +263,35 @@ internal class ContextAction(
     val onClick: () -> Unit,
 )
 
-/** What can be done with the selected blur, subtitle or sound effect. */
-internal fun contextActions(ctrl: EditorController, busy: Boolean): Pair<Feature, List<ContextAction>>? {
+/**
+ * What can be done with the selected blur, subtitle or sound effect; [onProperties] opens all of
+ * its settings (times, size, volume, text), in the timeline's place.
+ */
+internal fun contextActions(ctrl: EditorController, busy: Boolean, onProperties: () -> Unit): Pair<Feature, List<ContextAction>>? {
+    val props = ContextAction(t("מאפיינים"), AppIcons.Tune, !busy) { ctrl.pauser(); onProperties() }
     ctrl.selectedSfx?.let {
         return Feature.SOUND to listOf(
+            props,
             ContextAction(t("השמע"), Icons.Filled.PlayArrow) { ctrl.playSelectedSfx() },
             ContextAction(t("העבר לכאן"), AppIcons.MoveHere) { ctrl.moveSelectedSfxHere() },
-            ContextAction(t("עוצמה"), AppIcons.Volume, active = ctrl.sfxGainPanel) { ctrl.sfxGainPanel = !ctrl.sfxGainPanel },
             ContextAction(t("מחק"), Icons.Filled.Delete, danger = true) { ctrl.deleteSelectedSfx() },
         )
     }
     if (ctrl.selectedCue != null) {
         return Feature.SUBTITLES to listOf(
+            props,
             ContextAction(t("ערוך טקסט"), Icons.Filled.Edit) { ctrl.pauser(); ctrl.cueEditor = true },
             ContextAction(t("פצל כאן"), EditorIcons.Cut) { ctrl.pauser(); ctrl.splitSelectedCue() },
             ContextAction(t("מזג"), AppIcons.MergeDown) { ctrl.mergeSelectedCue() },
-            ContextAction(t("עיצוב"), EditorIcons.TextFormat) { ctrl.pauser(); ctrl.stylePanel = true },
             ContextAction(t("מחק"), Icons.Filled.Delete, danger = true) { ctrl.deleteSelectedCue() },
         )
     }
     if (ctrl.selected != null) {
         return Feature.FACES to listOf(
+            props,
             ContextAction(t("פצל"), EditorIcons.Cut, !busy) { ctrl.splitSelected() },
             ContextAction(t("עקוב קדימה"), EditorIcons.TrackForward, !busy) { ctrl.trackSelected(1) },
             ContextAction(t("עקוב אחורה"), EditorIcons.TrackBack, !busy) { ctrl.trackSelected(-1) },
-            ContextAction(t("גודל"), EditorIcons.Resize, !busy, active = ctrl.sizePanel) { ctrl.sizePanel = !ctrl.sizePanel },
             ContextAction(t("מחק"), Icons.Filled.Delete, !busy, danger = true) { ctrl.deleteSelected() },
         )
     }
@@ -302,8 +306,8 @@ internal val ContextBarRoom: Dp = 72.dp
  * where they are, and nothing on the screen moves when something is selected.
  */
 @Composable
-internal fun ContextBar(ctrl: EditorController, busy: Boolean, modifier: Modifier = Modifier) {
-    val (feature, actions) = contextActions(ctrl, busy) ?: return
+internal fun ContextBar(ctrl: EditorController, busy: Boolean, onProperties: () -> Unit, modifier: Modifier = Modifier) {
+    val (feature, actions) = contextActions(ctrl, busy, onProperties) ?: return
     Surface(
         shape = RoundedCornerShape(Radius.Panel),
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -502,5 +506,28 @@ internal fun AddBlurButton(ctrl: EditorController, busy: Boolean) {
         Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
         Spacer(Modifier.width(Space.XS))
         Text(t("הוסף טשטוש"))
+    }
+}
+
+/**
+ * A phone's panel takes the timeline's place: this thin scrubber stays over it, so moving through
+ * the video (to set a time, to see a change somewhere else) never means closing the panel.
+ */
+@Composable
+internal fun MiniScrubber(ctrl: EditorController, busy: Boolean) {
+    val last = (ctrl.frameCount - 1).coerceAtLeast(1)
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            androidx.compose.material3.Slider(
+                value = ctrl.frame.toFloat(),
+                onValueChange = {
+                    if (ctrl.playing) ctrl.pauser()
+                    ctrl.seek(it.roundToInt())
+                },
+                valueRange = 0f..last.toFloat(),
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Space.L).testTag(Tags.SCRUBBER),
+            )
+        }
     }
 }
