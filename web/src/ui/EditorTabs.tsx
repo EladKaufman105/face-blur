@@ -3,6 +3,8 @@ import { t, duration } from '../i18n'
 import { previewSfx, SFX_GROUPS, SFX_NAMES, type SfxClip } from '../lib/sfx'
 import { NO_WATERMARK, POSITIONS, type Watermark, type WatermarkLook } from '../lib/watermark'
 import { CloseIcon, PlayIcon } from './icons'
+import { LANGUAGES, toSrt, wordsToCues, type Cue, type SubLook, type SubPosition, type SubStyle } from '../lib/subtitles'
+import type { SubsMessage, SubsRequest } from '../workers/subs.worker'
 
 let nextClip = 1
 
@@ -136,5 +138,136 @@ export function WatermarkTab({ mark, onChange }: { mark: Watermark; onChange: (w
         <input type="range" min={0.2} max={1} step={0.05} value={mark.opacity} onInput={(e) => set({ opacity: Number((e.currentTarget as HTMLInputElement).value) })} />
       </div>
     </section>
+  )
+}
+
+const SUB_COLORS = ['#ffffff', '#ffd60a', '#000000', '#ff4d6d', '#3ddcff']
+
+type SubsRun = { stage: 'start' | 'download' | 'transcribe'; progress: number; loaded?: number; total?: number } | { stage: 'error'; message: string } | null
+
+/** Subtitles: made on the device from the speech, then edited, styled and saved as SRT too. */
+export function SubtitlesTab({ file, cues, onCues, style, onStyle, time, onSeek }: {
+  file: File; cues: Cue[]; onCues: (c: Cue[]) => void; style: SubStyle; onStyle: (s: SubStyle) => void; time: number; onSeek: (t: number) => void
+}) {
+  const [lang, setLang] = useState<string | null>(() => { try { return localStorage.getItem('onit.subs.lang') } catch { return null } })
+  const [run, setRun] = useState<SubsRun>(null)
+  const worker = useRef<Worker | null>(null)
+  const start = () => {
+    worker.current?.terminate()
+    const w = new Worker(new URL('../workers/subs.worker.ts', import.meta.url), { type: 'module' })
+    worker.current = w
+    setRun({ stage: 'start', progress: 0 })
+    w.onmessage = (e: MessageEvent<SubsMessage>) => {
+      const m = e.data
+      if (m.type === 'download') setRun({ stage: 'download', progress: m.progress, loaded: m.loaded, total: m.total })
+      else if (m.type === 'transcribe') setRun({ stage: 'transcribe', progress: m.progress })
+      else if (m.type === 'done') {
+        onCues(wordsToCues(m.words))
+        setRun(null)
+        w.terminate()
+      } else {
+        setRun({ stage: 'error', message: m.code === 'no-audio' ? t('לסרטון אין פס קול.') : m.message })
+        w.terminate()
+      }
+    }
+    w.onerror = (e) => { setRun({ stage: 'error', message: e.message || 'error' }); w.terminate() }
+    const req: SubsRequest = { file, language: lang }
+    w.postMessage(req)
+  }
+  const cancel = () => { worker.current?.terminate(); setRun(null) }
+  const set = (patch: Partial<SubStyle>) => onStyle({ ...style, ...patch })
+  const edit = (id: number, patch: Partial<Cue>) => onCues(cues.map((c) => (c.id === id ? { ...c, ...patch } : c)))
+  const srt = () => {
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([toSrt(cues)], { type: 'application/x-subrip' }))
+    a.download = file.name.replace(/\.[^.]+$/, '') + '.srt'
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000)
+  }
+  const busy = run !== null && run.stage !== 'error'
+  return (
+    <>
+      <section class="card">
+        <h3 class="section-title">{t('כתוביות')}</h3>
+        {!busy && cues.length === 0 && (
+          <>
+            <p class="small muted" style="margin:0 0 10px">{t('שפת הדיבור')}</p>
+            <div class="chips">
+              {LANGUAGES.map(([code, label]) => (
+                <button class={'chip' + (lang === code ? ' on' : '')} onClick={() => { setLang(code); try { if (code) localStorage.setItem('onit.subs.lang', code); else localStorage.removeItem('onit.subs.lang') } catch {} }}>{t(label)}</button>
+              ))}
+            </div>
+            <button class="btn primary" style="width:100%;margin-top:14px" onClick={start}>{t('צור כתוביות')}</button>
+            <p class="small muted" style="margin:10px 0 0">{t('הזיהוי רץ על המכשיר עם Whisper. בפעם הראשונה יורד מודל של כ-560MB (נשמר בדפדפן לפעמים הבאות). על מחשב זה מהיר; בטלפון או טאבלט חלש זה עלול לקחת זמן.')}</p>
+          </>
+        )}
+        {busy && run && 'progress' in run && (
+          <div style="display:grid;gap:10px">
+            <div class="row">
+              <strong class="grow">
+                {run.stage === 'download' ? t('מוריד את המודל…') : run.stage === 'transcribe' ? t('מזהה דיבור…') : t('מכין את הקול…')}
+              </strong>
+              <span class="muted small" dir="ltr">
+                {run.stage === 'download' && run.total ? `${(run.loaded! / 1e6).toFixed(0)} / ${(run.total / 1e6).toFixed(0)} MB` : `${Math.floor(run.progress * 100)}%`}
+              </span>
+            </div>
+            <div class="progress"><div style={{ width: `${Math.max(2, run.progress * 100)}%` }} /></div>
+            <button class="btn tonal" onClick={cancel}>{t('ביטול')}</button>
+          </div>
+        )}
+        {run?.stage === 'error' && (
+          <div style="margin-top:10px">
+            <p class="small" style="color:var(--primary);margin:0 0 8px">{t('משהו השתבש')}: {run.message}</p>
+            <button class="btn tonal" onClick={start}>{t('נסה שוב')}</button>
+          </div>
+        )}
+        {!busy && cues.length > 0 && (
+          <div class="actions">
+            <button class="btn tonal" onClick={srt}>{t('הורד SRT')}</button>
+            <button class="btn ghost" onClick={() => onCues([])}>{t('מחק כתוביות')}</button>
+          </div>
+        )}
+      </section>
+      {cues.length > 0 && (
+        <section class="card">
+          <h3 class="section-title">{t('מראה')}</h3>
+          <div class="seg">
+            {(['bottom', 'middle', 'top'] as SubPosition[]).map((p) => (
+              <button class={style.position === p ? 'on' : ''} onClick={() => set({ position: p })}>{t(p === 'bottom' ? 'למטה' : p === 'middle' ? 'באמצע' : 'למעלה')}</button>
+            ))}
+          </div>
+          <div class="chips" style="margin-top:12px">
+            {([['box', 'רקע'], ['outline', 'קו מתאר'], ['shadow', 'צל']] as [SubLook, string][]).map(([l, label]) => (
+              <button class={'chip' + (style.look === l ? ' on' : '')} onClick={() => set({ look: l })}>{t(label)}</button>
+            ))}
+          </div>
+          <div class="swatches">
+            {SUB_COLORS.map((c) => (
+              <button class={'swatch' + (style.color === c ? ' on' : '')} style={{ background: c }} aria-label={c} onClick={() => set({ color: c })} />
+            ))}
+          </div>
+          <div class="slider-row">
+            <label>{t('גודל')}</label>
+            <input type="range" min={0.6} max={2} step={0.05} value={style.size} onInput={(e) => set({ size: Number((e.currentTarget as HTMLInputElement).value) })} />
+          </div>
+        </section>
+      )}
+      {cues.length > 0 && (
+        <section class="card">
+          <h3 class="section-title">{t('הטקסט')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{cues.length}</span></h3>
+          <div class="clips">
+            {cues.map((c) => (
+              <div class={'clip' + (time >= c.start && time < c.end ? ' now' : '')}>
+                <div class="row">
+                  <button class="time-btn" onClick={() => onSeek(c.start + 0.01)} dir="ltr">{duration(c.start)}</button>
+                  <textarea class="cue-text" dir="auto" rows={2} value={c.text} onInput={(e) => edit(c.id, { text: (e.currentTarget as HTMLTextAreaElement).value })} />
+                  <button class="icon-btn" aria-label={t('מחק')} onClick={() => onCues(cues.filter((x) => x.id !== c.id))}><CloseIcon size={18} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </>
   )
 }

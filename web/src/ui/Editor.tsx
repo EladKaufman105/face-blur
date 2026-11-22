@@ -6,7 +6,8 @@ import type { ExportJob } from './Exporting'
 import { BackIcon, PauseIcon, PlayIcon, SaveIcon } from './icons'
 import { SfxScheduler, type SfxClip } from '../lib/sfx'
 import { drawWatermark, watermarkOn, type Watermark } from '../lib/watermark'
-import { SoundTab, WatermarkTab, loadWatermark } from './EditorTabs'
+import { SoundTab, SubtitlesTab, WatermarkTab, loadWatermark } from './EditorTabs'
+import { cueAt, DEFAULT_SUB_STYLE, drawSubtitle, type Cue, type SubStyle } from '../lib/subtitles'
 
 type Props = {
   file: File
@@ -38,16 +39,22 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
   const [dur, setDur] = useState(times.length ? times[times.length - 1] : 0)
-  const [tab, setTab] = useState<'faces' | 'sound' | 'mark'>('faces')
+  const [tab, setTab] = useState<'faces' | 'subs' | 'sound' | 'mark'>('faces')
+  const [cues, setCues] = useState<Cue[]>([])
+  const [subStyle, setSubStyle] = useState<SubStyle>(() => {
+    try { return { ...DEFAULT_SUB_STYLE, ...JSON.parse(localStorage.getItem('onit.substyle') ?? '{}') } } catch { return DEFAULT_SUB_STYLE }
+  })
   const [sfx, setSfx] = useState<SfxClip[]>([])
   const [mark, setMark] = useState<Watermark>(loadWatermark)
   const logo = useRef<HTMLImageElement | null>(null)
   const scheduler = useMemo(() => new SfxScheduler(), [])
-  const state = useRef({ off, look, mediaTime: 0, sfx, mark })
+  const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle })
   state.current.off = off
   state.current.look = look
   state.current.sfx = sfx
   state.current.mark = mark
+  state.current.cues = cues
+  state.current.subStyle = subStyle
 
   useEffect(() => {
     try { localStorage.setItem('onit.look', JSON.stringify(look)) } catch {}
@@ -88,6 +95,8 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
       ctx.setLineDash([])
       const m = state.current.mark
       if (watermarkOn(m)) drawWatermark(ctx, m, W, H, m.image ? logo.current : null)
+      const cue = cueAt(state.current.cues, state.current.mediaTime)
+      if (cue) drawSubtitle(ctx, cue.text, state.current.subStyle, W, H)
     }
   }
 
@@ -158,7 +167,11 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
   // Redraw the paused frame when the look, the faces or the watermark change.
   useEffect(() => {
     if (video.current?.paused) draw()
-  }, [off, look, mark])
+  }, [off, look, mark, cues, subStyle])
+
+  useEffect(() => {
+    try { localStorage.setItem('onit.substyle', JSON.stringify(subStyle)) } catch {}
+  }, [subStyle])
 
   // The logo, decoded once for the preview.
   useEffect(() => {
@@ -249,6 +262,7 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
       <aside class="side">
         <div class="seg tabs" role="tablist">
           <button role="tab" class={tab === 'faces' ? 'on' : ''} aria-selected={tab === 'faces'} onClick={() => setTab('faces')}>{t('פנים')}</button>
+          <button role="tab" class={tab === 'subs' ? 'on' : ''} aria-selected={tab === 'subs'} onClick={() => setTab('subs')}>{t('כתוביות')}</button>
           <button role="tab" class={tab === 'sound' ? 'on' : ''} aria-selected={tab === 'sound'} onClick={() => setTab('sound')}>{t('סאונד')}{sfx.length > 0 ? ` · ${sfx.length}` : ''}</button>
           <button role="tab" class={tab === 'mark' ? 'on' : ''} aria-selected={tab === 'mark'} onClick={() => setTab('mark')}>{t('סימן מים')}</button>
         </div>
@@ -310,13 +324,24 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
           />
         )}
         {tab === 'mark' && <WatermarkTab mark={mark} onChange={setMark} />}
+        {tab === 'subs' && (
+          <SubtitlesTab
+            file={file}
+            cues={cues}
+            onCues={setCues}
+            style={subStyle}
+            onStyle={setSubStyle}
+            time={time}
+            onSeek={(at) => { const v = video.current; if (v) v.currentTime = at }}
+          />
+        )}
 
         <div class="export-bar">
           <button
             class="btn primary"
             onClick={() => {
               video.current?.pause()
-              onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark })
+              onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues, subStyle })
             }}
           >
             <SaveIcon /> {t('ייצוא')}

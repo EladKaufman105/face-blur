@@ -291,3 +291,8 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .swatches { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .swatch { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--outline); }
 .swatch.on { outline: 3px solid var(--primary); outline-offset: 2px; }
+.cue-text { flex: 1; min-width: 0; border: 1px solid var(--outline-soft); background: var(--surface); border-radius: 10px; padding: 6px 8px; font-size: 15px; resize: vertical; }
+.cue-text:focus { outline: 2px solid var(--primary); border-color: transparent; }
+.clip.now { outline: 2px solid var(--amber); }
+.tabs { grid-template-columns: repeat(4, 1fr) !important; }
+.tabs button { font-size: 13px; padding: 9px 2px; }

@@ -4,8 +4,9 @@ import { ALL_FORMATS, AudioSample, AudioSampleSource, BlobSource, BufferTarget, 
 import { BlurRenderer, ellipseFor } from '../lib/renderer'
 import { frameAt, trackBox, type Look, type Track } from '../lib/types'
 import { mixInto, type SfxSamples } from '../lib/sfx'
+import { cueAt, drawSubtitle, type Cue, type SubStyle } from '../lib/subtitles'
 
-export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null }
+export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; font: string }
 export type ExportMessage =
   | { type: 'progress'; progress: number }
   | { type: 'done'; blob: Blob; ms: number }
@@ -21,7 +22,7 @@ self.onmessage = async (e: MessageEvent<ExportRequest>) => {
   }
 }
 
-async function run({ file, times, tracks, look, sfx, overlay }: ExportRequest) {
+async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, font }: ExportRequest) {
   const t0 = performance.now()
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
   const video = await input.getPrimaryVideoTrack()
@@ -34,6 +35,18 @@ async function run({ file, times, tracks, look, sfx, overlay }: ExportRequest) {
   const canvas = new OffscreenCanvas(w, h)
   const renderer = new BlurRenderer(canvas)
   renderer.setOverlay(overlay)
+  // Subtitles: the watermark and the current cue on one picture, redrawn when the cue changes.
+  let family = "'Allo Hebrew', system-ui, sans-serif"
+  if (cues.length > 0) {
+    try {
+      const f = await new FontFace('Allo Hebrew', `url(${font})`, { weight: '100 900' }).load()
+      ;(self as any).fonts?.add(f)
+    } catch {
+      family = 'system-ui, sans-serif'
+    }
+  }
+  const layer = cues.length > 0 ? new OffscreenCanvas(w, h) : null
+  let shownCue: Cue | null | undefined = undefined
   let scratch: OffscreenCanvas | null = null
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: new BufferTarget() })
   // A video without sound gets a sound track for the effects (fed alongside the conversion).
@@ -69,6 +82,17 @@ async function run({ file, times, tracks, look, sfx, overlay }: ExportRequest) {
       forceTranscode: true,
       allowTransformationMetadata: false,
       process: async (sample) => {
+        if (layer) {
+          const cue = cueAt(cues, sample.timestamp)
+          if (cue !== shownCue) {
+            shownCue = cue
+            const ctx = layer.getContext('2d')!
+            ctx.clearRect(0, 0, w, h)
+            if (overlay) ctx.drawImage(overlay, 0, 0)
+            if (cue) drawSubtitle(ctx, cue.text, subStyle, w, h, family)
+            renderer.setOverlay(layer)
+          }
+        }
         const i = frameAt(times, sample.timestamp)
         const faces = []
         for (const t of tracks) {

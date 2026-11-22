@@ -65,3 +65,36 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # Speech recognition on the CPU path is slow: its own job, so publishing doesn't wait for it.
+  subtitles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build
+        working-directory: web
+        run: |
+          sudo apt-get install -y -qq ffmpeg > /dev/null
+          pip install --quiet onnx numpy onnxconverter-common
+          npm ci
+          npm run build
+      - name: Test subtitles in Chromium (Whisper, the model from Hugging Face)
+        working-directory: web
+        run: |
+          git fetch --depth 1 origin test-media
+          mkdir -p /tmp/samples && git -C .. archive FETCH_HEAD | tar -x -C /tmp/samples
+          npx playwright install --with-deps chromium
+          npx vite preview --port 4173 --strictPort &
+          sleep 3
+          node tests/subs.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_en.mp4 /tmp/web-results/subs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-subtitles
+          path: /tmp/web-results
