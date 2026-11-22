@@ -9,7 +9,7 @@ import type { Det, Track } from '../lib/types'
 export type AnalyzeRequest = { file: File; sensitive: boolean; base: string; backend?: 'webgpu' | 'wasm' }
 export type AnalyzeMessage =
   | { type: 'ready'; backend: string; width: number; height: number; duration: number }
-  | { type: 'progress'; done: number; total: number; preview?: ImageBitmap; dets?: Det[]; faces: number }
+  | { type: 'progress'; done: number; total: number; preview?: ImageBitmap; dets?: Det[]; faces: number; backend: string }
   | { type: 'done'; times: Float64Array; width: number; height: number; fps: number; tracks: Track[]; thumbs: (ImageBitmap | null)[]; backend: string; ms: number }
   | { type: 'error'; code: string; message: string }
   | { type: 'log'; message: string }
@@ -49,11 +49,12 @@ async function analyze({ file, sensitive, base, backend }: AnalyzeRequest) {
   const s = side / Math.max(width, height)
   const iw = Math.max(32, Math.round(width * s / 32) * 32)
   const ih = Math.max(32, Math.round(height * s / 32) * 32)
-  // Detection ~30 times per second of video on the GPU, ~15 without (every frame when sensitive).
-  const rate = detector.backend === 'webgpu' ? 30 : 15
+  // Detection ~15 times per second of video on the GPU, ~10 without (every frame when
+  // sensitive); the tracker fills the frames between.
+  const rate = detector.backend === 'webgpu' ? 15 : 10
   const every = sensitive ? 1 : Math.max(1, Math.round(nominalFps / rate))
 
-  const sink = new CanvasSink(video, { width: iw, height: ih, fit: 'fill', poolSize: 2 })
+  const sink = new CanvasSink(video, { width: iw, height: ih, fit: 'fill', poolSize: 3 })
   const cuts = new CutDetector()
   const times: number[] = []
   const cutList: number[] = []
@@ -61,7 +62,14 @@ async function analyze({ file, sensitive, base, backend }: AnalyzeRequest) {
   let lastPost = 0
   let lastDets: Det[] = []
   let found = 0
-  for await (const wc of sink.canvases()) {
+  // The next frame decodes while this one is in detection.
+  const frames = sink.canvases()
+  let next = frames.next()
+  while (true) {
+    const r = await next
+    if (r.done) break
+    next = frames.next()
+    const wc = r.value
     const canvas = wc.canvas as OffscreenCanvas
     const i = times.length
     times.push(wc.timestamp)
@@ -76,7 +84,7 @@ async function analyze({ file, sensitive, base, backend }: AnalyzeRequest) {
       lastPost = now
       const ps = Math.min(1, 480 / Math.max(iw, ih))
       const preview = await createImageBitmap(canvas, { resizeWidth: Math.round(iw * ps), resizeHeight: Math.round(ih * ps) })
-      post({ type: 'progress', done: i + 1, total: Math.max(total, i + 1), preview, dets: lastDets, faces: found }, [preview])
+      post({ type: 'progress', done: i + 1, total: Math.max(total, i + 1), preview, dets: lastDets, faces: found, backend: detector.backend }, [preview])
     }
   }
   const n = times.length

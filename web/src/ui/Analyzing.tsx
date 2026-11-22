@@ -16,6 +16,7 @@ export function Analyzing({ file, sensitive, onDone, onError, onCancel }: Props)
   const canvas = useRef<HTMLCanvasElement>(null)
   const [progress, setProgress] = useState({ done: 0, total: 1, faces: 0 })
   const [ready, setReady] = useState(false)
+  const [backend, setBackend] = useState('')
   const [aspect, setAspect] = useState(16 / 9)
   const started = useRef(performance.now())
 
@@ -28,10 +29,12 @@ export function Analyzing({ file, sensitive, onDone, onError, onCancel }: Props)
         console.log('ONIT analyze:', m.message)
       } else if (m.type === 'ready') {
         setReady(true)
+        setBackend(m.backend)
         setAspect(m.width / m.height)
         started.current = performance.now()
       } else if (m.type === 'progress') {
         setProgress({ done: m.done, total: m.total, faces: m.faces })
+        setBackend(m.backend)
         const c = canvas.current
         if (m.preview && c) {
           c.width = m.preview.width
@@ -97,6 +100,7 @@ export function Analyzing({ file, sensitive, onDone, onError, onCancel }: Props)
           <div class="big-num">{ready ? pct : 0}%</div>
         </div>
         <div class="progress" style="margin:14px 0 12px"><div style={{ width: `${ready ? pct : 2}%` }} /></div>
+        {backend === 'wasm' && <p class="small" style="margin:0 0 10px;color:var(--primary)">{t('הדפדפן הזה לא נותן גישה למעבד הגרפי (WebGPU), אז הזיהוי איטי. ב-Chrome או Safari מעודכנים זה מהיר הרבה יותר.')}</p>}
         <div class="row">
           <div class="small muted grow">{t('בטלפון: השאר את המסך פתוח עד הסיום.')}</div>
           <button class="btn tonal" onClick={onCancel}>{t('ביטול')}</button>

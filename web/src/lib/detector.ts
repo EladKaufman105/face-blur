@@ -58,28 +58,33 @@ export class FaceDetector {
   async detect(frame: OffscreenCanvas): Promise<Det[]> {
     const w = frame.width, h = frame.height
     const out: Det[] = []
-    let fine = await this.run(frame, RF_THRESHOLD, 0)
-    // On disagreement this frame is detected again, on the CPU.
-    if (this.reference && !(await this.check(frame, fine))) fine = await this.run(frame, RF_THRESHOLD, 0)
-    out.push(...fine)
-    if (Math.max(w, h) > COARSE_SIDE * 1.3) {
-      const s = COARSE_SIDE / Math.max(w, h)
-      const cw = Math.max(32, Math.round(w * s / 32) * 32), ch = Math.max(32, Math.round(h * s / 32) * 32)
-      if (!this.coarse || this.coarse.width !== cw || this.coarse.height !== ch) this.coarse = new OffscreenCanvas(cw, ch)
-      const ctx = this.coarse.getContext('2d', { willReadFrequently: true })!
-      ctx.drawImage(frame, 0, 0, cw, ch)
-      out.push(...await this.run(this.coarse, RF_THRESHOLD, COARSE_MIN_BOX))
-    }
+    // Below ~800 px the fine pass's biggest anchors (512 px) already cover the biggest faces.
+    const big = Math.max(w, h) > 800
+    const coarse = big ? this.shrink(frame) : frame
+    // The GPU's first frames with faces are compared with the CPU (on the small copy: cheaper);
+    // on disagreement, detection moves to the CPU from this frame on.
+    if (this.reference) await this.check(coarse)
+    out.push(...await this.run(frame, RF_THRESHOLD, 0))
+    if (big) out.push(...await this.run(coarse, RF_THRESHOLD, COARSE_MIN_BOX))
     const kept = nmsIou(out, 0.4)
-    // Re-check up to 12 per frame (a crowd: the most uncertain ones).
-    const order = [...kept].sort((a, b) => a.score - b.score).slice(0, 12)
-    for (const d of order) d.verify = await this.verify(frame, d)
+    // Re-check up to 12 per frame (a crowd: the most uncertain ones), all crops in one run.
+    await this.verify(frame, [...kept].sort((a, b) => a.score - b.score).slice(0, 12))
     return kept
   }
 
+  private shrink(frame: OffscreenCanvas): OffscreenCanvas {
+    const w = frame.width, h = frame.height
+    const s = COARSE_SIDE / Math.max(w, h)
+    const cw = Math.max(32, Math.round(w * s / 32) * 32), ch = Math.max(32, Math.round(h * s / 32) * 32)
+    if (!this.coarse || this.coarse.width !== cw || this.coarse.height !== ch) this.coarse = new OffscreenCanvas(cw, ch)
+    this.coarse.getContext('2d', { willReadFrequently: true })!.drawImage(frame, 0, 0, cw, ch)
+    return this.coarse
+  }
+
   /** Compares the GPU's faces with the CPU's; on disagreement, detection moves to the CPU. */
-  private async check(frame: OffscreenCanvas, gpu: Det[]): Promise<boolean> {
+  private async check(frame: OffscreenCanvas): Promise<boolean> {
     const ref = this.reference!
+    const gpu = await this.run(frame, RF_THRESHOLD, 0)
     const cpu = await this.run(frame, RF_THRESHOLD, 0, ref)
     if (gpu.length === 0 && cpu.length === 0) return true
     const same = gpu.length === cpu.length && cpu.every((c) => gpu.some((g) => iou(g, c) > 0.8 && Math.abs(g.score - c.score) < 0.08))
@@ -98,20 +103,37 @@ export class FaceDetector {
     return true
   }
 
-  private async verify(frame: OffscreenCanvas, d: Det): Promise<number> {
+  /** Sets [dets]' verify scores: each re-detected on a square crop twice its size, 192 px. */
+  private async verify(frame: OffscreenCanvas, dets: Det[]) {
+    if (dets.length === 0) return
+    // Batch sizes rounded up, so the GPU compiles a handful of shapes, not one per face count.
+    const n = [1, 2, 4, 8, 12].find((b) => b >= dets.length)!
+    const S = VERIFY_SIDE, px = S * S
+    const input = new Float32Array(n * 3 * px)
     const w = frame.width, h = frame.height
-    const cx = d.cx * w, cy = d.cy * h
-    const r = Math.max(d.w * w, d.h * h)
     const ctx = this.crop.getContext('2d', { willReadFrequently: true })!
-    ctx.fillStyle = '#000'
-    ctx.fillRect(0, 0, VERIFY_SIDE, VERIFY_SIDE)
-    ctx.drawImage(frame, cx - r, cy - r, 2 * r, 2 * r, 0, 0, VERIFY_SIDE, VERIFY_SIDE)
-    let best = 0
-    const s = VERIFY_SIDE
-    for (const v of await this.run(this.crop, 0.05, 0)) {
-      if (Math.abs(v.cx * s - s / 2) < s * 0.25 && Math.abs(v.cy * s - s / 2) < s * 0.25 && v.w * s > s * 0.2) best = Math.max(best, v.score)
-    }
-    return best
+    dets.forEach((d, k) => {
+      const cx = d.cx * w, cy = d.cy * h
+      const r = Math.max(d.w * w, d.h * h)
+      ctx.fillStyle = '#000'
+      ctx.fillRect(0, 0, S, S)
+      ctx.drawImage(frame, cx - r, cy - r, 2 * r, 2 * r, 0, 0, S, S)
+      fill(input, k * 3 * px, ctx.getImageData(0, 0, S, S).data, px)
+    })
+    const t = new ort.Tensor('float32', input, [n, 3, S, S])
+    const res = await this.session.run({ input: t }, ['loc', 'conf'])
+    const loc = res.loc.data as Float32Array
+    const conf = res.conf.data as Float32Array
+    t.dispose(); res.loc.dispose(); res.conf.dispose()
+    const per = loc.length / n
+    dets.forEach((d, k) => {
+      let best = 0
+      const found = this.decode(loc.subarray(k * per, (k + 1) * per), conf.subarray(k * per / 2, (k + 1) * per / 2), S, S, 0.05, 0)
+      for (const v of found) {
+        if (Math.abs(v.cx * S - S / 2) < S * 0.25 && Math.abs(v.cy * S - S / 2) < S * 0.25 && v.w * S > S * 0.2) best = Math.max(best, v.score)
+      }
+      d.verify = best
+    })
   }
 
   private async run(c: OffscreenCanvas, threshold: number, minBox: number, session = this.session): Promise<Det[]> {
@@ -119,11 +141,7 @@ export class FaceDetector {
     const px = c.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, w, h).data
     const n = w * h
     const input = new Float32Array(3 * n)
-    for (let i = 0, j = 0; i < n; i++, j += 4) {
-      input[i] = px[j + 2] - MEAN_B
-      input[n + i] = px[j + 1] - MEAN_G
-      input[2 * n + i] = px[j] - MEAN_R
-    }
+    fill(input, 0, px, n)
     const t = new ort.Tensor('float32', input, [1, 3, h, w])
     const res = await session.run({ input: t }, ['loc', 'conf'])
     const loc = res.loc.data as Float32Array
@@ -169,6 +187,15 @@ export class FaceDetector {
     p = new Float32Array(list)
     this.priorCache.set(key, p)
     return p
+  }
+}
+
+/** RGBA pixels -> the model's planar BGR minus the mean, at [at] in [out]. */
+function fill(out: Float32Array, at: number, px: Uint8ClampedArray, n: number) {
+  for (let i = 0, j = 0; i < n; i++, j += 4) {
+    out[at + i] = px[j + 2] - MEAN_B
+    out[at + n + i] = px[j + 1] - MEAN_G
+    out[at + 2 * n + i] = px[j] - MEAN_R
   }
 }
 
