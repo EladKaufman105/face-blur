@@ -1,0 +1,65 @@
+name: Web app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'app/src/main/assets/**'
+      - '.github/workflows/web.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build
+        working-directory: web
+        run: |
+          pip install --quiet onnx numpy
+          npm ci
+          npm run build
+      - name: Test in Chromium (face detection on the CPU path, editor, export)
+        working-directory: web
+        run: |
+          git fetch --depth 1 origin test-media
+          mkdir -p /tmp/samples && git archive FETCH_HEAD | tar -x -C /tmp/samples
+          npx playwright install --with-deps chromium
+          npx vite preview --port 4173 --strictPort &
+          sleep 3
+          node tests/e2e.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/desktop
+          node tests/e2e.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/phone phone
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-results
+          path: /tmp/web-results
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

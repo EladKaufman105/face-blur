@@ -18,3 +18,16 @@ Android video editor that works entirely on-device: blurs faces, makes styled su
 - Output is saved to `Movies/ONIT`.
 
 CI runs an end-to-end test on an Android emulator over the clips on the `test-media` branch (results on `ci-results`), and only then publishes a release with the APK.
+
+## Web version
+
+`web/` is ONIT in the browser (phone or computer), with the same promise: the video never leaves
+the device. It finds faces with the same RetinaFace model (ONNX Runtime Web: WebGPU when the
+browser has it, checked against the CPU on the first frames with faces, else WebAssembly),
+builds tracks with a port of the app's offline tracker, previews the blur live (WebGL2) and
+exports an MP4 with WebCodecs (Mediabunny), keeping the sound. Faces can be turned off and on
+one by one; the look (blur, pixels, cover), strength and size match the app.
+
+Build: `cd web && npm ci && npm run build` (needs python3 with onnx and numpy: the face model's
+float16 weights are widened to float32 for ONNX Runtime). The "Web app" workflow tests it in
+Chromium on a sample clip and publishes it to GitHub Pages.

@@ -1,0 +1,25 @@
+{
+  "name": "onit-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "assets": "node scripts/copy-assets.mjs",
+    "dev": "npm run assets && vite",
+    "build": "npm run assets && tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@preact/signals": "2.11.4",
+    "mediabunny": "1.65.2",
+    "onnxruntime-web": "1.31.1",
+    "preact": "10.29.8"
+  },
+  "devDependencies": {
+    "@babel/core": "7.29.13",
+    "@preact/preset-vite": "2.10.6",
+    "playwright": "1.64.1",
+    "typescript": "6.0.3",
+    "vite": "8.3.6"
+  }
+}
