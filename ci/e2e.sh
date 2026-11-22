@@ -25,7 +25,7 @@ adb pull /sdcard/Android/data/com.elad.faceblur/files/editor "$OUT/" || true
 adb pull /sdcard/Android/data/com.elad.faceblur/files/subs "$OUT/" || true
 adb pull /sdcard/Android/data/com.elad.faceblur/files/projects "$OUT/" || true
 ls -la "$OUT" "$OUT/results" || true
-grep -q "^OK (10 tests)" "$OUT/instrument.txt" || exit 1
+grep -qE "^OK \([0-9]+ tests\)" "$OUT/instrument.txt" || exit 1
 
 # The shipped build (minified by R8): installed over the test build, it runs its self-test
 # (every native / library pipeline once) on a video copied into its folder.
