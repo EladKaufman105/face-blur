@@ -28,8 +28,8 @@ import com.elad.faceblur.prefs.Palette
 import com.elad.faceblur.prefs.ThemeMode
 
 /**
- * ONIT's look. The logo is a play button cut in two (video, edited): coral and deep violet on
- * a light tile. The clip colors (coral, amber, cyan) mark what each tool works on (see [Feature]),
+ * ONIT's look. The logo is a play button cut in two (video, edited), in glass: coral and violet
+ * on a light tile, coral and amber on a dark one (with the theme; the app icon too). The clip colors (coral, amber, cyan) mark what each tool works on (see [Feature]),
  * shapes are rounded like clips, and the type is Allo Hebrew.
  */
 object Brand {

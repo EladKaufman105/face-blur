@@ -43,6 +43,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import com.elad.faceblur.R
+import kotlin.math.roundToInt
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.graphics.ImageBitmap
 import kotlin.math.sin
 import kotlin.math.cos
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -79,8 +85,12 @@ fun Modifier.pressScale(source: MutableInteractionSource): Modifier {
  */
 @Composable
 fun LogoMark(size: Dp, animate: Boolean = true) {
-    // Coral and deep violet on a light tile. The play button appears, then the cut opens and the
-    // second piece slides a little.
+    // The glass logo, as the app icon, light or dark with the theme. The play button appears,
+    // then its second piece slides along the cut.
+    val dark = !MaterialTheme.colorScheme.isLight
+    val bg = ImageBitmap.imageResource(if (dark) R.drawable.logo_bg_dark else R.drawable.logo_bg_light)
+    val left = ImageBitmap.imageResource(if (dark) R.drawable.logo_left_dark else R.drawable.logo_left_light)
+    val right = ImageBitmap.imageResource(if (dark) R.drawable.logo_right_dark else R.drawable.logo_right_light)
     val appear = remember { Animatable(if (animate) 0f else 1f) }
     val cut = remember { Animatable(if (animate) 0f else 1f) }
     if (animate) {
@@ -90,62 +100,21 @@ fun LogoMark(size: Dp, animate: Boolean = true) {
             cut.animateTo(1f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMediumLow))
         }
     }
-    Canvas(
-        Modifier
-            .size(size)
-            .clip(RoundedCornerShape(size * 0.26f))
-            .background(Brush.linearGradient(listOf(Color.White, Color(0xFFF1EFF6)))),
-    ) {
-        // As the app icon, on its visible 72 units: a play button cut in two by a slanted blade.
+    Canvas(Modifier.size(size).clip(RoundedCornerShape(size * 0.26f))) {
+        val d = IntSize(this.size.width.roundToInt(), this.size.height.roundToInt())
+        drawImage(bg, dstSize = d, filterQuality = FilterQuality.High)
+        // The images cover the icon's visible 72 units; the mark's middle is at (32.7, 36).
         val u = this.size.width / 72f
-        val cx = 32.7f
-        val cy = 36f
-        val h = 40f
-        val w = h * 0.92f
-        val tri = Path().apply {
-            moveTo((cx - w * 0.4f) * u, (cy - h / 2) * u)
-            lineTo((cx + w * 0.6f) * u, cy * u)
-            lineTo((cx - w * 0.4f) * u, (cy + h / 2) * u)
-            close()
-        }
-        val a = Math.toRadians(-22.0)
-        val dx = sin(a).toFloat()
-        val dy = -cos(a).toFloat()
-        val nx = cos(a).toFloat()
-        val ny = sin(a).toFloat()
-        val c = cut.value.coerceIn(0f, 1.2f)
-        // One side of the blade (side -1 or 1), [gap] away from it.
-        fun side(sign: Float): Path {
-            val l = 200f
-            val px = cx - 2f + nx * sign * 2.1f * c
-            val py = cy + ny * sign * 2.1f * c
-            return Path().apply {
-                moveTo((px + dx * l) * u, (py + dy * l) * u)
-                lineTo((px - dx * l) * u, (py - dy * l) * u)
-                lineTo((px - dx * l + nx * sign * l) * u, (py - dy * l + ny * sign * l) * u)
-                lineTo((px + dx * l + nx * sign * l) * u, (py + dy * l + ny * sign * l) * u)
-                close()
-            }
-        }
-        val round = Stroke(width = 7f * u, join = StrokeJoin.Round)
         val k = appear.value.coerceIn(0f, 1.1f)
-        withTransform({ scale(k, k, Offset(cx * u, cy * u)) }) {
-            clipPath(side(-1f)) {
-                drawPath(tri, Brand.Coral)
-                drawPath(tri, Brand.Coral, style = round)
-            }
+        val c = cut.value.coerceIn(0f, 1.2f)
+        withTransform({ scale(k, k, Offset(32.7f * u, 36f * u)) }) {
+            drawImage(left, dstSize = d, filterQuality = FilterQuality.High)
             translate(1.6f * u * c, -2.2f * u * c) {
-                clipPath(side(1f)) {
-                    drawPath(tri, LogoInk)
-                    drawPath(tri, LogoInk, style = round)
-                }
+                drawImage(right, dstSize = d, filterQuality = FilterQuality.High)
             }
         }
     }
 }
-
-/** The logo's second piece: the app's deep violet. */
-private val LogoInk = Color(0xFF2B1E66)
 
 /** A card shaped like a clip: rounded, with a bar in its [accent] color along the leading edge. */
 @Composable
