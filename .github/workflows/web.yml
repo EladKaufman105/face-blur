@@ -41,6 +41,7 @@ jobs:
           git fetch --depth 1 origin test-media
           mkdir -p /tmp/samples && git -C .. archive FETCH_HEAD | tar -x -C /tmp/samples && ls /tmp/samples
           npx playwright install --with-deps chromium
+          sudo apt-get install -y -qq ffmpeg > /dev/null
           npx vite preview --port 4173 --strictPort &
           sleep 3
           node tests/e2e.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/desktop
