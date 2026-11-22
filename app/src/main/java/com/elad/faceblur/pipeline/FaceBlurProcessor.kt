@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.MediaStore
+import androidx.media3.common.C
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -357,6 +358,9 @@ class FaceBlurProcessor(private val context: Context) {
 
         val transformer = Transformer.Builder(context)
             .setEncoderFactory(encoderFactory)
+            // A slow device (or the face detector warming up on its GPU) can go more than 10 s
+            // without a finished frame; that's slow, not stuck, so the watchdog is off.
+            .setMaxDelayBetweenMuxerSamplesMs(C.TIME_UNSET)
             .apply { if (mime != null) setVideoMimeType(mime) }
             .addListener(object : Transformer.Listener {
                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
