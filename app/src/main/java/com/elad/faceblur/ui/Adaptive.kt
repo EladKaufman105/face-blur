@@ -2,6 +2,15 @@ package com.elad.faceblur.ui
 
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import com.elad.faceblur.edit.EditorPanel
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -63,15 +72,42 @@ fun panelBody(phone: Dp, upTo: Boolean = false): Modifier = when {
     else -> Modifier.height(phone)
 }
 
-/** A panel's title row: the title in its feature's color, [actions], and "done" (on a phone). */
+/**
+ * The tools of the open panel's group, one tab each (subtitles: make, list, look). A panel's
+ * title row shows them in place of its title, so moving between a group's tools is one tap.
+ */
+class PanelTabs(
+    val tabs: List<Pair<EditorPanel, String>>,
+    val current: EditorPanel,
+    val color: Color,
+    val onSelect: (EditorPanel) -> Unit,
+)
+
+val LocalPanelTabs = staticCompositionLocalOf<PanelTabs?> { null }
+
+/**
+ * A panel's title row: the title in its feature's color (or its group's tabs), [actions], and
+ * "done" (on a phone) or "close" (beside the video).
+ */
 @Composable
 fun PanelHeader(title: String, color: Color, onDone: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
     val side = LocalSidePanel.current
+    val tabs = LocalPanelTabs.current
     Row(
-        Modifier.fillMaxWidth().heightIn(min = MinTouch).padding(start = Space.L, end = if (side) Space.M else Space.XS),
+        Modifier.fillMaxWidth().heightIn(min = MinTouch).padding(start = if (tabs != null && tabs.tabs.size > 1) Space.S else Space.L, end = if (side) Space.M else Space.XS),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SectionTitle(title, color, Modifier.weight(1f))
+        if (tabs != null && tabs.tabs.size > 1) {
+            Row(
+                Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(Space.XS),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                for ((p, label) in tabs.tabs) PanelTab(label, p == tabs.current, tabs.color, Modifier.testTag(Tags.tab(p))) { tabs.onSelect(p) }
+            }
+        } else {
+            SectionTitle(title, color, Modifier.weight(1f))
+        }
         actions()
         val hide = LocalPanelHide.current
         if (side && hide != null) {
@@ -84,5 +120,24 @@ fun PanelHeader(title: String, color: Color, onDone: () -> Unit, actions: @Compo
                 Text(t("סיום"))
             }
         }
+    }
+}
+
+/** A tab of a panel's group: its tool's name, filled in the group's color when it's the one open. */
+@Composable
+private fun PanelTab(label: String, on: Boolean, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = if (on) color.copy(alpha = 0.2f) else Color.Transparent,
+        modifier = modifier.semantics { selected = on },
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.titleSmall,
+            color = if (on) color else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = Space.M, vertical = Space.S),
+        )
     }
 }

@@ -21,6 +21,14 @@ object Tags {
     const val PANEL_CLOSE = "panel.close"
     const val PANEL_DONE = "panel.done"
 
-    /** The tool that opens [panel]. */
-    fun tool(panel: EditorPanel) = "tool." + panel.name.lowercase()
+    const val REDO = "editor.redo"
+    const val ZOOM_IN = "timeline.zoomIn"
+    const val ZOOM_OUT = "timeline.zoomOut"
+    const val DESELECT = "context.done"
+
+    /** A group of tools in the editor's bar. */
+    fun group(name: String) = "group." + name.lowercase()
+
+    /** A panel's tab in its group's panel. */
+    fun tab(panel: EditorPanel) = "tab." + panel.name.lowercase()
 }

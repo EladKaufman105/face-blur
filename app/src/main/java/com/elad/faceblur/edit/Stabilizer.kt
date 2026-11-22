@@ -69,8 +69,20 @@ class Stabilizer private constructor(
          * (Gaussian sigma, seconds) and the most a frame is moved (fraction of the picture;
          * more shake than that stays). Stronger: steadier, and more of the edges cropped.
          */
-        private fun sigmaS(level: Int) = when (level) { 1 -> 0.3f; 3 -> 1.1f; else -> 0.6f }
-        private fun maxShift(level: Int) = when (level) { 1 -> 0.035f; 3 -> 0.11f; else -> 0.07f }
+        private fun sigmaS(level: Int) = when (level) { 1 -> 0.25f; 3 -> 0.9f; else -> 0.5f }
+        private fun maxShift(level: Int) = when (level) { 1 -> 0.03f; 3 -> 0.09f; else -> 0.06f }
+
+        /**
+         * A correction eased toward [margin] instead of stopped at it: small ones as they are,
+         * big ones bent smoothly (a hard limit makes the picture stick, then jump).
+         */
+        private fun soft(c: Float, margin: Float): Float {
+            val knee = 0.6f * margin
+            val a = abs(c)
+            if (a <= knee) return c
+            val r = margin - knee
+            return kotlin.math.sign(c) * (knee + r * kotlin.math.tanh((a - knee) / r))
+        }
 
         /**
          * From the analysis's camera motion; null if there's none to steady (no motion was
@@ -90,7 +102,6 @@ class Stabilizer private constructor(
             val sy = FloatArray(n)
             val sigma = max(1f, sigmaS * fps)
             val reach = (3 * sigma).toInt()
-            var worst = 0f
             for (s in 0 until starts.size - 1) {
                 val a = starts[s]
                 val b = starts[s + 1]
@@ -106,14 +117,21 @@ class Stabilizer private constructor(
                         w += k
                     }
                     // The picture follows the smooth path instead of the shaky one.
-                    sx[i] = (accX / w - ox[i]).coerceIn(-maxShift, maxShift)
-                    sy[i] = (accY / w - oy[i]).coerceIn(-maxShift, maxShift)
-                    worst = max(worst, max(abs(sx[i]), abs(sy[i])))
+                    sx[i] = accX / w - ox[i]
+                    sy[i] = accY / w - oy[i]
                 }
             }
-            if (worst < 0.002f) return null
-            // Enough to hide the largest move (one zoom for the whole video: no "breathing").
-            val zoom = 1f / (1f - 2f * worst)
+            // Room for what nearly every frame needs (not the one wildest jolt, which would crop
+            // the whole video for it), and never more than the level allows.
+            val need = FloatArray(n) { max(abs(sx[it]), abs(sy[it])) }.sorted()
+            val margin = min(maxShift, need[((n - 1) * 0.98f).toInt()] * 1.05f)
+            if (margin < 0.002f) return null
+            for (i in 0 until n) {
+                sx[i] = soft(sx[i], margin)
+                sy[i] = soft(sy[i], margin)
+            }
+            // Enough to keep the moved edges out of view (one zoom for the whole video: no "breathing").
+            val zoom = 1f / (1f - 2f * margin)
             return Stabilizer(times, sx, sy, zoom, rotation)
         }
     }

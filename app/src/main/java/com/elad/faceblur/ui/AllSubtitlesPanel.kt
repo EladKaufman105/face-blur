@@ -143,7 +143,6 @@ fun AllSubtitlesPanel(ctrl: EditorController, modifier: Modifier = Modifier, sty
                     )
                 }
                 IconButton(onClick = { findOpen = !findOpen }) { Icon(Icons.Filled.Search, t("חפש והחלף")) }
-                IconButton(onClick = { ctrl.undo() }) { Icon(AppIcons.Undo, t("בטל")) }
             }
             if (ctrl.bleepMode) {
                 Text(

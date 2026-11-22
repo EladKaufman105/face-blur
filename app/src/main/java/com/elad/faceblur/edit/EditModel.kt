@@ -204,6 +204,8 @@ class EditModel(
     val removed = TreeMap<Long, Long>()
     private class Snap(val tracks: List<EditTrack>, val cues: List<Cue>, val bleeps: Map<Long, Long>, val sfx: List<SfxClip>, val removed: Map<Long, Long>)
     private val undo = ArrayDeque<Snap>()
+    /** Undone changes, to redo (cleared by any new change). */
+    private val redo = ArrayDeque<Snap>()
 
     /** Bumped on every change. */
     var version = 0
@@ -227,6 +229,7 @@ class EditModel(
     }
 
     val canUndo get() = undo.isNotEmpty()
+    val canRedo get() = redo.isNotEmpty()
 
     fun track(id: Int): EditTrack? = tracks.firstOrNull { it.id == id }
 
@@ -353,9 +356,12 @@ class EditModel(
 
     // ------------------------------------------------------------------ edits
 
+    private fun current() = Snap(tracks.map { it.copy() }, cues.map { it.copy() }, TreeMap(bleeps), sfx.map { it.copy() }, TreeMap(removed))
+
     private fun snapshot() {
-        undo.addLast(Snap(tracks.map { it.copy() }, cues.map { it.copy() }, TreeMap(bleeps), sfx.map { it.copy() }, TreeMap(removed)))
+        undo.addLast(current())
         while (undo.size > MAX_UNDO) undo.removeFirst()
+        redo.clear()
     }
 
     /** A copy of everything edited, for saving. */
@@ -381,6 +387,7 @@ class EditModel(
         removed.clear()
         for (r in st.removed) if (r.size == 2 && r[1] > r[0]) removed[r[0]] = r[1]
         undo.clear()
+        redo.clear()
         changed()
     }
 
@@ -390,6 +397,20 @@ class EditModel(
 
     fun undo(): Boolean {
         val u = undo.removeLastOrNull() ?: return false
+        redo.addLast(current())
+        put(u)
+        return true
+    }
+
+    /** Puts back the last change undone. */
+    fun redo(): Boolean {
+        val r = redo.removeLastOrNull() ?: return false
+        undo.addLast(current())
+        put(r)
+        return true
+    }
+
+    private fun put(u: Snap) {
         tracks.clear()
         tracks += u.tracks
         cues.clear()
@@ -401,7 +422,6 @@ class EditModel(
         removed.clear()
         removed.putAll(u.removed)
         changed()
-        return true
     }
 
     // ------------------------------------------------------------------ sound effects

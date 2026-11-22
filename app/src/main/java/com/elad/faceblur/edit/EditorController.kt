@@ -119,6 +119,14 @@ class EditorController(
             if (was == EditorPanel.VOICE) SfxPlayer.stop()
         }
     }
+    /** Opens [p] in place of whichever panel is open (a tool group's tab). */
+    fun openPanel(p: EditorPanel) = showPanel(p, true)
+
+    /** The frame panel (9:16, 1:1, 4:5, following the faces) is open. */
+    var framePanel: Boolean
+        get() = panel == EditorPanel.FRAME
+        set(v) = showPanel(EditorPanel.FRAME, v)
+
     /** Closes whichever panel is open. */
     fun closePanel() {
         panel?.let { showPanel(it, false) }
@@ -347,6 +355,12 @@ class EditorController(
     fun undo() {
         if (trackingProgress != null) return
         model.undo()
+        sync()
+    }
+
+    fun redo() {
+        if (trackingProgress != null) return
+        model.redo()
         sync()
     }
 
@@ -1341,4 +1355,4 @@ class EditorController(
 }
 
 /** The editor's tool panels (see [EditorController.panel]). */
-enum class EditorPanel { BLUR, SUBTITLES, LIST, STYLE, VOICE, BACKGROUND, WATERMARK, CUT, STABILIZE }
+enum class EditorPanel { BLUR, SUBTITLES, LIST, STYLE, VOICE, BACKGROUND, WATERMARK, CUT, STABILIZE, FRAME }

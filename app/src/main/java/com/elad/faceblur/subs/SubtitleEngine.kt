@@ -41,6 +41,14 @@ object SubtitleEngine {
     /** AUDIO: decoding; SPEECH: recognition; PACK: downloading the translation pack; TRANSLATE. */
     enum class Stage { AUDIO, SPEECH, PACK, TRANSLATE }
 
+    /**
+     * Progress from the time taken against the time expected ([x] = 1: as long as expected). On
+     * track until near the end; past that it keeps creeping on instead of stopping (a slower
+     * device, or a bigger model than last time), and the real end takes it to 100%.
+     */
+    internal fun clockProgress(x: Float): Float =
+        if (x < 0.9f) max(0f, x) else 0.9f + 0.09f * (1f - kotlin.math.exp(-(x - 0.9f) / 0.4f))
+
     class NoAudioException : Exception("no audio")
 
     /**
@@ -87,7 +95,7 @@ object SubtitleEngine {
                 }
                 val ticker = launch {
                     while (isActive) {
-                        val byClock = ((SystemClock.elapsedRealtime() - t0) / expectedMs).coerceAtMost(0.97f)
+                        val byClock = clockProgress((SystemClock.elapsedRealtime() - t0) / expectedMs)
                         onProgress(Stage.SPEECH, max(reported.get() / 100f, byClock))
                         delay(250)
                     }

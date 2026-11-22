@@ -548,4 +548,16 @@ internal val English: Map<String, String> = mapOf(
     "פתוח" to "Expanded",
     "מקופל" to "Collapsed",
     "הפנים יזוהו ויטושטשו, ואז ייפתח העורך לבדיקה ולתיקון לפני השמירה." to "Faces are found and blurred, then the editor opens so you can check and fix them before saving.",
+    // The editor's groups of tools, redo, zoom, the frame panel (redesign step 3).
+    "בצע שוב" to "Redo",
+    "הקטן את ציר הזמן" to "Zoom the timeline out",
+    "הגדל את ציר הזמן" to "Zoom the timeline in",
+    "פרטיות" to "Privacy",
+    "מיתוג" to "Branding",
+    "יצירה ותרגום" to "Create & translate",
+    "רשימה" to "List",
+    "פעיל" to "On",
+    "לא זוהו פנים" to "No faces found",
+    "הסרטון יישמר בצורה המקורית שלו." to "The video keeps its original shape.",
+    "המסגרת עוקבת אחרי הפנים, כמו צלם. רואים אותה על הסרטון." to "The frame follows the faces, like a camera operator. You can see it on the video.",
 )

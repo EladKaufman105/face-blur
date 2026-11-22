@@ -166,6 +166,9 @@ class EditorScreenTest {
         }
         Thread.sleep(2000)
         shot(outDir, "2_selected.png")
+        // Selected: its bar floats over the timeline; the groups stay.
+        rule.onNodeWithTag(Tags.DESELECT).assertExists()
+        rule.onNodeWithTag(Tags.group("PRIVACY")).assertExists()
 
         // Trim the clip's end by dragging its edge, then undo.
         rule.runOnIdle {
@@ -178,6 +181,12 @@ class EditorScreenTest {
         val trimmedEnd = rule.runOnIdle { ctrl.model.track(first.id)!!.end }
         rule.runOnIdle { ctrl.undo() }
         note("trim: end $origEnd -> $trimmedEnd, after undo ${rule.runOnIdle { ctrl.model.track(first.id)!!.end }}")
+        // Redo puts the trim back, undo takes it away again.
+        rule.runOnIdle { ctrl.redo() }
+        val redone = rule.runOnIdle { ctrl.model.track(first.id)!!.end }
+        rule.runOnIdle { ctrl.undo() }
+        note("redo: end $redone")
+        if (redone != trimmedEnd) fail("redo gave end $redone, not $trimmedEnd")
         if (trimmedEnd != mid + 5) fail("trim failed")
 
         // Delete the face's blur, then put it back by hand and let the tracker follow it.

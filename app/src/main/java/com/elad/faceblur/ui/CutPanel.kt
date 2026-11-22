@@ -53,9 +53,8 @@ fun CutPanel(ctrl: EditorController) {
     var pause by remember { mutableLongStateOf(800L) }
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth()) {
-            PanelHeader(t("חיתוך"), MaterialTheme.colorScheme.onSurface, { ctrl.cutPanel = false; ctrl.cutStartMs = null }) {
-                IconButton(onClick = { ctrl.undo() }) { Icon(AppIcons.Undo, t("בטל")) }
-            }
+            // Undo and redo are in the editor's top bar, always in view.
+            PanelHeader(t("חיתוך"), MaterialTheme.colorScheme.onSurface, { ctrl.cutPanel = false; ctrl.cutStartMs = null })
             Column(
                 Modifier
                     .fillMaxWidth()

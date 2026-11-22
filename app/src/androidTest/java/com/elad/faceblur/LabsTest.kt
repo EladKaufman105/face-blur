@@ -14,6 +14,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -226,9 +227,16 @@ class LabsTest {
         rule.waitForIdle()
         Thread.sleep(2500)
         // The main controls can be found by their tags, whatever the language.
-        for (tag in listOf(Tags.BACK, Tags.EXPORT, Tags.PLAY, Tags.UNDO, Tags.ADD_BLUR, Tags.tool(EditorPanel.BLUR), Tags.tool(EditorPanel.STABILIZE))) {
+        for (tag in listOf(Tags.BACK, Tags.EXPORT, Tags.PLAY, Tags.UNDO, Tags.REDO, Tags.ZOOM_IN, Tags.ZOOM_OUT) + listOf("PRIVACY", "EDIT", "PICTURE", "SUBTITLES", "SOUND", "BRAND").map { Tags.group(it) }) {
             rule.onNodeWithTag(tag).assertExists()
         }
+        // A group opens its first tool; its tabs switch between the group's tools.
+        rule.onNodeWithTag(Tags.group("EDIT")).performClick()
+        rule.waitForIdle()
+        if (inst.onMain { ctrl.panel } != EditorPanel.CUT) fail("the edit group opened ${inst.onMain { ctrl.panel }}")
+        rule.onNodeWithTag(Tags.tab(EditorPanel.STABILIZE)).performClick()
+        rule.waitForIdle()
+        if (inst.onMain { ctrl.panel } != EditorPanel.STABILIZE) fail("the tab opened ${inst.onMain { ctrl.panel }}")
         rule.runOnIdle { ctrl.chooseStabilize(2); ctrl.stabilizePanel = true }
         Thread.sleep(1500)
         shot("1_stabilized.png")
@@ -238,6 +246,15 @@ class LabsTest {
             ctrl.model.setSentences(listOf(NewCue(300, 2600, "שלום לכולם אממ מה שלומכם היום", "", "he", null)))
             ctrl.model.cut(2800, 3600)
             ctrl.cutPanel = true
+        }
+        // Undo takes the cut away, redo puts it back.
+        rule.runOnIdle {
+            val n = ctrl.cutCount
+            ctrl.undo()
+            val undone = ctrl.cutCount
+            ctrl.redo()
+            note("cuts: $n, after undo $undone, after redo ${ctrl.cutCount}")
+            if (undone != n - 1 || ctrl.cutCount != n) fail("undo/redo of a cut: $n -> $undone -> ${ctrl.cutCount}")
         }
         Thread.sleep(1200)
         shot("2_cut_panel.png")
