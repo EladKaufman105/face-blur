@@ -198,7 +198,16 @@ fun MainScreen(vm: MainViewModel) {
                                     textAlign = TextAlign.Center,
                                 )
                             }
-                            if (wide) {
+                            if (wide && vm.projects.isEmpty()) {
+                                // Nothing saved yet: a new video on one side, the other tools on the other.
+                                Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1.15f)) { EnterUp(0) { HeroCard(pick) } }
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                        EnterUp(1) { ToolsSection(pickTool) }
+                                        EnterUp(3) { hint() }
+                                    }
+                                }
+                            } else if (wide) {
                                 // Start a new video on one side, the saved projects on the other.
                                 Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                                     Column(Modifier.weight(1.15f), verticalArrangement = Arrangement.spacedBy(16.dp)) {

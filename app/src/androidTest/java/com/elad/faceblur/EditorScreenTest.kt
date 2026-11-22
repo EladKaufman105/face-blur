@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.DeviceConfigurationOverride
-import androidx.compose.ui.test.ForcedSize
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -386,21 +388,28 @@ class EditorScreenTest {
         File(dir, name).outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    /** The content laid out as on a 1280x800 dp landscape tablet (scaled down to fit the emulator). */
+    /**
+     * The content laid out as on a 1280x800 dp landscape tablet (scaled down to fit the
+     * emulator) when [on]. The same composition either way, so switching is like turning a
+     * device on its side: what's on screen is moved, not rebuilt.
+     */
     @Composable
     private fun Tablet(on: Boolean, content: @Composable () -> Unit) {
-        if (!on) return content()
-        DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(1280.dp, 800.dp))) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
             val base = LocalConfiguration.current
-            val conf = remember(base) {
+            val density = LocalDensity.current
+            val scale = if (on) minOf(maxWidth.value / 1280f, maxHeight.value / 800f) else 1f
+            val conf = remember(base, on) {
                 android.content.res.Configuration(base).apply {
-                    screenWidthDp = 1280
-                    screenHeightDp = 800
-                    orientation = android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                    if (on) {
+                        screenWidthDp = 1280
+                        screenHeightDp = 800
+                        orientation = android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                    }
                 }
             }
-            CompositionLocalProvider(LocalConfiguration provides conf) {
-                Box(Modifier.testTag("tablet")) { content() }
+            CompositionLocalProvider(LocalConfiguration provides conf, LocalDensity provides Density(density.density * scale, density.fontScale)) {
+                Box(Modifier.testTag("tablet").then(if (on) Modifier.size(1280.dp, 800.dp) else Modifier.fillMaxSize())) { content() }
             }
         }
     }

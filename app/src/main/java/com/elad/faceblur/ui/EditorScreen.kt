@@ -14,6 +14,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.animation.SizeTransform
@@ -241,61 +242,9 @@ fun EditorScreen(
             )
         }
     }
-    val videoArea: @Composable (Modifier) -> Unit = { modifier ->
-        Box(modifier.fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
-            VideoWithOverlay(ctrl, export.subs, subStyle, export.aspect, export.watermark)
-            // Messages at the top, where they don't cover the subtitles.
-            Column(
-                Modifier.align(Alignment.TopCenter).padding(10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                if (ctrl.addMode) {
-                    Banner(t("הקש על הפנים שצריך לטשטש"), action = t("ביטול")) { ctrl.addMode = false }
-                } else if (ctrl.model.tracks.isEmpty() && !ctrl.session.subtitlesOnly && ctrl.notice == null) {
-                    Banner(t("לא זוהו פנים. אפשר לסמן ידנית עם \"הוסף טשטוש\"."))
-                }
-                ctrl.notice?.let { msg ->
-                    LaunchedEffect(msg) {
-                        delay(4000)
-                        if (ctrl.notice == msg) ctrl.notice = null
-                    }
-                }
-                AnimatedContent(
-                    ctrl.notice,
-                    transitionSpec = { (fadeIn(tween(200)) + slideInVertically(tween(240)) { -it / 2 }) togetherWith fadeOut(tween(180)) },
-                    label = "notice",
-                ) { msg -> if (msg != null) Banner(msg) }
-                ctrl.trackingProgress?.let { p ->
-                    ProgressPill(t("עוקב אחרי הפנים…"), p, ctrl::cancelTracking)
-                }
-                if (!ctrl.subsSheet) {
-                    ctrl.speakersProgress?.let { p -> ProgressPill(t("מזהה דוברים…"), p, ctrl::cancelSpeakers) }
-                }
-                if (!ctrl.bgPanel) {
-                    ctrl.segmentProgress?.let { p -> ProgressPill(t("מזהה אנשים…"), p, ctrl::cancelFindPeople) }
-                }
-                if (!ctrl.subsSheet) {
-                    val models = ctrl.models
-                    val sp = ctrl.subsProgress
-                    val eta = rememberEta()
-                    if (models?.downloading != null) {
-                        val left = etaText(eta.remainingMs("download", models.progress))
-                        ProgressPill(
-                            t("מוריד את המודל… %d%%").format((models.progress * 100).roundToInt()) + (left?.let { " · $it" } ?: ""),
-                            models.progress, ctrl::cancelSubtitles,
-                        )
-                    } else if (sp != null) {
-                        val determinate = sp.first != SubtitleEngine.Stage.PACK
-                        val left = if (determinate) etaText(eta.remainingMs(sp.first, sp.second)) else null
-                        ProgressPill(
-                            subsStageText(sp.first, sp.second) + (left?.let { " · $it" } ?: ""),
-                            if (determinate) sp.second else null, ctrl::cancelSubtitles,
-                        )
-                    }
-                }
-            }
-        }
+    // One video for both layouts (see EditorVideoArea).
+    val videoArea = remember(ctrl) {
+        movableContentOf { modifier: Modifier, ex: ExportOptions, st: SubtitleStyle -> EditorVideoArea(ctrl, ex, st, modifier) }
     }
     // The timeline, what belongs to the selected clip, and the tools.
     val timelineArea: @Composable () -> Unit = {
@@ -356,7 +305,7 @@ fun EditorScreen(
         Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 topBar()
-                videoArea(Modifier.weight(1f))
+                videoArea(Modifier.weight(1f), export, subStyle)
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
                 timelineArea()
             }
@@ -381,7 +330,7 @@ fun EditorScreen(
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         topBar()
-        videoArea(Modifier.weight(1f))
+        videoArea(Modifier.weight(1f), export, subStyle)
 
         // Video controls and timelines run left to right even in a Hebrew UI.
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
@@ -415,6 +364,69 @@ fun EditorScreen(
             hasTranslation = ctrl.hasTranslation,
             onEditWatermark = { exportSheet = false; ctrl.pauser(); ctrl.watermarkPanel = true },
         )
+    }
+}
+
+
+/**
+ * The video with its overlays and the messages over it. Moved, not rebuilt, when the layout
+ * changes (a phone turned on its side): the player and its surface keep going.
+ */
+@Composable
+private fun EditorVideoArea(ctrl: EditorController, export: ExportOptions, subStyle: SubtitleStyle, modifier: Modifier) {
+    Box(modifier.fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
+        VideoWithOverlay(ctrl, export.subs, subStyle, export.aspect, export.watermark)
+        // Messages at the top, where they don't cover the subtitles.
+        Column(
+            Modifier.align(Alignment.TopCenter).padding(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (ctrl.addMode) {
+                Banner(t("הקש על הפנים שצריך לטשטש"), action = t("ביטול")) { ctrl.addMode = false }
+            } else if (ctrl.model.tracks.isEmpty() && !ctrl.session.subtitlesOnly && ctrl.notice == null) {
+                Banner(t("לא זוהו פנים. אפשר לסמן ידנית עם \"הוסף טשטוש\"."))
+            }
+            ctrl.notice?.let { msg ->
+                LaunchedEffect(msg) {
+                    delay(4000)
+                    if (ctrl.notice == msg) ctrl.notice = null
+                }
+            }
+            AnimatedContent(
+                ctrl.notice,
+                transitionSpec = { (fadeIn(tween(200)) + slideInVertically(tween(240)) { -it / 2 }) togetherWith fadeOut(tween(180)) },
+                label = "notice",
+            ) { msg -> if (msg != null) Banner(msg) }
+            ctrl.trackingProgress?.let { p ->
+                ProgressPill(t("עוקב אחרי הפנים…"), p, ctrl::cancelTracking)
+            }
+            if (!ctrl.subsSheet) {
+                ctrl.speakersProgress?.let { p -> ProgressPill(t("מזהה דוברים…"), p, ctrl::cancelSpeakers) }
+            }
+            if (!ctrl.bgPanel) {
+                ctrl.segmentProgress?.let { p -> ProgressPill(t("מזהה אנשים…"), p, ctrl::cancelFindPeople) }
+            }
+            if (!ctrl.subsSheet) {
+                val models = ctrl.models
+                val sp = ctrl.subsProgress
+                val eta = rememberEta()
+                if (models?.downloading != null) {
+                    val left = etaText(eta.remainingMs("download", models.progress))
+                    ProgressPill(
+                        t("מוריד את המודל… %d%%").format((models.progress * 100).roundToInt()) + (left?.let { " · $it" } ?: ""),
+                        models.progress, ctrl::cancelSubtitles,
+                    )
+                } else if (sp != null) {
+                    val determinate = sp.first != SubtitleEngine.Stage.PACK
+                    val left = if (determinate) etaText(eta.remainingMs(sp.first, sp.second)) else null
+                    ProgressPill(
+                        subsStageText(sp.first, sp.second) + (left?.let { " · $it" } ?: ""),
+                        if (determinate) sp.second else null, ctrl::cancelSubtitles,
+                    )
+                }
+            }
+        }
     }
 }
 
