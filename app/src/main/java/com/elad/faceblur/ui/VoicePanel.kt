@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.FilledTonalButton
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.elad.faceblur.audio.VoiceFx
+import com.elad.faceblur.audio.SfxCategory
 import com.elad.faceblur.audio.SfxLibrary
 import com.elad.faceblur.audio.SfxPlayer
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -44,6 +46,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -78,60 +81,80 @@ private fun SfxTab(ctrl: EditorController) {
             if (id == null) ctrl.notice = t("לא הצלחתי לקרוא את הקובץ")
         }
     }
-    val sounds = remember(userVersion) { SfxLibrary.all(context) }
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .height(272.dp)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            t("הקש על צליל כדי להוסיף אותו במיקום הנוכחי. ▶ כדי לשמוע."),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (snd in sounds) {
-                Surface(
-                    onClick = { ctrl.addSfx(snd.id) },
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 10.dp)) {
-                        IconButton(onClick = { SfxPlayer.play(context, snd.id) }, modifier = Modifier.size(36.dp)) {
-                            Icon(Icons.Filled.PlayArrow, t("השמע"), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                        }
-                        Text(t(snd.name), style = MaterialTheme.typography.labelLarge)
-                        if (!snd.builtin) {
-                            IconButton(onClick = { SfxLibrary.delete(context, snd.id); userVersion++ }, modifier = Modifier.size(28.dp)) {
-                                Icon(Icons.Filled.Close, t("מחק"), Modifier.size(14.dp))
+    val mine = remember(userVersion) { SfxLibrary.user(context) }
+    var category by rememberSaveable { mutableStateOf(SfxCategory.TRANSITIONS) }
+    val sounds = if (category == SfxCategory.MINE) mine else SfxLibrary.builtins.filter { it.category == category }
+    Column(Modifier.fillMaxWidth().height(272.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            for (c in SfxCategory.entries) {
+                FilterChip(
+                    selected = category == c,
+                    onClick = { category = c },
+                    label = { Text(t(c.label)) },
+                )
+            }
+        }
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                if (category == SfxCategory.MINE && mine.isEmpty()) t("כאן יופיעו צלילים שתייבא מהטלפון (עד 20 שניות כל אחד).")
+                else t("הקש על צליל כדי להוסיף אותו במיקום הנוכחי. ▶ כדי לשמוע."),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (snd in sounds) {
+                    Surface(
+                        onClick = { ctrl.addSfx(snd.id) },
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 10.dp)) {
+                            IconButton(onClick = { SfxPlayer.play(context, snd.id) }, modifier = Modifier.size(36.dp)) {
+                                Icon(Icons.Filled.PlayArrow, t("השמע"), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                            }
+                            Text(t(snd.name), style = MaterialTheme.typography.labelLarge)
+                            if (!snd.builtin) {
+                                IconButton(onClick = { SfxLibrary.delete(context, snd.id); userVersion++ }, modifier = Modifier.size(28.dp)) {
+                                    Icon(Icons.Filled.Close, t("מחק"), Modifier.size(14.dp))
+                                }
                             }
                         }
                     }
                 }
-            }
-            Surface(
-                onClick = { if (!importing) picker.launch(arrayOf("audio/*")) },
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(if (importing) t("מייבא…") else t("ייבוא צליל"), style = MaterialTheme.typography.labelLarge)
+                if (category == SfxCategory.MINE) Surface(
+                    onClick = { if (!importing) picker.launch(arrayOf("audio/*")) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (importing) t("מייבא…") else t("ייבוא צליל"), style = MaterialTheme.typography.labelLarge)
+                    }
                 }
             }
-        }
-        val n = ctrl.model.sfx.size
-        if (n > 0) {
-            Text(
-                if (n == 1) t("צליל אחד בסרטון. הקש עליו בציר הזמן כדי להזיז, לשנות עוצמה או למחוק.")
-                else t("%d צלילים בסרטון. הקש על צליל בציר הזמן כדי להזיז, לשנות עוצמה או למחוק.").format(n),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            val n = ctrl.model.sfx.size
+            if (n > 0) {
+                Text(
+                    if (n == 1) t("צליל אחד בסרטון. הקש עליו בציר הזמן כדי להזיז, לשנות עוצמה או למחוק.")
+                    else t("%d צלילים בסרטון. הקש על צליל בציר הזמן כדי להזיז, לשנות עוצמה או למחוק.").format(n),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
     }
 }

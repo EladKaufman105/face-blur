@@ -11,15 +11,25 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
+/** A group of sounds in the library, as the picker shows them. [label] is Hebrew (translated in the UI). */
+enum class SfxCategory(val label: String) {
+    TRANSITIONS("מעברים"),
+    IMPACTS("אימפקט"),
+    REACTIONS("תגובות"),
+    ALERTS("התראות"),
+    OBJECTS("חפצים"),
+    MINE("שלי"),
+}
+
 /** A sound in the library: [id] "builtin:name" or "user:file.wav"; [name] Hebrew (translated in the UI). */
-class SfxSound(val id: String, val name: String) {
+class SfxSound(val id: String, val name: String, val category: SfxCategory = SfxCategory.MINE) {
     val builtin get() = id.startsWith("builtin:")
 }
 
 /**
- * Sound effects: the built-in ones (classic shorts sounds, synthesized by scripts/make_sfx.py,
- * Ogg Vorbis in assets/sfx) and ones the user imported (WAV in the app's files). Samples are
- * 48 kHz mono.
+ * Sound effects: the built-in ones (real recordings, CC0: see assets/sfx/CREDITS.txt and
+ * scripts/build_sfx.py; Ogg Vorbis in assets/sfx) and ones the user imported (WAV in the app's
+ * files). Samples are 48 kHz mono. Ids never change, so projects keep their sounds.
  */
 object SfxLibrary {
     private const val MAX_IMPORT_SEC = 20
@@ -27,30 +37,68 @@ object SfxLibrary {
     class ImportException(message: String) : Exception(message)
 
     val builtins: List<SfxSound> = listOf(
-        "whoosh" to "ווש",
-        "swoosh" to "ווש מהיר",
-        "swipe" to "החלקה",
-        "pop" to "פופ",
-        "bubble" to "בועה",
-        "click" to "קליק",
-        "ding" to "דינג",
-        "bell" to "פעמון",
-        "notify" to "התראה",
-        "cash" to "קופה",
-        "boom" to "בום",
-        "bass_drop" to "בס דרופ",
-        "riser" to "עלייה",
-        "drama" to "דרמה",
-        "zap" to "לייזר",
-        "glitch" to "גליץ'",
-        "scratch" to "שריטת תקליט",
-        "camera" to "מצלמה",
-        "typing" to "הקלדה",
-        "heartbeat" to "דופק",
-        "tada" to "טה-דה",
-        "fail" to "כישלון",
-        "applause" to "מחיאות כפיים",
-    ).map { (id, name) -> SfxSound("builtin:$id", name) }
+        SfxCategory.TRANSITIONS to listOf(
+            "whoosh" to "ווש",
+            "swoosh" to "ווש מהיר",
+            "whip" to "וויפ",
+            "swipe" to "החלקה",
+            "reverse" to "ווש הפוך",
+            "riser" to "עלייה",
+            "buildup" to "בילד-אפ",
+            "reverse_cymbal" to "מצילה הפוכה",
+            "glitch" to "גליץ'",
+            "static" to "רעש רדיו",
+            "rewind" to "הרצה אחורה",
+        ),
+        SfxCategory.IMPACTS to listOf(
+            "boom" to "בום",
+            "impact" to "פיצוץ",
+            "bass_drop" to "בס דרופ",
+            "braam" to "בראאם",
+            "drama" to "דרמה",
+            "thump" to "חבטה",
+            "punch" to "אגרוף",
+            "crash" to "מצילה",
+            "zap" to "לייזר",
+        ),
+        SfxCategory.REACTIONS to listOf(
+            "laugh" to "צחוק",
+            "cheer" to "קהל מריע",
+            "boo" to "בוז",
+            "applause" to "מחיאות כפיים",
+            "crickets" to "צרצרים",
+            "rimshot" to "בדום-טסס",
+            "fail" to "כישלון",
+            "buzzer" to "תשובה שגויה",
+            "drumroll" to "תופים",
+            "scratch" to "שריטת תקליט",
+            "pop" to "פופ",
+            "bubble" to "בועה",
+            "cork" to "פקק",
+            "poof" to "פוף",
+            "confetti" to "קונפטי",
+        ),
+        SfxCategory.ALERTS to listOf(
+            "ding" to "דינג",
+            "bell" to "פעמון",
+            "notify" to "התראה",
+            "sparkle" to "נצנוץ",
+            "tada" to "טה-דה",
+            "levelup" to "לבל אפ",
+            "error" to "שגיאה",
+            "countdown" to "ספירה לאחור",
+        ),
+        SfxCategory.OBJECTS to listOf(
+            "click" to "קליק",
+            "typing" to "הקלדה",
+            "camera" to "מצלמה",
+            "page" to "דפדוף",
+            "cash" to "קופה",
+            "coins" to "מטבעות",
+            "snap" to "נקישת אצבע",
+            "heartbeat" to "דופק",
+        ),
+    ).flatMap { (cat, sounds) -> sounds.map { (id, name) -> SfxSound("builtin:$id", name, cat) } }
 
     private val cache = LinkedHashMap<String, FloatArray>(16, 0.75f, true)
 
