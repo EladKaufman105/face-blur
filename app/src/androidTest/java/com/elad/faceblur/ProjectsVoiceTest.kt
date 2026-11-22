@@ -235,12 +235,13 @@ class ProjectsVoiceTest {
         val pcm = AudioDecoder.decode(ctx, Uri.fromFile(video), { true }) {} ?: run { fail("export lost its sound"); return }
         val inBeep = toneShare(pcm, 1560, 1840, 1000.0)
         val outside = toneShare(pcm, 2060, 2340, 1000.0)
-        val ding = toneShare(pcm, 5040, 5300, 1568.0)
-        val noDing = toneShare(pcm, 4500, 4900, 1568.0)
+        // The ding (a struck glass) rings at about 3.18 kHz.
+        val ding = bandShare(pcm, 5040, 5300, 3100.0, 3260.0)
+        val noDing = bandShare(pcm, 4500, 4760, 3100.0, 3260.0)
         note("voice export: ${pcm.size / 16000f}s, 1 kHz share inside the bleep %.2f, outside %.2f; ding share %.2f (before it %.2f)".format(inBeep, outside, ding, noDing))
         if (pcm.size / 16000f < 10f) fail("audio too short")
         if (inBeep < 0.5 || outside > 0.3) fail("no beep where the word was ($inBeep / $outside)")
-        if (ding < 0.3 || noDing > 0.2) fail("sound effect not mixed in ($ding / $noDing)")
+        if (ding < 0.2 || noDing > 0.1) fail("sound effect not mixed in ($ding / $noDing)")
 
         // No sound at all (no sound effects either).
         inst.runOnMainSync {
@@ -321,6 +322,18 @@ class ProjectsVoiceTest {
     }
 
     /** Share of the energy in [fromMs, toMs) at [hz] (Goertzel), 16 kHz samples. */
+    /** The share of the energy between [loHz] and [hiHz] (the tone shares of each frequency bin in it). */
+    private fun bandShare(pcm: FloatArray, fromMs: Int, toMs: Int, loHz: Double, hiHz: Double): Double {
+        val bin = 1000.0 / (toMs - fromMs)
+        var s = 0.0
+        var f = loHz
+        while (f < hiHz) {
+            s += toneShare(pcm, fromMs, toMs, f)
+            f += bin
+        }
+        return s
+    }
+
     private fun toneShare(pcm: FloatArray, fromMs: Int, toMs: Int, hz: Double): Double {
         val a = fromMs * 16
         val b = minOf(pcm.size, toMs * 16)
