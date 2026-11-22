@@ -13,6 +13,11 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -275,6 +280,60 @@ class LabsTest {
         }
     }
 
+    /** On a landscape tablet, the selected clip's properties in the side panel. */
+    @Test
+    fun propertiesOnTablet() {
+        val src = sample("classroom.mp4")
+        val info = VideoInfo.probe(ctx, Uri.fromFile(src))
+        val settings = Settings(BlurMode.BLUR, 0.6f, 1.6f, false)
+        val analysis = runBlocking(Dispatchers.Main) { FaceBlurProcessor(ctx).analyze(info, settings) {} }
+        val ctrl = EditorController(EditSession(info, settings, analysis, 0), CoroutineScope(SupervisorJob() + Dispatchers.Main), ctx.applicationContext)
+        rule.setContent {
+            EditorTheme {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                    androidx.compose.foundation.layout.BoxWithConstraints(androidx.compose.ui.Modifier.fillMaxSize()) {
+                        val base = androidx.compose.ui.platform.LocalConfiguration.current
+                        val density = androidx.compose.ui.platform.LocalDensity.current
+                        val scale = minOf(maxWidth.value / 1280f, maxHeight.value / 800f)
+                        val conf = android.content.res.Configuration(base).apply {
+                            screenWidthDp = 1280; screenHeightDp = 800; smallestScreenWidthDp = 800
+                            orientation = android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                        }
+                        CompositionLocalProvider(
+                            androidx.compose.ui.platform.LocalConfiguration provides conf,
+                            androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density * scale, density.fontScale),
+                        ) {
+                            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.testTag("tablet").size(1280.dp, 800.dp)) {
+                                EditorScreen(ctrl, onClose = {}, onExport = {})
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        rule.waitForIdle()
+        Thread.sleep(2500)
+        val id = inst.onMain { ctrl.model.tracks.firstOrNull()?.id }
+        if (id == null) fail("no faces found")
+        rule.runOnIdle { ctrl.focus(id!!) }
+        Thread.sleep(1000)
+        tabletShot("6_tablet_blur_props.png")
+        rule.runOnIdle {
+            ctrl.model.setSentences(listOf(NewCue(500, 2500, "שלום לכולם", "", "he", null)))
+            ctrl.selectCue(ctrl.model.cues.first().id)
+        }
+        Thread.sleep(1000)
+        tabletShot("7_tablet_cue_props.png")
+        rule.runOnIdle { ctrl.deselect() }
+        Thread.sleep(800)
+        tabletShot("8_tablet_back_to_tool.png")
+        note("properties shots taken")
+    }
+
+    private fun tabletShot(name: String) {
+        save(rule.onNodeWithTag("tablet").captureToImage().asAndroidBitmap(), name)
+    }
+
     /** Video to MP3: decoded on the device, encoded with LAME, saved in Download/ONIT. */
     @Test
     fun mp3() {
@@ -378,6 +437,6 @@ class LabsTest {
     }
 
     companion object {
-        private val TESTS = setOf("audioAndCutMath", "cutsCleanupPrivacy", "stabilizeAndPanels", "stabilizeWithoutFaces", "mp3")
+        private val TESTS = setOf("audioAndCutMath", "cutsCleanupPrivacy", "stabilizeAndPanels", "stabilizeWithoutFaces", "propertiesOnTablet", "mp3")
     }
 }

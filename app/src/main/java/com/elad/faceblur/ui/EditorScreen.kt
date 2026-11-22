@@ -17,6 +17,10 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
@@ -225,6 +229,10 @@ fun EditorScreen(
     }
     LaunchedEffect(thumbs) { thumbs.load() }
 
+    // A tablet's side panel can be closed (the video gets the room); any tool opens it again.
+    var hidden by rememberSaveable { mutableStateOf(false) }
+    val selecting = ctrl.selected != null || ctrl.selectedCue != null || ctrl.selectedSfx != null
+
     // The pieces of the editor; a phone stacks them, a wide screen puts the panels beside the video.
     val topBar: @Composable () -> Unit = {
         Row(
@@ -239,6 +247,15 @@ fun EditorScreen(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
+            // Something selected and the side panel closed: its properties are one tap away
+            // (the panel never opens by itself, so nothing on screen jumps).
+            if (hidden && selecting && isWide()) {
+                FilledTonalButton(onClick = { hidden = false }, modifier = Modifier.padding(end = 8.dp)) {
+                    Icon(AppIcons.Tune, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(t("מאפיינים"))
+                }
+            }
             GradientButton(
                 t("ייצוא"),
                 onClick = { ctrl.pauser(); exportSheet = true },
@@ -303,7 +320,6 @@ fun EditorScreen(
         // A tablet: the tools in a column at the side, the timeline always in view, and a panel
         // always open beside the video (the tools switch it). Nothing opens over anything else.
         // The panel can be closed (the video gets the room); any tool opens it again.
-        var hidden by rememberSaveable { mutableStateOf(false) }
         LaunchedEffect(ctrl.panel) { if (ctrl.panel != null) hidden = false }
         val hide = { hidden = true; ctrl.closePanel() }
         val shown = ctrl.panel ?: if (ctrl.session.subtitlesOnly) EditorPanel.SUBTITLES else EditorPanel.BLUR
@@ -312,11 +328,14 @@ fun EditorScreen(
         val side: @Composable (Modifier) -> Unit = { modifier ->
             Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = modifier) {
                 CompositionLocalProvider(LocalSidePanel provides true, LocalPanelHide provides hide) {
+                    // With something selected, the panel shows its properties; when nothing is,
+                    // it goes back to the tool that was open. Moving between two selected clips
+                    // only changes the values (same key: no transition).
                     AnimatedContent(
-                        shown,
-                        transitionSpec = { fadeIn(tween(200, delayMillis = 60)) togetherWith fadeOut(tween(110)) },
+                        if (selecting) PROPS else shown,
+                        transitionSpec = { fadeIn(tween(140)) togetherWith fadeOut(tween(90)) },
                         label = "side panel",
-                    ) { p -> Column(Modifier.widthIn(max = 640.dp).fillMaxHeight()) { panelArea(p) } }
+                    ) { p -> Column(Modifier.widthIn(max = 640.dp).fillMaxHeight()) { if (p is EditorPanel) panelArea(p) else PropertiesPanel(ctrl, busy, subStyle) } }
                 }
             }
         }
@@ -325,7 +344,7 @@ fun EditorScreen(
             val fullW = maxWidth
             val fullH = maxHeight
             Row(Modifier.fillMaxSize()) {
-                BottomBar(ctrl, ctrl.selected, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current), vertical = true, current = if (hidden) null else shown)
+                BottomBar(ctrl, ctrl.selected, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current), vertical = true, current = if (hidden || selecting) null else shown)
                 if (aspect < 0.9f) {
                     // A tall video stays at the side at full height; the panel and the timeline
                     // share the rest of the width. With the panel closed, the timeline takes its
@@ -1637,6 +1656,8 @@ private fun Tool(spec: ToolSpec, modifier: Modifier) {
 
 /** A few Material icons (Apache 2.0) not in the core icon set. */
 private val BleepMark = Color(0xFFFF4D6D)
+/** The side panel's key for the selected clip's properties. */
+private const val PROPS = "props"
 private val CutShade = Color(0xCC05060C)
 private val CutHatch = Color(0x66FF4D6D)
 private val CutEdge = Color(0xFFFF4D6D)
@@ -1678,4 +1699,122 @@ internal object EditorIcons {
         "eye_off",
         "M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z",
     )
+}
+
+/**
+ * The selected clip's properties, in the tablet's side panel: a blur's times, size and
+ * following; a subtitle's text, speaker and times; a sound's volume. What the tools in the side
+ * column do to it, with the values in view.
+ */
+@Composable
+private fun PropertiesPanel(ctrl: EditorController, busy: Boolean, style: SubtitleStyle) {
+    @Suppress("UNUSED_VARIABLE") val v = ctrl.version
+    val sel = ctrl.selected
+    val cue = ctrl.selectedCue
+    val sfx = ctrl.selectedSfx
+    val title = when {
+        sfx != null -> "\u266A " + t(SfxLibrary.name(sfx.sound))
+        cue != null -> t("כתובית")
+        sel != null -> t("טשטוש #%d").format(sel.id)
+        else -> ""
+    }
+    val color = when {
+        sfx != null -> Feature.SOUND.color
+        cue != null -> Feature.SUBTITLES.color
+        else -> Feature.FACES.tint
+    }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth()) {
+            PanelHeader(title, color, { ctrl.deselect() })
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .then(panelBody(300.dp, upTo = true))
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                when {
+                    sfx != null -> {
+                        PropTimes(t("מתחיל ב-%s").format(clock(ctrl.cueRelUs(sfx.startMs))), null)
+                        Caption(t("עוצמה"))
+                        var g by remember(sfx.id) { mutableFloatStateOf(sfx.gain) }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Slider(
+                                value = g,
+                                onValueChange = { g = it },
+                                onValueChangeFinished = { ctrl.setSelectedSfxGain(g) },
+                                valueRange = 0f..2f,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text("\u200E${(g * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(48.dp))
+                        }
+                        PropActions {
+                            FilledTonalButton(onClick = { ctrl.playSelectedSfx() }) { Text(t("השמע")) }
+                            OutlinedButton(onClick = { ctrl.moveSelectedSfxHere() }) { Text(t("העבר לכאן")) }
+                            TextButton(onClick = { ctrl.deleteSelectedSfx() }) { Text(t("מחק")) }
+                        }
+                    }
+                    cue != null -> {
+                        val englishSpoken = cue.src == "en" || (cue.src == "" && cue.he.isBlank() && cue.en.isNotBlank())
+                        CueField(cue.srcText, t("טקסט"), rtl = !englishSpoken, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(cue.id, it, cue.otherText) }
+                        if (ctrl.hasTranslation) {
+                            CueField(cue.otherText, t("תרגום"), rtl = englishSpoken, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(cue.id, cue.srcText, it) }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(t("דובר"), style = MaterialTheme.typography.labelLarge)
+                            SpeakerButton(cue.speaker, style) { ctrl.setSpeaker(cue.id, it) }
+                        }
+                        PropTimes(
+                            t("%s עד %s").format(clock(ctrl.cueRelUs(cue.startMs)), clock(ctrl.cueRelUs(cue.endMs))),
+                            (cue.endMs - cue.startMs) / 1000f,
+                        )
+                        PropActions {
+                            OutlinedButton(onClick = { ctrl.setSelectedCueEdgeHere(true) }) { Text(t("התחלה כאן")) }
+                            OutlinedButton(onClick = { ctrl.setSelectedCueEdgeHere(false) }) { Text(t("סוף כאן")) }
+                        }
+                        PropActions {
+                            FilledTonalButton(onClick = { ctrl.pauser(); ctrl.splitSelectedCue() }) { Text(t("פצל כאן")) }
+                            OutlinedButton(onClick = { ctrl.mergeSelectedCue() }) { Text(t("מזג")) }
+                            TextButton(onClick = { ctrl.deleteSelectedCue() }) { Text(t("מחק")) }
+                        }
+                    }
+                    sel != null -> {
+                        val a = ctrl.timeOf(sel.start)
+                        val b = ctrl.timeOf(sel.end) + ctrl.frameUs
+                        PropTimes(t("%s עד %s").format(clock(a), clock(b)), (b - a) / 1e6f)
+                        PropActions {
+                            OutlinedButton(onClick = { ctrl.setSelectedEdgeHere(true) }, enabled = !busy) { Text(t("התחלה כאן")) }
+                            OutlinedButton(onClick = { ctrl.setSelectedEdgeHere(false) }, enabled = !busy) { Text(t("סוף כאן")) }
+                        }
+                        Caption(t("גודל"))
+                        SizePanel(ctrl, sel, busy)
+                        Caption(t("מעקב אחרי הפנים"))
+                        PropActions {
+                            FilledTonalButton(onClick = { ctrl.trackSelected(-1) }, enabled = !busy) { Text(t("עקוב אחורה")) }
+                            FilledTonalButton(onClick = { ctrl.trackSelected(1) }, enabled = !busy) { Text(t("עקוב קדימה")) }
+                        }
+                        PropActions {
+                            OutlinedButton(onClick = { ctrl.splitSelected() }, enabled = !busy) { Text(t("פצל כאן")) }
+                            TextButton(onClick = { ctrl.deleteSelected() }, enabled = !busy) { Text(t("מחק")) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PropTimes(range: String, seconds: Float?) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("\u2066$range\u2069", style = MaterialTheme.typography.titleMedium, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+        if (seconds != null) Text(t("%.1f שנ׳").format(seconds), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PropActions(content: @Composable () -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { content() }
 }

@@ -399,6 +399,21 @@ class EditorController(
 
     fun endCueTrim() = endTrim()
 
+    /** The selected blur now starts (or ends) at the playhead. */
+    fun setSelectedEdgeHere(start: Boolean) {
+        val id = selectedId ?: return
+        if (start) model.setStart(id, frame) else model.setEnd(id, frame)
+        sync()
+    }
+
+    /** The selected subtitle now starts (or ends) at the playhead. */
+    fun setSelectedCueEdgeHere(start: Boolean) {
+        val id = selectedCueId ?: return
+        model.beginGesture()
+        model.setCueEdge(id, start, nowMs)
+        sync()
+    }
+
     fun endTrim() {
         if (peekFrame != null) {
             peekFrame = null

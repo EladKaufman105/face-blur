@@ -337,7 +337,7 @@ fun SpeakerDot(n: Int, style: SubtitleStyle, size: androidx.compose.ui.unit.Dp) 
  * moving the cursor while typing. [rtl] null: by the text.
  */
 @Composable
-private fun CueField(
+internal fun CueField(
     text: String,
     hint: String,
     rtl: Boolean?,
