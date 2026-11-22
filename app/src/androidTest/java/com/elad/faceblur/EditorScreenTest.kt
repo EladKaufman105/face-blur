@@ -309,6 +309,13 @@ class EditorScreenTest {
         Thread.sleep(1200)
         if (rule.runOnIdle { ctrl.bgPanel || !ctrl.subsSheet }) fail("panels: two open at once")
         tabletShot(outDir, "1w_tablet_tall_subs.png")
+        // The panel closes (the video takes the room) and a tool opens it again.
+        rule.onNodeWithContentDescription("סגור את הפאנל").performClick()
+        Thread.sleep(1000)
+        tabletShot(outDir, "1y_tablet_panel_closed.png")
+        if (rule.runOnIdle { ctrl.panel != null }) fail("panel still open")
+        rule.runOnIdle { ctrl.subsSheet = true }
+        Thread.sleep(800)
         // On a phone the subtitles open in the timeline's place, like the other panels.
         rule.runOnIdle { tablet = false }
         Thread.sleep(1500)
