@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'preact/hooks'
 import { t, duration } from '../i18n'
 import type { Look, Track } from '../lib/types'
 import type { ExportMessage, ExportRequest } from '../workers/export.worker'
+import { sfxSamples, type SfxClip } from '../lib/sfx'
+import { watermarkImage, type Watermark } from '../lib/watermark'
 import { BackIcon, CheckIcon, SaveIcon, ShareIcon } from './icons'
 
-export type ExportJob = { file: File; times: Float64Array; tracks: Track[]; look: Look; width: number; height: number }
+export type ExportJob = { file: File; times: Float64Array; tracks: Track[]; look: Look; width: number; height: number; sfx: SfxClip[]; watermark: Watermark }
 
 export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () => void; onNew: () => void }) {
   const [progress, setProgress] = useState(0)
@@ -21,10 +23,17 @@ export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () =
       else { setError(m.message); worker.terminate() }
     }
     worker.onerror = (e) => { setError(e.message || 'error'); worker.terminate() }
-    // Track boxes are copied (not transferred): the editor keeps its own.
-    const req: ExportRequest = { file: job.file, times: job.times, tracks: job.tracks, look: job.look }
-    worker.postMessage(req)
-    return () => worker.terminate()
+    let cancelled = false
+    ;(async () => {
+      // The sounds' samples and the watermark's picture are made here (the page has the decoder and
+      // the font); track boxes are copied, not transferred: the editor keeps its own.
+      const sfx = await sfxSamples(job.sfx)
+      const overlay = await watermarkImage(job.watermark, job.width, job.height)
+      if (cancelled) return
+      const req: ExportRequest = { file: job.file, times: job.times, tracks: job.tracks, look: job.look, sfx, overlay }
+      worker.postMessage(req, overlay ? [overlay] : [])
+    })().catch((e) => setError(String(e?.message ?? e)))
+    return () => { cancelled = true; worker.terminate() }
   }, [job])
 
   const name = job.file.name.replace(/\.[^.]+$/, '') + '-onit.mp4'

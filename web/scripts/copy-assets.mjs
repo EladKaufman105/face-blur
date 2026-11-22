@@ -1,5 +1,5 @@
 // Copies what the web app shares with the Android app (face model, font, sound effects) into public/, so there is one source of truth for each.
-import { cpSync, existsSync, mkdirSync, statSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,4 +18,12 @@ if (!existsSync(model) || statSync(model).mtimeMs < statSync(src).mtimeMs || !ex
   execFileSync('python3', [join(web, 'scripts', 'model_web.py'), src, join(pub, 'models')], { stdio: 'inherit' })
 }
 copy(join(assets, 'fonts', 'allo_hebrew.ttf'), join(pub, 'fonts', 'allo_hebrew.ttf'))
-copy(join(assets, 'sfx'), join(pub, 'sfx'))
+// Sound effects as AAC (every browser decodes it; Safari not Ogg Vorbis everywhere).
+mkdirSync(join(pub, 'sfx'), { recursive: true })
+for (const f of readdirSync(join(assets, 'sfx'))) {
+  if (!f.endsWith('.ogg')) continue
+  const out = join(pub, 'sfx', f.replace(/\.ogg$/, '.m4a'))
+  if (existsSync(out) && statSync(out).mtimeMs >= statSync(join(assets, 'sfx', f)).mtimeMs) continue
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', join(assets, 'sfx', f), '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart', out])
+}
+copy(join(assets, 'sfx', 'CREDITS.txt'), join(pub, 'sfx', 'CREDITS.txt'))

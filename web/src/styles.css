@@ -263,3 +263,31 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   input[type='range'] { height: 40px; }
   .seg button { padding: 12px 6px; }
 }
+
+/* Editor tabs, sounds, watermark */
+.tabs { position: sticky; top: 0; z-index: 2; box-shadow: var(--shadow); }
+.scrub { position: relative; flex: 1; display: flex; align-items: center; }
+.scrub .mark { position: absolute; bottom: 0; width: 3px; height: 10px; margin-left: -1.5px; border-radius: 2px; background: var(--cyan); pointer-events: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--outline); background: transparent; border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 14px; color: var(--muted); }
+.chip.on { background: var(--primary-soft); border-color: var(--primary); color: var(--on-primary-soft); }
+.sounds { display: flex; flex-wrap: wrap; gap: 6px; }
+.sound { display: flex; align-items: center; background: var(--surface-2); border-radius: 12px; overflow: hidden; }
+.sound .play { border: 0; background: transparent; color: var(--primary); width: 36px; height: 40px; display: grid; place-items: center; }
+.sound .name { border: 0; background: transparent; padding: 0 12px 0 4px; height: 40px; font-weight: 600; font-size: 14px; }
+.sound:active { background: var(--surface-3); }
+.clips { display: grid; gap: 8px; }
+.clip { background: var(--surface-2); border-radius: 14px; padding: 8px 10px; display: grid; gap: 2px; }
+.clip input[type='range'] { flex: 1; height: 24px; }
+.time-btn { border: 0; background: var(--surface-3); border-radius: 8px; padding: 4px 8px; font-variant-numeric: tabular-nums; font-size: 13px; }
+.small-btn { padding: 6px 8px; font-size: 13px; }
+.icon-btn { border: 0; background: transparent; color: var(--muted); width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; }
+.text-in { width: 100%; margin-top: 12px; border: 1px solid var(--outline); background: var(--surface); border-radius: 12px; padding: 12px 14px; font-size: 16px; }
+.text-in:focus { outline: 2px solid var(--primary); border-color: transparent; }
+.mark-grid { display: flex; gap: 14px; margin-top: 14px; align-items: flex-start; }
+.positions { display: grid; grid-template-columns: repeat(3, 34px); gap: 4px; flex: none; }
+.positions button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--outline); background: var(--surface); color: var(--muted); font-size: 15px; }
+.positions button.on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.swatches { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.swatch { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--outline); }
+.swatch.on { outline: 3px solid var(--primary); outline-offset: 2px; }

@@ -4,6 +4,9 @@ import { BlurRenderer, ellipseFor, type Ellipse } from '../lib/renderer'
 import { DEFAULT_LOOK, frameAt, trackBox, type Analysis, type BlurMode, type Look } from '../lib/types'
 import type { ExportJob } from './Exporting'
 import { BackIcon, PauseIcon, PlayIcon, SaveIcon } from './icons'
+import { SfxScheduler, type SfxClip } from '../lib/sfx'
+import { drawWatermark, watermarkOn, type Watermark } from '../lib/watermark'
+import { SoundTab, WatermarkTab, loadWatermark } from './EditorTabs'
 
 type Props = {
   file: File
@@ -35,9 +38,16 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
   const [dur, setDur] = useState(times.length ? times[times.length - 1] : 0)
-  const state = useRef({ off, look, mediaTime: 0 })
+  const [tab, setTab] = useState<'faces' | 'sound' | 'mark'>('faces')
+  const [sfx, setSfx] = useState<SfxClip[]>([])
+  const [mark, setMark] = useState<Watermark>(loadWatermark)
+  const logo = useRef<HTMLImageElement | null>(null)
+  const scheduler = useMemo(() => new SfxScheduler(), [])
+  const state = useRef({ off, look, mediaTime: 0, sfx, mark })
   state.current.off = off
   state.current.look = look
+  state.current.sfx = sfx
+  state.current.mark = mark
 
   useEffect(() => {
     try { localStorage.setItem('onit.look', JSON.stringify(look)) } catch {}
@@ -75,6 +85,9 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
         ctx.ellipse(e.cx, e.cy, e.rx, e.ry, 0, 0, Math.PI * 2)
         ctx.stroke()
       }
+      ctx.setLineDash([])
+      const m = state.current.mark
+      if (watermarkOn(m)) drawWatermark(ctx, m, W, H, m.image ? logo.current : null)
     }
   }
 
@@ -112,21 +125,54 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
     }
     v.addEventListener('seeked', onSeeked)
     v.addEventListener('loadeddata', onMeta)
-    v.addEventListener('play', () => setPlaying(true))
-    v.addEventListener('pause', () => setPlaying(false))
-    v.addEventListener('ended', () => setPlaying(false))
+    // The sound effects play along, from wherever the video starts.
+    const onPlay = () => {
+      setPlaying(true)
+      scheduler.start(state.current.sfx, v.currentTime)
+    }
+    const onPause = () => {
+      setPlaying(false)
+      scheduler.stop()
+    }
+    const onSeeking = () => scheduler.stop()
+    const onSeekedPlaying = () => { if (!v.paused) scheduler.start(state.current.sfx, v.currentTime) }
+    v.addEventListener('play', onPlay)
+    v.addEventListener('pause', onPause)
+    v.addEventListener('ended', onPause)
+    v.addEventListener('seeking', onSeeking)
+    v.addEventListener('seeked', onSeekedPlaying)
     return () => {
       stop = true
+      scheduler.stop()
+      v.removeEventListener('play', onPlay)
+      v.removeEventListener('pause', onPause)
+      v.removeEventListener('ended', onPause)
+      v.removeEventListener('seeking', onSeeking)
+      v.removeEventListener('seeked', onSeekedPlaying)
       cancelAnimationFrame(raf)
       v.removeEventListener('seeked', onSeeked)
       v.removeEventListener('loadeddata', onMeta)
     }
   }, [url])
 
-  // Redraw the paused frame when the look or the faces change.
+  // Redraw the paused frame when the look, the faces or the watermark change.
   useEffect(() => {
     if (video.current?.paused) draw()
-  }, [off, look])
+  }, [off, look, mark])
+
+  // The logo, decoded once for the preview.
+  useEffect(() => {
+    if (!mark.image) { logo.current = null; return }
+    const img = new Image()
+    img.onload = () => { logo.current = img; if (video.current?.paused) draw() }
+    img.src = mark.image
+  }, [mark.image])
+
+  // A changed sound list is heard right away if the video is playing.
+  useEffect(() => {
+    const v = video.current
+    if (v && !v.paused) scheduler.start(sfx, v.currentTime)
+  }, [sfx])
 
   const toggle = (id: number) => {
     setOff((s) => {
@@ -182,22 +228,32 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
         </div>
         <div class="transport">
           <button class="round" onClick={playPause} aria-label={playing ? t('השהה') : t('נגן')}>{playing ? <PauseIcon size={26} /> : <PlayIcon size={26} />}</button>
-          <input
-            type="range"
-            min={0}
-            max={dur || 0}
-            step={0.001}
-            value={time}
-            onInput={(e) => {
-              const v = video.current
-              if (v) v.currentTime = Number((e.currentTarget as HTMLInputElement).value)
-            }}
-          />
+          <div class="scrub">
+            <input
+              type="range"
+              min={0}
+              max={dur || 0}
+              step={0.001}
+              value={time}
+              onInput={(e) => {
+                const v = video.current
+                if (v) v.currentTime = Number((e.currentTarget as HTMLInputElement).value)
+              }}
+            />
+            {dur > 0 && sfx.map((c) => <span class="mark" style={{ left: `${(c.at / dur) * 100}%` }} />)}
+          </div>
           <span class="time">{duration(time)} / {duration(dur)}</span>
         </div>
       </div>
 
       <aside class="side">
+        <div class="seg tabs" role="tablist">
+          <button role="tab" class={tab === 'faces' ? 'on' : ''} aria-selected={tab === 'faces'} onClick={() => setTab('faces')}>{t('פנים')}</button>
+          <button role="tab" class={tab === 'sound' ? 'on' : ''} aria-selected={tab === 'sound'} onClick={() => setTab('sound')}>{t('סאונד')}{sfx.length > 0 ? ` · ${sfx.length}` : ''}</button>
+          <button role="tab" class={tab === 'mark' ? 'on' : ''} aria-selected={tab === 'mark'} onClick={() => setTab('mark')}>{t('סימן מים')}</button>
+        </div>
+        {tab === 'faces' && (
+          <>
         <section class="card">
           <h3 class="section-title">{t('פנים')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{t('%d מתוך %d מטושטשות', enabled.length, tracks.length)}</span></h3>
           {tracks.length === 0 ? (
@@ -243,12 +299,24 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
           </div>
         </section>
 
+          </>
+        )}
+        {tab === 'sound' && (
+          <SoundTab
+            clips={sfx}
+            time={time}
+            onChange={setSfx}
+            onSeek={(at) => { const v = video.current; if (v) v.currentTime = at }}
+          />
+        )}
+        {tab === 'mark' && <WatermarkTab mark={mark} onChange={setMark} />}
+
         <div class="export-bar">
           <button
             class="btn primary"
             onClick={() => {
               video.current?.pause()
-              onExport({ file, times, tracks: enabled, look, width: W, height: H })
+              onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark })
             }}
           >
             <SaveIcon /> {t('ייצוא')}

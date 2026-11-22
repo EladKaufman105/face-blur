@@ -103,6 +103,14 @@ void main() {
   }
 }`
 
+// A full-frame picture with transparency (the watermark), over everything.
+const OVERLAY_FS = `#version 300 es
+precision highp float;
+in vec2 vUV;
+uniform sampler2D uSrc;
+out vec4 o;
+void main() { o = texture(uSrc, vec2(vUV.x, 1.0 - vUV.y)); }`
+
 type Prog = { p: WebGLProgram; u: Record<string, WebGLUniformLocation | null> }
 
 export class BlurRenderer {
@@ -115,6 +123,8 @@ export class BlurRenderer {
   private src: WebGLTexture
   private fbo: WebGLFramebuffer[] = []
   private fboTex: WebGLTexture[] = []
+  private overlayProg: Prog
+  private overlayTex: WebGLTexture | null = null
   private srcW = 0
   private srcH = 0
 
@@ -129,6 +139,7 @@ export class BlurRenderer {
     this.roi = this.program(VS, ROI_FS, ['uSrc', 'uSrcSize', 'uRoi', 'uLod'])
     this.gauss = this.program(VS, GAUSS_FS, ['uSrc', 'uDir', 'uSigma'])
     this.comp = this.program(COMP_VS, COMP_FS, ['uSrc', 'uBlur', 'uSrcSize', 'uRoi', 'uCanvas', 'uEll', 'uMode', 'uBlock', 'uAlpha'])
+    this.overlayProg = this.program(VS, OVERLAY_FS, ['uSrc'])
     this.src = gl.createTexture()!
     for (let i = 0; i < 2; i++) {
       const t = gl.createTexture()!
@@ -171,6 +182,34 @@ export class BlurRenderer {
     this.drawQuad(this.copy)
 
     for (const f of faces) this.face(f, look)
+    if (this.overlayTex) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+      gl.viewport(0, 0, w, h)
+      gl.enable(gl.BLEND)
+      gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE)
+      this.use(this.overlayProg)
+      gl.activeTexture(gl.TEXTURE0)
+      gl.bindTexture(gl.TEXTURE_2D, this.overlayTex)
+      gl.uniform1i(this.overlayProg.u.uSrc, 0)
+      this.drawQuad(this.overlayProg)
+      gl.disable(gl.BLEND)
+    }
+  }
+
+  /** A frame-sized picture drawn over every frame (null: none). */
+  setOverlay(img: TexImageSource | null) {
+    const gl = this.gl
+    if (!img) {
+      if (this.overlayTex) gl.deleteTexture(this.overlayTex)
+      this.overlayTex = null
+      return
+    }
+    this.overlayTex ??= gl.createTexture()!
+    gl.bindTexture(gl.TEXTURE_2D, this.overlayTex)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
+    this.params(gl.LINEAR, gl.LINEAR)
   }
 
   private face(f: Ellipse, look: Look) {
