@@ -44,6 +44,12 @@ class VoiceDsp(
     /** The pitch change applied after this (the player's), so the beep still sounds at 1 kHz. */
     pitchAfter: Float = 1f,
     private val sfx: List<SfxPlay> = emptyList(),
+    /** Background noise lowered (see [Denoiser]). */
+    private val denoise: Boolean = false,
+    /** Makeup gain for social-media loudness (linear, 1 = none), with a limiter. */
+    private val gain: Float = 1f,
+    /** Stretches cut out of the video (ms): silent in the player, which jumps over them. */
+    cuts: List<LongArray> = emptyList(),
 ) {
     private val mute = fx == VoiceFx.MUTE
     private val beepHz = BEEP_HZ / pitchAfter
@@ -51,8 +57,61 @@ class VoiceDsp(
 
     private val starts = LongArray(bleeps.size) { bleeps[it][0] * 1000 }
     private val ends = LongArray(bleeps.size) { bleeps[it][1] * 1000 }
+    private val cutStarts = LongArray(cuts.size) { cuts[it][0] * 1000 }
+    private val cutEnds = LongArray(cuts.size) { cuts[it][1] * 1000 }
 
-    val active get() = starts.isNotEmpty() || fx.ringMix > 0f || mute || sfx.isNotEmpty()
+    private val cleanup get() = denoise || gain != 1f
+    val active get() = starts.isNotEmpty() || fx.ringMix > 0f || mute || sfx.isNotEmpty() || cleanup || cutStarts.isNotEmpty()
+
+    // Cleanup state: one denoiser per channel, a linked limiter; reset when the time jumps.
+    private var den: Array<Denoiser>? = null
+    private var limiter: Limiter? = null
+    private var stateRate = 0
+    private var stateCh = 0
+    private var expectUs = -1L
+
+    /** Forgets the sound so far (a seek, a new export). */
+    fun reset() {
+        den?.forEach { it.reset() }
+        limiter?.reset()
+        expectUs = -1L
+    }
+
+    private fun clean(buf: ByteBuffer, startUs: Long, endUs: Long, frames: Int, rate: Int, channels: Int, float: Boolean) {
+        val ch = minOf(channels, 8)
+        if (den == null || stateCh != ch || stateRate != rate) {
+            den = if (denoise) Array(ch) { Denoiser(rate) } else emptyArray()
+            limiter = Limiter(rate)
+            stateRate = rate
+            stateCh = ch
+            expectUs = -1L
+        }
+        if (expectUs >= 0 && kotlin.math.abs(startUs - expectUs) > 40_000) reset()
+        expectUs = endUs
+        val d = den!!
+        val lim = limiter!!
+        val bytes = if (float) 4 else 2
+        val frameBytes = bytes * channels
+        val base = buf.position()
+        val v = FloatArray(ch)
+        for (f in 0 until frames) {
+            var peak = 0f
+            for (c in 0 until ch) {
+                val at = base + f * frameBytes + c * bytes
+                var x = if (float) buf.getFloat(at) else buf.getShort(at) / 32768f
+                if (d.isNotEmpty()) x = d[c].process(x)
+                x *= gain
+                v[c] = x
+                peak = kotlin.math.max(peak, kotlin.math.abs(x))
+            }
+            val g = if (gain > 1f) lim.gainFor(peak) else 1f
+            for (c in 0 until ch) {
+                val at = base + f * frameBytes + c * bytes
+                val y = Limiter.soft(v[c] * g).coerceIn(-1f, 1f)
+                if (float) buf.putFloat(at, y) else buf.putShort(at, (y * 32767f).toInt().toShort())
+            }
+        }
+    }
 
     /** Sound effects playing at [us], summed. */
     private fun sfxAt(us: Long, playing: List<SfxPlay>): Float {
@@ -69,7 +128,7 @@ class VoiceDsp(
     }
 
     /** Gain of the original sound at [us]: 0 inside a bleep, short fades at its edges. */
-    private fun keep(us: Long, from: Int): Float {
+    private fun keep(us: Long, from: Int, starts: LongArray = this.starts, ends: LongArray = this.ends): Float {
         var g = 1f
         var i = from
         while (i < starts.size && starts[i] - FADE_US <= us) {
@@ -87,7 +146,7 @@ class VoiceDsp(
     }
 
     /** First bleep that may reach [us]. */
-    private fun firstFrom(us: Long): Int {
+    private fun firstFrom(us: Long, ends: LongArray = this.ends): Int {
         var lo = 0
         var hi = ends.size
         while (lo < hi) {
@@ -108,10 +167,13 @@ class VoiceDsp(
         val frames = (buf.limit() - buf.position()) / frameBytes
         if (frames <= 0) return
         val endUs = startUs + frames * 1_000_000L / rate
+        if (cleanup) clean(buf, startUs, endUs, frames, rate, channels, float)
         var bi = firstFrom(startUs)
         val anyBleep = bi < starts.size && starts[bi] - FADE_US < endUs
+        var ci = firstFrom(startUs, cutEnds)
+        val anyCut = ci < cutStarts.size && cutStarts[ci] - FADE_US < endUs
         val playing = sfx.filter { it.startUs < endUs && it.endUs > startUs }
-        if (!anyBleep && fx.ringMix <= 0f && !mute && playing.isEmpty()) return
+        if (!anyBleep && !anyCut && fx.ringMix <= 0f && !mute && playing.isEmpty()) return
         val voice = if (mute) 0f else 1f
         val base = buf.position()
         for (f in 0 until frames) {
@@ -125,10 +187,15 @@ class VoiceDsp(
             val ring = if (fx.ringMix > 0f) (1f - fx.ringMix) + fx.ringMix * sin(2 * PI * ringHz * t).toFloat() else 1f
             val beep = if (tone && g < 1f) (1f - g) * BEEP_LEVEL * sin(2 * PI * beepHz * t).toFloat() else 0f
             val add = beep + if (playing.isEmpty()) 0f else sfxAt(us, playing)
+            var cg = 1f
+            if (anyCut) {
+                while (ci < cutEnds.size && cutEnds[ci] + FADE_US < us) ci++
+                cg = keep(us, ci, cutStarts, cutEnds)
+            }
             for (c in 0 until channels) {
                 val at = base + f * frameBytes + c * bytes
                 val x = if (float) buf.getFloat(at) else buf.getShort(at) / 32768f
-                val y = (x * ring * g * voice + add).coerceIn(-1f, 1f)
+                val y = ((x * ring * g * voice + add) * cg).coerceIn(-1f, 1f)
                 if (float) buf.putFloat(at, y) else buf.putShort(at, (y * 32767f).toInt().toShort())
             }
         }

@@ -152,6 +152,8 @@ class EditState(
     val nextId: Int,
     val nextCueId: Int,
     val sfx: List<SfxClip> = emptyList(),
+    /** Stretches cut out of the video: start, end (ms). */
+    val removed: List<LongArray> = emptyList(),
 )
 
 /** Which subtitle text to show / burn in: as spoken, its translation, both, or none. */
@@ -198,7 +200,9 @@ class EditModel(
     /** Sound effects, by start. */
     val sfx = ArrayList<SfxClip>()
     private var nextSfxId = 1
-    private class Snap(val tracks: List<EditTrack>, val cues: List<Cue>, val bleeps: Map<Long, Long>, val sfx: List<SfxClip>)
+    /** Stretches cut out of the video: start ms -> end ms (see [CutMap]). */
+    val removed = TreeMap<Long, Long>()
+    private class Snap(val tracks: List<EditTrack>, val cues: List<Cue>, val bleeps: Map<Long, Long>, val sfx: List<SfxClip>, val removed: Map<Long, Long>)
     private val undo = ArrayDeque<Snap>()
 
     /** Bumped on every change. */
@@ -350,7 +354,7 @@ class EditModel(
     // ------------------------------------------------------------------ edits
 
     private fun snapshot() {
-        undo.addLast(Snap(tracks.map { it.copy() }, cues.map { it.copy() }, TreeMap(bleeps), sfx.map { it.copy() }))
+        undo.addLast(Snap(tracks.map { it.copy() }, cues.map { it.copy() }, TreeMap(bleeps), sfx.map { it.copy() }, TreeMap(removed)))
         while (undo.size > MAX_UNDO) undo.removeFirst()
     }
 
@@ -358,6 +362,7 @@ class EditModel(
     fun exportState() = EditState(
         tracks.map { it.copy() }, cues.map { it.copy() },
         bleeps.map { (a, b) -> longArrayOf(a, b) }, nextId, nextCueId, sfx.map { it.copy() },
+        removed.map { (a, b) -> longArrayOf(a, b) },
     )
 
     /** Puts back a saved state (no undo history). */
@@ -373,6 +378,8 @@ class EditModel(
         sfx.clear()
         sfx += st.sfx.sortedBy { it.startMs }
         nextSfxId = (sfx.maxOfOrNull { it.id } ?: 0) + 1
+        removed.clear()
+        for (r in st.removed) if (r.size == 2 && r[1] > r[0]) removed[r[0]] = r[1]
         undo.clear()
         changed()
     }
@@ -391,6 +398,8 @@ class EditModel(
         bleeps.putAll(u.bleeps)
         sfx.clear()
         sfx += u.sfx
+        removed.clear()
+        removed.putAll(u.removed)
         changed()
         return true
     }
@@ -515,9 +524,12 @@ class EditModel(
     /** Copies of the subtitles to export; with [mask], bleeped words are hidden (****). */
     fun exportCues(mask: Boolean): List<Cue> = cues.sortedBy { it.startMs }.map { c ->
         val hide = if (mask) bleepedWords(c) else emptySet()
+        val gone = cutWords(c)
         c.copy().also { m ->
-            if (hide.isNotEmpty()) {
-                val spoken = Subtitles.mask(c.srcText, hide)
+            if (hide.isNotEmpty() || gone.isNotEmpty()) {
+                var spoken = Subtitles.mask(c.srcText, hide - gone)
+                // Words cut out of the video leave the subtitle too.
+                if (gone.isNotEmpty()) spoken = Subtitles.words(spoken).filterIndexed { i, _ -> i !in gone }.joinToString(" ")
                 if (c.src == "en" || (c.src == "" && c.he.isBlank())) m.en = spoken else m.he = spoken
             }
         }
@@ -528,6 +540,122 @@ class EditModel(
         if (bleeps.isEmpty()) return
         snapshot()
         bleeps.clear()
+        changed()
+    }
+
+    // ------------------------------------------------------------------ cuts
+
+    /** The cut stretches, for playback and export. */
+    fun cutMap() = CutMap(removed.map { (a, b) -> longArrayOf(a, b) })
+
+    /** Whether most of [a, b) is cut out. */
+    private fun cutCovers(a: Long, b: Long): Boolean {
+        if (b <= a) return false
+        var covered = 0L
+        for ((s, e) in removed.subMap(removed.floorKey(a) ?: a, true, b, false)) covered += max(0L, min(e, b) - max(s, a))
+        return covered * 2 >= b - a
+    }
+
+    /** Adds [a, b) to the cut stretches, merged with ones it touches (or nearly does). */
+    private fun addCut(a: Long, b: Long, join: Long) {
+        if (b <= a) return
+        var s = a
+        var e = b
+        val hit = removed.entries.filter { (x, y) -> x <= e + join && y >= s - join }.map { it.key to it.value }
+        for ((x, y) in hit) {
+            s = min(s, x)
+            e = max(e, y)
+            removed.remove(x)
+        }
+        removed[s] = e
+    }
+
+    /** Takes [a, b) out of the cut stretches (it plays again). */
+    private fun uncut(a: Long, b: Long) {
+        val hit = removed.entries.filter { (x, y) -> x < b && y > a }.map { it.key to it.value }
+        for ((x, y) in hit) {
+            removed.remove(x)
+            if (x < a) removed[x] = a
+            if (y > b) removed[b] = y
+        }
+    }
+
+    /** Spoken words of [c] cut out of the video (indices). */
+    fun cutWords(c: Cue): Set<Int> {
+        if (removed.isEmpty()) return emptySet()
+        val n = Subtitles.words(c.srcText).size
+        val out = HashSet<Int>()
+        for (i in 0 until n) {
+            val (a, b) = Subtitles.wordSpanMs(c, i)
+            if (cutCovers(a, b)) out += i
+        }
+        return out
+    }
+
+    /** Cuts spoken word [i] of subtitle [id] out of the video, or puts it back. Returns whether it's cut now. */
+    fun toggleCutWord(id: Int, i: Int): Boolean {
+        val c = cue(id) ?: return false
+        val (a, b) = Subtitles.wordSpanMs(c, i)
+        if (b <= a) return false
+        snapshot()
+        val on = !cutCovers(a, b)
+        if (on) addCut(a, b, CUT_JOIN_MS) else uncut(a, b)
+        changed()
+        return on
+    }
+
+    /** Cuts the whole of subtitle [id] (from its first word to its last), or puts it back. */
+    fun toggleCutCue(id: Int): Boolean {
+        val c = cue(id) ?: return false
+        val n = Subtitles.words(c.srcText).size
+        val a = if (n > 0) Subtitles.wordSpanMs(c, 0).first else c.startMs
+        val b = if (n > 0) max(Subtitles.wordSpanMs(c, n - 1).second, a + 1) else c.endMs
+        snapshot()
+        val on = !cutCovers(a, b)
+        if (on) addCut(a, b, CUT_JOIN_MS) else uncut(a, b)
+        changed()
+        return on
+    }
+
+    /** Cuts many stretches at once (silences, filler words): one undo step. Returns how many were new. */
+    fun addCuts(ranges: List<LongArray>): Int {
+        val fresh = ranges.filter { it[1] > it[0] && !cutCovers(it[0], it[1]) }
+        if (fresh.isEmpty()) return 0
+        snapshot()
+        for (r in fresh) addCut(r[0], r[1], 0L)
+        changed()
+        return fresh.size
+    }
+
+    /** Cuts [a, b) (by hand). */
+    fun cut(a: Long, b: Long) {
+        if (b - a < 40) return
+        snapshot()
+        addCut(a, b, 0L)
+        changed()
+    }
+
+    /** The cut stretch around [ms], if any. */
+    fun cutAt(ms: Long): LongArray? {
+        val k = removed.floorKey(ms) ?: return null
+        val e = removed[k] ?: return null
+        return if (ms < e) longArrayOf(k, e) else null
+    }
+
+    /** Puts back the cut stretch around [ms]. */
+    fun restoreCutAt(ms: Long): Boolean {
+        val r = cutAt(ms) ?: return false
+        snapshot()
+        removed.remove(r[0])
+        changed()
+        return true
+    }
+
+    /** Puts back everything cut (one undo step). */
+    fun clearCuts() {
+        if (removed.isEmpty()) return
+        snapshot()
+        removed.clear()
         changed()
     }
 
@@ -848,6 +976,8 @@ class EditModel(
     companion object {
         /** Bleeped words closer than this sound as one beep. */
         const val BLEEP_JOIN_MS = 250L
+        /** Cut words closer than this are cut as one stretch (no blip of sound between them). */
+        const val CUT_JOIN_MS = 160L
         const val MIN_SCALE = 0.4f
         const val MAX_SCALE = 3f
         private const val MAX_UNDO = 60

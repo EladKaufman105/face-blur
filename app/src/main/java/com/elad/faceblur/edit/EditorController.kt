@@ -37,6 +37,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.Closeable
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 fun AnalysisResult.toEditModel() = EditModel(times, cuts, motion, aspect, dets, fps, tracks)
 
@@ -118,6 +120,11 @@ class EditorController(
     }
     /** Panels beside the video (a tablet): one stays open, so finishing a task doesn't close it. */
     var sidePanels = false
+
+    /** The cuts panel (silences, filler words, cutting by the text) is open. */
+    var cutPanel: Boolean
+        get() = panel == EditorPanel.CUT
+        set(v) = showPanel(EditorPanel.CUT, v)
 
     /** The watermark panel is open. */
     var watermarkPanel: Boolean
@@ -248,7 +255,36 @@ class EditorController(
 
     /** From the player while it plays (or after a seek lands). */
     fun onFrameShown(f: Int) {
-        if (playing) frame = f.coerceIn(0, frameCount - 1)
+        if (!playing) return
+        frame = f.coerceIn(0, frameCount - 1)
+        // Cut stretches are jumped over.
+        if (model.removed.isNotEmpty()) {
+            val r = model.cutAt(msAtRelUs(timeOf(frame)))
+            if (r != null) {
+                val to = firstFrameFrom(cueRelUs(r[1]))
+                if (to != skipTo) {
+                    skipTo = to
+                    if (to >= frameCount) pauser() else seeker(to)
+                }
+            } else {
+                skipTo = -1
+            }
+        }
+    }
+    private var skipTo = -1
+
+    /** The first frame at or after [us] (from the first frame); frameCount if none. */
+    fun firstFrameFrom(us: Long): Int {
+        val t = model.times
+        if (t.isEmpty()) return 0
+        val target = t[0] + us
+        var lo = 0
+        var hi = t.size
+        while (lo < hi) {
+            val m = (lo + hi) ushr 1
+            if (t[m] < target) lo = m + 1 else hi = m
+        }
+        return lo
     }
 
     fun seek(f: Int) {
@@ -590,9 +626,10 @@ class EditorController(
 
     /** Re-cuts the subtitles (from their whole sentences, so nothing is lost). */
     /** Puts back a saved project's choices (no edits recorded). */
-    fun restore(rule: SplitRule, audio: AudioEdit, frame: Int, background: Background = Background()) {
+    fun restore(rule: SplitRule, audio: AudioEdit, frame: Int, background: Background = Background(), stabilize: Boolean = false) {
         split = rule
         this.audio = audio
+        if (stabilize) setStabilized(true)
         this.background = background
         bgState.background = background
         this.frame = frame.coerceIn(0, max(0, frameCount - 1))
@@ -624,7 +661,192 @@ class EditorController(
             }
         }
         val sfx = model.sfx.mapNotNull { c -> SfxLibrary.peek(c.sound)?.let { SfxPlay(c.startMs * 1000, it, c.gain) } }
-        voiceDsp = VoiceDsp(b, audio.voice, audio.tone, pitchAfter = audio.voice.pitch, sfx = sfx).takeIf { it.active }
+        val cuts = model.removed.map { (x, y) -> longArrayOf(x, y) }
+        voiceDsp = VoiceDsp(
+            b, audio.voice, audio.tone, pitchAfter = audio.voice.pitch, sfx = sfx,
+            denoise = audio.denoise, gain = audio.gain, cuts = cuts,
+        ).takeIf { it.active }
+    }
+
+    // ------------------------------------------------------------------ voice cleanup
+
+    /** Measuring the loudness (for "social-media level"). */
+    var loudnessBusy by mutableStateOf(false)
+        private set
+
+    fun setDenoise(on: Boolean) = changeAudio(audio.copy(denoise = on))
+
+    /** Turns the loudness levelling on (measuring the video once) or off. */
+    fun setLoud(on: Boolean) {
+        if (!on) {
+            changeAudio(audio.copy(loud = false))
+            return
+        }
+        if (audio.gainDb != 0f) {
+            changeAudio(audio.copy(loud = true))
+            return
+        }
+        val ctx = appContext ?: return
+        if (loudnessBusy) return
+        loudnessBusy = true
+        scope.launch {
+            try {
+                val (pcm, ch) = withContext(Dispatchers.IO) { mono16k(ctx) to channelCount(ctx) }
+                val lufs = pcm?.let { com.elad.faceblur.audio.Loudness.measure(it, com.elad.faceblur.subs.AudioDecoder.RATE, ch) }
+                if (lufs == null) {
+                    notice = t("לא נמצא דיבור למדידה")
+                } else {
+                    val g = com.elad.faceblur.audio.Loudness.gainDb(lufs)
+                    changeAudio(audio.copy(loud = true, gainDb = if (g == 0f) 0.01f else g))
+                    notice = t("העוצמה: %.1f LUFS ← %.1f LUFS").format(lufs, lufs + g)
+                }
+            } finally {
+                loudnessBusy = false
+            }
+        }
+    }
+
+    /** The video's sound, mono at 16 kHz, decoded once and kept (silences, loudness). */
+    private var pcm16k: FloatArray? = null
+    private fun mono16k(ctx: Context): FloatArray? {
+        pcm16k?.let { return it }
+        val x = com.elad.faceblur.subs.AudioDecoder.decode(ctx, session.info.uri, { true }) {}
+        pcm16k = x
+        return x
+    }
+
+    private fun channelCount(ctx: Context): Int = runCatching {
+        val ex = android.media.MediaExtractor()
+        try {
+            ex.setDataSource(ctx, session.info.uri, null)
+            (0 until ex.trackCount).map { ex.getTrackFormat(it) }
+                .firstOrNull { it.getString(android.media.MediaFormat.KEY_MIME)?.startsWith("audio/") == true }
+                ?.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT) ?: 1
+        } finally {
+            ex.release()
+        }
+    }.getOrDefault(1)
+
+    // ------------------------------------------------------------------ cuts
+
+    /** Where a cut by hand starts (ms), while one is being marked. */
+    var cutStartMs by mutableStateOf<Long?>(null)
+    /** Finding silences / filler words. */
+    var cutBusy by mutableStateOf(false)
+        private set
+
+    val cutCount get() = model.removed.size
+    val cutTotalMs get() = model.removed.entries.sumOf { it.value - it.key }
+    /** The cut stretch at the playhead, if it's in one. */
+    val cutHere get() = model.cutAt(nowMs)
+
+    fun toggleCutWord(id: Int, i: Int) {
+        model.toggleCutWord(id, i)
+        sync()
+    }
+
+    fun toggleCutCue(id: Int) {
+        model.toggleCutCue(id)
+        sync()
+    }
+
+    fun startCutHere() {
+        pauser()
+        cutStartMs = nowMs
+    }
+
+    fun endCutHere() {
+        val a = cutStartMs ?: return
+        val b = nowMs
+        cutStartMs = null
+        model.cut(min(a, b), max(a, b))
+        sync()
+    }
+
+    fun restoreCutHere() {
+        if (model.restoreCutAt(nowMs)) sync()
+    }
+
+    fun clearCuts() {
+        model.clearCuts()
+        sync()
+    }
+
+    /**
+     * Cuts the pauses longer than [minPauseMs] (keeping a breath at each side), found in the
+     * sound's level; spoken words (when there are subtitles) are never cut.
+     */
+    fun cutSilences(minPauseMs: Long) {
+        val ctx = appContext ?: return
+        if (cutBusy) return
+        cutBusy = true
+        scope.launch {
+            try {
+                val pcm = withContext(Dispatchers.IO) { mono16k(ctx) }
+                if (pcm == null) {
+                    notice = t("אין סאונד בסרטון")
+                    return@launch
+                }
+                val words = model.cues.flatMap { c ->
+                    Subtitles.words(c.srcText).indices.map { i -> Subtitles.wordSpanMs(c, i).let { (a, b) -> longArrayOf(a, b) } }
+                }
+                // The decoded sound starts at media time 0, like the subtitles' times.
+                val ranges = withContext(Dispatchers.Default) {
+                    SilenceFinder.find(pcm, com.elad.faceblur.subs.AudioDecoder.RATE, minPauseMs, words)
+                }
+                val n = model.addCuts(ranges)
+                sync()
+                notice = if (n == 0) t("לא נמצאו שתיקות ארוכות") else t("נחתכו %d שתיקות · %.1f שנ׳").format(n, ranges.sumOf { it[1] - it[0] } / 1000f)
+            } finally {
+                cutBusy = false
+            }
+        }
+    }
+
+    /** Cuts the filler sounds ("אממ", "אה", "um") found in the subtitles' words. */
+    fun cutFillers() {
+        val ranges = ArrayList<LongArray>()
+        for (c in model.cues) {
+            val ws = Subtitles.words(c.srcText)
+            ws.forEachIndexed { i, w ->
+                if (SilenceFinder.isFiller(w)) {
+                    val (a, b) = Subtitles.wordSpanMs(c, i)
+                    if (b > a) ranges += longArrayOf(a, b)
+                }
+            }
+        }
+        val n = model.addCuts(ranges)
+        sync()
+        notice = if (n == 0) t("לא נמצאו מילות מילוי בכתוביות") else t("נחתכו %d מילות מילוי").format(n)
+    }
+
+    // ------------------------------------------------------------------ stabilization
+
+    /** The camera is steadied (in the player and the export). */
+    var stabilize by mutableStateOf(false)
+        private set
+    /** What the player's stabilize effect reads (on its own thread). */
+    @Volatile var stabilizer: Stabilizer? = null
+        private set
+
+    fun setStabilized(on: Boolean) {
+        if (!on) {
+            stabilize = false
+            stabilizer = null
+            refresher()
+            return
+        }
+        val a = session.analysis
+        val s = Stabilizer.from(a.times, a.motion, a.cuts, a.aspect, a.fps, a.rotation)
+        if (s == null) {
+            notice = if (session.subtitlesOnly) t("ייצוב צריך זיהוי פנים (שם נמדדת תנועת המצלמה)") else t("המצלמה כבר יציבה: אין מה לייצב")
+            stabilize = false
+            return
+        }
+        stabilizer = s
+        stabilize = true
+        notice = t("ייצוב פועל · התמונה מוגדלת ב-%d%% כדי להסתיר את השוליים").format(((s.zoom - 1f) * 100).roundToInt())
+        refresher()
     }
 
     // ------------------------------------------------------------------ sound effects
@@ -1052,4 +1274,4 @@ class EditorController(
 }
 
 /** The editor's tool panels (see [EditorController.panel]). */
-enum class EditorPanel { BLUR, SUBTITLES, LIST, STYLE, VOICE, BACKGROUND, WATERMARK }
+enum class EditorPanel { BLUR, SUBTITLES, LIST, STYLE, VOICE, BACKGROUND, WATERMARK, CUT }

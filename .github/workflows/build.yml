@@ -2,7 +2,8 @@ name: Build APK
 
 on:
   push:
-    branches: [main]
+    # labs: the test build (its own app id, a pre-release, never "latest").
+    branches: [main, labs]
     # The web app has its own workflow.
     paths-ignore: ['.github/workflows/models.yml', '.github/workflows/web.yml', 'web/**']
   workflow_dispatch:
@@ -33,13 +34,17 @@ jobs:
           bash ci/fetch-opencv.sh
           chmod +x gradlew
           set -o pipefail
-          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+          LABS=""
+          if [ "${{ github.ref_name }}" = "labs" ]; then LABS="-Plabs=true"; fi
+          ./gradlew assembleRelease $LABS --no-daemon --stacktrace 2>&1 | tee build.log
 
       - name: Rename APK
         shell: bash
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/*.apk "out/ONIT-${{ github.run_number }}.apk"
+          NAME="ONIT-${{ github.run_number }}"
+          if [ "${{ github.ref_name }}" = "labs" ]; then NAME="ONIT-Test-${{ github.run_number }}"; fi
+          cp app/build/outputs/apk/release/*.apk "out/$NAME.apk"
 
       - name: APK size
         shell: bash
@@ -48,6 +53,7 @@ jobs:
           unzip -lv out/*.apk | sort -k3 -n -r | head -15
 
       - name: Publish release
+        if: github.ref_name != 'labs'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
@@ -55,6 +61,18 @@ jobs:
           body: "APK for arm64 (vivo X300 Pro). Commit ${{ github.sha }}"
           files: out/*.apk
           make_latest: true
+
+      - name: Publish test build
+        if: github.ref_name == 'labs'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: ONIT Test ${{ github.run_number }}
+          body: "Test build (installs beside ONIT as \"ONIT Test\"). Commit ${{ github.sha }}"
+          files: out/*.apk
+          prerelease: true
+          make_latest: false
 
       - name: Report build errors
         if: failure()
@@ -144,4 +162,4 @@ jobs:
           git checkout -q -b ci-results
           git add -A
           git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "e2e results ${{ github.run_number }} (${{ github.sha }})"
-          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ci-results
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ${{ github.ref_name == 'labs' && 'ci-results:ci-results-labs' || 'ci-results' }}

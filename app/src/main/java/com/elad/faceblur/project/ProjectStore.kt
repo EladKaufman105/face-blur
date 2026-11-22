@@ -53,7 +53,7 @@ class LoadedProject(val meta: ProjectMeta, val json: JSONObject, val analysis: A
  */
 object ProjectStore {
     private const val ANALYSIS_VERSION = 1
-    private const val EDITS_VERSION = 2
+    private const val EDITS_VERSION = 3
 
     fun root(context: Context) = File(context.filesDir, "projects")
 
@@ -287,6 +287,8 @@ object ProjectStore {
         for (b in e.bleeps) { o.writeLong(b[0]); o.writeLong(b[1]) }
         o.writeInt(e.sfx.size)
         for (c in e.sfx) { o.writeInt(c.id); o.str(c.sound); o.writeLong(c.startMs); o.writeLong(c.durMs); o.writeFloat(c.gain) }
+        o.writeInt(e.removed.size)
+        for (r in e.removed) { o.writeLong(r[0]); o.writeLong(r[1]) }
     }
 
     fun readEdits(f: File): EditState = input(f).use { i ->
@@ -313,6 +315,7 @@ object ProjectStore {
         }
         val bleeps = List(i.readInt()) { longArrayOf(i.readLong(), i.readLong()) }
         val sfx = if (version >= 2) List(i.readInt()) { SfxClip(i.readInt(), i.str(), i.readLong(), i.readLong(), i.readFloat()) } else emptyList()
-        EditState(tracks, cues, bleeps, nextId, nextCueId, sfx)
+        val removed = if (version >= 3) List(i.readInt()) { longArrayOf(i.readLong(), i.readLong()) } else emptyList()
+        EditState(tracks, cues, bleeps, nextId, nextCueId, sfx, removed)
     }
 }

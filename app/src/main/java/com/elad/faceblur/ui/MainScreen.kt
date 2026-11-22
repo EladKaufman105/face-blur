@@ -299,6 +299,24 @@ fun MainScreen(vm: MainViewModel) {
                                 color = Feature.FACES.tint,
                             )
                         }
+                        is UiState.AudioDone -> {
+                            val context = androidx.compose.ui.platform.LocalContext.current
+                            MessageCard(
+                                title = t("נשמר כ-MP3"),
+                                body = t("%s · %.1f MB · בתיקייה Download/ONIT").format(s.result.name, s.result.bytes / 1e6f),
+                                primary = t("שתף") to {
+                                    val send = Intent(Intent.ACTION_SEND).apply {
+                                        type = "audio/mpeg"
+                                        putExtra(Intent.EXTRA_STREAM, s.result.uri)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(Intent.createChooser(send, null))
+                                },
+                                secondary = t("סיום") to vm::reset,
+                                icon = AppIcons.Music,
+                                color = Feature.SOUND.tint,
+                            )
+                        }
                         is UiState.Failed -> {
                             s.info?.let { VideoCard(it, onReplace = pick) }
                             MessageCard(
@@ -400,7 +418,10 @@ private fun ToolsSection(onTool: (QuickTool) -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ToolTile(Modifier.weight(1f), AppIcons.Subtitles, t("כתוביות"), Feature.SUBTITLES) { onTool(QuickTool.SUBTITLES) }
             ToolTile(Modifier.weight(1f), AppIcons.Person, t("הסרת רקע"), Feature.BACKGROUND) { onTool(QuickTool.BACKGROUND) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ToolTile(Modifier.weight(1f), AppIcons.Voice, t("קול ואפקטים"), Feature.SOUND) { onTool(QuickTool.SOUND) }
+            ToolTile(Modifier.weight(1f), AppIcons.Music, t("המרה ל-MP3"), Feature.SOUND) { onTool(QuickTool.MP3) }
         }
     }
 }
@@ -538,12 +559,13 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
         SectionCard {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    FeatureTile(if (state.subsOnly) AppIcons.Subtitles else if (exporting) EditorIcons.ExportIcon else AppIcons.Face, feature.tint, 44.dp)
+                    FeatureTile(if (state.stage == 3) AppIcons.Music else if (state.subsOnly) AppIcons.Subtitles else if (exporting) EditorIcons.ExportIcon else AppIcons.Face, feature.tint, 44.dp)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
                             when {
                                 state.stage == 0 -> t("מכין את הסרטון…")
+                                state.stage == 3 -> t("ממיר את הסאונד ל-MP3")
                                 state.subsOnly -> t("שומר את הסרטון עם הכתוביות")
                                 state.stage == 1 && state.auto -> t("שלב 1 מתוך 2 · מזהה פנים")
                                 state.stage == 1 -> t("מזהה פנים")

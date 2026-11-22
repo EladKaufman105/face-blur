@@ -185,6 +185,16 @@ fun VoicePanel(ctrl: EditorController) {
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                Caption(t("ניקוי קול"))
+                CleanupRow(t("הסרת רעשי רקע"), t("מזגן, רוח, תנועה, זמזום. נשמע מיד בנגן."), a.denoise, true) { ctrl.setDenoise(it) }
+                CleanupRow(
+                    t("עוצמה לרשתות"),
+                    if (ctrl.loudnessBusy) t("מודד את העוצמה…")
+                    else if (a.loud) t("מיושר ל-%d LUFS (%+.1f dB), בלי עיוות").format(com.elad.faceblur.audio.Loudness.TARGET_LUFS.toInt(), a.gainDb)
+                    else t("מיישר ל-14- LUFS כמו בטיקטוק, אינסטגרם ויוטיוב"),
+                    a.loud, !ctrl.loudnessBusy,
+                ) { ctrl.setLoud(it) }
+                HorizontalDivider()
                 Caption(t("שינוי קול"))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (fx in VoiceFx.entries) {
@@ -249,5 +259,17 @@ fun VoicePanel(ctrl: EditorController) {
                 }
             }
         }
+    }
+}
+
+/** A switch with a title and a line about it. */
+@Composable
+private fun CleanupRow(title: String, sub: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
     }
 }

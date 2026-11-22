@@ -12,6 +12,15 @@ internal object AppIcons {
         .addPath(pathData = addPathNodes(path), fill = SolidColor(Color.Black))
         .build()
 
+    /** video_stable */
+    val Steady = icon(
+        "video_stable",
+        "M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 18V6h2.95l-2.33 8.73L16.82 18H4zm16 0h-2.95l2.34-8.73L7.18 6H20v12z",
+    )
+
+    /** music_note */
+    val Music = icon("music_note", "M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z")
+
     val Undo = icon(
         "undo",
         "M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z",

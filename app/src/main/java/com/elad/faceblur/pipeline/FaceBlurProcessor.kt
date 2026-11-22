@@ -21,6 +21,10 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
+import com.elad.faceblur.audio.CutAudioProcessor
+import com.elad.faceblur.edit.StabilizeEffect
+import com.elad.faceblur.edit.Stabilizer
+import com.elad.faceblur.effects.CutEffect
 import androidx.media3.transformer.VideoEncoderSettings
 import com.elad.faceblur.analysis.AnalysisResult
 import com.elad.faceblur.analysis.Det
@@ -209,6 +213,8 @@ class FaceBlurProcessor(private val context: Context) {
         audio: AudioEdit = AudioEdit(),
         background: Background = Background(),
         masks: MaskStore? = null,
+        /** Steady the camera (see Stabilizer). */
+        stabilize: Boolean = false,
         /** Now and then, a small copy of the finished frame being saved. */
         onPreview: ((android.graphics.Bitmap) -> Unit)? = null,
         onProgress: (Float) -> Unit,
@@ -236,13 +242,25 @@ class FaceBlurProcessor(private val context: Context) {
         val audioFx = ArrayList<AudioProcessor>()
         val bleeps = model.bleeps.map { (a, b) -> longArrayOf(a, b) }
         val sfx = model.sfx.mapNotNull { c -> SfxLibrary.load(context, c.sound)?.let { SfxPlay(c.startMs * 1000, it, c.gain) } }
-        val dsp = VoiceDsp(bleeps, audio.voice, audio.tone, sfx = sfx)
+        val dsp = VoiceDsp(bleeps, audio.voice, audio.tone, sfx = sfx, denoise = audio.denoise, gain = audio.gain)
+        // Stretches cut out: their frames and their sound are dropped at the end of the chains.
+        val cutMap = model.cutMap()
         // No sound at all: the track is dropped, unless sound effects play over the silence.
         val removeAudio = audio.voice == VoiceFx.MUTE && sfx.isEmpty()
         if (!removeAudio) {
             if (audio.voice.pitch != 1f) audioFx += SonicAudioProcessor().apply { setPitch(audio.voice.pitch) }
             if (dsp.active) audioFx += VoiceAudioProcessor(dsp)
+            if (!cutMap.isEmpty) audioFx += CutAudioProcessor(cutMap)
         }
+        val steady = if (stabilize) {
+            Stabilizer.from(analysis.times, analysis.motion, analysis.cuts, analysis.aspect, analysis.fps, analysis.rotation)
+        } else {
+            null
+        }
+        // Steadied right after the blur (which follows the faces in the shaky frame), before
+        // anything drawn on top: subtitles and the watermark don't move.
+        val steadyEffect = steady?.let { s -> listOf<Effect>(StabilizeEffect { s }) } ?: emptyList()
+        val cutEffect = if (cutMap.isEmpty) emptyList() else listOf<Effect>(CutEffect(cutMap))
         // The background: replaced or blurred first, then faces are blurred over it.
         val bgEffect = if (background.active && (background.key != BgKey.PERSON || masks != null)) {
             listOf<Effect>(BackgroundEffect(BackgroundState(background, masks, analysis.times)))
@@ -262,7 +280,7 @@ class FaceBlurProcessor(private val context: Context) {
             .setEffects(
                 Effects(
                     audioFx,
-                    bgEffect + listOf<Effect>(blur) + export.effects(info, reframe) + subsEffect +
+                    bgEffect + listOf<Effect>(blur) + steadyEffect + export.effects(info, reframe) + subsEffect + cutEffect +
                         listOfNotNull<Effect>(onPreview?.let { PreviewEffect(onFrame = it) }),
                 ),
             )
@@ -281,10 +299,18 @@ class FaceBlurProcessor(private val context: Context) {
         }
 
         val base = "${info.name}_blur_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val saved = withContext(Dispatchers.IO) { saveToGallery(out, base) }
+        val saved = withContext(Dispatchers.IO) {
+            // No location or phone details in what's shared.
+            lastScrubbed = runCatching { Mp4Privacy.scrub(out) }.getOrDefault(-1)
+            saveToGallery(out, base)
+        }
         out.delete()
-        val srts = if (export.saveSrt && cues.isNotEmpty()) withContext(Dispatchers.IO) {
-            listOfNotNull(Srt.save(context, base, cues, english = false), Srt.save(context, base, cues, english = true)).size
+        // Subtitle files in the cut video's time.
+        val srtCues = if (cutMap.isEmpty) cues else cues.mapNotNull { c ->
+            cutMap.mapMs(c.startMs, c.endMs)?.let { (a, b) -> c.copy().also { it.startMs = a; it.endMs = b } }
+        }
+        val srts = if (export.saveSrt && srtCues.isNotEmpty()) withContext(Dispatchers.IO) {
+            listOfNotNull(Srt.save(context, base, srtCues, english = false), Srt.save(context, base, srtCues, english = true)).size
         } else 0
         val renderMs = SystemClock.elapsedRealtime() - t1
         return Outcome.Saved(saved, timeline.trackCount, keptHdr, analysis.frameCount, analysisMs, renderMs, srts)
@@ -397,6 +423,10 @@ class FaceBlurProcessor(private val context: Context) {
         /** How often the last analysis ran face detection ("every 1", "every 3, lite"). */
         @Volatile
         var lastPace = ""
+
+        /** Location / phone-detail boxes hidden in the last export (-1: couldn't check). */
+        @Volatile
+        var lastScrubbed = 0
 
         /** The models the last background pass used (for the self-test's report). */
         @Volatile

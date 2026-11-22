@@ -32,3 +32,13 @@ add_library(faceblur_whisper SHARED whisper_jni.cpp)
 target_link_libraries(faceblur_whisper PRIVATE whisper log)
 # 16 KB pages (Android 15+ devices may use them).
 target_link_options(faceblur_whisper PRIVATE "-Wl,-z,max-page-size=16384")
+
+# MP3 encoding ("video to MP3"): LAME 3.100's encoder (LGPL, sources in lame/).
+file(GLOB LAME_SRC ${CMAKE_CURRENT_SOURCE_DIR}/lame/libmp3lame/*.c)
+add_library(onit_mp3 SHARED mp3_jni.c ${LAME_SRC})
+target_include_directories(onit_mp3 PRIVATE lame/include lame/libmp3lame)
+# No autoconf here: the few things its config.h would say.
+target_compile_definitions(onit_mp3 PRIVATE STDC_HEADERS=1 HAVE_STDINT_H=1 HAVE_LIMITS_H=1 HAVE_STRCHR=1 HAVE_MEMCPY=1 ieee754_float32_t=float)
+target_compile_options(onit_mp3 PRIVATE -w)
+target_link_libraries(onit_mp3 PRIVATE m)
+target_link_options(onit_mp3 PRIVATE "-Wl,-z,max-page-size=16384")

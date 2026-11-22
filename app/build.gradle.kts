@@ -23,8 +23,11 @@ android {
         ?.takeIf { it.matches(Regex("""\d+\.\d+\.\d+""")) }
         ?.let { ndkVersion = it }
 
+    // The test build ("labs" branch, -Plabs=true): its own app beside the real one.
+    val labs = (findProperty("labs") as String?) == "true"
     defaultConfig {
-        applicationId = "com.elad.faceblur"
+        applicationId = if (labs) "com.elad.faceblur.labs" else "com.elad.faceblur"
+        manifestPlaceholders["appLabel"] = if (labs) "ONIT Test" else "@string/app_name"
         minSdk = 29
         targetSdk = 36
         versionCode = buildNumber

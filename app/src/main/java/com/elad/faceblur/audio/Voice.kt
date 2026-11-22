@@ -19,8 +19,21 @@ import kotlin.math.max
  * @param tone bleeped words get a beep (else silence).
  * @param maskWords bleeped words are also hidden in the subtitles (****).
  */
-data class AudioEdit(val voice: VoiceFx = VoiceFx.NONE, val tone: Boolean = true, val maskWords: Boolean = true) {
+data class AudioEdit(
+    val voice: VoiceFx = VoiceFx.NONE,
+    val tone: Boolean = true,
+    val maskWords: Boolean = true,
+    /** Background noise lowered. */
+    val denoise: Boolean = false,
+    /** Brought to social-media loudness, by [gainDb] (measured once). */
+    val loud: Boolean = false,
+    val gainDb: Float = 0f,
+) {
+    /** The makeup gain to apply (linear). */
+    val gain: Float get() = if (loud) Math.pow(10.0, gainDb / 20.0).toFloat() else 1f
+
     fun toJson(): JSONObject = JSONObject().put("voice", voice.name).put("tone", tone).put("mask", maskWords)
+        .put("denoise", denoise).put("loud", loud).put("gainDb", gainDb.toDouble())
 
     companion object {
         fun fromJson(o: JSONObject?): AudioEdit {
@@ -29,6 +42,9 @@ data class AudioEdit(val voice: VoiceFx = VoiceFx.NONE, val tone: Boolean = true
                 runCatching { VoiceFx.valueOf(o.optString("voice")) }.getOrDefault(VoiceFx.NONE),
                 o.optBoolean("tone", true),
                 o.optBoolean("mask", true),
+                o.optBoolean("denoise", false),
+                o.optBoolean("loud", false),
+                o.optDouble("gainDb", 0.0).toFloat(),
             )
         }
     }
@@ -55,6 +71,60 @@ class VoiceAudioProcessor(private val dsp: VoiceDsp) : BaseAudioProcessor() {
         out.flip()
         dsp.process(out, frames * 1_000_000L / fmt.sampleRate, fmt.sampleRate, fmt.channelCount, fmt.encoding == C.ENCODING_PCM_FLOAT)
         frames += n / fmt.bytesPerFrame
+    }
+
+    override fun onFlush() {
+        frames = 0
+        dsp.reset()
+    }
+
+    override fun onReset() {
+        frames = 0
+        dsp.reset()
+    }
+}
+
+/**
+ * Drops the sound of the stretches cut out of the video (time counted from the first sample),
+ * so it stays in step with the pictures, which are dropped the same way (see CutEffect).
+ */
+class CutAudioProcessor(private val cuts: com.elad.faceblur.edit.CutMap) : BaseAudioProcessor() {
+    private var frames = 0L
+
+    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
+        if (cuts.isEmpty) return AudioProcessor.AudioFormat.NOT_SET
+        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT && inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT) {
+            throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
+        }
+        return inputAudioFormat
+    }
+
+    override fun queueInput(inputBuffer: ByteBuffer) {
+        val n = inputBuffer.remaining()
+        if (n == 0) return
+        val fmt = inputAudioFormat
+        val fb = fmt.bytesPerFrame
+        val count = n / fb
+        val rate = fmt.sampleRate.toLong()
+        // Which frames are kept: runs of them are copied as they are.
+        var kept = 0
+        for (i in 0 until count) if (!cuts.isCut((frames + i) * 1_000_000L / rate)) kept++
+        val out = replaceOutputBuffer(kept * fb)
+        val base = inputBuffer.position()
+        var i = 0
+        while (i < count) {
+            if (cuts.isCut((frames + i) * 1_000_000L / rate)) { i++; continue }
+            var j = i
+            while (j < count && !cuts.isCut((frames + j) * 1_000_000L / rate)) j++
+            val part = inputBuffer.duplicate()
+            part.position(base + i * fb)
+            part.limit(base + j * fb)
+            out.put(part)
+            i = j
+        }
+        inputBuffer.position(inputBuffer.limit())
+        out.flip()
+        frames += count
     }
 
     override fun onFlush() {
@@ -131,6 +201,7 @@ class VoicePreviewRenderers(context: Context, private val dsp: () -> VoiceDsp?) 
             override fun flush() {
                 lastIn = null
                 pending = null
+                dsp()?.reset()
                 super.flush()
             }
         }

@@ -24,6 +24,7 @@ import kotlinx.coroutines.plus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -43,7 +44,7 @@ import java.io.File
 import java.util.concurrent.Executors
 
 /** Where a quick tool on the home screen takes the video: the editor, without face detection. */
-enum class QuickTool { SUBTITLES, BACKGROUND, SOUND }
+enum class QuickTool { SUBTITLES, BACKGROUND, SOUND, MP3 }
 
 /** What the progress screen shows: a small copy of the frame being processed, and faces found on it. */
 class LivePreview(val frame: android.graphics.Bitmap, val faces: List<com.elad.faceblur.analysis.Box>, val gpu: Boolean = false)
@@ -63,6 +64,8 @@ sealed interface UiState {
     /** A saved project whose video can't be read any more: pick it again. [wrong]: the last pick was another video. */
     data class Relink(val project: ProjectMeta, val wrong: Boolean = false) : UiState
     data class Failed(val info: VideoInfo?, val message: String) : UiState
+    /** A video's sound saved as an MP3. */
+    data class AudioDone(val info: VideoInfo, val result: com.elad.faceblur.audio.Mp3Export.Result) : UiState
 }
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -151,6 +154,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         .put("audio", ctrl.audio.toJson())
         .put("frame", ctrl.frame)
         .put("background", ctrl.background.toJson())
+        .put("stabilize", ctrl.stabilize)
         .put("settings", ctrl.session.settings.let { st -> JSONObject().put("mode", st.mode.name).put("strength", st.strength.toDouble()).put("padding", st.padding.toDouble()).put("sensitive", st.sensitive) })
 
     /** Every new editing session is saved as a project. */
@@ -180,7 +184,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun startAutosave(ctrl: EditorController) {
         autosave?.cancel()
         autosave = viewModelScope.launch {
-            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, prefs.subStyle, ctrl.background, ctrl.masksReady, ctrl.session.settings) }
+            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, prefs.subStyle, ctrl.background, ctrl.masksReady, ctrl.session.settings, ctrl.stabilize) }
                 .drop(1)
                 .collectLatest {
                     delay(1500)
@@ -256,6 +260,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 AudioEdit.fromJson(j.optJSONObject("audio")),
                 j.optInt("frame"),
                 Background.fromJson(j.optJSONObject("background")),
+                j.optBoolean("stabilize", false),
             )
             editor = ctrl
             projectId = id
@@ -333,7 +338,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 UiState.Failed(null, e.message ?: t("לא ניתן לפתוח את הסרטון"))
             }
-            if (tool != null && state is UiState.Ready) startTool(tool)
+            if (tool == QuickTool.MP3 && state is UiState.Ready) convertMp3() else if (tool != null && state is UiState.Ready) startTool(tool)
+        }
+    }
+
+    /** The video's sound as an MP3 in Download/ONIT (stage 3 of the progress screen). */
+    fun convertMp3() {
+        val info = currentInfo() ?: return
+        closeSession()
+        state = UiState.Working(info, 3, 0f)
+        job = viewModelScope.launch {
+            guard(info, onCancel = { UiState.Ready(info) }) {
+                val base = info.name.substringBeforeLast('.') + "_" + java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                val r = withContext(Dispatchers.IO) {
+                    com.elad.faceblur.audio.Mp3Export.convert(getApplication(), info.uri, base, isActive = { isActive }) { p ->
+                        viewModelScope.launch(Dispatchers.Main) { if (state is UiState.Working) state = UiState.Working(info, 3, p) }
+                    }
+                }
+                state = UiState.AudioDone(info, r)
+            }
         }
     }
 
@@ -385,6 +408,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     QuickTool.SUBTITLES -> ctrl.subsSheet = true
                     QuickTool.BACKGROUND -> ctrl.bgPanel = true
                     QuickTool.SOUND -> ctrl.voicePanel = true
+                    QuickTool.MP3 -> Unit
                 }
                 editor = ctrl
                 beginProject(ctrl)
@@ -419,6 +443,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val saved = FaceBlurProcessor(getApplication()).render(
             s.info, s.settings, s.analysis, s.model, s.analysisMs, prefs.export, prefs.subStyle, ctrl.audio,
             ctrl.background, s.masks,
+            stabilize = ctrl.stabilize,
             onPreview = { frame -> showLive(frame, emptyList()) },
         ) { p -> state = UiState.Working(s.info, 2, p, s.subtitlesOnly, auto) }
         if (s.analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / s.analysisMs
@@ -483,6 +508,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         is UiState.Done -> s.info
         is UiState.NoFaces -> s.info
         is UiState.Failed -> s.info
+        is UiState.AudioDone -> s.info
         else -> null
     }
 }

@@ -148,6 +148,7 @@ import com.elad.faceblur.edit.EditModel
 import com.elad.faceblur.edit.EditTrack
 import com.elad.faceblur.edit.EditorController
 import com.elad.faceblur.edit.EditorPanel
+import com.elad.faceblur.edit.StabilizeEffect
 import com.elad.faceblur.edit.PreviewSource
 import com.elad.faceblur.edit.SubLang
 import com.elad.faceblur.subs.SubtitleEngine
@@ -205,6 +206,7 @@ fun EditorScreen(
             ctrl.voicePanel -> ctrl.voicePanel = false
             ctrl.bgPanel -> ctrl.bgPanel = false
             ctrl.watermarkPanel -> ctrl.watermarkPanel = false
+            ctrl.cutPanel -> ctrl.cutPanel = false
             ctrl.blurPanel -> ctrl.blurPanel = false
             ctrl.selectedId != null || ctrl.selectedCueId != null || ctrl.selectedSfxId != null -> ctrl.deselect()
             else -> onClose()
@@ -286,6 +288,7 @@ fun EditorScreen(
             EditorPanel.STYLE -> SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
             EditorPanel.WATERMARK -> WatermarkPanel(export.watermark, { onExportChange(export.copy(watermark = it)) }) { ctrl.watermarkPanel = false }
             EditorPanel.BLUR -> BlurPanel(ctrl) { ctrl.blurPanel = false }
+            EditorPanel.CUT -> CutPanel(ctrl)
         }
     }
     val wide = isWide()
@@ -402,6 +405,8 @@ private fun EditorVideoArea(ctrl: EditorController, export: ExportOptions, subSt
         ) {
             if (ctrl.addMode) {
                 Banner(t("הקש על הפנים שצריך לטשטש"), action = t("ביטול")) { ctrl.addMode = false }
+            } else if (!ctrl.playing && ctrl.cutHere != null) {
+                Banner(t("הקטע הזה נחתך מהסרטון"), action = t("החזר")) { ctrl.restoreCutHere() }
             } else if (ctrl.model.tracks.isEmpty() && !ctrl.session.subtitlesOnly && ctrl.notice == null) {
                 Banner(t("לא זוהו פנים. אפשר לסמן ידנית עם \"הוסף טשטוש\"."))
             }
@@ -524,7 +529,9 @@ private fun VideoWithOverlay(
         ExoPlayer.Builder(context, VoicePreviewRenderers(context) { ctrl.voiceDsp }).build().apply {
             // The background (replaced or blurred live), then the faces' blur over it.
             val bg = BackgroundEffect(ctrl.bgState)
-            setVideoEffects(if (ctrl.previewAvailable) listOf<Effect>(bg, BlurEffect(preview, { ctrl.session.settings.mode }, { ctrl.session.settings.strength })) else listOf<Effect>(bg))
+            // Steadying last: it moves the finished picture (turned on and off without a restart).
+            val steady = StabilizeEffect { ctrl.stabilizer }
+            setVideoEffects(if (ctrl.previewAvailable) listOf<Effect>(bg, BlurEffect(preview, { ctrl.session.settings.mode }, { ctrl.session.settings.strength }), steady) else listOf<Effect>(bg, steady))
             setMediaItem(MediaItem.fromUri(ctrl.session.info.uri))
             prepare()
         }
@@ -1251,6 +1258,35 @@ private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle
             )
         }
 
+        // Stretches cut out of the video: shaded over every lane, with a line at each edge.
+        if (ctrl.model.removed.isNotEmpty()) {
+            val top = stripTop
+            for ((a, b) in ctrl.model.removed) {
+                val x0 = g.x(ctrl.cueRelUs(a))
+                val x1 = max(g.x(ctrl.cueRelUs(b)), x0 + 2.dp.toPx())
+                if (x1 < 0 || x0 > size.width) continue
+                drawRect(CutShade, Offset(x0, top), Size(x1 - x0, size.height - top))
+                clipRect(left = x0, top = top, right = x1, bottom = size.height) {
+                    // Diagonal hatching.
+                    val gap = 7.dp.toPx()
+                    var hx = x0 - (size.height - top)
+                    while (hx < x1) {
+                        drawLine(CutHatch, Offset(hx, size.height), Offset(hx + (size.height - top), top), 1.dp.toPx())
+                        hx += gap
+                    }
+                }
+                drawLine(CutEdge, Offset(x0, top), Offset(x0, size.height), 1.5.dp.toPx())
+                drawLine(CutEdge, Offset(x1, top), Offset(x1, size.height), 1.5.dp.toPx())
+            }
+        }
+        val pendingCut = ctrl.cutStartMs
+        if (pendingCut != null) {
+            val x0 = g.x(ctrl.cueRelUs(pendingCut))
+            drawLine(CutEdge, Offset(x0, stripTop), Offset(x0, size.height), 2.dp.toPx())
+            val xa = min(x0, g.cx)
+            drawRect(CutShade.copy(alpha = 0.35f), Offset(xa, stripTop), Size(kotlin.math.abs(g.cx - x0), size.height - stripTop))
+        }
+
         // Playhead.
         drawLine(Color.White, Offset(g.cx, 0f), Offset(g.cx, size.height), 2.dp.toPx())
         drawCircle(Color.White, 4.dp.toPx(), Offset(g.cx, 3.dp.toPx()))
@@ -1440,6 +1476,8 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
             ctrl.pauser(); ctrl.voicePanel = true
         }
         subsTools += ToolSpec(t("סימן מים"), AppIcons.Watermark, !busy, active = watermarkOn, current = current == EditorPanel.WATERMARK) { ctrl.pauser(); ctrl.watermarkPanel = true }
+        subsTools += ToolSpec(t("חיתוך"), EditorIcons.Cut, !busy, active = ctrl.cutCount > 0, current = current == EditorPanel.CUT) { ctrl.pauser(); ctrl.cutPanel = true }
+        subsTools += ToolSpec(t("ייצוב"), AppIcons.Steady, !busy, active = ctrl.stabilize) { ctrl.setStabilized(!ctrl.stabilize) }
         if (subsOnly) tools += subsTools
         tools += ToolSpec(
             if (ctrl.addMode) t("ביטול") else t("הוסף טשטוש"),
@@ -1575,6 +1613,9 @@ private fun Tool(spec: ToolSpec, modifier: Modifier) {
 
 /** A few Material icons (Apache 2.0) not in the core icon set. */
 private val BleepMark = Color(0xFFFF4D6D)
+private val CutShade = Color(0xCC05060C)
+private val CutHatch = Color(0x66FF4D6D)
+private val CutEdge = Color(0xFFFF4D6D)
 private val SfxClipColor = Brand.Cyan
 
 internal object EditorIcons {
