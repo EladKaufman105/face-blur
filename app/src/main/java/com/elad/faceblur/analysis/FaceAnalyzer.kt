@@ -114,8 +114,18 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     private val small = Mat()
 
     // Detection ~30 times per second of video (every frame in sensitive mode); camera motion
-    // and cut detection run on every frame.
-    private val detectEvery = if (sensitive) 1 else max(1, (fps / 30f).roundToInt())
+    // and cut detection run on every frame. On a slow phone or tablet (where the frames wait
+    // for the detectors) fewer, down to ~10 per second, and the crop check only for uncertain
+    // faces: the tracker fills the frames between.
+    private val baseEvery = if (sensitive) 1 else max(1, (fps / 30f).roundToInt())
+    private val maxEvery = if (sensitive) 1 else max(baseEvery, (fps / 10f).toInt())
+    @Volatile private var detectEvery = baseEvery
+    @Volatile private var lite = false
+    private var windowStart = 0L
+    private var blockedMs = 0L
+
+    /** How detection adapted to the device: "every frame", "every 2nd frame, lite"... */
+    val pace: String get() = "every ${detectEvery}" + (if (lite) ", lite" else "")
 
     init {
         reset()
@@ -133,6 +143,10 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         times.clear()
         dets.clear()
         cuts.clear()
+        detectEvery = baseEvery
+        lite = false
+        windowStart = 0L
+        blockedMs = 0L
     }
 
     /**
@@ -188,13 +202,16 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             val fw = bgr.cols()
             val fh = bgr.rows()
             val gen = generation
+            val waitFrom = SystemClock.elapsedRealtime()
             slots.acquire()
+            blockedMs += SystemClock.elapsedRealtime() - waitFrom
+            adapt(idx)
             pool.execute {
                 var m: Mat? = null
                 try {
                     if (gen == generation) {
                         m = Mat(fh, fw, CvType.CV_8UC3).also { it.put(0, 0, frame) }
-                        val found = detector().detect(m)
+                        val found = detector().detect(m, lite)
                         if (gen == generation) {
                             dets[idx] = found
                             lastDets = found
@@ -223,6 +240,28 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             bmp.copyPixelsFromBuffer(ByteBuffer.wrap(px))
             cb(bmp, lastDets, accelerator)
         }
+    }
+
+    /**
+     * Every 2 s or so: if the frames spent over a third of the time waiting for a free
+     * detector, detection is what holds the analysis back, so it runs less often (and lighter).
+     */
+    private fun adapt(idx: Int) {
+        val now = SystemClock.elapsedRealtime()
+        if (windowStart == 0L) {
+            windowStart = now
+            blockedMs = 0L
+            return
+        }
+        val span = now - windowStart
+        if (span < 2000 || idx < 30) return
+        if (blockedMs > span / 3 && detectEvery < maxEvery) {
+            detectEvery++
+            lite = true
+            android.util.Log.i("ONIT", "face detection slower than the video: every $detectEvery frames, lite")
+        }
+        windowStart = now
+        blockedMs = 0L
     }
 
     private fun detector(): FaceDetector = workerDetector.get() ?: FaceDetector(retinaPath, yunetPath, gpu, half).also {

@@ -148,6 +148,7 @@ class FaceBlurProcessor(private val context: Context) {
             }
             lastAccelerator = analyzer.accelerator
             lastPrecision = analyzer.precision
+            lastPace = analyzer.pace
             return withContext(Dispatchers.Default) { analyzer.result() }
         } finally {
             analyzer.close()
@@ -392,6 +393,10 @@ class FaceBlurProcessor(private val context: Context) {
         /** The precision of the last analysis's CPU detection ("fp16", "fp16-checking", "fp32"). */
         @Volatile
         var lastPrecision = "fp32"
+
+        /** How often the last analysis ran face detection ("every 1", "every 3, lite"). */
+        @Volatile
+        var lastPace = ""
 
         /** The models the last background pass used (for the self-test's report). */
         @Volatile

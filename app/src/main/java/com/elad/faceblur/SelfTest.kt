@@ -56,7 +56,7 @@ object SelfTest {
             val dets = analysis.dets.values.sumOf { it.size }
             line("analysis: ${analysis.frameCount} frames, $dets faces, ${analysis.tracks.size} tracks")
             line("opencv: ${com.elad.faceblur.analysis.OpenCv.variant}")
-            line("face detection on: ${FaceBlurProcessor.lastAccelerator}, cpu ${FaceBlurProcessor.lastPrecision}")
+            line("face detection on: ${FaceBlurProcessor.lastAccelerator}, cpu ${FaceBlurProcessor.lastPrecision}, ${FaceBlurProcessor.lastPace}")
             require(dets > 0) { "no faces found" }
             val session = EditSession(info, settings, analysis, 0)
             val m = session.model

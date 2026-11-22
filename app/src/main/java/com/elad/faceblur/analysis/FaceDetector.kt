@@ -24,7 +24,8 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
     private val row = FloatArray(15)
     private val crop = Mat()
 
-    fun detect(bgr: Mat): List<Det> {
+    /** @param lite re-check only uncertain faces on a crop (a slow device). */
+    fun detect(bgr: Mat, lite: Boolean = false): List<Det> {
         val w = bgr.cols()
         val h = bgr.rows()
         val rf = retina.detect(bgr, RF_THRESHOLD)
@@ -48,7 +49,7 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
             }
         }
         val kept = Geometry.nmsIou(fused, 0.4f)
-        for (d in kept) d.verify = verify(bgr, d.box)
+        for (d in kept) if (!lite || d.score < LITE_VERIFY_BELOW) d.verify = verify(bgr, d.box)
         return kept
     }
 
@@ -107,5 +108,6 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
         const val YUNET_MODEL = "face_detection_yunet_2023mar.onnx"
         private const val RF_THRESHOLD = 0.35f
         private const val VERIFY_SIDE = 192
+        private const val LITE_VERIFY_BELOW = 0.8f
     }
 }
