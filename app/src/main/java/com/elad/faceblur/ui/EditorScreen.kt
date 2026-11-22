@@ -312,12 +312,14 @@ fun EditorScreen(
         }
         BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             val rail = 92.dp
+            val fullW = maxWidth
+            val fullH = maxHeight
             Row(Modifier.fillMaxSize()) {
                 BottomBar(ctrl, ctrl.selected, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current), vertical = true, current = shown)
                 if (aspect < 0.9f) {
                     // A tall video gets the full height; the panel and the timeline share the
                     // rest of the width.
-                    val videoW = minOf((maxHeight - 56.dp) * aspect, (maxWidth - rail) * 0.5f)
+                    val videoW = minOf((fullH - 56.dp) * aspect, (fullW - rail) * 0.5f)
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         topBar()
                         Row(Modifier.weight(1f)) {
@@ -336,7 +338,7 @@ fun EditorScreen(
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
                         timelineArea(false)
                     }
-                    side(Modifier.width(((maxWidth - rail) * 0.34f).coerceIn(320.dp, 400.dp)).fillMaxHeight())
+                    side(Modifier.width(((fullW - rail) * 0.34f).coerceIn(320.dp, 400.dp)).fillMaxHeight())
                 }
             }
         }
