@@ -49,6 +49,8 @@ jobs:
           node tests/e2e.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/classroom.mp4 /tmp/web-results/tablet tablet
           # A deep voice on a clip with speech.
           VOICE=1 node tests/e2e.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/voice
+          # A tool from the home screen; faces found later; the editor kept across the export.
+          node tests/tools.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/tools
       - uses: actions/upload-artifact@v4
         if: always()
         with:

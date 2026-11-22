@@ -98,7 +98,7 @@ export function Analyzing({ file, sensitive, onDone, onError, onCancel }: Props)
           <div class="face-icon"><FaceIcon /></div>
           <div class="grow">
             <strong>{ready ? t('מזהה פנים') : t('מכין את המודל…')}</strong>
-            <div class="small muted">{left !== null ? t('נותרו כ-%s', duration(left)) : ' '}</div>
+            <div class="small muted">{[left !== null ? t('נותרו כ-%s', duration(left)) : '', backend ? (backend === 'webgpu' ? t('על המעבד הגרפי') : t('על המעבד')) : ''].filter(Boolean).join(' · ') || '\u00a0'}</div>
           </div>
           <div class="big-num">{ready ? pct : 0}%</div>
         </div>

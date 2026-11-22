@@ -299,3 +299,6 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .word-chips { flex: 1; display: flex; flex-wrap: wrap; gap: 4px; }
 .word { border: 1px solid var(--outline); background: var(--surface); border-radius: 8px; padding: 4px 8px; font-size: 14px; }
 .word.on { background: #c62828; border-color: #c62828; color: #fff; text-decoration: line-through; }
+.tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.tool { border: 1px solid var(--outline-soft); background: var(--surface); border-radius: 18px; padding: 16px 8px; display: grid; justify-items: center; gap: 10px; font-weight: 700; font-size: 14px; box-shadow: var(--shadow); }
+.tool-icon { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; }

@@ -7,6 +7,7 @@ import { BackIcon, PauseIcon, PlayIcon, SaveIcon } from './icons'
 import { SfxScheduler, type SfxClip } from '../lib/sfx'
 import { drawWatermark, watermarkOn, type Watermark } from '../lib/watermark'
 import { SoundTab, SubtitlesTab, WatermarkTab, loadWatermark } from './EditorTabs'
+import { Analyzing } from './Analyzing'
 import { bleepRanges, cueAt, DEFAULT_SUB_STYLE, drawSubtitle, maskCue, type Cue, type SubStyle, type Word } from '../lib/subtitles'
 import { makeBuffer } from '../lib/sfx'
 import type { VoiceFx } from '../lib/voice'
@@ -19,6 +20,8 @@ type Props = {
   info: string
   onExport: (job: ExportJob) => void
   onClose: () => void
+  initialTab?: EditorTab
+  hidden?: boolean
 }
 
 function loadLook(): Look {
@@ -29,8 +32,16 @@ function loadLook(): Look {
   return DEFAULT_LOOK
 }
 
-export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Props) {
-  const { times, tracks, width: W, height: H } = analysis
+export type EditorTab = 'faces' | 'subs' | 'sound' | 'mark'
+
+export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClose, initialTab = 'faces', hidden = false }: Props) {
+  // Opened from a tool on the home screen, faces aren't found yet; they can be, from here.
+  const [an, setAn] = useState(analysis)
+  const [thumbs, setThumbs] = useState(thumbs0)
+  const [detecting, setDetecting] = useState(false)
+  const [detectInfo, setDetectInfo] = useState(info)
+  const analyzed = an.times.length > 0
+  const { times, tracks, width: W, height: H } = an
   const url = useMemo(() => URL.createObjectURL(file), [file])
   useEffect(() => () => URL.revokeObjectURL(url), [url])
   const video = useRef<HTMLVideoElement>(null)
@@ -42,7 +53,7 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
   const [dur, setDur] = useState(times.length ? times[times.length - 1] : 0)
-  const [tab, setTab] = useState<'faces' | 'subs' | 'sound' | 'mark'>('faces')
+  const [tab, setTab] = useState<EditorTab>(initialTab)
   const [cues, setCues] = useState<Cue[]>([])
   const [words, setWords] = useState<Word[]>([])
   const [bleeped, setBleeped] = useState<Set<number>>(new Set())
@@ -265,12 +276,27 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
   const setMode = (mode: BlurMode) => setLook({ ...look, mode })
 
   return (
-    <main class="editor">
+    <>
+    {detecting && (
+      <Analyzing
+        file={file}
+        sensitive={false}
+        onCancel={() => setDetecting(false)}
+        onError={() => setDetecting(false)}
+        onDone={(a, th, ms, backend) => {
+          setAn(a)
+          setThumbs(th)
+          setDetectInfo(t('זמן עיבוד: %s', duration(ms / 1000)) + ' · ' + t('הזיהוי רץ על %s', backend === 'webgpu' ? t('המעבד הגרפי') : t('המעבד')))
+          setDetecting(false)
+        }}
+      />
+    )}
+    <main class="editor" style={detecting || hidden ? 'display:none' : ''}>
       <div class="player">
         <div class="row">
           <button class="btn ghost" onClick={onClose} style="padding-inline:6px"><span class="flip"><BackIcon /></span> {t('סרטון חדש')}</button>
           <div class="grow" />
-          <span class="small muted">{info}</span>
+          <span class="small muted">{detectInfo}</span>
         </div>
         <div class="screen" onClick={onTap}>
           <canvas ref={canvas} width={W} height={H} style={{ aspectRatio: `${W} / ${H}` }} />
@@ -304,7 +330,14 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
           <button role="tab" class={tab === 'sound' ? 'on' : ''} aria-selected={tab === 'sound'} onClick={() => setTab('sound')}>{t('סאונד')}{sfx.length > 0 ? ` · ${sfx.length}` : ''}</button>
           <button role="tab" class={tab === 'mark' ? 'on' : ''} aria-selected={tab === 'mark'} onClick={() => setTab('mark')}>{t('סימן מים')}</button>
         </div>
-        {tab === 'faces' && (
+        {tab === 'faces' && !analyzed && (
+          <section class="card">
+            <h3 class="section-title">{t('פנים')}</h3>
+            <p class="small muted" style="margin:0 0 12px">{t('הפנים בסרטון עוד לא זוהו. אפשר לזהות ולטשטש אותן עכשיו; הכתוביות, הסאונד וסימן המים יישארו.')}</p>
+            <button class="btn primary" style="width:100%" onClick={() => { video.current?.pause(); setDetecting(true) }}>{t('זהה פנים')}</button>
+          </section>
+        )}
+        {tab === 'faces' && analyzed && (
           <>
         <section class="card">
           <h3 class="section-title">{t('פנים')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{t('%d מתוך %d מטושטשות', enabled.length, tracks.length)}</span></h3>
@@ -396,5 +429,6 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
         </div>
       </aside>
     </main>
+    </>
   )
 }
