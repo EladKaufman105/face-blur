@@ -2,7 +2,18 @@ package com.elad.faceblur
 
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.DeviceConfigurationOverride
+import androidx.compose.ui.test.ForcedSize
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -91,16 +102,32 @@ class EditorScreenTest {
 
         var dir by mutableStateOf(LayoutDirection.Rtl)
         var export by mutableStateOf(ExportOptions())
+        var tablet by mutableStateOf(false)
         rule.setContent {
             EditorTheme {
                 CompositionLocalProvider(LocalLayoutDirection provides dir) {
-                    EditorScreen(ctrl, onClose = {}, onExport = {}, export = export, onExportChange = { export = it })
+                    Tablet(tablet) {
+                        EditorScreen(ctrl, onClose = {}, onExport = {}, export = export, onExportChange = { export = it })
+                    }
                 }
             }
         }
         rule.waitForIdle()
         Thread.sleep(3500)
         shot(outDir, "1_overview.png")
+
+        // The same editor on a landscape tablet: the timeline under the video, a panel beside them.
+        rule.runOnIdle { tablet = true }
+        Thread.sleep(2500)
+        tabletShot(outDir, "1t_tablet.png")
+        rule.runOnIdle { ctrl.blurPanel = true }
+        Thread.sleep(1200)
+        tabletShot(outDir, "1u_tablet_panel.png")
+        rule.runOnIdle {
+            ctrl.blurPanel = false
+            tablet = false
+        }
+        Thread.sleep(2000)
 
         // Playback: the playhead must advance on its own.
         // (While playing the UI is never idle: talk to it on the main thread directly.)
@@ -257,22 +284,32 @@ class EditorScreenTest {
         val src = File(ctx.cacheDir, "main_$name")
         inst.context.assets.open("samples/$name").use { i -> src.outputStream().use { i.copyTo(it) } }
         val vm = inst.onMain { MainViewModel(ctx.applicationContext as android.app.Application) }
+        var tablet by mutableStateOf(false)
         rule.setContent {
             val prefs = vm.prefs
             FaceBlurTheme(prefs.themeMode, prefs.palette) {
                 val d = if (prefs.lang == Lang.HE) LayoutDirection.Rtl else LayoutDirection.Ltr
-                CompositionLocalProvider(LocalLayoutDirection provides d) { MainScreen(vm) }
+                CompositionLocalProvider(LocalLayoutDirection provides d) { Tablet(tablet) { MainScreen(vm) } }
             }
         }
         rule.waitForIdle()
         Thread.sleep(600)
         shot(outDir, "9a_home.png")
+        rule.runOnIdle { tablet = true }
+        Thread.sleep(1200)
+        tabletShot(outDir, "9t_tablet_home.png")
+        rule.runOnIdle { tablet = false }
         inst.runOnMainSync { vm.load(Uri.fromFile(src)) }
         val t0 = System.currentTimeMillis()
         while (inst.onMain { vm.state !is UiState.Ready } && System.currentTimeMillis() - t0 < 20_000) Thread.sleep(100)
         rule.waitForIdle()
         Thread.sleep(800)
         shot(outDir, "9_settings_he.png")
+        rule.runOnIdle { tablet = true }
+        Thread.sleep(1200)
+        tabletShot(outDir, "9u_tablet_ready.png")
+        rule.runOnIdle { tablet = false }
+        Thread.sleep(600)
         rule.runOnIdle {
             vm.prefs.updateLang(Lang.EN)
             vm.prefs.updatePalette(Palette.GREEN)
@@ -346,6 +383,30 @@ class EditorScreenTest {
 
     private fun screen(dir: File, name: String) {
         val bmp = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return
+        File(dir, name).outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    /** The content laid out as on a 1280x800 dp landscape tablet (scaled down to fit the emulator). */
+    @Composable
+    private fun Tablet(on: Boolean, content: @Composable () -> Unit) {
+        if (!on) return content()
+        DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(1280.dp, 800.dp))) {
+            val base = LocalConfiguration.current
+            val conf = remember(base) {
+                android.content.res.Configuration(base).apply {
+                    screenWidthDp = 1280
+                    screenHeightDp = 800
+                    orientation = android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                }
+            }
+            CompositionLocalProvider(LocalConfiguration provides conf) {
+                Box(Modifier.testTag("tablet")) { content() }
+            }
+        }
+    }
+
+    private fun tabletShot(dir: File, name: String) {
+        val bmp = rule.onNodeWithTag("tablet").captureToImage().asAndroidBitmap()
         File(dir, name).outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 

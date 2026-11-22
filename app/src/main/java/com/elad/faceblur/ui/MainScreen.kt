@@ -20,6 +20,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -140,6 +142,8 @@ fun MainScreen(vm: MainViewModel) {
 
     val light = MaterialTheme.colorScheme.isLight
     val glow = if (light) Color(0xFFFFD9E2) else Brand.Night
+    // A tablet (or a phone on its side): two columns, content not stretched across the screen.
+    val wide = isWide()
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { insets ->
         Column(
             Modifier
@@ -167,22 +171,25 @@ fun MainScreen(vm: MainViewModel) {
             ) { s ->
                 if (s is UiState.Working) {
                     // Fills the screen: the video as it's processed, the progress under it.
-                    WorkingScreen(s, vm.livePreview, renderRatio = vm.prefs.renderRatio, onCancel = vm::cancel)
+                    WorkingScreen(s, vm.livePreview, renderRatio = vm.prefs.renderRatio, onCancel = vm::cancel, wide = wide)
                     return@AnimatedContent
                 }
                 Column(
                     Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                        .padding(horizontal = if (wide) 28.dp else 20.dp, vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                Column(
+                    Modifier
+                        .widthIn(max = if (!wide) androidx.compose.ui.unit.Dp.Unspecified else if (s is UiState.Empty || s is UiState.Ready || s is UiState.Done) 1200.dp else 760.dp)
+                        .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     when (s) {
                         UiState.Empty -> {
-                            EnterUp(0) { HeroCard(pick) }
-                            EnterUp(1) { ToolsSection(pickTool) }
-                            EnterUp(2) { ProjectsSection(vm.projects, vm::openProject, vm::renameProject, vm::deleteProject) }
-                            EnterUp(3) {
+                            val hint: @Composable () -> Unit = {
                                 Text(
                                     t("אפשר גם לשתף סרטון מהגלריה ישירות לאפליקציה"),
                                     style = MaterialTheme.typography.bodySmall,
@@ -190,6 +197,24 @@ fun MainScreen(vm: MainViewModel) {
                                     modifier = Modifier.fillMaxWidth(),
                                     textAlign = TextAlign.Center,
                                 )
+                            }
+                            if (wide) {
+                                // Start a new video on one side, the saved projects on the other.
+                                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                                    Column(Modifier.weight(1.15f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                        EnterUp(0) { HeroCard(pick) }
+                                        EnterUp(1) { ToolsSection(pickTool) }
+                                        EnterUp(3) { hint() }
+                                    }
+                                    Column(Modifier.weight(1f)) {
+                                        EnterUp(2) { ProjectsSection(vm.projects, vm::openProject, vm::renameProject, vm::deleteProject) }
+                                    }
+                                }
+                            } else {
+                                EnterUp(0) { HeroCard(pick) }
+                                EnterUp(1) { ToolsSection(pickTool) }
+                                EnterUp(2) { ProjectsSection(vm.projects, vm::openProject, vm::renameProject, vm::deleteProject) }
+                                EnterUp(3) { hint() }
                             }
                         }
                         is UiState.Relink -> MessageCard(
@@ -206,9 +231,7 @@ fun MainScreen(vm: MainViewModel) {
                             // Before detection: only what it needs. Export settings come with saving
                             // (in the editor, or in the sheet of "blur and save").
                             var saveSheet by remember { mutableStateOf(false) }
-                            EnterUp(0) { VideoCard(s.info, onReplace = pick) }
-                            EnterUp(1) { SettingsCard(vm) }
-                            EnterUp(2) {
+                            val actions: @Composable () -> Unit = {
                                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                     GradientButton(
                                         t("טשטש פנים"),
@@ -226,6 +249,19 @@ fun MainScreen(vm: MainViewModel) {
                                     }
                                 }
                             }
+                            if (wide) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                                    Column(Modifier.weight(1.3f)) { EnterUp(0) { VideoCard(s.info, onReplace = pick) } }
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                        EnterUp(1) { SettingsCard(vm) }
+                                        EnterUp(2) { actions() }
+                                    }
+                                }
+                            } else {
+                                EnterUp(0) { VideoCard(s.info, onReplace = pick) }
+                                EnterUp(1) { SettingsCard(vm) }
+                                EnterUp(2) { actions() }
+                            }
                             if (saveSheet) {
                                 ExportSheet(
                                     s.info, vm.prefs.export, vm.prefs::updateExport,
@@ -238,6 +274,7 @@ fun MainScreen(vm: MainViewModel) {
                         is UiState.Working, is UiState.Editing -> Unit
                         is UiState.Done -> DoneCard(
                             s,
+                            wide = wide,
                             onEdit = if (s.canEdit) vm::edit else null,
                             onHome = vm::reset,
                             onNew = { vm.reset(); pick() },
@@ -264,6 +301,7 @@ fun MainScreen(vm: MainViewModel) {
                         }
                     }
                     Spacer(Modifier.height(8.dp))
+                }
                 }
             }
         }
@@ -461,7 +499,7 @@ private fun SettingsCard(vm: MainViewModel) {
  * the time left.
  */
 @Composable
-private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRatio: Float, onCancel: () -> Unit) {
+private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRatio: Float, onCancel: () -> Unit, wide: Boolean = false) {
     val eta = rememberEta()
     val ratio = renderRatio.coerceIn(0.2f, 5f)
     val rem = eta.remainingMs(state.stage, state.progress)
@@ -477,12 +515,8 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
     }
     val exporting = state.stage == 2
     val feature = if (state.subsOnly) Feature.SUBTITLES else Feature.FACES
-    // The frame and the progress together, in the middle: a wide video leaves no hole between them.
-    Column(
-        Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-    ) {
-        Box(Modifier.fillMaxWidth().weight(1f, fill = false), contentAlignment = Alignment.Center) {
+    val frame: @Composable (Modifier) -> Unit = { modifier ->
+        Box(modifier, contentAlignment = Alignment.Center) {
             LiveFrame(
                 live?.frame ?: state.info.thumbnail,
                 live?.faces.orEmpty(),
@@ -490,6 +524,8 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
                 label = if (exporting) t("תצוגה חיה של הייצוא") else if (state.stage == 1) (if (live?.gpu == true) t("מחפש פנים · GPU") else t("מחפש פנים")) else null,
             )
         }
+    }
+    val progress: @Composable () -> Unit = {
         SectionCard {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -542,6 +578,26 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
                     OutlinedButton(onClick = onCancel, shape = RoundedCornerShape(50)) { Text(t("ביטול")) }
                 }
             }
+        }
+    }
+    if (wide) {
+        // Side by side: the video as tall as the screen allows, the progress beside it.
+        Row(
+            Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            frame(Modifier.weight(1f).fillMaxHeight())
+            Box(Modifier.width(400.dp)) { progress() }
+        }
+    } else {
+        // The frame and the progress together, in the middle: a wide video leaves no hole between them.
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        ) {
+            frame(Modifier.fillMaxWidth().weight(1f, fill = false))
+            progress()
         }
     }
 }
@@ -634,11 +690,10 @@ private fun clockText(ms: Long): String {
 }
 
 @Composable
-private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onHome: () -> Unit, onNew: () -> Unit) {
+private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onHome: () -> Unit, onNew: () -> Unit, wide: Boolean = false) {
     val context = LocalContext.current
     val uri = state.result.uri
-    SectionCard {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    val header: @Composable () -> Unit = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SuccessBadge(Icons.Filled.Check)
                 Spacer(Modifier.width(14.dp))
@@ -659,9 +714,13 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onHome: () -> U
                     )
                 }
             }
-            Box(Modifier.fillMaxWidth(), Alignment.Center) {
-                ResultPlayer(uri, state.info.aspect)
-            }
+    }
+    val player: @Composable () -> Unit = {
+        Box(Modifier.fillMaxWidth(), Alignment.Center) {
+            ResultPlayer(uri, state.info.aspect)
+        }
+    }
+    val actions: @Composable () -> Unit = {
             Text(
                 if (state.subsOnly) {
                     t("כדאי לעבור על הכתוביות לפני פרסום: זיהוי דיבור ותרגום אוטומטיים עלולים לטעות.")
@@ -720,6 +779,23 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onHome: () -> U
                     Spacer(Modifier.width(6.dp))
                     Text(t("סרטון חדש"))
                 }
+            }
+    }
+    SectionCard {
+        if (wide) {
+            // The video on one side, what to do with it on the other.
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1.3f)) { player() }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    header()
+                    actions()
+                }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                header()
+                player()
+                actions()
             }
         }
     }

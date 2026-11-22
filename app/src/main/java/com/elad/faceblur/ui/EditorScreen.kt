@@ -10,6 +10,10 @@ import android.os.SystemClock
 import android.view.LayoutInflater
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.animation.SizeTransform
@@ -213,13 +217,8 @@ fun EditorScreen(
     }
     LaunchedEffect(thumbs) { thumbs.load() }
 
-    // A Surface gives text and icons the theme's light-on-dark content color.
-    Surface(color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground, modifier = Modifier.fillMaxSize()) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing),
-    ) {
+    // The pieces of the editor; a phone stacks them, a wide screen puts the panels beside the video.
+    val topBar: @Composable () -> Unit = {
         Row(
             Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -241,8 +240,9 @@ fun EditorScreen(
                 modifier = Modifier.padding(end = 8.dp),
             )
         }
-
-        Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
+    }
+    val videoArea: @Composable (Modifier) -> Unit = { modifier ->
+        Box(modifier.fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
             VideoWithOverlay(ctrl, export.subs, subStyle, export.aspect, export.watermark)
             // Messages at the top, where they don't cover the subtitles.
             Column(
@@ -296,20 +296,97 @@ fun EditorScreen(
                 }
             }
         }
+    }
+    // The timeline, what belongs to the selected clip, and the tools.
+    val timelineArea: @Composable () -> Unit = {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Timeline(ctrl, busy, subStyle, thumbs) }
+        val sel = ctrl.selected
+        Column(Modifier.animateContentSize(tween(220))) {
+            if (sel != null && ctrl.sizePanel) SizePanel(ctrl, sel, busy)
+            ctrl.selectedSfx?.takeIf { ctrl.sfxGainPanel }?.let { c ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(t("עוצמה"), style = MaterialTheme.typography.labelLarge)
+                    var g by remember(c.id) { mutableFloatStateOf(c.gain) }
+                    Slider(
+                        value = g,
+                        onValueChange = { g = it },
+                        onValueChangeFinished = { ctrl.setSelectedSfxGain(g) },
+                        valueRange = 0f..2f,
+                        modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                    )
+                    Text("\u200E${(g * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+            if (ctrl.splitPanel && ctrl.model.cues.isNotEmpty()) {
+                Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    SplitControls(ctrl)
+                }
+            }
+        }
+        BottomBar(ctrl, sel, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current))
+    }
+    val panel = when {
+        ctrl.listEditor -> 1
+        ctrl.voicePanel -> 2
+        ctrl.bgPanel -> 3
+        ctrl.stylePanel -> 4
+        ctrl.watermarkPanel -> 5
+        ctrl.blurPanel -> 6
+        else -> 0
+    }
+    val panelArea: @Composable (Int, Boolean) -> Unit = { p, side ->
+        when (p) {
+            1 -> AllSubtitlesPanel(ctrl, if (side) Modifier.fillMaxHeight() else Modifier.fillMaxHeight(0.6f), subStyle)
+            2 -> VoicePanel(ctrl)
+            3 -> BackgroundPanel(ctrl)
+            4 -> SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
+            5 -> WatermarkPanel(export.watermark, { onExportChange(export.copy(watermark = it)) }) { ctrl.watermarkPanel = false }
+            6 -> BlurPanel(ctrl) { ctrl.blurPanel = false }
+            else -> Unit
+        }
+    }
+
+    // A Surface gives text and icons the theme's light-on-dark content color.
+    Surface(color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground, modifier = Modifier.fillMaxSize()) {
+    if (isWide()) {
+        // Tablet (or a phone on its side): the timeline stays under the video, and a panel opens
+        // beside them instead of in the timeline's place.
+        var shown by remember { mutableIntStateOf(if (panel != 0) panel else 1) }
+        if (panel != 0) shown = panel
+        Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+                topBar()
+                videoArea(Modifier.weight(1f))
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
+                timelineArea()
+            }
+            AnimatedVisibility(
+                visible = panel != 0,
+                enter = expandHorizontally(tween(260)) + fadeIn(tween(200, delayMillis = 60)),
+                exit = shrinkHorizontally(tween(220)) + fadeOut(tween(120)),
+            ) {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.width(400.dp).fillMaxHeight()) {
+                    AnimatedContent(
+                        shown,
+                        transitionSpec = { fadeIn(tween(200, delayMillis = 60)) togetherWith fadeOut(tween(110)) },
+                        label = "side panel",
+                    ) { p -> Column(Modifier.fillMaxHeight()) { panelArea(p, true) } }
+                }
+            }
+        }
+    } else {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing),
+    ) {
+        topBar()
+        videoArea(Modifier.weight(1f))
 
         // Video controls and timelines run left to right even in a Hebrew UI.
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
 
         // The timeline and its tools, or a panel in their place; they slide in when switching.
-        val panel = when {
-            ctrl.listEditor -> 1
-            ctrl.voicePanel -> 2
-            ctrl.bgPanel -> 3
-            ctrl.stylePanel -> 4
-            ctrl.watermarkPanel -> 5
-            ctrl.blurPanel -> 6
-            else -> 0
-        }
         AnimatedContent(
             panel,
             transitionSpec = {
@@ -319,43 +396,10 @@ fun EditorScreen(
             label = "panel",
         ) { p ->
             Column {
-                when (p) {
-                    1 -> AllSubtitlesPanel(ctrl, Modifier.fillMaxHeight(0.6f), subStyle)
-                    2 -> VoicePanel(ctrl)
-                    3 -> BackgroundPanel(ctrl)
-                    4 -> SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
-                    5 -> WatermarkPanel(export.watermark, { onExportChange(export.copy(watermark = it)) }) { ctrl.watermarkPanel = false }
-                    6 -> BlurPanel(ctrl) { ctrl.blurPanel = false }
-                    else -> {
-                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Timeline(ctrl, busy, subStyle, thumbs) }
-                        val sel = ctrl.selected
-                        Column(Modifier.animateContentSize(tween(220))) {
-                            if (sel != null && ctrl.sizePanel) SizePanel(ctrl, sel, busy)
-                            ctrl.selectedSfx?.takeIf { ctrl.sfxGainPanel }?.let { c ->
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(t("עוצמה"), style = MaterialTheme.typography.labelLarge)
-                                    var g by remember(c.id) { mutableFloatStateOf(c.gain) }
-                                    Slider(
-                                        value = g,
-                                        onValueChange = { g = it },
-                                        onValueChangeFinished = { ctrl.setSelectedSfxGain(g) },
-                                        valueRange = 0f..2f,
-                                        modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                                    )
-                                    Text("\u200E${(g * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium)
-                                }
-                            }
-                            if (ctrl.splitPanel && ctrl.model.cues.isNotEmpty()) {
-                                Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(horizontal = 16.dp, vertical = 8.dp)) {
-                                    SplitControls(ctrl)
-                                }
-                            }
-                        }
-                        BottomBar(ctrl, sel, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current))
-                    }
-                }
+                if (p == 0) timelineArea() else panelArea(p, false)
             }
         }
+    }
     }
     }
 
