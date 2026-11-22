@@ -138,11 +138,11 @@ class LabsTest {
         check(dbNoise < -8) { "noise only %.1f dB lower".format(dbNoise) }
         check(dbTone > -3) { "tone lost %.1f dB".format(dbTone) }
 
-        // Loudness: a 1 kHz sine at -20 dBFS in stereo is -23 LUFS.
+        // Loudness (EBU Tech 3341): a 1 kHz sine peaking at -20 dBFS in both channels is -20 LUFS.
         val s1k = FloatArray(rate * 5) { 0.1f * sin(2 * PI * 1000 * it / rate).toFloat() }
         val lufs = Loudness.measure(s1k, rate, channels = 2)!!
         note("loudness of -20 dBFS 1 kHz: %.2f LUFS".format(lufs))
-        check(abs(lufs - (-23f)) < 1f) { "loudness $lufs" }
+        check(abs(lufs - (-20f)) < 0.5f) { "loudness $lufs" }
 
         // The voice chain with a big makeup gain never clips.
         val dsp = VoiceDsp(emptyList(), VoiceFx.NONE, true, denoise = true, gain = 8f)

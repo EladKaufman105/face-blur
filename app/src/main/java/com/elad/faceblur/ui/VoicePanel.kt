@@ -190,8 +190,8 @@ fun VoicePanel(ctrl: EditorController) {
                 CleanupRow(
                     t("עוצמה לרשתות"),
                     if (ctrl.loudnessBusy) t("מודד את העוצמה…")
-                    else if (a.loud) t("מיושר ל-%d LUFS (%+.1f dB), בלי עיוות").format(com.elad.faceblur.audio.Loudness.TARGET_LUFS.toInt(), a.gainDb)
-                    else t("מיישר ל-14- LUFS כמו בטיקטוק, אינסטגרם ויוטיוב"),
+                    else if (a.loud) t("מיושר לעוצמה של הרשתות (%s), בלי עיוות").format("\u2066%+.1f dB\u2069".format(a.gainDb))
+                    else t("כמו שטיקטוק, אינסטגרם ויוטיוב מצפים"),
                     a.loud, !ctrl.loudnessBusy,
                 ) { ctrl.setLoud(it) }
                 HorizontalDivider()
