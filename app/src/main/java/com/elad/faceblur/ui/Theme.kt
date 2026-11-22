@@ -28,9 +28,9 @@ import com.elad.faceblur.prefs.Palette
 import com.elad.faceblur.prefs.ThemeMode
 
 /**
- * ONIT's look. The logo is a power ("on") symbol: a ring of three timeline clips (coral, amber,
- * cyan) whose stroke is a playhead, on deep ink. The clip colors also mark what each tool works
- * on (see [Feature]), shapes are rounded like clips, and the type is Allo Hebrew.
+ * ONIT's look. The logo is a play button cut in two (video, edited): coral and deep violet on
+ * a light tile. The clip colors (coral, amber, cyan) mark what each tool works on (see [Feature]),
+ * shapes are rounded like clips, and the type is Allo Hebrew.
  */
 object Brand {
     val Coral = Color(0xFFFF4D6D)

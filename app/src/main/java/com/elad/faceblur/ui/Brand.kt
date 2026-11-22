@@ -43,6 +43,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import kotlin.math.sin
+import kotlin.math.cos
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -73,54 +79,73 @@ fun Modifier.pressScale(source: MutableInteractionSource): Modifier {
  */
 @Composable
 fun LogoMark(size: Dp, animate: Boolean = true) {
-    val parts = remember { List(4) { Animatable(if (animate) 0f else 1f) } }
+    // Coral and deep violet on a light tile. The play button appears, then the cut opens and the
+    // second piece slides a little.
+    val appear = remember { Animatable(if (animate) 0f else 1f) }
+    val cut = remember { Animatable(if (animate) 0f else 1f) }
     if (animate) {
         LaunchedEffect(Unit) {
-            parts.forEachIndexed { i, a ->
-                launch {
-                    delay(90L * i)
-                    a.animateTo(1f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessLow))
-                }
-            }
+            launch { appear.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessLow)) }
+            delay(260)
+            cut.animateTo(1f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMediumLow))
         }
     }
     Canvas(
         Modifier
             .size(size)
             .clip(RoundedCornerShape(size * 0.26f))
-            .background(Brush.linearGradient(listOf(Color(0xFF3A2A8C), Brand.Ink))),
+            .background(Brush.linearGradient(listOf(Color.White, Color(0xFFF1EFF6)))),
     ) {
-        // As the app icon (on a 72-unit square): a power ("on") symbol whose ring is three
-        // timeline clips and whose stroke is a playhead. Same in either language.
+        // As the app icon, on its visible 72 units: a play button cut in two by a slanted blade.
         val u = this.size.width / 72f
-        val c = Offset(36f * u, 40.66f * u)
-        val r = 19f * u
-        val clips = listOf(Triple(36f, 109.07f, Brand.Coral), Triple(143.47f, 216.53f, Brand.Amber), Triple(250.93f, 324f, Brand.Cyan))
-        clips.forEachIndexed { i, (a0, a1, color) ->
-            val p = parts[i].value.coerceIn(0f, 1.05f)
-            if (p > 0f) {
-                drawArc(
-                    color, startAngle = a0 - 90f, sweepAngle = (a1 - a0) * p, useCenter = false,
-                    topLeft = Offset(c.x - r, c.y - r), size = Size(2 * r, 2 * r),
-                    style = Stroke(width = 9f * u, cap = StrokeCap.Round),
-                )
-            }
-        }
-        val ph = parts[3].value.coerceIn(0f, 1f)
-        // The playhead drops into place.
-        val drop = (1f - ph) * -6f * u
-        drawRoundRect(Color.White.copy(alpha = ph), Offset(33.91f * u, 13.1f * u + drop), Size(4.18f * u, 27.56f * u), CornerRadius(2.09f * u))
-        val head = Path().apply {
-            moveTo(28.4f * u, 7.88f * u + drop)
-            lineTo(43.6f * u, 7.88f * u + drop)
-            lineTo(43.6f * u, 12.16f * u + drop)
-            lineTo(36f * u, 17.38f * u + drop)
-            lineTo(28.4f * u, 12.16f * u + drop)
+        val cx = 32.7f
+        val cy = 36f
+        val h = 40f
+        val w = h * 0.92f
+        val tri = Path().apply {
+            moveTo((cx - w * 0.4f) * u, (cy - h / 2) * u)
+            lineTo((cx + w * 0.6f) * u, cy * u)
+            lineTo((cx - w * 0.4f) * u, (cy + h / 2) * u)
             close()
         }
-        drawPath(head, Color.White.copy(alpha = ph))
+        val a = Math.toRadians(-22.0)
+        val dx = sin(a).toFloat()
+        val dy = -cos(a).toFloat()
+        val nx = cos(a).toFloat()
+        val ny = sin(a).toFloat()
+        val c = cut.value.coerceIn(0f, 1.2f)
+        // One side of the blade (side -1 or 1), [gap] away from it.
+        fun side(sign: Float): Path {
+            val l = 200f
+            val px = cx - 2f + nx * sign * 2.1f * c
+            val py = cy + ny * sign * 2.1f * c
+            return Path().apply {
+                moveTo((px + dx * l) * u, (py + dy * l) * u)
+                lineTo((px - dx * l) * u, (py - dy * l) * u)
+                lineTo((px - dx * l + nx * sign * l) * u, (py - dy * l + ny * sign * l) * u)
+                lineTo((px + dx * l + nx * sign * l) * u, (py + dy * l + ny * sign * l) * u)
+                close()
+            }
+        }
+        val round = Stroke(width = 7f * u, join = StrokeJoin.Round)
+        val k = appear.value.coerceIn(0f, 1.1f)
+        withTransform({ scale(k, k, Offset(cx * u, cy * u)) }) {
+            clipPath(side(-1f)) {
+                drawPath(tri, Brand.Coral)
+                drawPath(tri, Brand.Coral, style = round)
+            }
+            translate(1.6f * u * c, -2.2f * u * c) {
+                clipPath(side(1f)) {
+                    drawPath(tri, LogoInk)
+                    drawPath(tri, LogoInk, style = round)
+                }
+            }
+        }
     }
 }
+
+/** The logo's second piece: the app's deep violet. */
+private val LogoInk = Color(0xFF2B1E66)
 
 /** A card shaped like a clip: rounded, with a bar in its [accent] color along the leading edge. */
 @Composable

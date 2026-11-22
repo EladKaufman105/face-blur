@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- ONIT: a power ("on") symbol of three timeline clips, its stroke a playhead. -->
+<!-- ONIT: a play button cut in two by a slanted blade; the second piece slides a little
+     (video, edited). Monochrome. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="9.5" android:strokeLineCap="round" android:pathData="M65.76,42.82 A20,20 0 0 1 72.90,65.53" />
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="9.5" android:strokeLineCap="round" android:pathData="M65.91,75.07 A20,20 0 0 1 42.09,75.07" />
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="9.5" android:strokeLineCap="round" android:pathData="M35.10,65.53 A20,20 0 0 1 42.24,42.82" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M54.00,30.00 a2.2,2.2 0 0 1 2.2,2.2 v24.60 a2.2,2.2 0 0 1 -2.2,2.2 a2.2,2.2 0 0 1 -2.2,-2.2 v-24.60 a2.2,2.2 0 0 1 2.2,-2.2 z" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M47.5,24.5 h13 a1.5,1.5,0,0,1,1.5,1.5 v3 l-8,5.5 l-8,-5.5 v-3 a1.5,1.5,0,0,1,1.5,-1.5 z" />
+    <group android:name="left">
+        <clip-path android:pathData="M-28.2,-130.7 L121.7,240.2 L-63.8,315.1 L-213.6,-55.7 Z" />
+        <path android:fillColor="#FFFFFFFF" android:strokeColor="#FFFFFFFF" android:strokeWidth="7" android:strokeLineJoin="round" android:pathData="M35.98,34.00 L72.78,54.00 L35.98,74.00 Z" />
+    </group>
+    <group android:name="right" android:translateX="1.6" android:translateY="-2.2">
+        <clip-path android:pathData="M-24.3,-132.2 L125.6,238.7 L311.0,163.7 L161.2,-207.1 Z" />
+        <path android:fillColor="#FFFFFFFF" android:strokeColor="#FFFFFFFF" android:strokeWidth="7" android:strokeLineJoin="round" android:pathData="M35.98,34.00 L72.78,54.00 L35.98,74.00 Z" />
+    </group>
 </vector>
