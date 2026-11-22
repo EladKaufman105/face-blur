@@ -12,6 +12,8 @@ type Screen =
   | { name: 'editor'; file: File; analysis: Analysis; thumbs: (string | null)[]; ms: number; backend: string }
   | { name: 'export'; job: ExportJob; back: Extract<Screen, { name: 'editor' }> }
 
+declare const __BUILD__: string
+
 export const RELEASES = 'https://github.com/EladKaufman105/face-blur/releases/latest'
 
 export function App() {
@@ -56,7 +58,7 @@ export function App() {
         <Exporting job={screen.job} onBack={() => setScreen(screen.back)} onNew={() => setScreen({ name: 'home' })} />
       )}
       <footer class="footer">
-        {t('גרסת ווב')} · <a href={RELEASES} target="_blank" rel="noopener">{t('האפליקציה המלאה לאנדרואיד')}</a>
+        {t('גרסת ווב')} {__BUILD__} · <a href={RELEASES} target="_blank" rel="noopener">{t('האפליקציה המלאה לאנדרואיד')}</a>
       </footer>
     </div>
   )
