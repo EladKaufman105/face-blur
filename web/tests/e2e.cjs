@@ -49,6 +49,7 @@ const DEVICES = {
     // A sound effect at the playhead, and a text watermark.
     await p.click('.tabs button >> nth=2')
     await p.click('.sound .name >> nth=0')
+    await p.waitForSelector('.tl-sound', { timeout: 5000 })
     if (process.env.VOICE) {
       // A voice change (the chip by its English name is not shown: pick by position).
       await p.click(`.chip >> nth=${process.env.VOICE}`)

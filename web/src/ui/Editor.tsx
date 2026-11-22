@@ -3,13 +3,14 @@ import { t, duration } from '../i18n'
 import { BlurRenderer, ellipseFor, type Ellipse } from '../lib/renderer'
 import { DEFAULT_LOOK, frameAt, trackBox, type Analysis, type BlurMode, type Look } from '../lib/types'
 import type { ExportJob } from './Exporting'
-import { BackIcon, PauseIcon, PlayIcon, SaveIcon } from './icons'
+import { BackIcon, CloseIcon, PauseIcon, PlayIcon, SaveIcon } from './icons'
+import { Timeline } from './Timeline'
 import { SfxScheduler, type SfxClip } from '../lib/sfx'
 import { drawWatermark, watermarkOn, type Watermark } from '../lib/watermark'
 import { SoundTab, SubtitlesTab, WatermarkTab, loadWatermark } from './EditorTabs'
 import { Analyzing } from './Analyzing'
 import { bleepRanges, cueAt, DEFAULT_SUB_STYLE, drawSubtitle, maskCue, type Cue, type SubStyle, type Word } from '../lib/subtitles'
-import { makeBuffer } from '../lib/sfx'
+import { loadSfx, makeBuffer, SFX_NAMES } from '../lib/sfx'
 import type { VoiceFx } from '../lib/voice'
 import type { AudioMessage, AudioRequest } from '../workers/audio.worker'
 
@@ -61,6 +62,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [voice, setVoice] = useState<VoiceFx>('none')
   const [voiceAudio, setVoiceAudio] = useState<{ rate: number; data: Float32Array; buffer: AudioBuffer } | null>(null)
   const [voiceBusy, setVoiceBusy] = useState(false)
+  const [selectedSfx, setSelectedSfx] = useState<number | null>(null)
+  const [sfxLength, setSfxLength] = useState<Map<string, number>>(new Map())
   const [subStyle, setSubStyle] = useState<SubStyle>(() => {
     try { return { ...DEFAULT_SUB_STYLE, ...JSON.parse(localStorage.getItem('onit.substyle') ?? '{}') } } catch { return DEFAULT_SUB_STYLE }
   })
@@ -245,6 +248,17 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     })
   }
 
+  const updateSfx = (id: number, patch: Partial<SfxClip>) => setSfx((list) => list.map((c) => (c.id === id ? { ...c, ...patch } : c)).sort((a, b) => a.at - b.at))
+  const selectedClip = sfx.find((c) => c.id === selectedSfx) ?? null
+
+  // How long each placed sound is (for its block on the timeline).
+  useEffect(() => {
+    for (const c of sfx) {
+      if (sfxLength.has(c.sound)) continue
+      loadSfx(c.sound).then((b) => setSfxLength((m) => new Map(m).set(c.sound, b.duration))).catch(() => {})
+    }
+  }, [sfx])
+
   // A tap on a face in the video turns its blur off or on.
   const onTap = (e: MouseEvent) => {
     const c = canvas.current
@@ -300,27 +314,40 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         </div>
         <div class="screen" onClick={onTap}>
           <canvas ref={canvas} width={W} height={H} style={{ aspectRatio: `${W} / ${H}` }} />
-          <canvas ref={overlay} width={W} height={H} style={{ position: 'absolute', inset: 0, margin: 'auto', pointerEvents: 'none', aspectRatio: `${W} / ${H}`, maxWidth: '100%', maxHeight: '62dvh' }} />
+          <canvas ref={overlay} width={W} height={H} style={{ position: 'absolute', inset: 0, margin: 'auto', pointerEvents: 'none', aspectRatio: `${W} / ${H}`, maxWidth: '100%', maxHeight: '50dvh' }} />
           <video ref={video} src={url} playsInline preload="auto" />
         </div>
         <div class="transport">
           <button class="round" onClick={playPause} aria-label={playing ? t('השהה') : t('נגן')}>{playing ? <PauseIcon size={26} /> : <PlayIcon size={26} />}</button>
-          <div class="scrub">
-            <input
-              type="range"
-              min={0}
-              max={dur || 0}
-              step={0.001}
-              value={time}
-              onInput={(e) => {
-                const v = video.current
-                if (v) v.currentTime = Number((e.currentTarget as HTMLInputElement).value)
-              }}
-            />
-            {dur > 0 && sfx.map((c) => <span class="mark" style={{ left: `${(c.at / dur) * 100}%` }} />)}
-          </div>
           <span class="time">{duration(time)} / {duration(dur)}</span>
+          <div class="grow" />
+          {selectedClip && (
+            <div class="sel-sfx">
+              <strong>{t(SFX_NAMES.get(selectedClip.sound) ?? selectedClip.sound)}</strong>
+              <input type="range" min={0} max={2} step={0.05} value={selectedClip.gain} aria-label={t('עוצמה')} onInput={(e) => updateSfx(selectedClip.id, { gain: Number((e.currentTarget as HTMLInputElement).value) })} />
+              <span class="muted small" dir="ltr">{Math.round(selectedClip.gain * 100)}%</span>
+              <button class="btn ghost small-btn" onClick={() => updateSfx(selectedClip.id, { at: time })}>{t('העבר לכאן')}</button>
+              <button class="icon-btn" aria-label={t('מחק')} onClick={() => { setSfx(sfx.filter((c) => c.id !== selectedClip.id)); setSelectedSfx(null) }}><CloseIcon size={18} /></button>
+            </div>
+          )}
         </div>
+        <Timeline
+          file={file}
+          duration={dur}
+          time={time}
+          times={times}
+          tracks={tracks}
+          off={off}
+          cues={cues.map((c) => ({ ...c, text: maskCue(c, words, bleeped) }))}
+          sfx={sfx}
+          sfxLength={sfxLength}
+          selectedSfx={selectedSfx}
+          onScrub={(at) => { const v = video.current; if (v) v.currentTime = at }}
+          onScrubStart={() => video.current?.pause()}
+          onToggleTrack={toggle}
+          onSelectSfx={setSelectedSfx}
+          onMoveSfx={(id, at) => updateSfx(id, { at })}
+        />
       </div>
 
       <aside class="side">
