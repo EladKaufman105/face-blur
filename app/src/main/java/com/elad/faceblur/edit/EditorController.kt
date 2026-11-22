@@ -116,6 +116,11 @@ class EditorController(
             if (was == EditorPanel.VOICE) SfxPlayer.stop()
         }
     }
+    /** Closes whichever panel is open. */
+    fun closePanel() {
+        panel?.let { showPanel(it, false) }
+    }
+
     /** Panels beside the video (a tablet): one stays open, so finishing a task doesn't close it. */
     var sidePanels = false
 

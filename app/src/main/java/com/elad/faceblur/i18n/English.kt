@@ -164,6 +164,7 @@ internal val English: Map<String, String> = mapOf(
     "זוהר" to "Glow",
     "טיקטוק" to "TikTok",
     "ירוק קריוקי" to "Green karaoke",
+    "סגור את הפאנל" to "Close the panel",
     "כדאי לעבור על הכתוביות לפני פרסום: זיהוי דיבור ותרגום אוטומטיים עלולים לטעות." to "Check the subtitles before posting: automatic speech recognition and translation can make mistakes.",
     "כותרת" to "Headline",
     "כתב יד" to "Handwritten",

@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,6 +48,9 @@ fun isWide(): Boolean {
  */
 val LocalSidePanel = staticCompositionLocalOf { false }
 
+/** Hides the tablet's side panel (the video gets the room); a tool brings it back. */
+val LocalPanelHide = staticCompositionLocalOf<(() -> Unit)?> { null }
+
 /**
  * A panel's scrolling body: [phone] tall on a phone (where it takes the timeline's place under
  * the video), the rest of the height in the tablet's side panel. [upTo]: at most that tall.
@@ -67,6 +72,10 @@ fun PanelHeader(title: String, color: Color, onDone: () -> Unit, actions: @Compo
     ) {
         SectionTitle(title, color, Modifier.weight(1f))
         actions()
+        val hide = LocalPanelHide.current
+        if (side && hide != null) {
+            IconButton(onClick = hide) { Icon(Icons.Filled.Close, t("סגור את הפאנל")) }
+        }
         if (!side) {
             TextButton(onClick = onDone) {
                 Icon(Icons.Filled.Check, null, Modifier.size(18.dp))

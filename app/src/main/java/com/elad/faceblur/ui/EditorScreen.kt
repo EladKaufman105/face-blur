@@ -102,6 +102,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -296,12 +297,16 @@ fun EditorScreen(
     if (wide) {
         // A tablet: the tools in a column at the side, the timeline always in view, and a panel
         // always open beside the video (the tools switch it). Nothing opens over anything else.
+        // The panel can be closed (the video gets the room); any tool opens it again.
+        var hidden by rememberSaveable { mutableStateOf(false) }
+        LaunchedEffect(ctrl.panel) { if (ctrl.panel != null) hidden = false }
+        val hide = { hidden = true; ctrl.closePanel() }
         val shown = ctrl.panel ?: if (ctrl.session.subtitlesOnly) EditorPanel.SUBTITLES else EditorPanel.BLUR
         val a = ctrl.session.analysis
         val aspect = if (a.uprightH > 0) a.uprightW.toFloat() / a.uprightH else 16f / 9f
         val side: @Composable (Modifier) -> Unit = { modifier ->
             Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = modifier) {
-                CompositionLocalProvider(LocalSidePanel provides true) {
+                CompositionLocalProvider(LocalSidePanel provides true, LocalPanelHide provides hide) {
                     AnimatedContent(
                         shown,
                         transitionSpec = { fadeIn(tween(200, delayMillis = 60)) togetherWith fadeOut(tween(110)) },
@@ -315,8 +320,8 @@ fun EditorScreen(
             val fullW = maxWidth
             val fullH = maxHeight
             Row(Modifier.fillMaxSize()) {
-                BottomBar(ctrl, ctrl.selected, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current), vertical = true, current = shown)
-                if (aspect < 0.9f) {
+                BottomBar(ctrl, ctrl.selected, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current), vertical = true, current = if (hidden) null else shown)
+                if (aspect < 0.9f && !hidden) {
                     // A tall video gets the full height; the panel and the timeline share the
                     // rest of the width.
                     val videoW = minOf((fullH - 56.dp) * aspect, (fullW - rail) * 0.5f)
@@ -338,7 +343,13 @@ fun EditorScreen(
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
                         timelineArea(false)
                     }
-                    side(Modifier.width(((fullW - rail) * 0.34f).coerceIn(320.dp, 400.dp)).fillMaxHeight())
+                    AnimatedVisibility(
+                        visible = !hidden,
+                        enter = expandHorizontally(tween(260)) + fadeIn(tween(200, delayMillis = 60)),
+                        exit = shrinkHorizontally(tween(220)) + fadeOut(tween(120)),
+                    ) {
+                        side(Modifier.width(((fullW - rail) * 0.34f).coerceIn(320.dp, 400.dp)).fillMaxHeight())
+                    }
                 }
             }
         }
