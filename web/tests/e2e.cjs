@@ -1,19 +1,20 @@
 // Drives the built web app in Chromium: picks a sample video, waits for the editor, turns one
 // face off and on, switches the look, exports, and checks the result.
-// Run: node tests/e2e.cjs <url> <video> <out dir> [phone]
+// Run: node tests/e2e.cjs <url> <video> <out dir> [phone | tablet | tablet-portrait]
 const { chromium } = require('playwright')
 const fs = require('fs')
 const { execFileSync } = require('child_process')
-const [, , url, video, out, phone] = process.argv
+const [, , url, video, out, device] = process.argv
+const DEVICES = {
+  phone: { viewport: { width: 393, height: 852 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
+  tablet: { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1.5, isMobile: true, hasTouch: true },
+  'tablet-portrait': { viewport: { width: 800, height: 1280 }, deviceScaleFactor: 1.5, isMobile: true, hasTouch: true },
+}
 
 ;(async () => {
   fs.mkdirSync(out, { recursive: true })
   const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] })
-  const ctx = await b.newContext(
-    phone
-      ? { viewport: { width: 393, height: 852 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'he-IL' }
-      : { viewport: { width: 1366, height: 860 }, locale: 'he-IL' },
-  )
+  const ctx = await b.newContext({ ...(DEVICES[device] ?? { viewport: { width: 1366, height: 860 } }), locale: 'he-IL' })
   const p = await ctx.newPage()
   const logs = []
   p.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`))

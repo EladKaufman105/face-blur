@@ -199,7 +199,6 @@ button { cursor: pointer; }
 
 /* Editor */
 .editor { display: grid; gap: 16px; }
-@media (min-width: 960px) { .editor { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; } }
 .player { display: grid; gap: 10px; }
 .screen { position: relative; background: #000; border-radius: var(--radius); overflow: hidden; display: grid; place-items: center; touch-action: manipulation; }
 .screen canvas { max-width: 100%; max-height: 62dvh; display: block; }
@@ -227,13 +226,40 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .actions .btn { flex: 1; }
 .export-bar { position: sticky; bottom: 0; padding: 12px 0 calc(4px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--bg) 30%); }
 .export-bar .btn { width: 100%; }
-@media (min-width: 960px) { .export-bar { position: static; background: none; padding: 0; } }
 
 /* Done */
+.result { display: grid; gap: 14px; max-width: 760px; margin: 0 auto; width: 100%; }
 .result video { width: 100%; max-height: 60dvh; border-radius: var(--radius); background: #000; display: block; }
+.narrow { max-width: 640px; margin: 0 auto; width: 100%; }
+.analyze { display: grid; gap: 14px; max-width: 760px; margin: 0 auto; width: 100%; }
 .error { border-color: #c62828; }
 
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 .flip { display: inline-flex; }
 [dir='rtl'] .flip { transform: scaleX(-1); }
+
+/* Tablets and computers: the video takes the screen's height, the controls sit beside it and
+   scroll on their own. */
+@media (min-width: 840px) {
+  .app { padding-inline: 24px; }
+  .editor { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+  .player { position: sticky; top: 12px; }
+  .screen canvas, .screen canvas + canvas { max-height: calc(100dvh - 210px) !important; }
+  .editor > .side { max-height: calc(100dvh - 120px); overflow-y: auto; padding-inline-end: 2px; position: sticky; top: 12px; }
+  .export-bar { position: sticky; bottom: 0; padding: 10px 0 0; background: linear-gradient(transparent, var(--bg) 25%); }
+  .faces { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+}
+@media (min-width: 840px) and (orientation: landscape) {
+  .analyze { max-width: none; grid-template-columns: minmax(0, 1fr) 360px; align-items: center; }
+  .analyze .stage { max-height: calc(100dvh - 170px); }
+  .result { max-width: none; grid-template-columns: minmax(0, 1fr) 340px; align-items: center; }
+  .result video { max-height: calc(100dvh - 150px); }
+  .result .actions { flex-direction: column; }
+  .top { padding-bottom: 12px; }
+}
+/* Fingers, not a mouse: bigger slider thumbs and targets. */
+@media (pointer: coarse) {
+  input[type='range'] { height: 40px; }
+  .seg button { padding: 12px 6px; }
+}

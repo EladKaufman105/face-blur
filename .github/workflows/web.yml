@@ -32,7 +32,7 @@ jobs:
       - name: Build
         working-directory: web
         run: |
-          pip install --quiet onnx numpy
+          pip install --quiet onnx numpy onnxconverter-common
           npm ci
           npm run build
       - name: Test in Chromium (face detection on the CPU path, editor, export)
@@ -46,6 +46,7 @@ jobs:
           sleep 3
           node tests/e2e.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/desktop
           node tests/e2e.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/phone phone
+          node tests/e2e.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/classroom.mp4 /tmp/web-results/tablet tablet
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -35,7 +35,7 @@ export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () =
 
   if (error) {
     return (
-      <main class="side" style="max-width:640px;margin:0 auto;width:100%">
+      <main class="side narrow">
         <div class="card error">
           <strong>{t('משהו השתבש')}</strong>
           <p class="small" style="margin:6px 0 12px">{error}</p>
@@ -50,7 +50,7 @@ export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () =
     const elapsed = (performance.now() - started) / 1000
     const left = progress > 0.05 ? (elapsed / progress) * (1 - progress) : null
     return (
-      <main class="side" style="max-width:640px;margin:0 auto;width:100%">
+      <main class="side narrow">
         <div class="card">
           <div class="row">
             <div class="face-icon"><SaveIcon /></div>
@@ -71,7 +71,9 @@ export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () =
   }
 
   return (
-    <main class="side result" style="max-width:760px;margin:0 auto;width:100%">
+    <main class="result">
+      <video src={url} controls playsInline />
+      <div class="side">
       <div class="row" style="gap:10px">
         <div class="face-icon"><CheckIcon /></div>
         <div class="grow">
@@ -79,7 +81,6 @@ export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () =
           <div class="small muted">{name} · {(result.blob.size / 1e6).toFixed(1)} MB</div>
         </div>
       </div>
-      <video src={url} controls playsInline />
       <div class="actions">
         <a class="btn primary" href={url} download={name} style="text-decoration:none"><SaveIcon /> {t('שמור')}</a>
         {canShare && (
@@ -89,6 +90,7 @@ export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () =
       <div class="actions">
         <button class="btn ghost" onClick={onBack}><span class="flip"><BackIcon /></span> {t('חזרה לעריכה')}</button>
         <button class="btn ghost" onClick={onNew}>{t('סרטון חדש')}</button>
+      </div>
       </div>
     </main>
   )

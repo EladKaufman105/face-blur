@@ -24,10 +24,12 @@ CI runs an end-to-end test on an Android emulator over the clips on the `test-me
 `web/` is ONIT in the browser (phone or computer), with the same promise: the video never leaves
 the device. It finds faces with the same RetinaFace model (ONNX Runtime Web: WebGPU when the
 browser has it, checked against the CPU on the first frames with faces, else WebAssembly),
-builds tracks with a port of the app's offline tracker, previews the blur live (WebGL2) and
+adapts how often and at what size it detects to the device's speed, builds tracks with a port
+of the app's offline tracker, previews the blur live (WebGL2) and
 exports an MP4 with WebCodecs (Mediabunny), keeping the sound. Faces can be turned off and on
 one by one; the look (blur, pixels, cover), strength and size match the app.
 
-Build: `cd web && npm ci && npm run build` (needs python3 with onnx and numpy: the face model's
-float16 weights are widened to float32 for ONNX Runtime). The "Web app" workflow tests it in
+Build: `cd web && npm ci && npm run build` (needs python3 with onnx, numpy and
+onnxconverter-common: the face model is made in float32 for the CPU and float16 for GPUs with
+half precision). Add `?debug=1` to the address to see where the time goes while it analyzes. The "Web app" workflow tests it in
 Chromium on a sample clip and publishes it to GitHub Pages.

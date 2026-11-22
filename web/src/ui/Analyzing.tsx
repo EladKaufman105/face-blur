@@ -17,6 +17,8 @@ export function Analyzing({ file, sensitive, onDone, onError, onCancel }: Props)
   const [progress, setProgress] = useState({ done: 0, total: 1, faces: 0 })
   const [ready, setReady] = useState(false)
   const [backend, setBackend] = useState('')
+  const [stats, setStats] = useState('')
+  const debug = new URLSearchParams(location.search).has('debug')
   const [aspect, setAspect] = useState(16 / 9)
   const started = useRef(performance.now())
 
@@ -35,6 +37,7 @@ export function Analyzing({ file, sensitive, onDone, onError, onCancel }: Props)
       } else if (m.type === 'progress') {
         setProgress({ done: m.done, total: m.total, faces: m.faces })
         setBackend(m.backend)
+        setStats(m.stats)
         const c = canvas.current
         if (m.preview && c) {
           c.width = m.preview.width
@@ -85,7 +88,7 @@ export function Analyzing({ file, sensitive, onDone, onError, onCancel }: Props)
   const left = progress.done > 10 && rate > 0 ? (progress.total - progress.done) / rate : null
 
   return (
-    <main class="side" style="max-width:760px;margin:0 auto;width:100%">
+    <main class="analyze">
       <div class="stage" style={{ aspectRatio: String(aspect) }}>
         <canvas ref={canvas} />
         <div class="pill"><span class="dot" />{t('מזהה פנים')}{progress.faces > 0 ? ` · ${progress.faces}` : ''}</div>
@@ -101,6 +104,7 @@ export function Analyzing({ file, sensitive, onDone, onError, onCancel }: Props)
         </div>
         <div class="progress" style="margin:14px 0 12px"><div style={{ width: `${ready ? pct : 2}%` }} /></div>
         {backend === 'wasm' && <p class="small" style="margin:0 0 10px;color:var(--primary)">{t('הדפדפן הזה לא נותן גישה למעבד הגרפי (WebGPU), אז הזיהוי איטי. ב-Chrome או Safari מעודכנים זה מהיר הרבה יותר.')}</p>}
+        {debug && stats && <p class="small muted" dir="ltr" style="margin:0 0 10px;font-family:monospace">{stats}</p>}
         <div class="row">
           <div class="small muted grow">{t('בטלפון: השאר את המסך פתוח עד הסיום.')}</div>
           <button class="btn tonal" onClick={onCancel}>{t('ביטול')}</button>

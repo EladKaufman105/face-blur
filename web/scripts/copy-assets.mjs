@@ -11,12 +11,11 @@ const copy = (from, to) => {
   mkdirSync(dirname(to), { recursive: true })
   cpSync(from, to, { recursive: true })
 }
-// The face model, with its float16 weights widened to float32 (ONNX Runtime doesn't mix them).
-const model = join(pub, 'models', 'retinaface_mv2.onnx')
+// The face model in float32 and float16 (see scripts/model_web.py).
+const model = join(pub, 'models', 'retinaface_fp16.onnx')
 const src = join(assets, 'retinaface_mv2.onnx')
-if (!existsSync(model) || statSync(model).mtimeMs < statSync(src).mtimeMs) {
-  mkdirSync(dirname(model), { recursive: true })
-  execFileSync('python3', [join(web, 'scripts', 'model_fp32.py'), src, model], { stdio: 'inherit' })
+if (!existsSync(model) || statSync(model).mtimeMs < statSync(src).mtimeMs || !existsSync(join(pub, 'models', 'retinaface_fp32.onnx'))) {
+  execFileSync('python3', [join(web, 'scripts', 'model_web.py'), src, join(pub, 'models')], { stdio: 'inherit' })
 }
 copy(join(assets, 'fonts', 'allo_hebrew.ttf'), join(pub, 'fonts', 'allo_hebrew.ttf'))
 copy(join(assets, 'sfx'), join(pub, 'sfx'))
