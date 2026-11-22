@@ -76,6 +76,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -245,7 +246,7 @@ fun MainScreen(vm: MainViewModel) {
                                     GradientButton(
                                         t("טשטש פנים"),
                                         { vm.review = true; vm.start() },
-                                        Modifier.fillMaxWidth(),
+                                        Modifier.fillMaxWidth().testTag(Tags.BLUR_FACES),
                                         icon = AppIcons.Face,
                                     )
                                     Text(
@@ -253,7 +254,7 @@ fun MainScreen(vm: MainViewModel) {
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
-                                    TextButton(onClick = { saveSheet = true }, modifier = Modifier.fillMaxWidth()) {
+                                    TextButton(onClick = { saveSheet = true }, modifier = Modifier.fillMaxWidth().testTag(Tags.BLUR_AND_SAVE)) {
                                         Text(t("או: טשטש ושמור ישר, בלי עורך"))
                                     }
                                 }
@@ -397,7 +398,7 @@ private fun HeroCard(onPick: () -> Unit) {
                 color = Color.White.copy(alpha = 0.72f),
             )
             Spacer(Modifier.height(20.dp))
-            GradientButton(t("בחר סרטון"), onPick, Modifier.fillMaxWidth(), icon = Icons.Filled.Add)
+            GradientButton(t("בחר סרטון"), onPick, Modifier.fillMaxWidth().testTag(Tags.PICK_VIDEO), icon = Icons.Filled.Add)
         }
     }
 }
@@ -475,7 +476,7 @@ private fun VideoCard(info: VideoInfo, onReplace: (() -> Unit)?) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(info.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        InfoChip("\u200E${info.displayWidth}×${info.displayHeight}")
+                        InfoChip(ltr("${info.displayWidth}×${info.displayHeight}"))
                         InfoChip(formatDuration(info.durationMs))
                         InfoChip("${info.fps.roundToInt()}fps")
                         if (info.isHdr) InfoChip("HDR", Brand.Amber.copy(alpha = 0.22f), Feature.SUBTITLES.tint)
@@ -575,7 +576,7 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
                             style = MaterialTheme.typography.titleSmall,
                         )
                         Text(
-                            t("עברו %s").format(clockText(android.os.SystemClock.elapsedRealtime() - eta.startedAt)) + " · " +
+                            t("עברו %s").format(ltr(mmss(android.os.SystemClock.elapsedRealtime() - eta.startedAt))) + " · " +
                                 (etaText(left) ?: t("מחשב זמן משוער…")),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -583,8 +584,8 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
                     }
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        "‎${(overall * 100).roundToInt()}%",
-                        style = MaterialTheme.typography.headlineMedium,
+                        ltr("${(overall * 100).roundToInt()}%"),
+                        style = MaterialTheme.typography.headlineMedium.tnum(),
                         color = feature.tint,
                     )
                 }
@@ -712,12 +713,6 @@ private fun LiveFrame(frame: android.graphics.Bitmap?, faces: List<com.elad.face
             }
         }
     }
-}
-
-/** "1:05" */
-private fun clockText(ms: Long): String {
-    val s = (ms / 1000).coerceAtLeast(0)
-    return "‎%d:%02d".format(s / 60, s % 60)
 }
 
 @Composable

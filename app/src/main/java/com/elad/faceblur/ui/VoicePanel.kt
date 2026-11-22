@@ -196,7 +196,7 @@ fun VoicePanel(ctrl: EditorController) {
                 CleanupRow(
                     t("עוצמה לרשתות"),
                     if (ctrl.loudnessBusy) t("מודד את העוצמה…")
-                    else if (a.loud) t("מיושר לעוצמה של הרשתות (%s), בלי עיוות").format("\u2066%+.1f dB\u2069".format(a.gainDb))
+                    else if (a.loud) t("מיושר לעוצמה של הרשתות (%s), בלי עיוות").format(ltr("%+.1f dB".format(a.gainDb)))
                     else t("כמו שטיקטוק, אינסטגרם ויוטיוב מצפים"),
                     a.loud, !ctrl.loudnessBusy,
                 ) { ctrl.setLoud(it) }

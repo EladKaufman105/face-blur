@@ -177,8 +177,8 @@ private fun ValueSlider(value: Float, range: ClosedFloatingPointRange<Float>, on
     Row(verticalAlignment = Alignment.CenterVertically) {
         Slider(v, { v = it }, Modifier.weight(1f), valueRange = range, onValueChangeFinished = { onDone(v) })
         Text(
-            "‎${(v * 100).roundToInt()}%",
-            style = MaterialTheme.typography.labelMedium,
+            ltr("${(v * 100).roundToInt()}%"),
+            style = MaterialTheme.typography.labelMedium.tnum(),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.width(44.dp).padding(start = 6.dp),
         )

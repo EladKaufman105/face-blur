@@ -24,7 +24,7 @@ class AppPrefs(context: Context) {
 
     var lang by mutableStateOf(enumOr(sp.getString("lang", null), Lang.HE))
         private set
-    var themeMode by mutableStateOf(enumOr(sp.getString("theme_mode", null), ThemeMode.SYSTEM))
+    var themeMode by mutableStateOf(enumOr(sp.getString("theme_mode", null), ThemeMode.DARK))
         private set
     var palette by mutableStateOf(enumOr(sp.getString("palette", null), Palette.ONIT))
         private set

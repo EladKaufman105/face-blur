@@ -69,7 +69,7 @@ internal fun subsStageText(stage: SubtitleEngine.Stage, p: Float): String = when
     SubtitleEngine.Stage.TRANSLATE -> t("מתרגם… %d%%").format((p * 100).roundToInt())
 }
 
-private fun mb(bytes: Long) = "‎%d MB".format((bytes / 1e6).roundToInt())
+private fun mb(bytes: Long) = ltr("%d MB".format((bytes / 1e6).roundToInt()))
 
 /**
  * Subtitles: pick the speech model (downloaded once), make the subtitles on the device, add one
@@ -140,7 +140,7 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
             }
 
             if (count > 0) {
-                SectionTitle(t("עריכה"))
+                SubsectionTitle(t("עריכה"))
                 Box(Modifier.padding(horizontal = 20.dp)) { SplitControls(ctrl) }
                 ActionRow(AppIcons.ListLines, t("כל הכתוביות"), t("לתקן את הטקסט של כולן ברשימה אחת")) {
                     ctrl.subsSheet = false
@@ -168,7 +168,7 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
 
             if (models != null) {
                 if (count > 0) {
-                    SectionTitle(t("יצירה מחדש"))
+                    SubsectionTitle(t("יצירה מחדש"))
                     if (!createOpen) {
                         ActionRow(AppIcons.Subtitles, t("צור כתוביות מחדש"), t("מזהה את הדיבור שוב ומחליף את הכתוביות"), enabled = !busy) { createOpen = true }
                     }
@@ -235,7 +235,7 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
                 }
             }
 
-            SectionTitle(t("בייצוא"))
+            SubsectionTitle(t("בייצוא"))
             Box(Modifier.padding(horizontal = 20.dp)) { SubtitleExportOptions(export, onExportChange, ctrl.hasTranslation) }
         }
       }
@@ -261,7 +261,7 @@ private fun SpeakersRow(ctrl: EditorController, busy: Boolean) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 FilterChip(selected = count == null, onClick = { count = null }, label = { Text(t("אוטומטי")) })
                 for (n in 2..Speakers.MAX) {
-                    FilterChip(selected = count == n, onClick = { count = n }, label = { Text("\u200E$n") })
+                    FilterChip(selected = count == n, onClick = { count = n }, label = { Text(ltr("$n")) })
                 }
             }
             Button(
@@ -273,8 +273,9 @@ private fun SpeakersRow(ctrl: EditorController, busy: Boolean) {
     }
 }
 
+/** A group inside a panel: a divider, then its name in the accent color. */
 @Composable
-private fun SectionTitle(text: String) {
+private fun SubsectionTitle(text: String) {
     Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
         HorizontalDivider()
         Text(

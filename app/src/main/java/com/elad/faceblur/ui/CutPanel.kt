@@ -69,7 +69,7 @@ fun CutPanel(ctrl: EditorController) {
                     if (ctrl.cutCount == 0) {
                         t("עדיין לא נחתך כלום. חיתוך לא מוחק מהמקור, ואפשר להחזיר כל קטע.")
                     } else {
-                        t("נחתכו %d קטעים · הסרטון %s במקום %s").format(ctrl.cutCount, mmss(totalMs - ctrl.cutTotalMs), mmss(totalMs))
+                        t("נחתכו %d קטעים · הסרטון %s במקום %s").format(ctrl.cutCount, ltr(mmss(totalMs - ctrl.cutTotalMs + 500)), ltr(mmss(totalMs + 500)))
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -78,7 +78,7 @@ fun CutPanel(ctrl: EditorController) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(t("שתיקה מעל"), style = MaterialTheme.typography.bodySmall)
                     for (ms in listOf(500L, 800L, 1200L)) {
-                        FilterChip(selected = pause == ms, onClick = { pause = ms }, label = { Text("‎%.1f".format(ms / 1000f) + t(" שנ׳")) })
+                        FilterChip(selected = pause == ms, onClick = { pause = ms }, label = { Text(ltr("%.1f".format(ms / 1000f)) + t(" שנ׳")) })
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -168,7 +168,3 @@ private fun CutCueRow(ctrl: EditorController, c: Cue) {
     }
 }
 
-private fun mmss(ms: Long): String {
-    val s = (ms.coerceAtLeast(0) + 500) / 1000
-    return "‎%d:%02d".format(s / 60, s % 60)
-}

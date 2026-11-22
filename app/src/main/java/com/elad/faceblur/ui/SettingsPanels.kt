@@ -160,8 +160,7 @@ internal fun Caption(text: String) {
 }
 
 private fun sizeText(bytes: Long): String =
-    // LRM: keep "2 MB" in that order inside Hebrew text.
-    "\u200E" + if (bytes >= 1_000_000_000L) "%.1f GB".format(bytes / 1e9) else "%d MB".format((bytes / 1e6).roundToInt().coerceAtLeast(1))
+    ltr(if (bytes >= 1_000_000_000L) "%.1f GB".format(bytes / 1e9) else "%d MB".format((bytes / 1e6).roundToInt().coerceAtLeast(1)))
 
 /** Resolution, frame rate, quality / compression and codec of the exported video. */
 @Composable
@@ -203,7 +202,7 @@ fun ExportOptionsPanel(
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Caption(t("קצב פריימים"))
             Chips(
-                listOf(0 to t("מקור (%s)").format("\u200E${info.fps.roundToInt()} fps\u200E")) + ExportOptions.fpsChoices(info).map { it to "\u200E$it fps" },
+                listOf(0 to t("מקור (%s)").format(ltr("${info.fps.roundToInt()} fps"))) + ExportOptions.fpsChoices(info).map { it to ltr("$it fps") },
                 if (options.fps in ExportOptions.fpsChoices(info)) options.fps else 0,
             ) { onChange(options.copy(fps = it)) }
         }
@@ -278,7 +277,7 @@ fun ExportOptionsPanel(
         val (w, h) = options.outputSize(info)
         Text(
             t("יוצא: %s · %s · גודל משוער %s").format(
-                "\u200E${w}×$h", "\u200E${options.outputFps(info).roundToInt()} fps", sizeText(options.estimatedBytes(info)),
+                ltr("${w}×$h"), ltr("${options.outputFps(info).roundToInt()} fps"), sizeText(options.estimatedBytes(info)),
             ),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
@@ -345,7 +344,7 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Caption(t("מצב תצוגה"))
                 Segments(
-                    listOf(ThemeMode.SYSTEM to t("לפי המכשיר"), ThemeMode.LIGHT to t("בהיר"), ThemeMode.DARK to t("כהה")),
+                    listOf(ThemeMode.DARK to t("כהה"), ThemeMode.LIGHT to t("בהיר"), ThemeMode.SYSTEM to t("לפי המכשיר")),
                     prefs.themeMode,
                 ) { prefs.updateThemeMode(it) }
             }

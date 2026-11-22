@@ -37,7 +37,7 @@ internal fun FontAxes(font: SubFont, weight: Int, round: Int, onChange: (weight:
         }
         if (font.rounded) {
             Caption(t("עיגול"))
-            StepSlider(round.toFloat(), 0f..100f, 19, { "‎${it.roundToInt()}%" }) { onChange(w, it.roundToInt()) }
+            StepSlider(round.toFloat(), 0f..100f, 19, { ltr("${it.roundToInt()}%") }) { onChange(w, it.roundToInt()) }
         }
     }
 }

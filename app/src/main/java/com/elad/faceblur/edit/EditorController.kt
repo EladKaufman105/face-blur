@@ -2,6 +2,7 @@ package com.elad.faceblur.edit
 
 import com.elad.faceblur.effects.BlurMode
 import com.elad.faceblur.i18n.t
+import com.elad.faceblur.ui.ltr
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -721,7 +722,7 @@ class EditorController(
                 } else {
                     val g = com.elad.faceblur.audio.Loudness.gainDb(lufs)
                     changeAudio(audio.copy(loud = true, gainDb = if (g == 0f) 0.01f else g))
-                    notice = t("העוצמה: %.1f LUFS ← %.1f LUFS").format(lufs, lufs + g)
+                    notice = t("העוצמה: %s ← %s").format(ltr("%.1f LUFS".format(lufs)), ltr("%.1f LUFS".format(lufs + g)))
                 }
             } finally {
                 loudnessBusy = false

@@ -102,7 +102,7 @@ fun SplitControls(ctrl: EditorController) {
                 FilterChip(
                     selected = ctrl.split == rule,
                     onClick = { ctrl.changeSplit(rule) },
-                    label = { Text(if (byChars) t("עד %d").format(n) else "\u200E$n") },
+                    label = { Text(if (byChars) t("עד %d").format(n) else ltr("$n")) },
                 )
             }
             FilterChip(
@@ -112,11 +112,6 @@ fun SplitControls(ctrl: EditorController) {
             )
         }
     }
-}
-
-private fun stamp(ms: Long): String {
-    val s = ms / 1000
-    return "%d:%02d.%d".format(s / 60, s % 60, (ms % 1000) / 100)
 }
 
 /**
@@ -221,10 +216,10 @@ private fun CueRow(ctrl: EditorController, c: Cue, current: Boolean, translated:
                 .padding(vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("‎" + stamp(c.startMs), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(ltr(timecode(c.startMs * 1000)), style = MaterialTheme.typography.labelMedium.tnum(), color = MaterialTheme.colorScheme.primary)
             Text(
-                "‎%.1fs".format((c.endMs - c.startMs) / 1000f),
-                style = MaterialTheme.typography.labelSmall,
+                ltr("%.1fs".format((c.endMs - c.startMs) / 1000f)),
+                style = MaterialTheme.typography.labelSmall.tnum(),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

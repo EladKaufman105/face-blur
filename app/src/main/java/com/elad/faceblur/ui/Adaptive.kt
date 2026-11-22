@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.elad.faceblur.i18n.t
@@ -67,19 +68,19 @@ fun panelBody(phone: Dp, upTo: Boolean = false): Modifier = when {
 fun PanelHeader(title: String, color: Color, onDone: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
     val side = LocalSidePanel.current
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 16.dp, end = if (side) 12.dp else 6.dp),
+        Modifier.fillMaxWidth().heightIn(min = MinTouch).padding(start = Space.L, end = if (side) Space.M else Space.XS),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SectionTitle(title, color, Modifier.weight(1f))
         actions()
         val hide = LocalPanelHide.current
         if (side && hide != null) {
-            IconButton(onClick = hide) { Icon(Icons.Filled.Close, t("סגור את הפאנל")) }
+            IconButton(onClick = hide, modifier = Modifier.testTag(Tags.PANEL_CLOSE)) { Icon(Icons.Filled.Close, t("סגור את הפאנל")) }
         }
         if (!side) {
-            TextButton(onClick = onDone) {
+            TextButton(onClick = onDone, modifier = Modifier.testTag(Tags.PANEL_DONE)) {
                 Icon(Icons.Filled.Check, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(Space.XS))
                 Text(t("סיום"))
             }
         }

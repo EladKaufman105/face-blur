@@ -123,7 +123,7 @@ fun ClipCard(
     accent: Color? = null,
     onClick: (() -> Unit)? = null,
     color: Color = MaterialTheme.colorScheme.surfaceContainerLow,
-    contentPadding: Dp = 18.dp,
+    contentPadding: Dp = Space.L,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val shape = MaterialTheme.shapes.large
@@ -136,7 +136,7 @@ fun ClipCard(
                 .drawBehind {
                     if (accent != null) {
                         val w = 5.dp.toPx()
-                        val inset = 18.dp.toPx()
+                        val inset = Space.L.toPx()
                         val x = if (layoutDirection == LayoutDirection.Rtl) size.width - w else 0f
                         drawRoundRect(accent, Offset(x, inset), Size(w, (size.height - 2 * inset).coerceAtLeast(w)), CornerRadius(w / 2))
                     }
@@ -195,10 +195,10 @@ fun GradientButton(
             Modifier.background(Brush.horizontalGradient(if (enabled) colors else colors.map { it.copy(alpha = 0.35f) })),
             contentAlignment = Alignment.Center,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(horizontal = 20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(horizontal = Space.XL)) {
                 if (icon != null) {
                     Icon(icon, null, tint = Brand.Ink, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(Space.S))
                 }
                 Text(text, style = MaterialTheme.typography.titleMedium, color = Brand.Ink)
             }
@@ -243,7 +243,7 @@ fun EnterUp(index: Int = 0, content: @Composable () -> Unit) {
 fun SectionTitle(text: String, color: Color = MaterialTheme.colorScheme.primary, modifier: Modifier = Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(width = 14.dp, height = 6.dp).clip(RoundedCornerShape(3.dp)).background(color))
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(Space.S))
         Text(text, style = MaterialTheme.typography.titleMedium)
     }
 }
@@ -294,7 +294,7 @@ private val DemoLanes = listOf(
 fun FeatureLabel(text: String, color: Color, textColor: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(width = 10.dp, height = 6.dp).clip(RoundedCornerShape(3.dp)).background(color))
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(Space.S))
         Text(text, style = MaterialTheme.typography.labelMedium, color = textColor)
     }
 }
@@ -304,10 +304,10 @@ fun FeatureLabel(text: String, color: Color, textColor: Color = MaterialTheme.co
 fun InfoChip(text: String, color: Color = MaterialTheme.colorScheme.surfaceContainerHighest, textColor: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
     Box(
         Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(Radius.Control))
             .background(color)
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-    ) { Text(text, style = MaterialTheme.typography.labelMedium, color = textColor) }
+            .padding(horizontal = Space.S, vertical = Space.XS),
+    ) { Text(text, style = MaterialTheme.typography.labelMedium.tnum(), color = textColor) }
 }
 
 /** A check in a gradient circle that pops in once. */
@@ -345,13 +345,13 @@ fun AccentOutlinedButton(
         interactionSource = source,
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            Modifier.fillMaxWidth().padding(horizontal = Space.L),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
             if (icon != null) {
                 Icon(icon, null, tint = accent, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(Space.S))
             }
             Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         }

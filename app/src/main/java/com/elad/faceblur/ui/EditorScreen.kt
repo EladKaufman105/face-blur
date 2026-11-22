@@ -129,6 +129,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontFamily
@@ -240,7 +241,7 @@ fun EditorScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Everything is saved in the project as it's edited.
-            IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, t("חזרה")) }
+            IconButton(onClick = onClose, modifier = Modifier.testTag(Tags.BACK)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, t("חזרה")) }
             Text(
                 t("עריכה"),
                 style = MaterialTheme.typography.titleLarge,
@@ -250,7 +251,7 @@ fun EditorScreen(
             // Something selected and the side panel closed: its properties are one tap away
             // (the panel never opens by itself, so nothing on screen jumps).
             if (hidden && selecting && isWide()) {
-                FilledTonalButton(onClick = { hidden = false }, modifier = Modifier.padding(end = 8.dp)) {
+                FilledTonalButton(onClick = { hidden = false }, modifier = Modifier.padding(end = Space.S).testTag(Tags.PROPERTIES)) {
                     Icon(AppIcons.Tune, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(t("מאפיינים"))
@@ -262,7 +263,7 @@ fun EditorScreen(
                 enabled = !busy,
                 icon = EditorIcons.ExportIcon,
                 height = 40.dp,
-                modifier = Modifier.padding(end = 8.dp),
+                modifier = Modifier.padding(end = Space.S).testTag(Tags.EXPORT),
             )
         }
     }
@@ -287,7 +288,7 @@ fun EditorScreen(
                         valueRange = 0f..2f,
                         modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
                     )
-                    Text("\u200E${(g * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium)
+                    Text(ltr("${(g * 100).roundToInt()}%"), style = MaterialTheme.typography.labelMedium.tnum())
                 }
             }
             if (ctrl.splitPanel && ctrl.model.cues.isNotEmpty()) {
@@ -910,12 +911,14 @@ private suspend fun PointerInputScope.videoGestures(ctrl: EditorController, subH
 private fun Transport(ctrl: EditorController, busy: Boolean) {
     Box(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 8.dp)) {
         Text(
+            // Played / total, left to right as in any player (also in Hebrew), digits of one width.
             buildAnnotatedString {
-                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)) { append(clock(ctrl.timeOf(ctrl.frame))) }
-                append(" / ${clock(ctrl.timeOf(ctrl.frameCount - 1))}")
+                append("\u2066")
+                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)) { append(timecode(ctrl.timeOf(ctrl.frame))) }
+                append(" / ${timecode(ctrl.timeOf(ctrl.frameCount - 1))}")
+                append("\u2069")
             },
-            style = MaterialTheme.typography.labelMedium,
-            fontFamily = FontFamily.Monospace,
+            style = MaterialTheme.typography.labelMedium.tnum(),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterStart),
         )
@@ -929,7 +932,7 @@ private fun Transport(ctrl: EditorController, busy: Boolean) {
                 color = if (busy) MaterialTheme.colorScheme.surfaceContainerHigh else Brand.Coral,
                 contentColor = Brand.Ink,
                 interactionSource = playSource,
-                modifier = Modifier.size(44.dp).pressScale(playSource),
+                modifier = Modifier.size(44.dp).pressScale(playSource).testTag(Tags.PLAY),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     // The icon turns as it changes between play and pause.
@@ -959,14 +962,9 @@ private fun Transport(ctrl: EditorController, busy: Boolean) {
                     )
                 }
             }
-            IconButton(onClick = ctrl::undo, enabled = ctrl.model.canUndo && !busy) { Icon(EditorIcons.Undo, t("בטל")) }
+            IconButton(onClick = ctrl::undo, enabled = ctrl.model.canUndo && !busy, modifier = Modifier.testTag(Tags.UNDO)) { Icon(EditorIcons.Undo, t("בטל")) }
         }
     }
-}
-
-private fun clock(us: Long): String {
-    val tenths = (us / 100_000L).toInt()
-    return "%d:%02d.%d".format(tenths / 600, (tenths / 10) % 60, tenths % 10)
 }
 
 // ---------------------------------------------------------------------- timeline
@@ -1160,7 +1158,7 @@ private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle
             drawLine(colors.outline, Offset(x, rulerH - 5.dp.toPx()), Offset(x, rulerH), 1.dp.toPx())
             val half = g.x(((s + major / 2) * 1e6f).toLong())
             if (half < vx1) drawCircle(colors.outline, 1.2.dp.toPx(), Offset(half, rulerH - 2.dp.toPx()))
-            drawContext.canvas.nativeCanvas.drawText(clockShort(s), x + 3.dp.toPx(), rulerH - 6.dp.toPx(), textPaint)
+            drawContext.canvas.nativeCanvas.drawText(rulerLabel(s), x + 3.dp.toPx(), rulerH - 6.dp.toPx(), textPaint)
             s += major
         }
 
@@ -1336,11 +1334,6 @@ private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle
     }
 }
 
-private fun clockShort(sec: Float): String {
-    val whole = floor(sec).toInt()
-    return if (sec - whole > 0.01f) "%d:%02d.5".format(whole / 60, whole % 60) else "%d:%02d".format(whole / 60, whole % 60)
-}
-
 /**
  * Drag: scrub (with fling) or scroll the rows; drag a selected clip's edge: trim it;
  * pinch: zoom; tap: select a clip (or deselect).
@@ -1470,9 +1463,8 @@ private fun SizePanel(ctrl: EditorController, t: EditTrack, busy: Boolean) {
             modifier = Modifier.weight(1f).padding(horizontal = 10.dp).height(36.dp),
         )
         Text(
-            "×%.1f".format(t.scale),
-            style = MaterialTheme.typography.labelMedium,
-            fontFamily = FontFamily.Monospace,
+            ltr("×%.1f".format(t.scale)),
+            style = MaterialTheme.typography.labelMedium.tnum(),
             modifier = Modifier.width(40.dp),
         )
     }
@@ -1510,17 +1502,17 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
         val subsOnly = ctrl.session.subtitlesOnly
         val hasCues = ctrl.model.cues.isNotEmpty()
         val subsTools = ArrayList<ToolSpec>()
-        subsTools += ToolSpec(t("כתוביות"), EditorIcons.Subtitles, !busy, feature = Feature.SUBTITLES, current = current == EditorPanel.SUBTITLES) { ctrl.pauser(); ctrl.subsSheet = true }
-        if (hasCues || subsOnly) subsTools += ToolSpec(t("עיצוב"), EditorIcons.TextFormat, !busy, feature = Feature.SUBTITLES, current = current == EditorPanel.STYLE) { ctrl.pauser(); ctrl.stylePanel = true }
+        subsTools += ToolSpec(t("כתוביות"), EditorIcons.Subtitles, !busy, feature = Feature.SUBTITLES, current = current == EditorPanel.SUBTITLES, tag = Tags.tool(EditorPanel.SUBTITLES)) { ctrl.pauser(); ctrl.subsSheet = true }
+        if (hasCues || subsOnly) subsTools += ToolSpec(t("עיצוב"), EditorIcons.TextFormat, !busy, feature = Feature.SUBTITLES, current = current == EditorPanel.STYLE, tag = Tags.tool(EditorPanel.STYLE)) { ctrl.pauser(); ctrl.stylePanel = true }
         // Words per subtitle is in the list too ("all subtitles").
-        if (hasCues) subsTools += ToolSpec(t("כל הכתוביות"), AppIcons.ListLines, !busy, feature = Feature.SUBTITLES, current = current == EditorPanel.LIST) { ctrl.pauser(); ctrl.listEditor = true }
-        subsTools += ToolSpec(t("רקע"), AppIcons.Background, !busy, active = ctrl.background.active, feature = Feature.BACKGROUND, current = current == EditorPanel.BACKGROUND) { ctrl.pauser(); ctrl.bgPanel = true }
-        subsTools += ToolSpec(t("סאונד"), AppIcons.Voice, !busy, active = ctrl.audio.voice != VoiceFx.NONE || ctrl.model.bleeps.isNotEmpty() || ctrl.model.sfx.isNotEmpty(), feature = Feature.SOUND, current = current == EditorPanel.VOICE) {
+        if (hasCues) subsTools += ToolSpec(t("כל הכתוביות"), AppIcons.ListLines, !busy, feature = Feature.SUBTITLES, current = current == EditorPanel.LIST, tag = Tags.tool(EditorPanel.LIST)) { ctrl.pauser(); ctrl.listEditor = true }
+        subsTools += ToolSpec(t("רקע"), AppIcons.Background, !busy, active = ctrl.background.active, feature = Feature.BACKGROUND, current = current == EditorPanel.BACKGROUND, tag = Tags.tool(EditorPanel.BACKGROUND)) { ctrl.pauser(); ctrl.bgPanel = true }
+        subsTools += ToolSpec(t("סאונד"), AppIcons.Voice, !busy, active = ctrl.audio.voice != VoiceFx.NONE || ctrl.model.bleeps.isNotEmpty() || ctrl.model.sfx.isNotEmpty(), feature = Feature.SOUND, current = current == EditorPanel.VOICE, tag = Tags.tool(EditorPanel.VOICE)) {
             ctrl.pauser(); ctrl.voicePanel = true
         }
-        subsTools += ToolSpec(t("סימן מים"), AppIcons.Watermark, !busy, active = watermarkOn, current = current == EditorPanel.WATERMARK) { ctrl.pauser(); ctrl.watermarkPanel = true }
-        subsTools += ToolSpec(t("חיתוך"), EditorIcons.Cut, !busy, active = ctrl.cutCount > 0, current = current == EditorPanel.CUT) { ctrl.pauser(); ctrl.cutPanel = true }
-        subsTools += ToolSpec(t("ייצוב"), AppIcons.Steady, !busy, active = ctrl.stabilize, current = current == EditorPanel.STABILIZE) { ctrl.pauser(); ctrl.stabilizePanel = true }
+        subsTools += ToolSpec(t("סימן מים"), AppIcons.Watermark, !busy, active = watermarkOn, current = current == EditorPanel.WATERMARK, tag = Tags.tool(EditorPanel.WATERMARK)) { ctrl.pauser(); ctrl.watermarkPanel = true }
+        subsTools += ToolSpec(t("חיתוך"), EditorIcons.Cut, !busy, active = ctrl.cutCount > 0, current = current == EditorPanel.CUT, tag = Tags.tool(EditorPanel.CUT)) { ctrl.pauser(); ctrl.cutPanel = true }
+        subsTools += ToolSpec(t("ייצוב"), AppIcons.Steady, !busy, active = ctrl.stabilize, current = current == EditorPanel.STABILIZE, tag = Tags.tool(EditorPanel.STABILIZE)) { ctrl.pauser(); ctrl.stabilizePanel = true }
         if (subsOnly) tools += subsTools
         tools += ToolSpec(
             if (ctrl.addMode) t("ביטול") else t("הוסף טשטוש"),
@@ -1528,12 +1520,13 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
             !busy,
             active = ctrl.addMode,
             feature = Feature.FACES,
+            tag = Tags.ADD_BLUR,
         ) {
             ctrl.addMode = !ctrl.addMode
             if (ctrl.addMode) ctrl.pauser()
         }
         if (!subsOnly) {
-            tools += ToolSpec(t("טשטוש"), AppIcons.Face, !busy, feature = Feature.FACES, current = current == EditorPanel.BLUR) { ctrl.pauser(); ctrl.blurPanel = true }
+            tools += ToolSpec(t("טשטוש"), AppIcons.Face, !busy, feature = Feature.FACES, current = current == EditorPanel.BLUR, tag = Tags.tool(EditorPanel.BLUR)) { ctrl.pauser(); ctrl.blurPanel = true }
             tools += subsTools
         }
     } else {
@@ -1601,6 +1594,8 @@ private class ToolSpec(
     val feature: Feature? = null,
     /** Its panel is the one showing (a tablet's side panel). */
     val current: Boolean = false,
+    /** For tests (see [Tags]). */
+    val tag: String? = null,
     val onClick: () -> Unit,
 )
 
@@ -1626,6 +1621,7 @@ private fun Tool(spec: ToolSpec, modifier: Modifier) {
     val source = remember { MutableInteractionSource() }
     Column(
         modifier
+            .then(if (spec.tag != null) Modifier.testTag(spec.tag) else Modifier)
             .pressScale(source)
             .clip(RoundedCornerShape(12.dp))
             .background(tile)
@@ -1736,7 +1732,7 @@ private fun PropertiesPanel(ctrl: EditorController, busy: Boolean, style: Subtit
             ) {
                 when {
                     sfx != null -> {
-                        PropTimes(t("מתחיל ב-%s").format(clock(ctrl.cueRelUs(sfx.startMs))), null)
+                        PropTimes(t("מתחיל ב-%s").format(ltr(timecode(ctrl.cueRelUs(sfx.startMs)))), null)
                         Caption(t("עוצמה"))
                         var g by remember(sfx.id) { mutableFloatStateOf(sfx.gain) }
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1747,7 +1743,7 @@ private fun PropertiesPanel(ctrl: EditorController, busy: Boolean, style: Subtit
                                 valueRange = 0f..2f,
                                 modifier = Modifier.weight(1f),
                             )
-                            Text("\u200E${(g * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(48.dp))
+                            Text(ltr("${(g * 100).roundToInt()}%"), style = MaterialTheme.typography.labelMedium.tnum(), modifier = Modifier.width(48.dp))
                         }
                         PropActions {
                             FilledTonalButton(onClick = { ctrl.playSelectedSfx() }) { Text(t("השמע")) }
@@ -1766,7 +1762,7 @@ private fun PropertiesPanel(ctrl: EditorController, busy: Boolean, style: Subtit
                             SpeakerButton(cue.speaker, style) { ctrl.setSpeaker(cue.id, it) }
                         }
                         PropTimes(
-                            "\u2066${clock(ctrl.cueRelUs(cue.startMs))}\u2069 – \u2066${clock(ctrl.cueRelUs(cue.endMs))}\u2069",
+                            ltr(timecode(ctrl.cueRelUs(cue.startMs))) + " – " + ltr(timecode(ctrl.cueRelUs(cue.endMs))),
                             (cue.endMs - cue.startMs) / 1000f,
                         )
                         PropActions {
@@ -1782,7 +1778,7 @@ private fun PropertiesPanel(ctrl: EditorController, busy: Boolean, style: Subtit
                     sel != null -> {
                         val a = ctrl.timeOf(sel.start)
                         val b = ctrl.timeOf(sel.end) + ctrl.frameUs
-                        PropTimes("\u2066${clock(a)}\u2069 – \u2066${clock(b)}\u2069", (b - a) / 1e6f)
+                        PropTimes(ltr(timecode(a)) + " – " + ltr(timecode(b)), (b - a) / 1e6f)
                         PropActions {
                             OutlinedButton(onClick = { ctrl.setSelectedEdgeHere(true) }, enabled = !busy) { Text(t("התחלה כאן")) }
                             OutlinedButton(onClick = { ctrl.setSelectedEdgeHere(false) }, enabled = !busy) { Text(t("סוף כאן")) }
@@ -1808,8 +1804,8 @@ private fun PropertiesPanel(ctrl: EditorController, busy: Boolean, style: Subtit
 @Composable
 private fun PropTimes(range: String, seconds: Float?) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(range, style = MaterialTheme.typography.titleMedium, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-        if (seconds != null) Text(t("%.1f שנ׳").format(seconds), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(range, style = MaterialTheme.typography.titleMedium.tnum(), modifier = Modifier.weight(1f))
+        if (seconds != null) Text(t("%.1f שנ׳").format(seconds), style = MaterialTheme.typography.bodyMedium.tnum(), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

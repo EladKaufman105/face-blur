@@ -362,7 +362,8 @@ class EditorScreenTest {
         rule.runOnIdle {
             vm.prefs.updateLang(Lang.EN)
             vm.prefs.updatePalette(Palette.GREEN)
-            vm.prefs.updateThemeMode(ThemeMode.DARK)
+            // Dark is the default: show the light theme here.
+            vm.prefs.updateThemeMode(ThemeMode.LIGHT)
             vm.prefs.updateExport(ExportOptions(shortSide = 720, fps = 30, quality = ExportQuality.SAVER))
         }
         Thread.sleep(800)
@@ -385,7 +386,7 @@ class EditorScreenTest {
         rule.runOnIdle {
             vm.prefs.updateLang(Lang.HE)
             vm.prefs.updatePalette(Palette.ONIT)
-            vm.prefs.updateThemeMode(ThemeMode.SYSTEM)
+            vm.prefs.updateThemeMode(ThemeMode.DARK)
             vm.prefs.updateExport(ExportOptions())
         }
         // Close the settings sheet, then watch the analysis: the live frame with faces found.

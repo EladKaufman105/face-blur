@@ -93,6 +93,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Every string has its English
+        run: python3 ci/i18n_check.py
+
       - name: Fetch test media
         shell: bash
         run: |

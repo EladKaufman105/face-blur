@@ -39,8 +39,10 @@ import com.elad.faceblur.pipeline.ExportOptions
 import com.elad.faceblur.pipeline.FaceBlurProcessor
 import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
+import com.elad.faceblur.edit.EditorPanel
 import com.elad.faceblur.ui.EditorScreen
 import com.elad.faceblur.ui.EditorTheme
+import com.elad.faceblur.ui.Tags
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -223,6 +225,10 @@ class LabsTest {
         }
         rule.waitForIdle()
         Thread.sleep(2500)
+        // The main controls can be found by their tags, whatever the language.
+        for (tag in listOf(Tags.BACK, Tags.EXPORT, Tags.PLAY, Tags.UNDO, Tags.ADD_BLUR, Tags.tool(EditorPanel.BLUR), Tags.tool(EditorPanel.STABILIZE))) {
+            rule.onNodeWithTag(tag).assertExists()
+        }
         rule.runOnIdle { ctrl.chooseStabilize(2); ctrl.stabilizePanel = true }
         Thread.sleep(1500)
         shot("1_stabilized.png")

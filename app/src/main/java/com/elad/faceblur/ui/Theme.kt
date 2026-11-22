@@ -22,6 +22,7 @@ import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.elad.faceblur.prefs.Palette
@@ -145,12 +146,46 @@ private fun scheme(palette: Palette, darkMode: Boolean): ColorScheme {
     return if (darkMode) dark(a) else light(a)
 }
 
+/**
+ * Spacing: every gap and padding is one of these (a 4 dp grid). Screens don't pick their own
+ * numbers; a step that looks off is fixed here, for all of them.
+ */
+object Space {
+    val XS: Dp = 4.dp
+    val S: Dp = 8.dp
+    val M: Dp = 12.dp
+    val L: Dp = 16.dp
+    val XL: Dp = 24.dp
+    val XXL: Dp = 32.dp
+    val XXXL: Dp = 48.dp
+}
+
+/** The smallest thing a finger should have to hit, whatever is drawn (a timeline handle, a dot). */
+val MinTouch: Dp = 48.dp
+
+/** Corner radii: controls (fields, chips' cousins), cards, panels and sheets. Pills are 50%. */
+object Radius {
+    val Control: Dp = 8.dp
+    val Card: Dp = 12.dp
+    val Panel: Dp = 16.dp
+}
+
+/**
+ * Motion, in ms: swapping content (a fade only), changing state (a toggle, a selection) and
+ * opening a panel. Nothing slides the layout around.
+ */
+object Motion {
+    const val CONTENT = 120
+    const val STATE = 200
+    const val PANEL = 280
+}
+
 private val Shapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(18.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(32.dp),
+    extraSmall = RoundedCornerShape(Radius.Control),
+    small = RoundedCornerShape(Radius.Control),
+    medium = RoundedCornerShape(Radius.Card),
+    large = RoundedCornerShape(Radius.Card),
+    extraLarge = RoundedCornerShape(Radius.Panel),
 )
 
 /**
@@ -195,9 +230,10 @@ private fun typography(): Typography {
             displayMedium = base.displayMedium.r(FontWeight.Black, -0.5f, 100),
             displaySmall = base.displaySmall.r(FontWeight.ExtraBold, -0.5f, 100),
             headlineLarge = base.headlineLarge.r(FontWeight.ExtraBold, -0.5f, 100),
-            headlineMedium = base.headlineMedium.r(FontWeight.ExtraBold, -0.25f, 100),
+            // The six steps of the scale (see [AppType]); the other slots are rarely used.
+            headlineMedium = base.headlineMedium.r(FontWeight.SemiBold, -0.25f, 100),
             headlineSmall = base.headlineSmall.r(FontWeight.Bold, round = 100),
-            titleLarge = base.titleLarge.r(FontWeight.Bold, round = 100),
+            titleLarge = base.titleLarge.copy(fontSize = 20.sp, lineHeight = 28.sp).r(FontWeight.SemiBold, 0f, 100),
             titleMedium = base.titleMedium.r(FontWeight.SemiBold, 0f),
             titleSmall = base.titleSmall.r(FontWeight.SemiBold, 0f),
             bodyLarge = base.bodyLarge.r(spacing = 0f),
@@ -205,14 +241,39 @@ private fun typography(): Typography {
             bodySmall = base.bodySmall.r(spacing = 0f),
             labelLarge = base.labelLarge.r(FontWeight.SemiBold, 0f),
             labelMedium = base.labelMedium.r(FontWeight.Medium, 0f),
-            labelSmall = base.labelSmall.r(FontWeight.Medium, 0f),
+            labelSmall = base.labelSmall.r(FontWeight.Normal, 0f),
         )
     }
 }
 
+/**
+ * The type scale: six steps, each a slot of the Material typography above (Allo Hebrew,
+ * its optical size following the text size).
+ */
+object AppType {
+    /** 28/36, semibold: the home screen's title, big numbers. */
+    val Display: TextStyle @Composable get() = MaterialTheme.typography.headlineMedium
+    /** 20/28, semibold: a screen's or a sheet's title. */
+    val Title: TextStyle @Composable get() = MaterialTheme.typography.titleLarge
+    /** 16/24, semibold: a panel's title, a section. */
+    val Heading: TextStyle @Composable get() = MaterialTheme.typography.titleMedium
+    /** 14/20: running text. */
+    val Body: TextStyle @Composable get() = MaterialTheme.typography.bodyMedium
+    /** 12/16, medium: buttons, tool names, chips. */
+    val Label: TextStyle @Composable get() = MaterialTheme.typography.labelMedium
+    /** 11/16: notes and values. */
+    val Caption: TextStyle @Composable get() = MaterialTheme.typography.labelSmall
+}
+
+/**
+ * Digits of one width (Allo's tabular figures): times, percents and sizes keep still while they
+ * change, during playback and export.
+ */
+fun TextStyle.tnum(): TextStyle = copy(fontFeatureSettings = "tnum")
+
 @Composable
 fun FaceBlurTheme(
-    mode: ThemeMode = ThemeMode.SYSTEM,
+    mode: ThemeMode = ThemeMode.DARK,
     palette: Palette = Palette.ONIT,
     content: @Composable () -> Unit,
 ) {

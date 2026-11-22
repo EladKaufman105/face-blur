@@ -382,7 +382,7 @@ private fun LayoutTab(style: SubtitleStyle, onChange: (SubtitleStyle) -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Caption(t("גודל"))
             Spacer(Modifier.weight(1f))
-            Text("‎${(style.size * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
+            Text(ltr("${(style.size * 100).roundToInt()}%"), style = MaterialTheme.typography.labelLarge.tnum())
         }
         Slider(value = style.size, onValueChange = { onChange(style.copy(size = it)) }, valueRange = 0.6f..2.2f)
         Row(verticalAlignment = Alignment.CenterVertically) {
