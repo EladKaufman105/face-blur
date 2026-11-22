@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -90,6 +91,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -145,6 +147,7 @@ import com.elad.faceblur.edit.Cue
 import com.elad.faceblur.edit.EditModel
 import com.elad.faceblur.edit.EditTrack
 import com.elad.faceblur.edit.EditorController
+import com.elad.faceblur.edit.EditorPanel
 import com.elad.faceblur.edit.PreviewSource
 import com.elad.faceblur.edit.SubLang
 import com.elad.faceblur.subs.SubtitleEngine
@@ -274,54 +277,66 @@ fun EditorScreen(
         }
         if (bar) BottomBar(ctrl, sel, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current))
     }
-    val panel = when {
-        ctrl.listEditor -> 1
-        ctrl.voicePanel -> 2
-        ctrl.bgPanel -> 3
-        ctrl.stylePanel -> 4
-        ctrl.watermarkPanel -> 5
-        ctrl.blurPanel -> 6
-        else -> 0
-    }
-    val panelArea: @Composable (Int, Boolean) -> Unit = { p, side ->
+    val panelArea: @Composable (EditorPanel) -> Unit = { p ->
         when (p) {
-            1 -> AllSubtitlesPanel(ctrl, if (side) Modifier.fillMaxHeight() else Modifier.fillMaxHeight(0.6f), subStyle)
-            2 -> VoicePanel(ctrl)
-            3 -> BackgroundPanel(ctrl)
-            4 -> SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
-            5 -> WatermarkPanel(export.watermark, { onExportChange(export.copy(watermark = it)) }) { ctrl.watermarkPanel = false }
-            6 -> BlurPanel(ctrl) { ctrl.blurPanel = false }
-            else -> Unit
+            EditorPanel.SUBTITLES -> SubtitlesPanel(ctrl, export, onExportChange)
+            EditorPanel.LIST -> AllSubtitlesPanel(ctrl, if (LocalSidePanel.current) Modifier.fillMaxHeight() else Modifier.fillMaxHeight(0.6f), subStyle)
+            EditorPanel.VOICE -> VoicePanel(ctrl)
+            EditorPanel.BACKGROUND -> BackgroundPanel(ctrl)
+            EditorPanel.STYLE -> SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
+            EditorPanel.WATERMARK -> WatermarkPanel(export.watermark, { onExportChange(export.copy(watermark = it)) }) { ctrl.watermarkPanel = false }
+            EditorPanel.BLUR -> BlurPanel(ctrl) { ctrl.blurPanel = false }
         }
     }
+    val wide = isWide()
+    SideEffect { ctrl.sidePanels = wide }
 
     // A Surface gives text and icons the theme's light-on-dark content color.
     Surface(color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground, modifier = Modifier.fillMaxSize()) {
-    if (isWide()) {
-        // Tablet (or a phone on its side): the timeline stays under the video, and a panel opens
-        // beside them instead of in the timeline's place.
-        var shown by remember { mutableIntStateOf(if (panel != 0) panel else 1) }
-        if (panel != 0) shown = panel
-        Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            // The tools in a column at the side: the screen's height goes to the video.
-            BottomBar(ctrl, ctrl.selected, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current), vertical = true)
-            Column(Modifier.weight(1f).fillMaxHeight()) {
-                topBar()
-                videoArea(Modifier.weight(1f), export, subStyle)
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
-                timelineArea(false)
-            }
-            AnimatedVisibility(
-                visible = panel != 0,
-                enter = expandHorizontally(tween(260)) + fadeIn(tween(200, delayMillis = 60)),
-                exit = shrinkHorizontally(tween(220)) + fadeOut(tween(120)),
-            ) {
-                Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.width(400.dp).fillMaxHeight()) {
+    if (wide) {
+        // A tablet: the tools in a column at the side, the timeline always in view, and a panel
+        // always open beside the video (the tools switch it). Nothing opens over anything else.
+        val shown = ctrl.panel ?: if (ctrl.session.subtitlesOnly) EditorPanel.SUBTITLES else EditorPanel.BLUR
+        val a = ctrl.session.analysis
+        val aspect = if (a.uprightH > 0) a.uprightW.toFloat() / a.uprightH else 16f / 9f
+        val side: @Composable (Modifier) -> Unit = { modifier ->
+            Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = modifier) {
+                CompositionLocalProvider(LocalSidePanel provides true) {
                     AnimatedContent(
                         shown,
                         transitionSpec = { fadeIn(tween(200, delayMillis = 60)) togetherWith fadeOut(tween(110)) },
                         label = "side panel",
-                    ) { p -> Column(Modifier.fillMaxHeight()) { panelArea(p, true) } }
+                    ) { p -> Column(Modifier.widthIn(max = 640.dp).fillMaxHeight()) { panelArea(p) } }
+                }
+            }
+        }
+        BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            val rail = 92.dp
+            Row(Modifier.fillMaxSize()) {
+                BottomBar(ctrl, ctrl.selected, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current), vertical = true, current = shown)
+                if (aspect < 0.9f) {
+                    // A tall video gets the full height; the panel and the timeline share the
+                    // rest of the width.
+                    val videoW = minOf((maxHeight - 56.dp) * aspect, (maxWidth - rail) * 0.5f)
+                    Column(Modifier.weight(1f).fillMaxHeight()) {
+                        topBar()
+                        Row(Modifier.weight(1f)) {
+                            videoArea(Modifier.width(videoW).fillMaxHeight(), export, subStyle)
+                            Column(Modifier.weight(1f).fillMaxHeight()) {
+                                side(Modifier.weight(1f).fillMaxWidth())
+                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
+                                timelineArea(false)
+                            }
+                        }
+                    }
+                } else {
+                    Column(Modifier.weight(1f).fillMaxHeight()) {
+                        topBar()
+                        videoArea(Modifier.weight(1f), export, subStyle)
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
+                        timelineArea(false)
+                    }
+                    side(Modifier.width(((maxWidth - rail) * 0.34f).coerceIn(320.dp, 400.dp)).fillMaxHeight())
                 }
             }
         }
@@ -339,7 +354,7 @@ fun EditorScreen(
 
         // The timeline and its tools, or a panel in their place; they slide in when switching.
         AnimatedContent(
-            panel,
+            ctrl.panel,
             transitionSpec = {
                 (fadeIn(tween(220, delayMillis = 60)) + slideInVertically(tween(300)) { it / 6 }) togetherWith
                     fadeOut(tween(110)) using SizeTransform(clip = false)
@@ -347,14 +362,13 @@ fun EditorScreen(
             label = "panel",
         ) { p ->
             Column {
-                if (p == 0) timelineArea(true) else panelArea(p, false)
+                if (p == null) timelineArea(true) else panelArea(p)
             }
         }
     }
     }
     }
 
-    if (ctrl.subsSheet) SubtitlesSheet(ctrl, export, onExportChange)
     if (ctrl.cueEditor) CueEditorDialog(ctrl, subStyle)
 
     if (exportSheet) {
@@ -439,19 +453,16 @@ private fun BlurPanel(ctrl: EditorController, onDone: () -> Unit) {
     // The sliders move freely; the blurs follow when one is let go.
     var strength by remember(s.strength) { mutableFloatStateOf(s.strength) }
     var padding by remember(s.padding) { mutableFloatStateOf(s.padding) }
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer)) {
+    PanelHeader(t("טשטוש פנים"), Feature.FACES.tint, onDone)
     Column(
         Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainer)
-            .heightIn(max = 420.dp)
+            .then(panelBody(372.dp, upTo = true))
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            SectionTitle(t("טשטוש פנים"), Feature.FACES.tint, Modifier.weight(1f))
-            TextButton(onClick = onDone) { Text(t("סיום")) }
-        }
         BlurLookControls(
             s.mode, strength, padding,
             onMode = { ctrl.setBlur(mode = it) },
@@ -460,6 +471,7 @@ private fun BlurPanel(ctrl: EditorController, onDone: () -> Unit) {
             onDone = { ctrl.setBlur(strength = strength, padding = padding) },
         )
         Spacer(Modifier.height(4.dp))
+    }
     }
 }
 
@@ -1052,6 +1064,19 @@ private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle
         }
     }
     val widthPx = remember { mutableFloatStateOf(1f) }
+    // At first a short video fills the half after the playhead (not a little strip in the
+    // middle of a wide screen); zooming after that is the user's.
+    val fitted = remember { booleanArrayOf(false) }
+    LaunchedEffect(widthPx.floatValue) {
+        val w = widthPx.floatValue
+        if (fitted[0] || w <= 1f) return@LaunchedEffect
+        fitted[0] = true
+        val durS = (ctrl.timeOf(ctrl.frameCount - 1) + ctrl.frameUs) / 1e6f
+        if (durS > 0f) {
+            val fit = w * 0.45f / durS
+            if (fit > pxPerSec.floatValue) pxPerSec.floatValue = min(fit, with(density) { 300.dp.toPx() })
+        }
+    }
     val geo: () -> TimelineGeo = {
         TimelineGeo(ctrl, widthPx.floatValue, pxPerSec.floatValue, rows, rowsTop, rowPitch, rowH, rowScroll.floatValue, handleW, subsTop, subsH, sfxTop, sfxH)
     }
@@ -1373,7 +1398,7 @@ private fun SizePanel(ctrl: EditorController, t: EditTrack, busy: Boolean) {
 }
 
 @Composable
-private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: Boolean, watermarkOn: Boolean = false, vertical: Boolean = false) {
+private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: Boolean, watermarkOn: Boolean = false, vertical: Boolean = false, current: EditorPanel? = null) {
     // What's selected shows as a line in its feature's color along the bar's inner edge.
     val selFeature = when {
         ctrl.selectedSfx != null -> Feature.SOUND
@@ -1404,15 +1429,15 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
         val subsOnly = ctrl.session.subtitlesOnly
         val hasCues = ctrl.model.cues.isNotEmpty()
         val subsTools = ArrayList<ToolSpec>()
-        subsTools += ToolSpec(t("כתוביות"), EditorIcons.Subtitles, !busy, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.subsSheet = true }
-        if (hasCues || subsOnly) subsTools += ToolSpec(t("עיצוב"), EditorIcons.TextFormat, !busy, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.stylePanel = true }
+        subsTools += ToolSpec(t("כתוביות"), EditorIcons.Subtitles, !busy, feature = Feature.SUBTITLES, current = current == EditorPanel.SUBTITLES) { ctrl.pauser(); ctrl.subsSheet = true }
+        if (hasCues || subsOnly) subsTools += ToolSpec(t("עיצוב"), EditorIcons.TextFormat, !busy, feature = Feature.SUBTITLES, current = current == EditorPanel.STYLE) { ctrl.pauser(); ctrl.stylePanel = true }
         // Words per subtitle is in the list too ("all subtitles").
-        if (hasCues) subsTools += ToolSpec(t("כל הכתוביות"), AppIcons.ListLines, !busy, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.listEditor = true }
-        subsTools += ToolSpec(t("רקע"), AppIcons.Background, !busy, active = ctrl.background.active, feature = Feature.BACKGROUND) { ctrl.pauser(); ctrl.bgPanel = true }
-        subsTools += ToolSpec(t("סאונד"), AppIcons.Voice, !busy, active = ctrl.audio.voice != VoiceFx.NONE || ctrl.model.bleeps.isNotEmpty() || ctrl.model.sfx.isNotEmpty(), feature = Feature.SOUND) {
+        if (hasCues) subsTools += ToolSpec(t("כל הכתוביות"), AppIcons.ListLines, !busy, feature = Feature.SUBTITLES, current = current == EditorPanel.LIST) { ctrl.pauser(); ctrl.listEditor = true }
+        subsTools += ToolSpec(t("רקע"), AppIcons.Background, !busy, active = ctrl.background.active, feature = Feature.BACKGROUND, current = current == EditorPanel.BACKGROUND) { ctrl.pauser(); ctrl.bgPanel = true }
+        subsTools += ToolSpec(t("סאונד"), AppIcons.Voice, !busy, active = ctrl.audio.voice != VoiceFx.NONE || ctrl.model.bleeps.isNotEmpty() || ctrl.model.sfx.isNotEmpty(), feature = Feature.SOUND, current = current == EditorPanel.VOICE) {
             ctrl.pauser(); ctrl.voicePanel = true
         }
-        subsTools += ToolSpec(t("סימן מים"), AppIcons.Watermark, !busy, active = watermarkOn) { ctrl.pauser(); ctrl.watermarkPanel = true }
+        subsTools += ToolSpec(t("סימן מים"), AppIcons.Watermark, !busy, active = watermarkOn, current = current == EditorPanel.WATERMARK) { ctrl.pauser(); ctrl.watermarkPanel = true }
         if (subsOnly) tools += subsTools
         tools += ToolSpec(
             if (ctrl.addMode) t("ביטול") else t("הוסף טשטוש"),
@@ -1425,7 +1450,7 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
             if (ctrl.addMode) ctrl.pauser()
         }
         if (!subsOnly) {
-            tools += ToolSpec(t("טשטוש"), AppIcons.Face, !busy, active = ctrl.blurPanel, feature = Feature.FACES) { ctrl.pauser(); ctrl.blurPanel = true }
+            tools += ToolSpec(t("טשטוש"), AppIcons.Face, !busy, feature = Feature.FACES, current = current == EditorPanel.BLUR) { ctrl.pauser(); ctrl.blurPanel = true }
             tools += subsTools
         }
     } else {
@@ -1491,6 +1516,8 @@ private class ToolSpec(
     val enabled: Boolean,
     val active: Boolean = false,
     val feature: Feature? = null,
+    /** Its panel is the one showing (a tablet's side panel). */
+    val current: Boolean = false,
     val onClick: () -> Unit,
 )
 
@@ -1511,11 +1538,14 @@ private fun Tool(spec: ToolSpec, modifier: Modifier) {
     val iconTint = (feature?.color ?: if (active) accent else MaterialTheme.colorScheme.onSurface).copy(alpha = alpha)
     val textTint = (if (active) accent else MaterialTheme.colorScheme.onSurface).copy(alpha = alpha)
     val bg by animateColorAsState(if (active) accent.copy(alpha = 0.2f) else Color.Transparent, tween(200), label = "tool")
+    // The tool whose panel is showing sits on a lighter tile.
+    val tile by animateColorAsState(if (spec.current) MaterialTheme.colorScheme.surfaceContainerHighest else Color.Transparent, tween(200), label = "tile")
     val source = remember { MutableInteractionSource() }
     Column(
         modifier
             .pressScale(source)
             .clip(RoundedCornerShape(12.dp))
+            .background(tile)
             .clickable(interactionSource = source, indication = LocalIndication.current, enabled = enabled, onClick = onClick)
             .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

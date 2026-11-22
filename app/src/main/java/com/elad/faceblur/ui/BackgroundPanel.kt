@@ -75,18 +75,11 @@ fun BackgroundPanel(ctrl: EditorController) {
     fun pickImage() = picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                SectionTitle(t("רקע"), Feature.BACKGROUND.color, Modifier.weight(1f))
-                TextButton(onClick = { ctrl.bgPanel = false }) {
-                    Icon(Icons.Filled.Check, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(t("סיום"))
-                }
-            }
+            PanelHeader(t("רקע"), Feature.BACKGROUND.color, { ctrl.bgPanel = false })
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .height(300.dp)
+                    .then(panelBody(300.dp))
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),

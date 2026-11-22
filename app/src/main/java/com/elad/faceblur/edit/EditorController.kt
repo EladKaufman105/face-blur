@@ -28,6 +28,7 @@ import com.elad.faceblur.effects.BackgroundState
 import com.elad.faceblur.pipeline.FaceBlurProcessor
 import com.elad.faceblur.audio.SfxLibrary
 import com.elad.faceblur.audio.SfxPlay
+import com.elad.faceblur.audio.SfxPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -101,20 +102,46 @@ class EditorController(
         private set
     var previewAvailable by mutableStateOf(true)
 
+    /**
+     * The tool panel that's open, if any: one at a time, so opening one closes the one before
+     * (they never pile up). Each also has its own flag below, for the code that opens and closes it.
+     */
+    var panel by mutableStateOf<EditorPanel?>(null)
+        private set
+    private fun showPanel(p: EditorPanel, open: Boolean) {
+        val was = panel
+        panel = if (open) p else if (panel == p) null else panel
+        if (was != panel) {
+            if (was == EditorPanel.LIST) bleepMode = false
+            if (was == EditorPanel.VOICE) SfxPlayer.stop()
+        }
+    }
+    /** Panels beside the video (a tablet): one stays open, so finishing a task doesn't close it. */
+    var sidePanels = false
+
     /** The watermark panel is open. */
-    var watermarkPanel by mutableStateOf(false)
+    var watermarkPanel: Boolean
+        get() = panel == EditorPanel.WATERMARK
+        set(v) = showPanel(EditorPanel.WATERMARK, v)
     var sizePanel by mutableStateOf(false)
     var selectedCueId by mutableStateOf<Int?>(null)
         private set
     /** Subtitle generation stage and progress, while it runs. */
     var subsProgress by mutableStateOf<Pair<SubtitleEngine.Stage, Float>?>(null)
         private set
-    var subsSheet by mutableStateOf(false)
+    /** The subtitles panel (make them, what to do with them, how they're exported). */
+    var subsSheet: Boolean
+        get() = panel == EditorPanel.SUBTITLES
+        set(v) = showPanel(EditorPanel.SUBTITLES, v)
     var cueEditor by mutableStateOf(false)
     /** The subtitle look panel is open (in place of the timeline). */
-    var stylePanel by mutableStateOf(false)
+    var stylePanel: Boolean
+        get() = panel == EditorPanel.STYLE
+        set(v) = showPanel(EditorPanel.STYLE, v)
     /** The list of all subtitles is open (in place of the timeline). */
-    var listEditor by mutableStateOf(false)
+    var listEditor: Boolean
+        get() = panel == EditorPanel.LIST
+        set(v) = showPanel(EditorPanel.LIST, v)
     /** The words / characters per subtitle choice is open above the tools. */
     var splitPanel by mutableStateOf(false)
     /** How the sentences are cut into subtitles now. */
@@ -130,7 +157,9 @@ class EditorController(
     var audio by mutableStateOf(AudioEdit())
         private set
     /** The voice panel is open (in place of the timeline). */
-    var voicePanel by mutableStateOf(false)
+    var voicePanel: Boolean
+        get() = panel == EditorPanel.VOICE
+        set(v) = showPanel(EditorPanel.VOICE, v)
     /** The subtitle list shows words to tap and bleep (instead of text to edit). */
     var bleepMode by mutableStateOf(false)
     /** Bleeps and robot sound for the player, rebuilt on changes (read on the audio thread). */
@@ -185,7 +214,9 @@ class EditorController(
     }
 
     /** The blur panel is open. */
-    var blurPanel by mutableStateOf(false)
+    var blurPanel: Boolean
+        get() = panel == EditorPanel.BLUR
+        set(v) = showPanel(EditorPanel.BLUR, v)
 
     /** A new look for every blur: [mode], [strength] and the area around the face ([padding]). */
     fun setBlur(mode: BlurMode = session.settings.mode, strength: Float = session.settings.strength, padding: Float = session.settings.padding) {
@@ -485,7 +516,7 @@ class EditorController(
                     notice = t("לא נמצא דיבור בסרטון")
                     return@launch
                 }
-                subsSheet = false
+                if (!sidePanels) subsSheet = false
                 if (translateOnCreate) {
                     notice = t("נוצרו %d כתוביות. מתרגם…").format(r.lines.size)
                     translateMissing()
@@ -682,7 +713,9 @@ class EditorController(
     var background by mutableStateOf(Background())
         private set
     /** The background panel is open (in place of the timeline). */
-    var bgPanel by mutableStateOf(false)
+    var bgPanel: Boolean
+        get() = panel == EditorPanel.BACKGROUND
+        set(v) = showPanel(EditorPanel.BACKGROUND, v)
     /** Progress of finding the people, while it runs. */
     var segmentProgress by mutableStateOf<Float?>(null)
         private set
@@ -1017,3 +1050,6 @@ class EditorController(
         private const val DEFAULT_SIZE = 0.12f
     }
 }
+
+/** The editor's tool panels (see [EditorController.panel]). */
+enum class EditorPanel { BLUR, SUBTITLES, LIST, STYLE, VOICE, BACKGROUND, WATERMARK }

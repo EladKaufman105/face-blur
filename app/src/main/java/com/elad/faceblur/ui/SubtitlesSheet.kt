@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -32,13 +31,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -79,7 +77,7 @@ private fun mb(bytes: Long) = "‎%d MB".format((bytes / 1e6).roundToInt())
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange: (ExportOptions) -> Unit) {
+fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange: (ExportOptions) -> Unit) {
     val models = ctrl.models
     var choice by remember {
         mutableStateOf(
@@ -92,23 +90,22 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
     }
     // With subtitles already made, creating them again folds away.
     var createOpen by remember { mutableStateOf(ctrl.model.cues.isEmpty()) }
-    ModalBottomSheet(
-        onDismissRequest = { ctrl.subsSheet = false },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-    ) {
+    // In the timeline's place on a phone, beside the video on a tablet: like the other panels.
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+      Column(Modifier.fillMaxWidth()) {
+        PanelHeader(t("כתוביות"), Feature.SUBTITLES.color, { ctrl.subsSheet = false })
         Column(
             Modifier
                 .fillMaxWidth()
+                .then(panelBody(400.dp, upTo = true))
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 16.dp)
-                .navigationBarsPadding(),
+                .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             @Suppress("UNUSED_VARIABLE") val v = ctrl.version
             val count = ctrl.model.cues.size
             val busy = ctrl.subsBusy
             Column(Modifier.padding(horizontal = 20.dp)) {
-                Text(t("כתוביות"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 Text(
                     if (count == 0) t("עדיין אין כתוביות. המערכת תזהה את הדיבור, הכול במכשיר.") else t("יש %d כתוביות. הקש על כתובית בסרטון או בציר הזמן כדי לערוך.").format(count),
                     style = MaterialTheme.typography.bodyMedium,
@@ -241,6 +238,7 @@ fun SubtitlesSheet(ctrl: EditorController, export: ExportOptions, onExportChange
             SectionTitle(t("בייצוא"))
             Box(Modifier.padding(horizontal = 20.dp)) { SubtitleExportOptions(export, onExportChange, ctrl.hasTranslation) }
         }
+      }
     }
 }
 

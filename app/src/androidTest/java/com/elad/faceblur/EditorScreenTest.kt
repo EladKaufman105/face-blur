@@ -122,11 +122,11 @@ class EditorScreenTest {
         rule.runOnIdle { tablet = true }
         Thread.sleep(2500)
         tabletShot(outDir, "1t_tablet.png")
-        rule.runOnIdle { ctrl.blurPanel = true }
+        rule.runOnIdle { ctrl.watermarkPanel = true }
         Thread.sleep(1200)
         tabletShot(outDir, "1u_tablet_panel.png")
         rule.runOnIdle {
-            ctrl.blurPanel = false
+            ctrl.watermarkPanel = false
             tablet = false
         }
         Thread.sleep(2000)
@@ -276,6 +276,46 @@ class EditorScreenTest {
     }
 
     /** Settings screen with the export card, then English with another palette, then app settings. */
+    /**
+     * A tall video on a landscape tablet: the video at full height, the panel and the timeline
+     * beside it; tools switch the panel (never two at once), subtitles included.
+     */
+    @Test
+    fun tallVideoOnTablet() {
+        val inst = InstrumentationRegistry.getInstrumentation()
+        val ctx = inst.targetContext
+        val outDir = File(ctx.getExternalFilesDir(null), "editor").apply { mkdirs() }
+        val name = "portrait_rot90.mp4"
+        if (inst.context.assets.list("samples")?.contains(name) != true) return
+        val src = File(ctx.cacheDir, "tall_$name")
+        inst.context.assets.open("samples/$name").use { i -> src.outputStream().use { i.copyTo(it) } }
+        val info = VideoInfo.probe(ctx, Uri.fromFile(src))
+        val settings = Settings(BlurMode.BLUR, 0.6f, 1.6f, false)
+        val analysis = runBlocking(Dispatchers.Main) { FaceBlurProcessor(ctx).analyze(info, settings) {} }
+        val ctrl = EditorController(EditSession(info, settings, analysis, 0), CoroutineScope(SupervisorJob() + Dispatchers.Main))
+        var tablet by mutableStateOf(true)
+        rule.setContent {
+            EditorTheme {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                    Tablet(tablet) { EditorScreen(ctrl, onClose = {}, onExport = {}) }
+                }
+            }
+        }
+        rule.waitForIdle()
+        Thread.sleep(3000)
+        tabletShot(outDir, "1v_tablet_tall.png")
+        rule.runOnIdle { ctrl.bgPanel = true }
+        rule.runOnIdle { ctrl.subsSheet = true }
+        Thread.sleep(1200)
+        if (rule.runOnIdle { ctrl.bgPanel || !ctrl.subsSheet }) fail("panels: two open at once")
+        tabletShot(outDir, "1w_tablet_tall_subs.png")
+        // On a phone the subtitles open in the timeline's place, like the other panels.
+        rule.runOnIdle { tablet = false }
+        Thread.sleep(1500)
+        shot(outDir, "1x_phone_subs.png")
+        rule.runOnIdle { ctrl.subsSheet = false }
+    }
+
     @Test
     fun mainScreen() {
         val inst = InstrumentationRegistry.getInstrumentation()

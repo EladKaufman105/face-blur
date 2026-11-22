@@ -302,20 +302,18 @@ fun WatermarkPreview(w: Watermark, frame: Bitmap?, aspect: Float, modifier: Modi
 /** The watermark panel in the editor: the video above shows it live. */
 @Composable
 fun WatermarkPanel(w: Watermark, onChange: (Watermark) -> Unit, onDone: () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainer)
-            .heightIn(max = 420.dp)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            SectionTitle(t("סימן מים"), MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
-            TextButton(onClick = onDone) { Text(t("סיום")) }
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer)) {
+        PanelHeader(t("סימן מים"), MaterialTheme.colorScheme.onSurface, onDone)
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .then(panelBody(372.dp, upTo = true))
+                .verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            WatermarkControls(w, onChange)
+            Spacer(Modifier.height(4.dp))
         }
-        WatermarkControls(w, onChange)
-        Spacer(Modifier.height(4.dp))
     }
 }

@@ -140,8 +140,7 @@ fun AllSubtitlesPanel(ctrl: EditorController, modifier: Modifier = Modifier, sty
     }
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth()) {
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                SectionTitle(t("כל הכתוביות (%d)").format(cues.size), Feature.SUBTITLES.color, Modifier.weight(1f))
+            PanelHeader(t("כל הכתוביות (%d)").format(cues.size), Feature.SUBTITLES.color, { ctrl.listEditor = false; ctrl.bleepMode = false }) {
                 IconButton(onClick = { ctrl.bleepMode = !ctrl.bleepMode }) {
                     Icon(
                         AppIcons.Mute, t("צפצוף מילים"),
@@ -150,11 +149,6 @@ fun AllSubtitlesPanel(ctrl: EditorController, modifier: Modifier = Modifier, sty
                 }
                 IconButton(onClick = { findOpen = !findOpen }) { Icon(Icons.Filled.Search, t("חפש והחלף")) }
                 IconButton(onClick = { ctrl.undo() }) { Icon(AppIcons.Undo, t("בטל")) }
-                TextButton(onClick = { ctrl.listEditor = false; ctrl.bleepMode = false }) {
-                    Icon(Icons.Filled.Check, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(t("סיום"))
-                }
             }
             if (ctrl.bleepMode) {
                 Text(

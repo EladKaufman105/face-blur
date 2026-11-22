@@ -90,14 +90,7 @@ fun SubtitleStylePanel(style: SubtitleStyle, onChange: (SubtitleStyle) -> Unit, 
     var tab by remember { mutableIntStateOf(0) }
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                SectionTitle(t("עיצוב כתוביות"), Feature.SUBTITLES.color, Modifier.weight(1f))
-                TextButton(onClick = onDone) {
-                    Icon(Icons.Filled.Check, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(t("סיום"))
-                }
-            }
+            PanelHeader(t("עיצוב כתוביות"), Feature.SUBTITLES.color, onDone)
             val tabs = listOf(t("סגנונות"), t("גופן"), t("צבע"), t("אפקט"), t("גודל ומיקום"))
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
@@ -110,7 +103,7 @@ fun SubtitleStylePanel(style: SubtitleStyle, onChange: (SubtitleStyle) -> Unit, 
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(232.dp)
+                    .then(panelBody(232.dp))
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             ) {
