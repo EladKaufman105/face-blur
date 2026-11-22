@@ -22,6 +22,12 @@ class FrameStore private constructor(
     /** A new, empty store (whatever was in [file] is deleted). */
     constructor(file: File) : this(file, RandomAccessFile(file.apply { delete() }, "rw"), LongArray(1024), 0)
 
+    // A project opened straight from the home screen gets here before any analysis has
+    // loaded OpenCV.
+    init {
+        OpenCv.ensureLoaded()
+    }
+
     /** The file belongs to a saved project: closing doesn't delete it. */
     private var kept = false
     private val params = MatOfInt(Imgcodecs.IMWRITE_JPEG_QUALITY, 85)

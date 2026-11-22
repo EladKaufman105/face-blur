@@ -20,6 +20,11 @@ class MaskStore private constructor(
     private val offsets: LongArray,
     private val lengths: IntArray,
 ) : Closeable {
+    // Opened with a project, possibly before anything else loaded OpenCV.
+    init {
+        OpenCv.ensureLoaded()
+    }
+
     private val params = MatOfInt(Imgcodecs.IMWRITE_JPEG_QUALITY, 92)
     private var lastIndex = -1
     private var last: ByteArray? = null

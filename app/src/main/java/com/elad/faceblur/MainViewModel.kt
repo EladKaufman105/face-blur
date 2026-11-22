@@ -214,8 +214,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) { ProjectStore.load(app, id) }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Errors too (a native library that didn't load): reported, not a crash.
                 android.util.Log.w("EDITIT", "project not loaded", e)
+                val sw = java.io.StringWriter()
+                e.printStackTrace(java.io.PrintWriter(sw))
+                crashReport = "loading project $id\n\n" + sw.toString().take(20_000)
                 state = UiState.Failed(null, t("לא ניתן לפתוח את הפרויקט"))
                 return@launch
             }
