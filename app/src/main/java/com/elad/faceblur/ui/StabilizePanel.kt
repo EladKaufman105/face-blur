@@ -37,7 +37,7 @@ fun StabilizePanel(ctrl: EditorController) {
                 Segments(
                     listOf(0 to t("כבוי"), 1 to t("קל"), 2 to t("בינוני"), 3 to t("חזק")),
                     ctrl.stabilizeLevel,
-                ) { ctrl.setStabilizeLevel(it) }
+                ) { ctrl.chooseStabilize(it) }
                 val p = ctrl.stabilizeProgress
                 val zoom = ctrl.stabilizeZoomPercent
                 when {

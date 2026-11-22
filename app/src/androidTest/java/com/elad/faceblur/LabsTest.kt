@@ -218,7 +218,7 @@ class LabsTest {
         }
         rule.waitForIdle()
         Thread.sleep(2500)
-        rule.runOnIdle { ctrl.setStabilizeLevel(2); ctrl.stabilizePanel = true }
+        rule.runOnIdle { ctrl.chooseStabilize(2); ctrl.stabilizePanel = true }
         Thread.sleep(1500)
         shot("1_stabilized.png")
         note("stabilize on: ${inst.onMain { ctrl.stabilize }}")
@@ -263,7 +263,7 @@ class LabsTest {
         val session = EditSession(info, Settings(BlurMode.BLUR, 0.6f, 1.6f, false), analysis, 0, subtitlesOnly = true)
         val ctrl = EditorController(session, CoroutineScope(SupervisorJob() + Dispatchers.Main), ctx.applicationContext)
         for (level in listOf(1, 3)) {
-            inst.runOnMainSync { ctrl.setStabilizeLevel(level) }
+            inst.runOnMainSync { ctrl.chooseStabilize(level) }
             val t0 = System.currentTimeMillis()
             while (inst.onMain { ctrl.stabilizeProgress != null || (ctrl.stabilizer == null && ctrl.stabilize) }) {
                 if (System.currentTimeMillis() - t0 > 180_000) fail("motion pass timed out")

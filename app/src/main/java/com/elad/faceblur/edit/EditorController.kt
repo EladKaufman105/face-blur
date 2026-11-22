@@ -634,7 +634,7 @@ class EditorController(
     fun restore(rule: SplitRule, audio: AudioEdit, frame: Int, background: Background = Background(), stabilize: Int = 0) {
         split = rule
         this.audio = audio
-        if (stabilize > 0) setStabilizeLevel(stabilize)
+        if (stabilize > 0) chooseStabilize(stabilize)
         this.background = background
         bgState.background = background
         this.frame = frame.coerceIn(0, max(0, frameCount - 1))
@@ -849,7 +849,7 @@ class EditorController(
         get() = panel == EditorPanel.STABILIZE
         set(v) = showPanel(EditorPanel.STABILIZE, v)
 
-    fun setStabilizeLevel(level: Int) {
+    fun chooseStabilize(level: Int) {
         if (level <= 0) {
             motionJob?.cancel()
             stabilizeProgress = null
