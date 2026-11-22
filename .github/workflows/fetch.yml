@@ -1,0 +1,46 @@
+name: Fetch CC0 sounds (Freesound)
+
+on:
+  push:
+    branches: [sfx-src]
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the pages, keep the CC0 sounds
+        run: |
+          mkdir -p out
+          echo '[' > out/index.json; first=1
+          while read -r cat ids; do
+            for id in $ids; do
+              html=$(curl -sL --max-time 30 -A "Mozilla/5.0" "https://freesound.org/s/$id/") || continue
+              lic=$(printf '%s' "$html" | grep -o 'creativecommons.org/[a-z/.0-9-]*' | grep -v '^creativecommons.org/$' | head -1)
+              title=$(printf '%s' "$html" | grep -o '<meta property="og:title" content="[^"]*"' | head -1 | sed 's/.*content="//; s/"$//')
+              audio=$(printf '%s' "$html" | grep -o 'https://cdn.freesound.org/previews/[^"]*\.mp3' | head -1)
+              user=$(printf '%s' "$html" | grep -o 'freesound.org/people/[^/"]*' | head -1 | sed 's|.*/||')
+              dls=$(printf '%s' "$html" | grep -o '[0-9,]* downloads' | head -1)
+              echo "$cat $id lic=$lic user=$user title=$title audio=$audio $dls"
+              case "$lic" in *publicdomain/zero*) ;; *) continue ;; esac
+              [ -n "$audio" ] || continue
+              hq=$(echo "$audio" | sed 's/-lq\.mp3$/-hq.mp3/')
+              curl -sfL --max-time 60 -o "out/${cat}_$id.mp3" "$hq" || curl -sfL --max-time 60 -o "out/${cat}_$id.mp3" "$audio" || continue
+              [ $first = 1 ] || echo ',' >> out/index.json; first=0
+              printf '{"cat":"%s","id":%s,"title":"%s","user":"%s","license":"%s","url":"https://freesound.org/s/%s/","downloads":"%s"}\n' "$cat" "$id" "$title" "$user" "$lic" "$id" "$dls" >> out/index.json
+            done
+          done < ids.txt
+          echo ']' >> out/index.json
+          cat out/index.json; ls -la out
+      - name: Publish to the sfx-fs branch
+        run: |
+          cd out
+          git init -q -b sfx-fs
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "CC0 sounds from Freesound (previews), with their source pages"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" sfx-fs
