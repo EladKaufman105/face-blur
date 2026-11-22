@@ -25,6 +25,7 @@ import androidx.media3.transformer.Transformer
 import com.elad.faceblur.audio.CutAudioProcessor
 import com.elad.faceblur.edit.StabilizeEffect
 import com.elad.faceblur.edit.Stabilizer
+import com.elad.faceblur.analysis.MotionMeter
 import com.elad.faceblur.effects.CutEffect
 import androidx.media3.transformer.VideoEncoderSettings
 import com.elad.faceblur.analysis.AnalysisResult
@@ -162,6 +163,42 @@ class FaceBlurProcessor(private val context: Context) {
     }
 
     /**
+     * The camera's motion without face detection (for steadying a video opened without it): a
+     * pass that hands each frame, small, to a [MotionMeter].
+     */
+    suspend fun measureMotion(info: VideoInfo, onProgress: (Float) -> Unit): Stabilizer.Motion {
+        val out = File(context.cacheDir, "motion.mp4")
+        val meter = withContext(Dispatchers.IO) { MotionMeter() }
+        try {
+            val long = 640
+            val landscape = info.displayWidth >= info.displayHeight
+            val short = (long * minOf(info.displayWidth, info.displayHeight).toFloat() / maxOf(info.displayWidth, info.displayHeight, 1)).toInt().coerceAtLeast(16) / 2 * 2
+            val grab = GrabEffect(
+                if (landscape) long else short, if (landscape) short else long, info.rotation,
+                displayLandscape = landscape,
+            ) { buf, w, h, t, rot -> meter.onFrame(buf, w, h, t, rot) }
+            val item = EditedMediaItem.Builder(MediaItem.fromUri(info.uri))
+                .setRemoveAudio(true)
+                .setEffects(Effects(emptyList(), listOf<Effect>(grab)))
+                .build()
+            runWithHdrFallback(
+                listOf(
+                    Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL,
+                    Composition.HDR_MODE_EXPERIMENTAL_FORCE_INTERPRET_HDR_AS_SDR,
+                ),
+            ) { hdrMode ->
+                export(composition(item, hdrMode), out, bitrate = 500_000, mime = MimeTypes.VIDEO_H264, onProgress)
+            }
+            val (times, motion, cuts) = meter.result()
+            val aspect = if (meter.uprightW > 0) meter.uprightH.toFloat() / meter.uprightW else 1f
+            return Stabilizer.Motion(times, motion, cuts, aspect, info.fps, meter.rotation)
+        } finally {
+            meter.close()
+            out.delete()
+        }
+    }
+
+    /**
      * Finds the people in every frame (for background removal): a pass over the video that
      * hands each frame, small, to the [Segmenter]. The masks go into [file].
      */
@@ -214,8 +251,8 @@ class FaceBlurProcessor(private val context: Context) {
         audio: AudioEdit = AudioEdit(),
         background: Background = Background(),
         masks: MaskStore? = null,
-        /** Steady the camera (see Stabilizer). */
-        stabilize: Boolean = false,
+        /** Steadies the camera (see Stabilizer); null: as filmed. */
+        stabilizer: Stabilizer? = null,
         /** Now and then, a small copy of the finished frame being saved. */
         onPreview: ((android.graphics.Bitmap) -> Unit)? = null,
         onProgress: (Float) -> Unit,
@@ -243,7 +280,7 @@ class FaceBlurProcessor(private val context: Context) {
         val audioFx = ArrayList<AudioProcessor>()
         val bleeps = model.bleeps.map { (a, b) -> longArrayOf(a, b) }
         val sfx = model.sfx.mapNotNull { c -> SfxLibrary.load(context, c.sound)?.let { SfxPlay(c.startMs * 1000, it, c.gain) } }
-        val dsp = VoiceDsp(bleeps, audio.voice, audio.tone, sfx = sfx, denoise = audio.denoise, gain = audio.gain)
+        val dsp = VoiceDsp(bleeps, audio.voice, audio.tone, sfx = sfx, denoise = audio.denoise, enhance = audio.enhance, gain = audio.gain)
         // Stretches cut out: their frames and their sound are dropped at the end of the chains.
         val cutMap = model.cutMap()
         // No sound at all: the track is dropped, unless sound effects play over the silence.
@@ -253,11 +290,7 @@ class FaceBlurProcessor(private val context: Context) {
             if (dsp.active) audioFx += VoiceAudioProcessor(dsp)
             if (!cutMap.isEmpty) audioFx += CutAudioProcessor(cutMap)
         }
-        val steady = if (stabilize) {
-            Stabilizer.from(analysis.times, analysis.motion, analysis.cuts, analysis.aspect, analysis.fps, analysis.rotation)
-        } else {
-            null
-        }
+        val steady = stabilizer
         // Steadied right after the blur (which follows the faces in the shaky frame), before
         // anything drawn on top: subtitles and the watermark don't move.
         val steadyEffect = steady?.let { s -> listOf<Effect>(StabilizeEffect { s }) } ?: emptyList()

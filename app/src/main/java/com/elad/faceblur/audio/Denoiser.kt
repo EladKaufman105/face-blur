@@ -16,7 +16,11 @@ import kotlin.math.sqrt
  * The output is the input delayed by one window ([latency] samples), so sound stays in step
  * with the video to within a few milliseconds.
  */
-class Denoiser(rate: Int) {
+class Denoiser(rate: Int, level: Int = 2) {
+    /** How far noise is lowered, and how much of what's near the noise counts as noise. */
+    private val floor = when (level) { 1 -> 0.32f; 3 -> 0.07f; else -> 0.16f }
+    private val bias = when (level) { 1 -> 1.6f; 3 -> 3.2f; else -> 2.2f }
+
     private val n = if (rate >= 32_000) 1024 else 512
     private val hop = n / 2
     val latency get() = n
@@ -85,7 +89,7 @@ class Denoiser(rate: Int) {
             if (smooth[k] < minCur[k]) minCur[k] = smooth[k]
             val m = min(minCur[k], minPrev[k])
             // The minimum underestimates the mean noise: scale it up.
-            noise[k] = if (frames < 6) max(noise[k], smooth[k]) else m * NOISE_BIAS
+            noise[k] = if (frames < 6) max(noise[k], smooth[k]) else m * bias
         }
         if (frames % span == 0) {
             System.arraycopy(minCur, 0, minPrev, 0, bins)
@@ -96,7 +100,7 @@ class Denoiser(rate: Int) {
             val nk = max(noise[k], 1e-12f)
             val post = p / nk
             val prior = ALPHA * gainPrev[k] * gainPrev[k] * snrPrev[k] + (1 - ALPHA) * max(post - 1f, 0f)
-            val g = max(prior / (1f + prior), FLOOR)
+            val g = max(prior / (1f + prior), floor)
             gain[k] = g
             snrPrev[k] = post
         }
@@ -124,9 +128,6 @@ class Denoiser(rate: Int) {
 
     companion object {
         private const val ALPHA = 0.96f
-        /** About -16 dB at most: the voice stays natural, the noise just steps back. */
-        private const val FLOOR = 0.16f
-        private const val NOISE_BIAS = 2.2f
 
         /** In-place radix-2 FFT; [inverse] also divides by the size. */
         fun fft(re: FloatArray, im: FloatArray, inverse: Boolean) {

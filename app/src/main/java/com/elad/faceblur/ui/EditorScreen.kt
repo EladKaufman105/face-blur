@@ -208,6 +208,7 @@ fun EditorScreen(
             ctrl.bgPanel -> ctrl.bgPanel = false
             ctrl.watermarkPanel -> ctrl.watermarkPanel = false
             ctrl.cutPanel -> ctrl.cutPanel = false
+            ctrl.stabilizePanel -> ctrl.stabilizePanel = false
             ctrl.blurPanel -> ctrl.blurPanel = false
             ctrl.selectedId != null || ctrl.selectedCueId != null || ctrl.selectedSfxId != null -> ctrl.deselect()
             else -> onClose()
@@ -290,6 +291,7 @@ fun EditorScreen(
             EditorPanel.WATERMARK -> WatermarkPanel(export.watermark, { onExportChange(export.copy(watermark = it)) }) { ctrl.watermarkPanel = false }
             EditorPanel.BLUR -> BlurPanel(ctrl) { ctrl.blurPanel = false }
             EditorPanel.CUT -> CutPanel(ctrl)
+            EditorPanel.STABILIZE -> StabilizePanel(ctrl)
         }
     }
     val wide = isWide()
@@ -1499,7 +1501,7 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
         }
         subsTools += ToolSpec(t("סימן מים"), AppIcons.Watermark, !busy, active = watermarkOn, current = current == EditorPanel.WATERMARK) { ctrl.pauser(); ctrl.watermarkPanel = true }
         subsTools += ToolSpec(t("חיתוך"), EditorIcons.Cut, !busy, active = ctrl.cutCount > 0, current = current == EditorPanel.CUT) { ctrl.pauser(); ctrl.cutPanel = true }
-        subsTools += ToolSpec(t("ייצוב"), AppIcons.Steady, !busy, active = ctrl.stabilize) { ctrl.setStabilized(!ctrl.stabilize) }
+        subsTools += ToolSpec(t("ייצוב"), AppIcons.Steady, !busy, active = ctrl.stabilize, current = current == EditorPanel.STABILIZE) { ctrl.pauser(); ctrl.stabilizePanel = true }
         if (subsOnly) tools += subsTools
         tools += ToolSpec(
             if (ctrl.addMode) t("ביטול") else t("הוסף טשטוש"),

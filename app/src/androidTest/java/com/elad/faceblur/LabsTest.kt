@@ -145,7 +145,7 @@ class LabsTest {
         check(abs(lufs - (-20f)) < 0.5f) { "loudness $lufs" }
 
         // The voice chain with a big makeup gain never clips.
-        val dsp = VoiceDsp(emptyList(), VoiceFx.NONE, true, denoise = true, gain = 8f)
+        val dsp = VoiceDsp(emptyList(), VoiceFx.NONE, true, denoise = 3, enhance = true, gain = 8f)
         val buf = ByteBuffer.allocateDirect(r48 * 2 * 4).order(ByteOrder.nativeOrder())
         for (i in 0 until r48) { val v = 0.5f * sin(2 * PI * 220 * i / r48).toFloat(); buf.putFloat(v); buf.putFloat(v) }
         buf.flip()
@@ -180,7 +180,7 @@ class LabsTest {
         check(m.toggleCutWord(m.cues.first().id, 1)) { "cut word" }
         val removed = m.cutMap().removedUs
         note("removed ${removed / 1000} ms in ${m.removed.size} stretches; input $inDur")
-        val audio = AudioEdit(denoise = true, loud = true, gainDb = 4f)
+        val audio = AudioEdit(denoise = 2, enhance = true, loud = true, gainDb = 4f)
         val saved = runBlocking(Dispatchers.Main) {
             FaceBlurProcessor(ctx).render(info, settings, analysis, m, 0, ExportOptions(saveSrt = false), audio = audio) {}
         }
@@ -218,7 +218,7 @@ class LabsTest {
         }
         rule.waitForIdle()
         Thread.sleep(2500)
-        rule.runOnIdle { ctrl.setStabilized(true) }
+        rule.runOnIdle { ctrl.setStabilizeLevel(2); ctrl.stabilizePanel = true }
         Thread.sleep(1500)
         shot("1_stabilized.png")
         note("stabilize on: ${inst.onMain { ctrl.stabilize }}")
@@ -234,7 +234,7 @@ class LabsTest {
         Thread.sleep(800)
         note("fillers cut: total cuts ${inst.onMain { ctrl.cutCount }}")
         shot("3_fillers_cut.png")
-        rule.runOnIdle { ctrl.soundTab = 1; ctrl.voicePanel = true; ctrl.setDenoise(true) }
+        rule.runOnIdle { ctrl.soundTab = 1; ctrl.voicePanel = true; ctrl.setDenoise(2); ctrl.setEnhance(true) }
         Thread.sleep(1200)
         shot("4_voice_cleanup.png")
         // Playback jumps over the cut.
@@ -246,12 +246,33 @@ class LabsTest {
         note("after playing: frame ${inst.onMain { ctrl.frame }}")
         // Export with the camera steadied.
         val saved = runBlocking(Dispatchers.Main) {
-            FaceBlurProcessor(ctx).render(info, settings, analysis, ctrl.model, 0, ExportOptions(saveSrt = false), stabilize = true) {}
+            FaceBlurProcessor(ctx).render(info, settings, analysis, ctrl.model, 0, ExportOptions(saveSrt = false), stabilizer = s) {}
         }
         val out = File(ctx.cacheDir, "labs_steady.mp4")
         ctx.contentResolver.openInputStream(saved.uri)!!.use { i -> out.outputStream().use { i.copyTo(it) } }
         note("steadied export: ${durationsUs(out)}")
         frameAt(out, 1_000_000L)?.let { save(it, "5_steady_frame.png") }
+    }
+
+    /** Steadying a video opened without face detection: its motion is measured on demand. */
+    @Test
+    fun stabilizeWithoutFaces() {
+        val src = sample("walk.mp4")
+        val info = VideoInfo.probe(ctx, Uri.fromFile(src))
+        val analysis = FaceBlurProcessor.framesOnly(ctx, info)
+        val session = EditSession(info, Settings(BlurMode.BLUR, 0.6f, 1.6f, false), analysis, 0, subtitlesOnly = true)
+        val ctrl = EditorController(session, CoroutineScope(SupervisorJob() + Dispatchers.Main), ctx.applicationContext)
+        for (level in listOf(1, 3)) {
+            inst.runOnMainSync { ctrl.setStabilizeLevel(level) }
+            val t0 = System.currentTimeMillis()
+            while (inst.onMain { ctrl.stabilizeProgress != null || (ctrl.stabilizer == null && ctrl.stabilize) }) {
+                if (System.currentTimeMillis() - t0 > 180_000) fail("motion pass timed out")
+                Thread.sleep(200)
+            }
+            val zoom = inst.onMain { ctrl.stabilizeZoomPercent }
+            note("level $level without faces: zoom $zoom% (motion measured in ${System.currentTimeMillis() - t0} ms)")
+            if (inst.onMain { ctrl.stabilizer } == null) fail("no stabilizer at level $level")
+        }
     }
 
     /** Video to MP3: decoded on the device, encoded with LAME, saved in Download/ONIT. */
@@ -357,6 +378,6 @@ class LabsTest {
     }
 
     companion object {
-        private val TESTS = setOf("audioAndCutMath", "cutsCleanupPrivacy", "stabilizeAndPanels", "mp3")
+        private val TESTS = setOf("audioAndCutMath", "cutsCleanupPrivacy", "stabilizeAndPanels", "stabilizeWithoutFaces", "mp3")
     }
 }

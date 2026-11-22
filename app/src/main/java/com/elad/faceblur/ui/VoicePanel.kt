@@ -186,7 +186,13 @@ fun VoicePanel(ctrl: EditorController) {
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Caption(t("ניקוי קול"))
-                CleanupRow(t("הסרת רעשי רקע"), t("מזגן, רוח, תנועה, זמזום. נשמע מיד בנגן."), a.denoise, true) { ctrl.setDenoise(it) }
+                Text(t("הסרת רעשי רקע"), style = MaterialTheme.typography.titleSmall)
+                Text(t("מזגן, רוח, תנועה, זמזום. נשמע מיד בנגן."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Segments(
+                    listOf(0 to t("כבוי"), 1 to t("קל"), 2 to t("בינוני"), 3 to t("חזק")),
+                    a.denoise,
+                ) { ctrl.setDenoise(it) }
+                CleanupRow(t("שיפור קול"), t("קול ברור ואחיד: בלי רעמים נמוכים, מילים חדות יותר, עוצמה מאוזנת"), a.enhance, true) { ctrl.setEnhance(it) }
                 CleanupRow(
                     t("עוצמה לרשתות"),
                     if (ctrl.loudnessBusy) t("מודד את העוצמה…")

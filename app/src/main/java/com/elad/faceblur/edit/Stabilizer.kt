@@ -55,17 +55,30 @@ class Stabilizer private constructor(
         return into
     }
 
+    /** What the camera did: per frame, its motion, plus the cuts (see CameraMotion). */
+    class Motion(val times: LongArray, val motion: FloatArray, val cuts: IntArray, val aspect: Float, val fps: Float, val rotation: Int) {
+        /** Whether anything was measured (a video opened without face detection has nothing). */
+        val measured get() = times.size >= 3 && motion.any { it != 0f }
+
+        fun stabilizer(level: Int) = from(times, motion, cuts, aspect, fps, rotation, level)
+    }
+
     companion object {
-        /** How long a stretch the path is smoothed over (Gaussian sigma, seconds). */
-        private const val SIGMA_S = 0.5f
-        /** The most a frame is moved (fraction of the picture); more shake than that stays. */
-        private const val MAX_SHIFT = 0.07f
+        /**
+         * Per level (1 light, 2 medium, 3 strong): how long a stretch the path is smoothed over
+         * (Gaussian sigma, seconds) and the most a frame is moved (fraction of the picture;
+         * more shake than that stays). Stronger: steadier, and more of the edges cropped.
+         */
+        private fun sigmaS(level: Int) = when (level) { 1 -> 0.3f; 3 -> 1.1f; else -> 0.6f }
+        private fun maxShift(level: Int) = when (level) { 1 -> 0.035f; 3 -> 0.11f; else -> 0.07f }
 
         /**
          * From the analysis's camera motion; null if there's none to steady (no motion was
          * measured, e.g. a video opened for subtitles only).
          */
-        fun from(times: LongArray, motion: FloatArray, cuts: IntArray, aspect: Float, fps: Float, rotation: Int): Stabilizer? {
+        fun from(times: LongArray, motion: FloatArray, cuts: IntArray, aspect: Float, fps: Float, rotation: Int, level: Int = 2): Stabilizer? {
+            val sigmaS = sigmaS(level)
+            val maxShift = maxShift(level)
             val n = times.size
             if (n < 3 || motion.size < 2 * n) return null
             if (motion.all { it == 0f }) return null
@@ -75,7 +88,7 @@ class Stabilizer private constructor(
             val starts = (listOf(0) + cuts.filter { it in 1 until n }.sorted().distinct() + listOf(n))
             val sx = FloatArray(n)
             val sy = FloatArray(n)
-            val sigma = max(1f, SIGMA_S * fps)
+            val sigma = max(1f, sigmaS * fps)
             val reach = (3 * sigma).toInt()
             var worst = 0f
             for (s in 0 until starts.size - 1) {
@@ -93,8 +106,8 @@ class Stabilizer private constructor(
                         w += k
                     }
                     // The picture follows the smooth path instead of the shaky one.
-                    sx[i] = (accX / w - ox[i]).coerceIn(-MAX_SHIFT, MAX_SHIFT)
-                    sy[i] = (accY / w - oy[i]).coerceIn(-MAX_SHIFT, MAX_SHIFT)
+                    sx[i] = (accX / w - ox[i]).coerceIn(-maxShift, maxShift)
+                    sy[i] = (accY / w - oy[i]).coerceIn(-maxShift, maxShift)
                     worst = max(worst, max(abs(sx[i]), abs(sy[i])))
                 }
             }

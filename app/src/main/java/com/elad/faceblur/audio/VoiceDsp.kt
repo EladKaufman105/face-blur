@@ -44,8 +44,10 @@ class VoiceDsp(
     /** The pitch change applied after this (the player's), so the beep still sounds at 1 kHz. */
     pitchAfter: Float = 1f,
     private val sfx: List<SfxPlay> = emptyList(),
-    /** Background noise lowered (see [Denoiser]). */
-    private val denoise: Boolean = false,
+    /** Background noise lowered (see [Denoiser]): 0 off, 1 light, 2 medium, 3 strong. */
+    private val denoise: Int = 0,
+    /** "Enhance voice": clarity EQ and an even level (see [VoiceEnhancer], [Compressor]). */
+    private val enhance: Boolean = false,
     /** Makeup gain for social-media loudness (linear, 1 = none), with a limiter. */
     private val gain: Float = 1f,
     /** Stretches cut out of the video (ms): silent in the player, which jumps over them. */
@@ -60,11 +62,13 @@ class VoiceDsp(
     private val cutStarts = LongArray(cuts.size) { cuts[it][0] * 1000 }
     private val cutEnds = LongArray(cuts.size) { cuts[it][1] * 1000 }
 
-    private val cleanup get() = denoise || gain != 1f
+    private val cleanup get() = denoise > 0 || enhance || gain != 1f
     val active get() = starts.isNotEmpty() || fx.ringMix > 0f || mute || sfx.isNotEmpty() || cleanup || cutStarts.isNotEmpty()
 
     // Cleanup state: one denoiser per channel, a linked limiter; reset when the time jumps.
     private var den: Array<Denoiser>? = null
+    private var eq: Array<VoiceEnhancer> = emptyArray()
+    private var comp: Compressor? = null
     private var limiter: Limiter? = null
     private var stateRate = 0
     private var stateCh = 0
@@ -73,6 +77,8 @@ class VoiceDsp(
     /** Forgets the sound so far (a seek, a new export). */
     fun reset() {
         den?.forEach { it.reset() }
+        eq.forEach { it.reset() }
+        comp?.reset()
         limiter?.reset()
         expectUs = -1L
     }
@@ -80,7 +86,9 @@ class VoiceDsp(
     private fun clean(buf: ByteBuffer, startUs: Long, endUs: Long, frames: Int, rate: Int, channels: Int, float: Boolean) {
         val ch = minOf(channels, 8)
         if (den == null || stateCh != ch || stateRate != rate) {
-            den = if (denoise) Array(ch) { Denoiser(rate) } else emptyArray()
+            den = if (denoise > 0) Array(ch) { Denoiser(rate, denoise) } else emptyArray()
+            eq = if (enhance) Array(ch) { VoiceEnhancer(rate) } else emptyArray()
+            comp = if (enhance) Compressor(rate) else null
             limiter = Limiter(rate)
             stateRate = rate
             stateCh = ch
@@ -89,7 +97,10 @@ class VoiceDsp(
         if (expectUs >= 0 && kotlin.math.abs(startUs - expectUs) > 40_000) reset()
         expectUs = endUs
         val d = den!!
+        val e = eq
+        val cmp = comp
         val lim = limiter!!
+        val limit = gain > 1f || cmp != null
         val bytes = if (float) 4 else 2
         val frameBytes = bytes * channels
         val base = buf.position()
@@ -100,11 +111,15 @@ class VoiceDsp(
                 val at = base + f * frameBytes + c * bytes
                 var x = if (float) buf.getFloat(at) else buf.getShort(at) / 32768f
                 if (d.isNotEmpty()) x = d[c].process(x)
-                x *= gain
+                if (e.isNotEmpty()) x = e[c].process(x)
                 v[c] = x
                 peak = kotlin.math.max(peak, kotlin.math.abs(x))
             }
-            val g = if (gain > 1f) lim.gainFor(peak) else 1f
+            // Even level first (enhance), then the loudness gain, then the ceiling.
+            val cg = (cmp?.gainFor(peak) ?: 1f) * gain
+            peak *= cg
+            for (c in 0 until ch) v[c] *= cg
+            val g = if (limit) lim.gainFor(peak) else 1f
             for (c in 0 until ch) {
                 val at = base + f * frameBytes + c * bytes
                 val y = Limiter.soft(v[c] * g).coerceIn(-1f, 1f)

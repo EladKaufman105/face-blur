@@ -23,8 +23,10 @@ data class AudioEdit(
     val voice: VoiceFx = VoiceFx.NONE,
     val tone: Boolean = true,
     val maskWords: Boolean = true,
-    /** Background noise lowered. */
-    val denoise: Boolean = false,
+    /** Background noise lowered: 0 off, 1 light, 2 medium, 3 strong. */
+    val denoise: Int = 0,
+    /** Voice made clearer and more even. */
+    val enhance: Boolean = false,
     /** Brought to social-media loudness, by [gainDb] (measured once). */
     val loud: Boolean = false,
     val gainDb: Float = 0f,
@@ -33,7 +35,7 @@ data class AudioEdit(
     val gain: Float get() = if (loud) Math.pow(10.0, gainDb / 20.0).toFloat() else 1f
 
     fun toJson(): JSONObject = JSONObject().put("voice", voice.name).put("tone", tone).put("mask", maskWords)
-        .put("denoise", denoise).put("loud", loud).put("gainDb", gainDb.toDouble())
+        .put("denoiseLevel", denoise).put("enhance", enhance).put("loud", loud).put("gainDb", gainDb.toDouble())
 
     companion object {
         fun fromJson(o: JSONObject?): AudioEdit {
@@ -42,7 +44,8 @@ data class AudioEdit(
                 runCatching { VoiceFx.valueOf(o.optString("voice")) }.getOrDefault(VoiceFx.NONE),
                 o.optBoolean("tone", true),
                 o.optBoolean("mask", true),
-                o.optBoolean("denoise", false),
+                o.optInt("denoiseLevel", if (o.optBoolean("denoise", false)) 2 else 0),
+                o.optBoolean("enhance", false),
                 o.optBoolean("loud", false),
                 o.optDouble("gainDb", 0.0).toFloat(),
             )

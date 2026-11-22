@@ -154,7 +154,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         .put("audio", ctrl.audio.toJson())
         .put("frame", ctrl.frame)
         .put("background", ctrl.background.toJson())
-        .put("stabilize", ctrl.stabilize)
+        .put("stabilize", ctrl.stabilizeLevel)
         .put("settings", ctrl.session.settings.let { st -> JSONObject().put("mode", st.mode.name).put("strength", st.strength.toDouble()).put("padding", st.padding.toDouble()).put("sensitive", st.sensitive) })
 
     /** Every new editing session is saved as a project. */
@@ -184,7 +184,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun startAutosave(ctrl: EditorController) {
         autosave?.cancel()
         autosave = viewModelScope.launch {
-            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, prefs.subStyle, ctrl.background, ctrl.masksReady, ctrl.session.settings, ctrl.stabilize) }
+            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, prefs.subStyle, ctrl.background, ctrl.masksReady, ctrl.session.settings, ctrl.stabilizeLevel) }
                 .drop(1)
                 .collectLatest {
                     delay(1500)
@@ -260,7 +260,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 AudioEdit.fromJson(j.optJSONObject("audio")),
                 j.optInt("frame"),
                 Background.fromJson(j.optJSONObject("background")),
-                j.optBoolean("stabilize", false),
+                when (val st = j.opt("stabilize")) { is Boolean -> if (st) 2 else 0; is Number -> st.toInt(); else -> 0 },
             )
             editor = ctrl
             projectId = id
@@ -443,7 +443,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val saved = FaceBlurProcessor(getApplication()).render(
             s.info, s.settings, s.analysis, s.model, s.analysisMs, prefs.export, prefs.subStyle, ctrl.audio,
             ctrl.background, s.masks,
-            stabilize = ctrl.stabilize,
+            stabilizer = ctrl.stabilizer,
             onPreview = { frame -> showLive(frame, emptyList()) },
         ) { p -> state = UiState.Working(s.info, 2, p, s.subtitlesOnly, auto) }
         if (s.analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / s.analysisMs
@@ -492,6 +492,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         projectId = null
         editor?.cancelTracking()
         editor?.cancelSubtitles()
+        editor?.cancelMotion()
         editor?.session?.close()
         editor = null
     }

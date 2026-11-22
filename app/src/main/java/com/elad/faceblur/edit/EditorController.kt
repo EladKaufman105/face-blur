@@ -631,10 +631,10 @@ class EditorController(
 
     /** Re-cuts the subtitles (from their whole sentences, so nothing is lost). */
     /** Puts back a saved project's choices (no edits recorded). */
-    fun restore(rule: SplitRule, audio: AudioEdit, frame: Int, background: Background = Background(), stabilize: Boolean = false) {
+    fun restore(rule: SplitRule, audio: AudioEdit, frame: Int, background: Background = Background(), stabilize: Int = 0) {
         split = rule
         this.audio = audio
-        if (stabilize) setStabilized(true)
+        if (stabilize > 0) setStabilizeLevel(stabilize)
         this.background = background
         bgState.background = background
         this.frame = frame.coerceIn(0, max(0, frameCount - 1))
@@ -669,7 +669,7 @@ class EditorController(
         val cuts = model.removed.map { (x, y) -> longArrayOf(x, y) }
         voiceDsp = VoiceDsp(
             b, audio.voice, audio.tone, pitchAfter = audio.voice.pitch, sfx = sfx,
-            denoise = audio.denoise, gain = audio.gain, cuts = cuts,
+            denoise = audio.denoise, enhance = audio.enhance, gain = audio.gain, cuts = cuts,
         ).takeIf { it.active }
     }
 
@@ -679,7 +679,10 @@ class EditorController(
     var loudnessBusy by mutableStateOf(false)
         private set
 
-    fun setDenoise(on: Boolean) = changeAudio(audio.copy(denoise = on))
+    /** 0 off, 1 light, 2 medium, 3 strong. */
+    fun setDenoise(level: Int) = changeAudio(audio.copy(denoise = level.coerceIn(0, 3)))
+
+    fun setEnhance(on: Boolean) = changeAudio(audio.copy(enhance = on))
 
     /** Turns the loudness levelling on (measuring the video once) or off. */
     fun setLoud(on: Boolean) {
@@ -827,31 +830,74 @@ class EditorController(
 
     // ------------------------------------------------------------------ stabilization
 
-    /** The camera is steadied (in the player and the export). */
-    var stabilize by mutableStateOf(false)
+    /** How much the camera is steadied: 0 off, 1 light, 2 medium, 3 strong. */
+    var stabilizeLevel by mutableIntStateOf(0)
+        private set
+    val stabilize get() = stabilizeLevel > 0
+    /** Measuring the camera's motion (a video opened without face detection), while it runs. */
+    var stabilizeProgress by mutableStateOf<Float?>(null)
         private set
     /** What the player's stabilize effect reads (on its own thread). */
     @Volatile var stabilizer: Stabilizer? = null
         private set
+    /** The camera's motion: from the face analysis, or measured on demand. */
+    private var motion: Stabilizer.Motion? = null
+    private var motionJob: Job? = null
 
-    fun setStabilized(on: Boolean) {
-        if (!on) {
-            stabilize = false
+    /** The stabilizer's panel is open. */
+    var stabilizePanel: Boolean
+        get() = panel == EditorPanel.STABILIZE
+        set(v) = showPanel(EditorPanel.STABILIZE, v)
+
+    fun setStabilizeLevel(level: Int) {
+        if (level <= 0) {
+            motionJob?.cancel()
+            stabilizeProgress = null
+            stabilizeLevel = 0
             stabilizer = null
             refresher()
             return
         }
-        val a = session.analysis
-        val s = Stabilizer.from(a.times, a.motion, a.cuts, a.aspect, a.fps, a.rotation)
-        if (s == null) {
-            notice = if (session.subtitlesOnly) t("ייצוב צריך זיהוי פנים (שם נמדדת תנועת המצלמה)") else t("המצלמה כבר יציבה: אין מה לייצב")
-            stabilize = false
+        stabilizeLevel = level.coerceAtMost(3)
+        val known = motion ?: session.analysis.let { a -> Stabilizer.Motion(a.times, a.motion, a.cuts, a.aspect, a.fps, a.rotation) }.takeIf { it.measured }
+        if (known != null) {
+            motion = known
+            applyStabilizer()
             return
         }
+        // No face detection ran: measure the camera's motion first (a quick pass).
+        val ctx = appContext ?: return
+        if (motionJob?.isActive == true) return
+        stabilizeProgress = 0f
+        motionJob = scope.launch {
+            try {
+                motion = FaceBlurProcessor(ctx).measureMotion(session.info) { p -> stabilizeProgress = p }
+                if (stabilizeLevel > 0) applyStabilizer()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("ONIT", "motion pass failed", e)
+                notice = t("מדידת תנועת המצלמה נכשלה")
+                stabilizeLevel = 0
+            } finally {
+                stabilizeProgress = null
+            }
+        }
+    }
+
+    private fun applyStabilizer() {
+        val s = motion?.stabilizer(stabilizeLevel)
         stabilizer = s
-        stabilize = true
-        notice = t("ייצוב פועל · התמונה מוגדלת ב-%d%% כדי להסתיר את השוליים").format(((s.zoom - 1f) * 100).roundToInt())
+        if (s == null) notice = t("המצלמה כבר יציבה: אין מה לייצב")
         refresher()
+    }
+
+    /** How much of the picture the current level enlarges (percent), or null. */
+    val stabilizeZoomPercent get() = stabilizer?.let { ((it.zoom - 1f) * 100).roundToInt() }
+
+    /** Cancels the motion pass if the editor goes away. */
+    fun cancelMotion() {
+        motionJob?.cancel()
     }
 
     // ------------------------------------------------------------------ sound effects
@@ -1279,4 +1325,4 @@ class EditorController(
 }
 
 /** The editor's tool panels (see [EditorController.panel]). */
-enum class EditorPanel { BLUR, SUBTITLES, LIST, STYLE, VOICE, BACKGROUND, WATERMARK, CUT }
+enum class EditorPanel { BLUR, SUBTITLES, LIST, STYLE, VOICE, BACKGROUND, WATERMARK, CUT, STABILIZE }
