@@ -39,7 +39,7 @@ jobs:
         working-directory: web
         run: |
           git fetch --depth 1 origin test-media
-          mkdir -p /tmp/samples && git archive FETCH_HEAD | tar -x -C /tmp/samples
+          mkdir -p /tmp/samples && git -C .. archive FETCH_HEAD | tar -x -C /tmp/samples && ls /tmp/samples
           npx playwright install --with-deps chromium
           npx vite preview --port 4173 --strictPort &
           sleep 3
