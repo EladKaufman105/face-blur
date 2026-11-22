@@ -55,6 +55,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -202,31 +203,43 @@ fun MainScreen(vm: MainViewModel) {
                             LogoMark(64.dp)
                         }
                         is UiState.Ready -> {
+                            // Before detection: only what it needs. Export settings come with saving
+                            // (in the editor, or in the sheet of "blur and save").
+                            var saveSheet by remember { mutableStateOf(false) }
                             EnterUp(0) { VideoCard(s.info, onReplace = pick) }
                             EnterUp(1) { SettingsCard(vm) }
                             EnterUp(2) {
-                                SectionCard {
-                                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        SectionTitle(t("הגדרות ייצוא"), MaterialTheme.colorScheme.onSurfaceVariant)
-                                        ExportOptionsPanel(s.info, vm.prefs.export, vm.prefs::updateExport)
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    GradientButton(
+                                        t("טשטש פנים"),
+                                        { vm.review = true; vm.start() },
+                                        Modifier.fillMaxWidth(),
+                                        icon = AppIcons.Face,
+                                    )
+                                    Text(
+                                        t("הפנים יזוהו ויטושטשו, ואז ייפתח העורך: אפשר לבדוק, לתקן ולהוסיף כתוביות, רקע, סאונד וסימן מים לפני השמירה."),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    TextButton(onClick = { saveSheet = true }, modifier = Modifier.fillMaxWidth()) {
+                                        Text(t("או: טשטש ושמור ישר, בלי עורך"))
                                     }
                                 }
                             }
-                            EnterUp(3) {
-                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    GradientButton(t("טשטש פנים"), vm::start, Modifier.fillMaxWidth(), icon = AppIcons.Face)
-                                    AccentOutlinedButton(
-                                        t("כתוביות בלבד, בלי טשטוש"), vm::startSubtitles, Modifier.fillMaxWidth(),
-                                        icon = AppIcons.Subtitles, accent = Feature.SUBTITLES.tint,
-                                    )
-                                }
+                            if (saveSheet) {
+                                ExportSheet(
+                                    s.info, vm.prefs.export, vm.prefs::updateExport,
+                                    onExport = { saveSheet = false; vm.review = false; vm.start() },
+                                    onDismiss = { saveSheet = false },
+                                    action = t("טשטש ושמור"),
+                                )
                             }
                         }
                         is UiState.Working, is UiState.Editing -> Unit
                         is UiState.Done -> DoneCard(
                             s,
                             onEdit = if (s.canEdit) vm::edit else null,
-                            onAgain = vm::backToSettings,
+                            onHome = vm::reset,
                             onNew = { vm.reset(); pick() },
                         )
                         is UiState.NoFaces -> {
@@ -329,9 +342,9 @@ private fun HeroCard(onPick: () -> Unit) {
 private fun ToolsSection(onTool: (QuickTool) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Column {
-            SectionTitle(t("עריכה בלי טשטוש"), MaterialTheme.colorScheme.onSurfaceVariant)
+            SectionTitle(t("כלים נוספים"), MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                t("ישר לעורך, בלי זיהוי פנים"),
+                t("פותח את העורך ישר, בלי זיהוי פנים"),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 22.dp),
@@ -410,18 +423,21 @@ private fun VideoCard(info: VideoInfo, onReplace: (() -> Unit)?) {
 private fun SettingsCard(vm: MainViewModel) {
     SectionCard {
         Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            SectionTitle(t("הגדרות טשטוש"), Feature.FACES.tint)
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Label(t("סגנון"))
-                Segments(
-                    listOf(BlurMode.BLUR to t("טשטוש"), BlurMode.PIXELATE to t("פיקסלים"), BlurMode.SOLID to t("כיסוי")),
-                    vm.mode,
-                ) { vm.mode = it }
+            Column {
+                SectionTitle(t("טשטוש פנים"), Feature.FACES.tint)
+                Text(
+                    t("אפשר לשנות את המראה גם אחר כך, בעורך."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 22.dp),
+                )
             }
-            if (vm.mode != BlurMode.SOLID) {
-                SliderRow(t("עוצמה"), t("עדין"), t("חזק"), vm.strength, 0f..1f) { vm.strength = it }
-            }
-            SliderRow(t("גודל האזור סביב הפנים"), t("צמוד"), t("רחב"), vm.padding, 1.2f..2.0f) { vm.padding = it }
+            BlurLookControls(
+                vm.mode, vm.strength, vm.padding,
+                onMode = { vm.mode = it },
+                onStrength = { vm.strength = it },
+                onPadding = { vm.padding = it },
+            )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(t("זיהוי מורחב"), style = MaterialTheme.typography.titleSmall)
@@ -434,46 +450,10 @@ private fun SettingsCard(vm: MainViewModel) {
                 Spacer(Modifier.width(12.dp))
                 Switch(checked = vm.sensitive, onCheckedChange = { vm.sensitive = it })
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(t("בדיקה ועריכה לפני שמירה"), style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        t("אחרי הזיהוי נפתח עורך: אפשר להוסיף, למחוק, להזיז ולשנות גודל של טשטושים ולקבוע מתי הם מתחילים ונגמרים."),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Switch(checked = vm.review, onCheckedChange = { vm.review = it })
-            }
         }
     }
 }
 
-@Composable
-private fun Label(text: String) {
-    Text(text, style = MaterialTheme.typography.titleSmall)
-}
-
-@Composable
-private fun SliderRow(
-    title: String,
-    low: String,
-    high: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    onChange: (Float) -> Unit,
-) {
-    Column {
-        Label(title)
-        Slider(value = value, onValueChange = onChange, valueRange = range)
-        Row {
-            Text(low, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.weight(1f))
-            Text(high, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
 
 /**
  * The progress screen: the video as it's being processed (faces as they're found, then the
@@ -654,7 +634,7 @@ private fun clockText(ms: Long): String {
 }
 
 @Composable
-private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> Unit, onNew: () -> Unit) {
+private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onHome: () -> Unit, onNew: () -> Unit) {
     val context = LocalContext.current
     val uri = state.result.uri
     SectionCard {
@@ -722,7 +702,7 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
             }
             if (onEdit != null) {
                 AccentOutlinedButton(
-                    if (state.subsOnly) t("ערוך וייצא שוב") else t("ערוך טשטושים וייצא שוב"),
+                    t("חזרה לעריכה"),
                     onEdit,
                     Modifier.fillMaxWidth(),
                     icon = Icons.Filled.Edit,
@@ -730,10 +710,10 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onAgain: () -> 
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TextButton(onClick = onAgain, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Filled.Refresh, null, Modifier.size(18.dp))
+                TextButton(onClick = onHome, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Filled.Home, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text(t("עבד שוב"))
+                    Text(t("למסך הבית"))
                 }
                 TextButton(onClick = onNew, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Filled.Add, null, Modifier.size(18.dp))

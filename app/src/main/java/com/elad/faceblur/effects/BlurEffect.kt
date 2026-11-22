@@ -31,17 +31,20 @@ enum class BlurMode { BLUR, PIXELATE, SOLID }
  */
 class BlurEffect(
     private val timeline: FaceSource,
-    private val mode: BlurMode,
-    private val strength: Float,
+    private val mode: () -> BlurMode,
+    private val strength: () -> Float,
 ) : GlEffect {
+    constructor(timeline: FaceSource, mode: BlurMode, strength: Float) : this(timeline, { mode }, { strength })
+
     override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram =
         BlurProgram(timeline, mode, strength, useHdr)
 }
 
+/** [modeOf] and [strengthOf] are read for each frame (the editor's preview can change them). */
 private class BlurProgram(
     private val timeline: FaceSource,
-    private val mode: BlurMode,
-    private val strength: Float,
+    private val modeOf: () -> BlurMode,
+    private val strengthOf: () -> Float,
     private val highPrecision: Boolean,
 ) : BaseGlShaderProgram(highPrecision, /* texturePoolCapacity= */ 1) {
 
@@ -110,6 +113,8 @@ private class BlurProgram(
 
     override fun drawFrame(inputTexId: Int, presentationTimeUs: Long) {
         val faces = timeline.facesAt(presentationTimeUs)
+        val mode = modeOf()
+        val strength = strengthOf()
         GLES20.glDisable(GLES20.GL_BLEND)
 
         if (faces.isEmpty()) {

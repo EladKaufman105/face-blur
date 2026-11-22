@@ -80,6 +80,9 @@ import com.elad.faceblur.prefs.AppPrefs
 import com.elad.faceblur.prefs.Palette
 import com.elad.faceblur.prefs.ThemeMode
 import kotlin.math.roundToInt
+import androidx.compose.material3.Slider
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material3.TextButton
 
 /**
  * Segmented choice: a track with a pill that slides to the selected option. (Material's
@@ -162,7 +165,13 @@ private fun sizeText(bytes: Long): String =
 
 /** Resolution, frame rate, quality / compression and codec of the exported video. */
 @Composable
-fun ExportOptionsPanel(info: VideoInfo, options: ExportOptions, onChange: (ExportOptions) -> Unit) {
+fun ExportOptionsPanel(
+    info: VideoInfo,
+    options: ExportOptions,
+    onChange: (ExportOptions) -> Unit,
+    /** In the editor: the watermark is edited in its own panel, opened from here. */
+    onEditWatermark: (() -> Unit)? = null,
+) {
     val short = minOf(info.displayWidth, info.displayHeight)
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -238,7 +247,25 @@ fun ExportOptionsPanel(info: VideoInfo, options: ExportOptions, onChange: (Expor
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (onEditWatermark != null) {
+            val wm = options.watermark
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Caption(t("סימן מים"))
+                    Text(
+                        when {
+                            !wm.enabled(LocalContext.current) -> t("בלי")
+                            wm.image -> t("לוגו")
+                            else -> wm.text
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+                TextButton(onClick = onEditWatermark) { Text(t("ערוך")) }
+            }
+        } else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Caption(t("סימן מים"))
             if (options.watermark.enabled(LocalContext.current)) {
                 val aspect = if (options.aspect == ExportAspect.ORIGINAL) info.displayWidth.toFloat() / info.displayHeight.coerceAtLeast(1) else options.aspect.ratio
@@ -272,6 +299,9 @@ fun ExportSheet(
     hasSubs: Boolean = false,
     /** ...and some have a translation. */
     hasTranslation: Boolean = false,
+    /** What the button says. */
+    action: String = t("ייצא"),
+    onEditWatermark: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
@@ -284,12 +314,12 @@ fun ExportSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(t("הגדרות ייצוא"), style = MaterialTheme.typography.titleLarge)
-            ExportOptionsPanel(info, options, onChange)
+            ExportOptionsPanel(info, options, onChange, onEditWatermark)
             if (hasSubs) {
                 HorizontalDivider()
                 SubtitleExportOptions(options, onChange, hasTranslation)
             }
-            Button(onClick = onExport, modifier = Modifier.fillMaxWidth()) { Text(t("ייצא")) }
+            Button(onClick = onExport, modifier = Modifier.fillMaxWidth()) { Text(action) }
         }
     }
 }
@@ -366,5 +396,58 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** A slider with what its two ends mean under it. */
+@Composable
+internal fun SliderRow(
+    title: String,
+    low: String,
+    high: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onDone: (() -> Unit)? = null,
+    onChange: (Float) -> Unit,
+) {
+    Column {
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        Slider(value = value, onValueChange = onChange, valueRange = range, onValueChangeFinished = onDone)
+        Row {
+            Text(low, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.weight(1f))
+            Text(high, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** The look of every blur: style, strength and the area around the face. */
+@Composable
+internal fun BlurLookControls(
+    mode: com.elad.faceblur.effects.BlurMode,
+    strength: Float,
+    padding: Float,
+    onMode: (com.elad.faceblur.effects.BlurMode) -> Unit,
+    onStrength: (Float) -> Unit,
+    onPadding: (Float) -> Unit,
+    onDone: (() -> Unit)? = null,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(t("סגנון"), style = MaterialTheme.typography.titleSmall)
+            Segments(
+                listOf(
+                    com.elad.faceblur.effects.BlurMode.BLUR to t("טשטוש"),
+                    com.elad.faceblur.effects.BlurMode.PIXELATE to t("פיקסלים"),
+                    com.elad.faceblur.effects.BlurMode.SOLID to t("כיסוי"),
+                ),
+                mode,
+                onMode,
+            )
+        }
+        if (mode != com.elad.faceblur.effects.BlurMode.SOLID) {
+            SliderRow(t("עוצמה"), t("עדין"), t("חזק"), strength, 0f..1f, onDone, onStrength)
+        }
+        SliderRow(t("גודל האזור סביב הפנים"), t("צמוד"), t("רחב"), padding, 1.2f..2.0f, onDone, onPadding)
     }
 }

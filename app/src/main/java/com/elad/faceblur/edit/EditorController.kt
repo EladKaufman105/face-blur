@@ -1,5 +1,6 @@
 package com.elad.faceblur.edit
 
+import com.elad.faceblur.effects.BlurMode
 import com.elad.faceblur.i18n.t
 import android.content.Context
 import android.os.Handler
@@ -41,13 +42,16 @@ fun AnalysisResult.toEditModel() = EditModel(times, cuts, motion, aspect, dets, 
 /** One video between analysis and export: the analysis data and the user's edits. */
 class EditSession(
     val info: VideoInfo,
-    val settings: Settings,
+    initialSettings: Settings,
     val analysis: AnalysisResult,
     val analysisMs: Long,
     /** Opened for subtitles only: no face detection was run. */
     val subtitlesOnly: Boolean = false,
 ) : Closeable {
     val model = analysis.toEditModel()
+
+    /** The blur's look (style, strength, area): chosen before detection, changeable in the editor. */
+    var settings by androidx.compose.runtime.mutableStateOf(initialSettings)
 
     /** The project's folder (masks and such are kept there), once it has one. */
     @Volatile var projectDir: java.io.File? = null
@@ -178,6 +182,18 @@ class EditorController(
             rebuildPreview()
             if (!playing) refresher()
         }, 120)
+    }
+
+    /** The blur panel is open. */
+    var blurPanel by mutableStateOf(false)
+
+    /** A new look for every blur: [mode], [strength] and the area around the face ([padding]). */
+    fun setBlur(mode: BlurMode = session.settings.mode, strength: Float = session.settings.strength, padding: Float = session.settings.padding) {
+        val s = session.settings
+        if (mode == s.mode && strength == s.strength && padding == s.padding) return
+        session.settings = Settings(mode, strength, padding, s.sensitive)
+        rebuildPreview()
+        if (!playing) refresher()
     }
 
     private fun rebuildPreview() {

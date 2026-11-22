@@ -157,6 +157,8 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
 
 /** Height of the timeline's filmstrip. */
 private val STRIP = 44.dp
@@ -195,6 +197,7 @@ fun EditorScreen(
             ctrl.voicePanel -> ctrl.voicePanel = false
             ctrl.bgPanel -> ctrl.bgPanel = false
             ctrl.watermarkPanel -> ctrl.watermarkPanel = false
+            ctrl.blurPanel -> ctrl.blurPanel = false
             ctrl.selectedId != null || ctrl.selectedCueId != null || ctrl.selectedSfxId != null -> ctrl.deselect()
             else -> onClose()
         }
@@ -304,6 +307,7 @@ fun EditorScreen(
             ctrl.bgPanel -> 3
             ctrl.stylePanel -> 4
             ctrl.watermarkPanel -> 5
+            ctrl.blurPanel -> 6
             else -> 0
         }
         AnimatedContent(
@@ -321,6 +325,7 @@ fun EditorScreen(
                     3 -> BackgroundPanel(ctrl)
                     4 -> SubtitleStylePanel(subStyle, onSubStyleChange) { ctrl.stylePanel = false }
                     5 -> WatermarkPanel(export.watermark, { onExportChange(export.copy(watermark = it)) }) { ctrl.watermarkPanel = false }
+                    6 -> BlurPanel(ctrl) { ctrl.blurPanel = false }
                     else -> {
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Timeline(ctrl, busy, subStyle, thumbs) }
                         val sel = ctrl.selected
@@ -364,7 +369,39 @@ fun EditorScreen(
             onDismiss = { exportSheet = false },
             hasSubs = ctrl.model.cues.isNotEmpty(),
             hasTranslation = ctrl.hasTranslation,
+            onEditWatermark = { exportSheet = false; ctrl.pauser(); ctrl.watermarkPanel = true },
         )
+    }
+}
+
+/** Every blur's look, changeable after detection; the preview follows. */
+@Composable
+private fun BlurPanel(ctrl: EditorController, onDone: () -> Unit) {
+    val s = ctrl.session.settings
+    // The sliders move freely; the blurs follow when one is let go.
+    var strength by remember(s.strength) { mutableFloatStateOf(s.strength) }
+    var padding by remember(s.padding) { mutableFloatStateOf(s.padding) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .heightIn(max = 420.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionTitle(t("טשטוש פנים"), Feature.FACES.tint, Modifier.weight(1f))
+            TextButton(onClick = onDone) { Text(t("סיום")) }
+        }
+        BlurLookControls(
+            s.mode, strength, padding,
+            onMode = { ctrl.setBlur(mode = it) },
+            onStrength = { strength = it },
+            onPadding = { padding = it },
+            onDone = { ctrl.setBlur(strength = strength, padding = padding) },
+        )
+        Spacer(Modifier.height(4.dp))
     }
 }
 
@@ -415,7 +452,7 @@ private fun VideoWithOverlay(
         ExoPlayer.Builder(context, VoicePreviewRenderers(context) { ctrl.voiceDsp }).build().apply {
             // The background (replaced or blurred live), then the faces' blur over it.
             val bg = BackgroundEffect(ctrl.bgState)
-            setVideoEffects(if (ctrl.previewAvailable) listOf<Effect>(bg, BlurEffect(preview, settings.mode, settings.strength)) else listOf<Effect>(bg))
+            setVideoEffects(if (ctrl.previewAvailable) listOf<Effect>(bg, BlurEffect(preview, { ctrl.session.settings.mode }, { ctrl.session.settings.strength })) else listOf<Effect>(bg))
             setMediaItem(MediaItem.fromUri(ctrl.session.info.uri))
             prepare()
         }
@@ -1312,7 +1349,7 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
                 val hasCues = ctrl.model.cues.isNotEmpty()
                 // More tools than fit: they keep a usable width and the row scrolls (the
                 // last one shows cut off, so it's clear there's more).
-                val count = 5 + (if (hasCues || subsOnly) 1 else 0) + (if (hasCues) 1 else 0)
+                val count = 5 + (if (hasCues || subsOnly) 1 else 0) + (if (hasCues) 1 else 0) + (if (subsOnly) 0 else 1)
                 BoxWithConstraints(Modifier.weight(1f)) {
                     val w = maxOf(68.dp, maxWidth / count)
                     Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
@@ -1341,7 +1378,10 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
                             ctrl.addMode = !ctrl.addMode
                             if (ctrl.addMode) ctrl.pauser()
                         }
-                        if (!subsOnly) subsTools()
+                        if (!subsOnly) {
+                            Tool(t("טשטוש"), AppIcons.Face, !busy, active = ctrl.blurPanel, feature = Feature.FACES, width = w) { ctrl.pauser(); ctrl.blurPanel = true }
+                            subsTools()
+                        }
                     }
                 }
             } else {

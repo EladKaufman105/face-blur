@@ -151,6 +151,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         .put("audio", ctrl.audio.toJson())
         .put("frame", ctrl.frame)
         .put("background", ctrl.background.toJson())
+        .put("settings", ctrl.session.settings.let { st -> JSONObject().put("mode", st.mode.name).put("strength", st.strength.toDouble()).put("padding", st.padding.toDouble()).put("sensitive", st.sensitive) })
 
     /** Every new editing session is saved as a project. */
     private fun beginProject(ctrl: EditorController) {
@@ -158,7 +159,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val id = ProjectStore.newId()
         projectId = id
         s.projectDir = ProjectStore.dir(getApplication(), id)
-        val st = s.settings
         val json = editorFields(ctrl)
             .put("v", 1)
             .put("name", s.info.name)
@@ -167,7 +167,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .put("durationMs", s.info.durationMs)
             .put("subtitlesOnly", s.subtitlesOnly)
             .put("analysisMs", s.analysisMs)
-            .put("settings", JSONObject().put("mode", st.mode.name).put("strength", st.strength.toDouble()).put("padding", st.padding.toDouble()).put("sensitive", st.sensitive))
         val edits = ctrl.model.exportState()
         val app = getApplication<Application>()
         saver.execute {
@@ -181,7 +180,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun startAutosave(ctrl: EditorController) {
         autosave?.cancel()
         autosave = viewModelScope.launch {
-            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, prefs.subStyle, ctrl.background, ctrl.masksReady) }
+            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, prefs.subStyle, ctrl.background, ctrl.masksReady, ctrl.session.settings) }
                 .drop(1)
                 .collectLatest {
                     delay(1500)
