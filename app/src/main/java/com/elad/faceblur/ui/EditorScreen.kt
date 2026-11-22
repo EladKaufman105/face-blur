@@ -251,8 +251,8 @@ fun EditorScreen(
         movableContentOf { modifier: Modifier, ex: ExportOptions, st: SubtitleStyle -> EditorVideoArea(ctrl, ex, st, modifier) }
     }
     // The timeline, what belongs to the selected clip, and the tools.
-    val timelineArea: @Composable (Boolean) -> Unit = { bar ->
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Timeline(ctrl, busy, subStyle, thumbs) }
+    val timelineArea: @Composable (Boolean, Dp?) -> Unit = { bar, fill ->
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Timeline(ctrl, busy, subStyle, thumbs, fill) }
         val sel = ctrl.selected
         Column(Modifier.animateContentSize(tween(220))) {
             if (sel != null && ctrl.sizePanel) SizePanel(ctrl, sel, busy)
@@ -321,18 +321,27 @@ fun EditorScreen(
             val fullH = maxHeight
             Row(Modifier.fillMaxSize()) {
                 BottomBar(ctrl, ctrl.selected, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current), vertical = true, current = if (hidden) null else shown)
-                if (aspect < 0.9f && !hidden) {
-                    // A tall video gets the full height; the panel and the timeline share the
-                    // rest of the width.
+                if (aspect < 0.9f) {
+                    // A tall video stays at the side at full height; the panel and the timeline
+                    // share the rest of the width. With the panel closed, the timeline takes its
+                    // place: every row of blurs in view, like an editor's timeline on a computer.
                     val videoW = minOf((fullH - 56.dp) * aspect, (fullW - rail) * 0.5f)
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         topBar()
                         Row(Modifier.weight(1f)) {
                             videoArea(Modifier.width(videoW).fillMaxHeight(), export, subStyle)
                             Column(Modifier.weight(1f).fillMaxHeight()) {
-                                side(Modifier.weight(1f).fillMaxWidth())
-                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
-                                timelineArea(false)
+                                if (!hidden) {
+                                    side(Modifier.weight(1f).fillMaxWidth())
+                                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
+                                    timelineArea(false, null)
+                                } else {
+                                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
+                                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                                        val room = maxHeight
+                                        Column { timelineArea(false, room) }
+                                    }
+                                }
                             }
                         }
                     }
@@ -341,7 +350,7 @@ fun EditorScreen(
                         topBar()
                         videoArea(Modifier.weight(1f), export, subStyle)
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
-                        timelineArea(false)
+                        timelineArea(false, null)
                     }
                     AnimatedVisibility(
                         visible = !hidden,
@@ -375,7 +384,7 @@ fun EditorScreen(
             label = "panel",
         ) { p ->
             Column {
-                if (p == null) timelineArea(true) else panelArea(p)
+                if (p == null) timelineArea(true, null) else panelArea(p)
             }
         }
     }
@@ -1029,7 +1038,7 @@ private class TimelineGeo(
 }
 
 @Composable
-private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle, thumbs: Thumbnails) {
+private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle, thumbs: Thumbnails, fillHeight: Dp? = null) {
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val stripPx = with(density) { STRIP.toPx() }
@@ -1051,7 +1060,9 @@ private fun Timeline(ctrl: EditorController, busy: Boolean, style: SubtitleStyle
     val rowH = with(density) { 24.dp.toPx() }
     val rowPitch = rowH + with(density) { 5.dp.toPx() }
     val handleW = with(density) { 12.dp.toPx() }
-    val visibleRows = 4
+    // Four rows of blurs, or as many as fit the room it's given (a tablet with the panel closed).
+    val room = fillHeight?.let { with(density) { it.toPx() } }
+    val visibleRows = if (room == null) 4 else max(4, ((room - rowsTop - with(density) { 60.dp.toPx() }) / rowPitch).toInt())
     val heightDp = with(density) { (rowsTop + visibleRows * rowPitch).toDp() } + 4.dp
 
     val rows = remember(ctrl.version) { packRows(ctrl.model.tracks) }
