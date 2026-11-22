@@ -6,7 +6,7 @@ import { frameAt, trackBox, type Look, type Track } from '../lib/types'
 import { mixInto, type SfxSamples } from '../lib/sfx'
 import { cueAt, drawSubtitle, type Cue, type SubStyle } from '../lib/subtitles'
 
-export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; font: string }
+export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; font: string; voice: { rate: number; data: Float32Array } | null }
 export type ExportMessage =
   | { type: 'progress'; progress: number }
   | { type: 'done'; blob: Blob; ms: number }
@@ -22,7 +22,7 @@ self.onmessage = async (e: MessageEvent<ExportRequest>) => {
   }
 }
 
-async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, font }: ExportRequest) {
+async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, font, voice }: ExportRequest) {
   const t0 = performance.now()
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
   const video = await input.getPrimaryVideoTrack()
@@ -49,24 +49,28 @@ async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, fo
   let shownCue: Cue | null | undefined = undefined
   let scratch: OffscreenCanvas | null = null
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: new BufferTarget() })
-  // A video without sound gets a sound track for the effects (fed alongside the conversion).
+  // A sound track made here, fed alongside the conversion: the changed voice (with the bleeps),
+  // or, for a video without sound, one for the effects.
   let feed: (() => Promise<void>) | null = null
-  if (sfx.length > 0 && !(await input.getPrimaryAudioTrack())) {
-    const rate = 48000
-    const audioCodec = await getFirstEncodableAudioCodec(['aac', 'opus'], { numberOfChannels: 2, sampleRate: rate, quality: QUALITY_HIGH })
+  const silent = !(await input.getPrimaryAudioTrack())
+  if (voice || (sfx.length > 0 && silent)) {
+    const rate = voice?.rate ?? 48000
+    const ch = voice ? 1 : 2
+    const audioCodec = await getFirstEncodableAudioCodec(['aac', 'opus'], { numberOfChannels: ch, sampleRate: rate, quality: QUALITY_HIGH })
     if (audioCodec) {
       const src = new AudioSampleSource({ codec: audioCodec, quality: QUALITY_HIGH })
       output.addAudioTrack(src)
-      const end = await video.computeDuration()
+      const end = voice ? voice.data.length / rate : await video.computeDuration()
       feed = async () => {
         for (let t = 0; t < end; t += 1) {
-          const n = Math.min(rate, Math.ceil((end - t) * rate))
-          const planes = [new Float32Array(n), new Float32Array(n)]
+          const i0 = Math.round(t * rate)
+          const n = Math.min(rate, Math.ceil(end * rate) - i0)
+          if (n <= 0) break
+          const planes = Array.from({ length: ch }, () => (voice ? voice.data.slice(i0, i0 + n) : new Float32Array(n)))
           mixInto(planes, rate, t, sfx)
-          const data = new Float32Array(2 * n)
-          data.set(planes[0], 0)
-          data.set(planes[1], n)
-          await src.add(new AudioSample({ data, format: 'f32-planar', numberOfChannels: 2, sampleRate: rate, timestamp: t }))
+          const data = new Float32Array(ch * n)
+          planes.forEach((p, c) => data.set(p, c * n))
+          await src.add(new AudioSample({ data, format: 'f32-planar', numberOfChannels: ch, sampleRate: rate, timestamp: t }))
         }
         src.close()
       }
@@ -116,7 +120,7 @@ async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, fo
       },
     },
     // The sound is copied as is, or re-encoded with the sound effects mixed in.
-    audio: sfx.length === 0 ? {} : {
+    audio: voice ? { discard: true } : sfx.length === 0 ? {} : {
       forceTranscode: true,
       process: (sample) => {
         const ch = sample.numberOfChannels, n = sample.numberOfFrames

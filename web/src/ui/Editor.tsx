@@ -7,7 +7,10 @@ import { BackIcon, PauseIcon, PlayIcon, SaveIcon } from './icons'
 import { SfxScheduler, type SfxClip } from '../lib/sfx'
 import { drawWatermark, watermarkOn, type Watermark } from '../lib/watermark'
 import { SoundTab, SubtitlesTab, WatermarkTab, loadWatermark } from './EditorTabs'
-import { cueAt, DEFAULT_SUB_STYLE, drawSubtitle, type Cue, type SubStyle } from '../lib/subtitles'
+import { bleepRanges, cueAt, DEFAULT_SUB_STYLE, drawSubtitle, maskCue, type Cue, type SubStyle, type Word } from '../lib/subtitles'
+import { makeBuffer } from '../lib/sfx'
+import type { VoiceFx } from '../lib/voice'
+import type { AudioMessage, AudioRequest } from '../workers/audio.worker'
 
 type Props = {
   file: File
@@ -41,6 +44,12 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
   const [dur, setDur] = useState(times.length ? times[times.length - 1] : 0)
   const [tab, setTab] = useState<'faces' | 'subs' | 'sound' | 'mark'>('faces')
   const [cues, setCues] = useState<Cue[]>([])
+  const [words, setWords] = useState<Word[]>([])
+  const [bleeped, setBleeped] = useState<Set<number>>(new Set())
+  const [tone, setTone] = useState(true)
+  const [voice, setVoice] = useState<VoiceFx>('none')
+  const [voiceAudio, setVoiceAudio] = useState<{ rate: number; data: Float32Array; buffer: AudioBuffer } | null>(null)
+  const [voiceBusy, setVoiceBusy] = useState(false)
   const [subStyle, setSubStyle] = useState<SubStyle>(() => {
     try { return { ...DEFAULT_SUB_STYLE, ...JSON.parse(localStorage.getItem('onit.substyle') ?? '{}') } } catch { return DEFAULT_SUB_STYLE }
   })
@@ -48,13 +57,16 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
   const [mark, setMark] = useState<Watermark>(loadWatermark)
   const logo = useRef<HTMLImageElement | null>(null)
   const scheduler = useMemo(() => new SfxScheduler(), [])
-  const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle })
+  const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, voiceBuf: null as AudioBuffer | null })
   state.current.off = off
   state.current.look = look
   state.current.sfx = sfx
   state.current.mark = mark
   state.current.cues = cues
   state.current.subStyle = subStyle
+  state.current.words = words
+  state.current.bleeped = bleeped
+  state.current.voiceBuf = voiceAudio?.buffer ?? null
 
   useEffect(() => {
     try { localStorage.setItem('onit.look', JSON.stringify(look)) } catch {}
@@ -96,7 +108,7 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
       const m = state.current.mark
       if (watermarkOn(m)) drawWatermark(ctx, m, W, H, m.image ? logo.current : null)
       const cue = cueAt(state.current.cues, state.current.mediaTime)
-      if (cue) drawSubtitle(ctx, cue.text, state.current.subStyle, W, H)
+      if (cue) drawSubtitle(ctx, maskCue(cue, state.current.words, state.current.bleeped), state.current.subStyle, W, H)
     }
   }
 
@@ -137,14 +149,14 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
     // The sound effects play along, from wherever the video starts.
     const onPlay = () => {
       setPlaying(true)
-      scheduler.start(state.current.sfx, v.currentTime)
+      scheduler.start(state.current.sfx, v.currentTime, state.current.voiceBuf)
     }
     const onPause = () => {
       setPlaying(false)
       scheduler.stop()
     }
     const onSeeking = () => scheduler.stop()
-    const onSeekedPlaying = () => { if (!v.paused) scheduler.start(state.current.sfx, v.currentTime) }
+    const onSeekedPlaying = () => { if (!v.paused) scheduler.start(state.current.sfx, v.currentTime, state.current.voiceBuf) }
     v.addEventListener('play', onPlay)
     v.addEventListener('pause', onPause)
     v.addEventListener('ended', onPause)
@@ -181,11 +193,37 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
     img.src = mark.image
   }, [mark.image])
 
-  // A changed sound list is heard right away if the video is playing.
+  // A changed sound list (or voice) is heard right away if the video is playing; with a changed
+  // voice the video's own sound is muted and the processed one plays instead.
   useEffect(() => {
     const v = video.current
-    if (v && !v.paused) scheduler.start(sfx, v.currentTime)
-  }, [sfx])
+    if (!v) return
+    v.muted = voiceAudio !== null
+    if (!v.paused) scheduler.start(sfx, v.currentTime, voiceAudio?.buffer ?? null)
+  }, [sfx, voiceAudio])
+
+  // The voice change and the bleeps, processed in a worker (the sound is decoded once).
+  const audioWorker = useMemo(() => new Worker(new URL('../workers/audio.worker.ts', import.meta.url), { type: 'module' }), [file])
+  useEffect(() => () => audioWorker.terminate(), [audioWorker])
+  useEffect(() => {
+    if (voice === 'none' && bleeped.size === 0) {
+      setVoiceAudio(null)
+      setVoiceBusy(false)
+      return
+    }
+    setVoiceBusy(true)
+    const timer = setTimeout(() => {
+      audioWorker.onmessage = (e: MessageEvent<AudioMessage>) => {
+        const m = e.data
+        setVoiceBusy(false)
+        if (m.type === 'done') setVoiceAudio({ rate: m.rate, data: m.data, buffer: makeBuffer(m.data, m.rate) })
+        else setVoiceAudio(null)
+      }
+      const req: AudioRequest = { file, voice, bleeps: bleepRanges(words, bleeped), tone }
+      audioWorker.postMessage(req)
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [voice, bleeped, tone, words])
 
   const toggle = (id: number) => {
     setOff((s) => {
@@ -317,6 +355,9 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
         )}
         {tab === 'sound' && (
           <SoundTab
+            voice={voice}
+            onVoice={setVoice}
+            voiceBusy={voiceBusy}
             clips={sfx}
             time={time}
             onChange={setSfx}
@@ -329,6 +370,12 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
             file={file}
             cues={cues}
             onCues={setCues}
+            words={words}
+            onWords={setWords}
+            bleeped={bleeped}
+            onBleeped={setBleeped}
+            tone={tone}
+            onTone={setTone}
             style={subStyle}
             onStyle={setSubStyle}
             time={time}
@@ -341,7 +388,7 @@ export function Editor({ file, analysis, thumbs, info, onExport, onClose }: Prop
             class="btn primary"
             onClick={() => {
               video.current?.pause()
-              onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues, subStyle })
+              onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: maskCue(c, words, bleeped) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null })
             }}
           >
             <SaveIcon /> {t('ייצוא')}

@@ -47,11 +47,16 @@ const DEVICES = {
     await p.screenshot({ path: `${out}/5_pixelate.png` })
     await p.click('.seg:not(.tabs) button >> nth=0')
     // A sound effect at the playhead, and a text watermark.
-    await p.click('.tabs button >> nth=1')
+    await p.click('.tabs button >> nth=2')
     await p.click('.sound .name >> nth=0')
+    if (process.env.VOICE) {
+      // A voice change (the chip by its English name is not shown: pick by position).
+      await p.click(`.chip >> nth=${process.env.VOICE}`)
+      await p.waitForFunction(() => !document.body.textContent.includes('מעבד את הקול'), null, { timeout: 120000 })
+    }
     await p.waitForTimeout(600)
     await p.screenshot({ path: `${out}/5b_sound.png` })
-    await p.click('.tabs button >> nth=2')
+    await p.click('.tabs button >> nth=3')
     await p.fill('.text-in', '@onit')
     await p.waitForTimeout(600)
     await p.screenshot({ path: `${out}/5c_watermark.png` })

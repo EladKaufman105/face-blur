@@ -65,11 +65,18 @@ export class SfxScheduler {
     this.nodes = []
   }
 
-  /** From video time [from] on, as the video plays. */
-  async start(clips: SfxClip[], from: number) {
+  /** From video time [from] on, as the video plays; [base]: the processed voice, if any. */
+  async start(clips: SfxClip[], from: number, base: AudioBuffer | null = null) {
     this.stop()
     const c = audio()
     const t0 = c.currentTime
+    if (base && from < base.duration) {
+      const n = c.createBufferSource()
+      n.buffer = base
+      n.connect(c.destination)
+      n.start(c.currentTime, from)
+      this.nodes.push(n)
+    }
     for (const clip of clips) {
       const b = await loadSfx(clip.sound).catch(() => null)
       if (!b || clip.at + b.duration <= from) continue
@@ -131,4 +138,11 @@ export function mixInto(planes: Float32Array[], rate: number, t0: number, sounds
       if (a > 0.8) ch[i] = Math.sign(x) * (0.8 + 0.2 * Math.tanh((a - 0.8) / 0.2))
     }
   }
+}
+
+/** Mono samples as something the editor can play. */
+export function makeBuffer(data: Float32Array, rate: number): AudioBuffer {
+  const b = audio().createBuffer(1, Math.max(1, data.length), rate)
+  b.copyToChannel(data as Float32Array<ArrayBuffer>, 0)
+  return b
 }

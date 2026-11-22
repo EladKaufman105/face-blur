@@ -142,3 +142,24 @@ function srtTime(t: number) {
 export function toSrt(cues: Cue[]): string {
   return cues.map((c, i) => `${i + 1}\n${srtTime(c.start)} --> ${srtTime(c.end)}\n${c.text}\n`).join('\n')
 }
+
+/** The cue's text with its bleeped words as **** (the words timed inside the cue). */
+export function maskCue(cue: Cue, words: Word[], bleeped: Set<number>): string {
+  if (bleeped.size === 0) return cue.text
+  let text = cue.text
+  let from = 0
+  words.forEach((w, k) => {
+    if (w.start < cue.start - 0.01 || w.start >= cue.end) return
+    const word = w.text.trim()
+    const at = text.indexOf(word, from)
+    if (at < 0) return
+    if (bleeped.has(k)) text = text.slice(0, at) + '*'.repeat(Math.max(3, [...word].length)) + text.slice(at + word.length)
+    from = at + 1
+  })
+  return text
+}
+
+/** The time stretches of the bleeped words. */
+export function bleepRanges(words: Word[], bleeped: Set<number>) {
+  return [...bleeped].sort((a, b) => a - b).map((k) => ({ start: words[k].start, end: words[k].end }))
+}

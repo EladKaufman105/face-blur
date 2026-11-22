@@ -296,3 +296,6 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .clip.now { outline: 2px solid var(--amber); }
 .tabs { grid-template-columns: repeat(4, 1fr) !important; }
 .tabs button { font-size: 13px; padding: 9px 2px; }
+.word-chips { flex: 1; display: flex; flex-wrap: wrap; gap: 4px; }
+.word { border: 1px solid var(--outline); background: var(--surface); border-radius: 8px; padding: 4px 8px; font-size: 14px; }
+.word.on { background: #c62828; border-color: #c62828; color: #fff; text-decoration: line-through; }

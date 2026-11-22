@@ -3,18 +3,28 @@ import { t, duration } from '../i18n'
 import { previewSfx, SFX_GROUPS, SFX_NAMES, type SfxClip } from '../lib/sfx'
 import { NO_WATERMARK, POSITIONS, type Watermark, type WatermarkLook } from '../lib/watermark'
 import { CloseIcon, PlayIcon } from './icons'
-import { LANGUAGES, toSrt, wordsToCues, type Cue, type SubLook, type SubPosition, type SubStyle } from '../lib/subtitles'
+import { LANGUAGES, toSrt, wordsToCues, type Cue, type SubLook, type SubPosition, type SubStyle, type Word } from '../lib/subtitles'
+import { VOICES, type VoiceFx } from '../lib/voice'
 import type { SubsMessage, SubsRequest } from '../workers/subs.worker'
 
 let nextClip = 1
 
 /** The sound effects: pick a group, ▶ to hear, tap to add at the playhead; the added ones below. */
-export function SoundTab({ clips, time, onChange, onSeek }: { clips: SfxClip[]; time: number; onChange: (c: SfxClip[]) => void; onSeek: (at: number) => void }) {
+export function SoundTab({ clips, time, onChange, onSeek, voice, onVoice, voiceBusy }: { clips: SfxClip[]; time: number; onChange: (c: SfxClip[]) => void; onSeek: (at: number) => void; voice: VoiceFx; onVoice: (v: VoiceFx) => void; voiceBusy: boolean }) {
   const [group, setGroup] = useState(0)
   const add = (sound: string) => onChange([...clips, { id: nextClip++, sound, at: time, gain: 1 }].sort((a, b) => a.at - b.at))
   const update = (id: number, patch: Partial<SfxClip>) => onChange(clips.map((c) => (c.id === id ? { ...c, ...patch } : c)).sort((a, b) => a.at - b.at))
   return (
     <>
+      <section class="card">
+        <h3 class="section-title">{t('שינוי קול')}</h3>
+        <div class="chips">
+          {VOICES.map((v) => (
+            <button class={'chip' + (voice === v.id ? ' on' : '')} onClick={() => onVoice(v.id)}>{t(v.label)}</button>
+          ))}
+        </div>
+        <p class="small muted" style="margin:10px 0 0">{voiceBusy ? t('מעבד את הקול…') : t('שינוי קול מקשה לזהות את הדובר, אבל לא מבטיח אנונימיות מלאה.')}</p>
+      </section>
       <section class="card">
         <h3 class="section-title">{t('אפקטים קוליים')}</h3>
         <div class="chips">
@@ -146,9 +156,12 @@ const SUB_COLORS = ['#ffffff', '#ffd60a', '#000000', '#ff4d6d', '#3ddcff']
 type SubsRun = { stage: 'start' | 'download' | 'transcribe'; progress: number; loaded?: number; total?: number } | { stage: 'error'; message: string } | null
 
 /** Subtitles: made on the device from the speech, then edited, styled and saved as SRT too. */
-export function SubtitlesTab({ file, cues, onCues, style, onStyle, time, onSeek }: {
-  file: File; cues: Cue[]; onCues: (c: Cue[]) => void; style: SubStyle; onStyle: (s: SubStyle) => void; time: number; onSeek: (t: number) => void
+export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
+  file: File; cues: Cue[]; onCues: (c: Cue[]) => void; words: Word[]; onWords: (w: Word[]) => void
+  bleeped: Set<number>; onBleeped: (b: Set<number>) => void; tone: boolean; onTone: (t: boolean) => void
+  style: SubStyle; onStyle: (s: SubStyle) => void; time: number; onSeek: (t: number) => void
 }) {
+  const [bleepMode, setBleepMode] = useState(false)
   const [lang, setLang] = useState<string | null>(() => { try { return localStorage.getItem('onit.subs.lang') } catch { return null } })
   const [run, setRun] = useState<SubsRun>(null)
   const worker = useRef<Worker | null>(null)
@@ -162,6 +175,8 @@ export function SubtitlesTab({ file, cues, onCues, style, onStyle, time, onSeek 
       if (m.type === 'download') setRun({ stage: 'download', progress: m.progress, loaded: m.loaded, total: m.total })
       else if (m.type === 'transcribe') setRun({ stage: 'transcribe', progress: m.progress })
       else if (m.type === 'done') {
+        onWords(m.words)
+        onBleeped(new Set())
         onCues(wordsToCues(m.words))
         setRun(null)
         w.terminate()
@@ -224,10 +239,24 @@ export function SubtitlesTab({ file, cues, onCues, style, onStyle, time, onSeek 
         {!busy && cues.length > 0 && (
           <div class="actions">
             <button class="btn tonal" onClick={srt}>{t('הורד SRT')}</button>
-            <button class="btn ghost" onClick={() => onCues([])}>{t('מחק כתוביות')}</button>
+            <button class="btn ghost" onClick={() => { onCues([]); onWords([]); onBleeped(new Set()) }}>{t('מחק כתוביות')}</button>
           </div>
         )}
       </section>
+      {words.length > 0 && (
+        <section class="card">
+          <h3 class="section-title">{t('צפצוף מילים')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{bleeped.size > 0 ? t('%d מילים', bleeped.size) : ''}</span></h3>
+          <p class="small muted" style="margin:0 0 10px">{t('בחר מילים בטקסט: הן יוחלפו בצפצוף (או בשקט) וב-**** בכתוביות.')}</p>
+          <div class="actions">
+            <button class={'btn ' + (bleepMode ? 'primary' : 'tonal')} onClick={() => setBleepMode(!bleepMode)}>{bleepMode ? t('סיום') : t('בחר מילים')}</button>
+            {bleeped.size > 0 && <button class="btn ghost" onClick={() => onBleeped(new Set())}>{t('נקה')}</button>}
+          </div>
+          <div class="seg" style="grid-template-columns:1fr 1fr;margin-top:10px">
+            <button class={tone ? 'on' : ''} onClick={() => onTone(true)}>{t('צפצוף')}</button>
+            <button class={!tone ? 'on' : ''} onClick={() => onTone(false)}>{t('שקט')}</button>
+          </div>
+        </section>
+      )}
       {cues.length > 0 && (
         <section class="card">
           <h3 class="section-title">{t('מראה')}</h3>
@@ -260,7 +289,20 @@ export function SubtitlesTab({ file, cues, onCues, style, onStyle, time, onSeek 
               <div class={'clip' + (time >= c.start && time < c.end ? ' now' : '')}>
                 <div class="row">
                   <button class="time-btn" onClick={() => onSeek(c.start + 0.01)} dir="ltr">{duration(c.start)}</button>
-                  <textarea class="cue-text" dir="auto" rows={2} value={c.text} onInput={(e) => edit(c.id, { text: (e.currentTarget as HTMLTextAreaElement).value })} />
+                  {bleepMode ? (
+                    <div class="word-chips" dir="auto">
+                      {words.map((w, k) => (w.start >= c.start - 0.01 && w.start < c.end ? (
+                        <button class={'word' + (bleeped.has(k) ? ' on' : '')} onClick={() => {
+                          const n = new Set(bleeped)
+                          if (n.has(k)) n.delete(k)
+                          else n.add(k)
+                          onBleeped(n)
+                        }}>{w.text.trim()}</button>
+                      ) : null))}
+                    </div>
+                  ) : (
+                    <textarea class="cue-text" dir="auto" rows={2} value={c.text} onInput={(e) => edit(c.id, { text: (e.currentTarget as HTMLTextAreaElement).value })} />
+                  )}
                   <button class="icon-btn" aria-label={t('מחק')} onClick={() => onCues(cues.filter((x) => x.id !== c.id))}><CloseIcon size={18} /></button>
                 </div>
               </div>
