@@ -132,9 +132,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // Only the newest listing is shown: an older one finishing late (say, from before a rename)
+    // must not overwrite it.
+    private var listing = 0
+
     fun refreshProjects() {
+        val n = ++listing
         viewModelScope.launch {
-            projects = withContext(Dispatchers.IO) { ProjectStore.list(getApplication()) }
+            val list = withContext(Dispatchers.IO) { ProjectStore.list(getApplication()) }
+            if (n == listing) projects = list
         }
     }
 
