@@ -1766,7 +1766,7 @@ private fun PropertiesPanel(ctrl: EditorController, busy: Boolean, style: Subtit
                             SpeakerButton(cue.speaker, style) { ctrl.setSpeaker(cue.id, it) }
                         }
                         PropTimes(
-                            t("%s עד %s").format(clock(ctrl.cueRelUs(cue.startMs)), clock(ctrl.cueRelUs(cue.endMs))),
+                            "\u2066${clock(ctrl.cueRelUs(cue.startMs))}\u2069 – \u2066${clock(ctrl.cueRelUs(cue.endMs))}\u2069",
                             (cue.endMs - cue.startMs) / 1000f,
                         )
                         PropActions {
@@ -1782,7 +1782,7 @@ private fun PropertiesPanel(ctrl: EditorController, busy: Boolean, style: Subtit
                     sel != null -> {
                         val a = ctrl.timeOf(sel.start)
                         val b = ctrl.timeOf(sel.end) + ctrl.frameUs
-                        PropTimes(t("%s עד %s").format(clock(a), clock(b)), (b - a) / 1e6f)
+                        PropTimes("\u2066${clock(a)}\u2069 – \u2066${clock(b)}\u2069", (b - a) / 1e6f)
                         PropActions {
                             OutlinedButton(onClick = { ctrl.setSelectedEdgeHere(true) }, enabled = !busy) { Text(t("התחלה כאן")) }
                             OutlinedButton(onClick = { ctrl.setSelectedEdgeHere(false) }, enabled = !busy) { Text(t("סוף כאן")) }
@@ -1808,7 +1808,7 @@ private fun PropertiesPanel(ctrl: EditorController, busy: Boolean, style: Subtit
 @Composable
 private fun PropTimes(range: String, seconds: Float?) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("\u2066$range\u2069", style = MaterialTheme.typography.titleMedium, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+        Text(range, style = MaterialTheme.typography.titleMedium, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
         if (seconds != null) Text(t("%.1f שנ׳").format(seconds), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
