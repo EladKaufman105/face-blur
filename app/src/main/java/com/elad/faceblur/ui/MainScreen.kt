@@ -183,7 +183,7 @@ fun MainScreen(vm: MainViewModel) {
                 ) {
                 Column(
                     Modifier
-                        .widthIn(max = if (!wide) androidx.compose.ui.unit.Dp.Unspecified else if (s is UiState.Empty || s is UiState.Ready || s is UiState.Done) 1200.dp else 760.dp)
+                        .widthIn(max = if (!wide) (if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600) 680.dp else androidx.compose.ui.unit.Dp.Unspecified) else if (s is UiState.Empty || s is UiState.Ready || s is UiState.Done) 1200.dp else 760.dp)
                         .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {

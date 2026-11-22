@@ -247,7 +247,7 @@ fun EditorScreen(
         movableContentOf { modifier: Modifier, ex: ExportOptions, st: SubtitleStyle -> EditorVideoArea(ctrl, ex, st, modifier) }
     }
     // The timeline, what belongs to the selected clip, and the tools.
-    val timelineArea: @Composable () -> Unit = {
+    val timelineArea: @Composable (Boolean) -> Unit = { bar ->
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Timeline(ctrl, busy, subStyle, thumbs) }
         val sel = ctrl.selected
         Column(Modifier.animateContentSize(tween(220))) {
@@ -272,7 +272,7 @@ fun EditorScreen(
                 }
             }
         }
-        BottomBar(ctrl, sel, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current))
+        if (bar) BottomBar(ctrl, sel, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current))
     }
     val panel = when {
         ctrl.listEditor -> 1
@@ -303,11 +303,13 @@ fun EditorScreen(
         var shown by remember { mutableIntStateOf(if (panel != 0) panel else 1) }
         if (panel != 0) shown = panel
         Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            // The tools in a column at the side: the screen's height goes to the video.
+            BottomBar(ctrl, ctrl.selected, ctrl.selectedCue, busy, watermarkOn = export.watermark.enabled(LocalContext.current), vertical = true)
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 topBar()
                 videoArea(Modifier.weight(1f), export, subStyle)
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy) }
-                timelineArea()
+                timelineArea(false)
             }
             AnimatedVisibility(
                 visible = panel != 0,
@@ -345,7 +347,7 @@ fun EditorScreen(
             label = "panel",
         ) { p ->
             Column {
-                if (p == 0) timelineArea() else panelArea(p, false)
+                if (p == 0) timelineArea(true) else panelArea(p, false)
             }
         }
     }
@@ -1365,8 +1367,8 @@ private fun SizePanel(ctrl: EditorController, t: EditTrack, busy: Boolean) {
 }
 
 @Composable
-private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: Boolean, watermarkOn: Boolean = false) {
-    // What's selected shows as a line in its feature's color along the top of the bar.
+private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: Boolean, watermarkOn: Boolean = false, vertical: Boolean = false) {
+    // What's selected shows as a line in its feature's color along the bar's inner edge.
     val selFeature = when {
         ctrl.selectedSfx != null -> Feature.SOUND
         cue != null -> Feature.SUBTITLES
@@ -1374,6 +1376,80 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
         else -> null
     }
     val line by animateColorAsState(selFeature?.color ?: Color.Transparent, tween(220), label = "bar")
+    val tools = ArrayList<ToolSpec>()
+    // The main set has more tools than fit a phone's width: it scrolls there.
+    var many = false
+    val sfx = ctrl.selectedSfx
+    if (sfx != null) {
+        tools += ToolSpec(t("השמע"), Icons.Filled.PlayArrow, true, feature = Feature.SOUND) { ctrl.playSelectedSfx() }
+        tools += ToolSpec(t("העבר לכאן"), AppIcons.MoveHere, true, feature = Feature.SOUND) { ctrl.moveSelectedSfxHere() }
+        tools += ToolSpec(t("עוצמה"), AppIcons.Volume, true, active = ctrl.sfxGainPanel, feature = Feature.SOUND) { ctrl.sfxGainPanel = !ctrl.sfxGainPanel }
+        tools += ToolSpec(t("מחק"), Icons.Filled.Delete, true) { ctrl.deleteSelectedSfx() }
+        tools += ToolSpec(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
+    } else if (cue != null) {
+        tools += ToolSpec(t("ערוך טקסט"), Icons.Filled.Edit, true, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.cueEditor = true }
+        tools += ToolSpec(t("פצל כאן"), EditorIcons.Cut, true, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.splitSelectedCue() }
+        tools += ToolSpec(t("מזג"), AppIcons.MergeDown, true, feature = Feature.SUBTITLES) { ctrl.mergeSelectedCue() }
+        tools += ToolSpec(t("עיצוב"), EditorIcons.TextFormat, true, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.stylePanel = true }
+        tools += ToolSpec(t("מחק"), Icons.Filled.Delete, true) { ctrl.deleteSelectedCue() }
+        tools += ToolSpec(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
+    } else if (sel == null) {
+        many = true
+        val subsOnly = ctrl.session.subtitlesOnly
+        val hasCues = ctrl.model.cues.isNotEmpty()
+        val subsTools = ArrayList<ToolSpec>()
+        subsTools += ToolSpec(t("כתוביות"), EditorIcons.Subtitles, !busy, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.subsSheet = true }
+        if (hasCues || subsOnly) subsTools += ToolSpec(t("עיצוב"), EditorIcons.TextFormat, !busy, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.stylePanel = true }
+        // Words per subtitle is in the list too ("all subtitles").
+        if (hasCues) subsTools += ToolSpec(t("כל הכתוביות"), AppIcons.ListLines, !busy, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.listEditor = true }
+        subsTools += ToolSpec(t("רקע"), AppIcons.Background, !busy, active = ctrl.background.active, feature = Feature.BACKGROUND) { ctrl.pauser(); ctrl.bgPanel = true }
+        subsTools += ToolSpec(t("סאונד"), AppIcons.Voice, !busy, active = ctrl.audio.voice != VoiceFx.NONE || ctrl.model.bleeps.isNotEmpty() || ctrl.model.sfx.isNotEmpty(), feature = Feature.SOUND) {
+            ctrl.pauser(); ctrl.voicePanel = true
+        }
+        subsTools += ToolSpec(t("סימן מים"), AppIcons.Watermark, !busy, active = watermarkOn) { ctrl.pauser(); ctrl.watermarkPanel = true }
+        if (subsOnly) tools += subsTools
+        tools += ToolSpec(
+            if (ctrl.addMode) t("ביטול") else t("הוסף טשטוש"),
+            if (ctrl.addMode) Icons.Filled.Close else Icons.Filled.Add,
+            !busy,
+            active = ctrl.addMode,
+            feature = Feature.FACES,
+        ) {
+            ctrl.addMode = !ctrl.addMode
+            if (ctrl.addMode) ctrl.pauser()
+        }
+        if (!subsOnly) {
+            tools += ToolSpec(t("טשטוש"), AppIcons.Face, !busy, active = ctrl.blurPanel, feature = Feature.FACES) { ctrl.pauser(); ctrl.blurPanel = true }
+            tools += subsTools
+        }
+    } else {
+        tools += ToolSpec(t("מחק"), Icons.Filled.Delete, !busy) { ctrl.deleteSelected() }
+        tools += ToolSpec(t("פצל"), EditorIcons.Cut, !busy, feature = Feature.FACES) { ctrl.splitSelected() }
+        tools += ToolSpec(t("עקוב קדימה"), EditorIcons.TrackForward, !busy, feature = Feature.FACES) { ctrl.trackSelected(1) }
+        tools += ToolSpec(t("עקוב אחורה"), EditorIcons.TrackBack, !busy, feature = Feature.FACES) { ctrl.trackSelected(-1) }
+        tools += ToolSpec(t("גודל"), EditorIcons.Resize, !busy, active = ctrl.sizePanel, feature = Feature.FACES) { ctrl.sizePanel = !ctrl.sizePanel }
+        tools += ToolSpec(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
+    }
+
+    if (vertical) {
+        // A tablet: the tools in a column beside the video, which gets the screen's height.
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            modifier = Modifier.width(92.dp).fillMaxHeight().drawWithContent {
+                drawContent()
+                drawRect(line, topLeft = Offset(size.width - 2.dp.toPx(), 0f), size = Size(2.dp.toPx(), size.height))
+            },
+        ) {
+            Column(
+                Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                for (tool in tools) Tool(tool, Modifier.fillMaxWidth())
+            }
+        }
+        return
+    }
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier.fillMaxWidth().drawWithContent {
@@ -1381,83 +1457,49 @@ private fun BottomBar(ctrl: EditorController, sel: EditTrack?, cue: Cue?, busy: 
             drawRect(line, size = Size(size.width, 2.dp.toPx()))
         },
     ) {
-        // Every tool gets an equal share of the width: nothing hides off screen.
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val sfx = ctrl.selectedSfx
-            if (sfx != null) {
-                Tool(t("השמע"), Icons.Filled.PlayArrow, true, feature = Feature.SOUND) { ctrl.playSelectedSfx() }
-                Tool(t("העבר לכאן"), AppIcons.MoveHere, true, feature = Feature.SOUND) { ctrl.moveSelectedSfxHere() }
-                Tool(t("עוצמה"), AppIcons.Volume, true, active = ctrl.sfxGainPanel, feature = Feature.SOUND) { ctrl.sfxGainPanel = !ctrl.sfxGainPanel }
-                Tool(t("מחק"), Icons.Filled.Delete, true) { ctrl.deleteSelectedSfx() }
-                Tool(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
-            } else if (cue != null) {
-                Tool(t("ערוך טקסט"), Icons.Filled.Edit, true, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.cueEditor = true }
-                Tool(t("פצל כאן"), EditorIcons.Cut, true, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.splitSelectedCue() }
-                Tool(t("מזג"), AppIcons.MergeDown, true, feature = Feature.SUBTITLES) { ctrl.mergeSelectedCue() }
-                Tool(t("עיצוב"), EditorIcons.TextFormat, true, feature = Feature.SUBTITLES) { ctrl.pauser(); ctrl.stylePanel = true }
-                Tool(t("מחק"), Icons.Filled.Delete, true) { ctrl.deleteSelectedCue() }
-                Tool(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
-            } else if (sel == null) {
-                val subsOnly = ctrl.session.subtitlesOnly
-                val hasCues = ctrl.model.cues.isNotEmpty()
-                // More tools than fit: they keep a usable width and the row scrolls (the
-                // last one shows cut off, so it's clear there's more).
-                val count = 5 + (if (hasCues || subsOnly) 1 else 0) + (if (hasCues) 1 else 0) + (if (subsOnly) 0 else 1)
-                BoxWithConstraints(Modifier.weight(1f)) {
-                    val w = maxOf(68.dp, maxWidth / count)
-                    Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                        val subsTools: @Composable RowScope.() -> Unit = {
-                            Tool(t("כתוביות"), EditorIcons.Subtitles, !busy, feature = Feature.SUBTITLES, width = w) { ctrl.pauser(); ctrl.subsSheet = true }
-                            if (hasCues || subsOnly) {
-                                Tool(t("עיצוב"), EditorIcons.TextFormat, !busy, feature = Feature.SUBTITLES, width = w) { ctrl.pauser(); ctrl.stylePanel = true }
-                            }
-                            // Words per subtitle is in the list too ("all subtitles").
-                            if (hasCues) Tool(t("כל הכתוביות"), AppIcons.ListLines, !busy, feature = Feature.SUBTITLES, width = w) { ctrl.pauser(); ctrl.listEditor = true }
-                            Tool(t("רקע"), AppIcons.Background, !busy, active = ctrl.background.active, feature = Feature.BACKGROUND, width = w) { ctrl.pauser(); ctrl.bgPanel = true }
-                            Tool(t("סאונד"), AppIcons.Voice, !busy, active = ctrl.audio.voice != VoiceFx.NONE || ctrl.model.bleeps.isNotEmpty() || ctrl.model.sfx.isNotEmpty(), feature = Feature.SOUND, width = w) {
-                                ctrl.pauser(); ctrl.voicePanel = true
-                            }
-                            Tool(t("סימן מים"), AppIcons.Watermark, !busy, active = watermarkOn, width = w) { ctrl.pauser(); ctrl.watermarkPanel = true }
-                        }
-                        if (subsOnly) subsTools()
-                        Tool(
-                            if (ctrl.addMode) t("ביטול") else t("הוסף טשטוש"),
-                            if (ctrl.addMode) Icons.Filled.Close else Icons.Filled.Add,
-                            !busy,
-                            active = ctrl.addMode,
-                            feature = Feature.FACES,
-                            width = w,
-                        ) {
-                            ctrl.addMode = !ctrl.addMode
-                            if (ctrl.addMode) ctrl.pauser()
-                        }
-                        if (!subsOnly) {
-                            Tool(t("טשטוש"), AppIcons.Face, !busy, active = ctrl.blurPanel, feature = Feature.FACES, width = w) { ctrl.pauser(); ctrl.blurPanel = true }
-                            subsTools()
-                        }
-                    }
+        if (many) {
+            // More tools than fit: they keep a usable width and the row scrolls (the last one
+            // shows cut off, so it's clear there's more).
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)) {
+                val w = maxOf(68.dp, maxWidth / tools.size)
+                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                    for (tool in tools) Tool(tool, Modifier.width(w))
                 }
-            } else {
-                Tool(t("מחק"), Icons.Filled.Delete, !busy) { ctrl.deleteSelected() }
-                Tool(t("פצל"), EditorIcons.Cut, !busy, feature = Feature.FACES) { ctrl.splitSelected() }
-                Tool(t("עקוב קדימה"), EditorIcons.TrackForward, !busy, feature = Feature.FACES) { ctrl.trackSelected(1) }
-                Tool(t("עקוב אחורה"), EditorIcons.TrackBack, !busy, feature = Feature.FACES) { ctrl.trackSelected(-1) }
-                Tool(t("גודל"), EditorIcons.Resize, !busy, active = ctrl.sizePanel, feature = Feature.FACES) { ctrl.sizePanel = !ctrl.sizePanel }
-                Tool(t("סיום"), Icons.Filled.Check, true) { ctrl.deselect() }
+            }
+        } else {
+            // Every tool gets an equal share of the width: nothing hides off screen.
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                for (tool in tools) Tool(tool, Modifier.weight(1f))
             }
         }
     }
 }
+
+/** What a tool does and how it shows. */
+private class ToolSpec(
+    val label: String,
+    val icon: ImageVector,
+    val enabled: Boolean,
+    val active: Boolean = false,
+    val feature: Feature? = null,
+    val onClick: () -> Unit,
+)
 
 /**
  * A tool: icon over a one-line label; [active] for a toggle that's on. A tool that works on one
  * [feature] shows its icon in that feature's color.
  */
 @Composable
-private fun RowScope.Tool(label: String, icon: ImageVector, enabled: Boolean, active: Boolean = false, feature: Feature? = null, width: Dp? = null, onClick: () -> Unit) {
+private fun Tool(spec: ToolSpec, modifier: Modifier) {
+    val label = spec.label
+    val icon = spec.icon
+    val enabled = spec.enabled
+    val active = spec.active
+    val feature = spec.feature
+    val onClick = spec.onClick
     val alpha = if (enabled) 1f else 0.38f
     val accent = feature?.color ?: MaterialTheme.colorScheme.primary
     val iconTint = (feature?.color ?: if (active) accent else MaterialTheme.colorScheme.onSurface).copy(alpha = alpha)
@@ -1465,7 +1507,7 @@ private fun RowScope.Tool(label: String, icon: ImageVector, enabled: Boolean, ac
     val bg by animateColorAsState(if (active) accent.copy(alpha = 0.2f) else Color.Transparent, tween(200), label = "tool")
     val source = remember { MutableInteractionSource() }
     Column(
-        (if (width != null) Modifier.width(width) else Modifier.weight(1f))
+        modifier
             .pressScale(source)
             .clip(RoundedCornerShape(12.dp))
             .clickable(interactionSource = source, indication = LocalIndication.current, enabled = enabled, onClick = onClick)
