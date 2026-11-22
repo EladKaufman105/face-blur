@@ -188,6 +188,24 @@ const EN: Record<string, string> = {
   'תגובות': 'Reactions',
   'התראות': 'Alerts',
   'חפצים': 'Objects',
+  // ONIT 2.0: the groups of tools, undo and redo, the keyboard, the theme.
+  'פרטיות': 'Privacy',
+  'מיתוג': 'Branding',
+  'בצע שוב': 'Redo',
+  'בטל': 'Undo',
+  'קיצורי מקלדת': 'Keyboard shortcuts',
+  'ניגון ועצירה': 'Play and pause',
+  'אחורה, עצירה, קדימה': 'Back, pause, forward',
+  'פריים אחורה או קדימה': 'A frame back or forward',
+  'בטל ובצע שוב': 'Undo and redo',
+  'זום בציר הזמן': 'Zoom the timeline',
+  'קבוצות הכלים': 'The groups of tools',
+  'מחיקת האפקט הנבחר': 'Delete the selected sound',
+  'מצב תצוגה': 'Appearance',
+  'כהה': 'Dark',
+  'בהיר': 'Light',
+  'לפי המכשיר': 'System',
+  'טשטוש פנים': 'Face blur',
 }
 
 export function t(he: string, ...args: (string | number)[]): string {

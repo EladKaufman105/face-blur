@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { lang, setLang, t, duration } from './i18n'
+import { nextTheme, theme } from './theme'
 import type { Analysis } from './lib/types'
 import { Editor, type EditorTab } from './ui/Editor'
 import { Analyzing } from './ui/Analyzing'
@@ -20,8 +21,9 @@ export function App() {
   // Exporting keeps the editor (and everything in it) underneath, for "back to editing".
   const [job, setJob] = useState<ExportJob | null>(null)
   const [sensitive, setSensitive] = useState(false)
-  // Re-render on language change.
+  // Re-render on a change of language or theme.
   void lang.value
+  void theme.value
 
   const supported = () => {
     if ('VideoDecoder' in window && 'VideoEncoder' in window) return true
@@ -72,7 +74,7 @@ export function App() {
         <Exporting job={job} onBack={() => setJob(null)} onNew={() => { setJob(null); setScreen({ name: 'home' }) }} />
       )}
       <footer class="footer">
-        {t('גרסת ווב')} {__BUILD__} · <a href={RELEASES} target="_blank" rel="noopener">{t('האפליקציה המלאה לאנדרואיד')}</a>
+        {t('גרסת ווב')} <bdi dir="ltr" class="num">2.0 ({__BUILD__})</bdi> · <a href={RELEASES} target="_blank" rel="noopener">{t('האפליקציה המלאה לאנדרואיד')}</a>
       </footer>
     </div>
   )
@@ -89,6 +91,9 @@ function Header() {
           <p class="tag"><LockIcon size={14} /> {t('הכל מעובד על המכשיר. שום דבר לא עולה לרשת.')}</p>
         </div>
       </div>
+      <button class="chip-btn" onClick={nextTheme} aria-label={t('מצב תצוגה')} title={t('מצב תצוגה')}>
+        {theme.value === 'dark' ? t('כהה') : theme.value === 'light' ? t('בהיר') : t('לפי המכשיר')}
+      </button>
       <button class="chip-btn" onClick={() => setLang(lang.value === 'he' ? 'en' : 'he')} aria-label="Language">
         {lang.value === 'he' ? 'EN' : 'עב'}
       </button>

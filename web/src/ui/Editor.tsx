@@ -3,7 +3,7 @@ import { t, duration } from '../i18n'
 import { BlurRenderer, ellipseFor, type Ellipse } from '../lib/renderer'
 import { DEFAULT_LOOK, frameAt, trackBox, type Analysis, type BlurMode, type Look } from '../lib/types'
 import type { ExportJob } from './Exporting'
-import { BackIcon, CloseIcon, PauseIcon, PlayIcon, SaveIcon } from './icons'
+import { BackIcon, CloseIcon, FaceIcon, MarkIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
 import { Timeline } from './Timeline'
 import { SfxScheduler, type SfxClip } from '../lib/sfx'
 import { drawWatermark, watermarkOn, type Watermark } from '../lib/watermark'
@@ -34,6 +34,20 @@ function loadLook(): Look {
 }
 
 export type EditorTab = 'faces' | 'subs' | 'sound' | 'mark'
+
+/**
+ * The groups of tools, as in the app (its privacy, subtitles, sound and branding; the web has no
+ * cutting, steadying or background yet): each in its color, keys 1 to 4.
+ */
+const GROUPS: [EditorTab, string, (p: { size?: number }) => any, string][] = [
+  ['faces', 'פרטיות', FaceIcon, 'var(--coral)'],
+  ['subs', 'כתוביות', SubtitlesIcon, 'var(--amber)'],
+  ['sound', 'סאונד', SoundIcon, 'var(--cyan)'],
+  ['mark', 'מיתוג', MarkIcon, 'var(--primary)'],
+]
+
+/** What undo and redo move between: the faces turned off, the sounds placed, the subtitles. */
+type Snap = { off: Set<number>; sfx: SfxClip[]; cues: Cue[] }
 
 export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClose, initialTab = 'faces', hidden = false }: Props) {
   // Opened from a tool on the home screen, faces aren't found yet; they can be, from here.
@@ -239,8 +253,49 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     return () => clearTimeout(timer)
   }, [voice, bleeped, tone, words])
 
+  // Undo and redo. Quick changes in a row (typing, dragging a sound) are one step.
+  const past = useRef<Snap[]>([])
+  const future = useRef<Snap[]>([])
+  const lastChange = useRef(0)
+  const [, setHistoryVersion] = useState(0)
+  const snap = (): Snap => ({ off: state.current.off, sfx: state.current.sfx, cues: state.current.cues })
+  const record = () => {
+    const now = performance.now()
+    const burst = now - lastChange.current < 800
+    lastChange.current = now
+    future.current = []
+    if (!burst) {
+      past.current.push(snap())
+      if (past.current.length > 100) past.current.shift()
+    }
+    setHistoryVersion((n) => n + 1)
+  }
+  const put = (s: Snap) => {
+    setOff(s.off)
+    setSfx(s.sfx)
+    setCues(s.cues)
+    lastChange.current = 0
+    setHistoryVersion((n) => n + 1)
+  }
+  const undo = () => {
+    const s = past.current.pop()
+    if (!s) return
+    future.current.push(snap())
+    put(s)
+  }
+  const redo = () => {
+    const s = future.current.pop()
+    if (!s) return
+    past.current.push(snap())
+    put(s)
+  }
+  const setOffH = (v: Set<number> | ((s: Set<number>) => Set<number>)) => { record(); setOff(v) }
+  const setSfxH = (v: SfxClip[] | ((s: SfxClip[]) => SfxClip[])) => { record(); setSfx(v) }
+  const setCuesH = (v: Cue[]) => { record(); setCues(v) }
+  const timelineControls = useRef<{ zoom?: (f: number) => void }>({}).current
+
   const toggle = (id: number) => {
-    setOff((s) => {
+    setOffH((s) => {
       const n = new Set(s)
       if (n.has(id)) n.delete(id)
       else n.add(id)
@@ -248,7 +303,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     })
   }
 
-  const updateSfx = (id: number, patch: Partial<SfxClip>) => setSfx((list) => list.map((c) => (c.id === id ? { ...c, ...patch } : c)).sort((a, b) => a.at - b.at))
+  const updateSfx = (id: number, patch: Partial<SfxClip>) => setSfxH((list) => list.map((c) => (c.id === id ? { ...c, ...patch } : c)).sort((a, b) => a.at - b.at))
   const selectedClip = sfx.find((c) => c.id === selectedSfx) ?? null
 
   // How long each placed sound is (for its block on the timeline).
@@ -286,6 +341,40 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     else v.pause()
   }
 
+  // The keyboard, on a computer: Space, J K L, the arrows (a frame), Ctrl+Z / Ctrl+Shift+Z,
+  // − and + (the timeline's zoom), 1 to 4 (the groups), Delete (the selected sound).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
+      if (hidden || detecting) return
+      const v = video.current
+      if (!v) return
+      const k = e.key
+      const end = isFinite(v.duration) ? v.duration : dur
+      if ((e.ctrlKey || e.metaKey) && (k === 'z' || k === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return }
+      if ((e.ctrlKey || e.metaKey) && (k === 'y' || k === 'Y')) { e.preventDefault(); redo(); return }
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const frame = 1 / (an.fps || 30)
+      switch (k) {
+        case ' ': e.preventDefault(); playPause(); break
+        case 'k': case 'K': v.pause(); break
+        case 'j': case 'J': v.currentTime = Math.max(0, v.currentTime - 2); break
+        case 'l': case 'L': if (v.paused) v.play().catch(() => {}); else v.currentTime = Math.min(end, v.currentTime + 2); break
+        case 'ArrowLeft': e.preventDefault(); v.pause(); v.currentTime = Math.max(0, v.currentTime - frame); break
+        case 'ArrowRight': e.preventDefault(); v.pause(); v.currentTime = Math.min(end, v.currentTime + frame); break
+        case '-': case '_': timelineControls.zoom?.(1 / 1.5); break
+        case '+': case '=': timelineControls.zoom?.(1.5); break
+        case '1': case '2': case '3': case '4': setTab(GROUPS[Number(k) - 1][0]); break
+        case 'Delete': case 'Backspace':
+          if (selectedSfx !== null) { setSfxH((list) => list.filter((c) => c.id !== selectedSfx)); setSelectedSfx(null) }
+          break
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [hidden, detecting, selectedSfx, dur, an])
+
   const enabled = tracks.filter((tr) => !off.has(tr.id))
   const setMode = (mode: BlurMode) => setLook({ ...look, mode })
 
@@ -310,7 +399,11 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         <div class="row">
           <button class="btn ghost" onClick={onClose} style="padding-inline:6px"><span class="flip"><BackIcon /></span> {t('סרטון חדש')}</button>
           <div class="grow" />
-          <span class="small muted">{detectInfo}</span>
+          <span class="small muted detect-info">{detectInfo}</span>
+          <div class="edit-tools">
+            <button class="icon-btn" disabled={past.current.length === 0} aria-label={t('בטל')} title={t('בטל') + ' (Ctrl+Z)'} onClick={undo}><span class="flip"><UndoIcon /></span></button>
+            <button class="icon-btn" disabled={future.current.length === 0} aria-label={t('בצע שוב')} title={t('בצע שוב') + ' (Ctrl+Shift+Z)'} onClick={redo}><span class="flip"><RedoIcon /></span></button>
+          </div>
         </div>
         <div class="screen" onClick={onTap}>
           <canvas ref={canvas} width={W} height={H} style={{ aspectRatio: `${W} / ${H}` }} />
@@ -327,7 +420,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
               <input type="range" min={0} max={2} step={0.05} value={selectedClip.gain} aria-label={t('עוצמה')} onInput={(e) => updateSfx(selectedClip.id, { gain: Number((e.currentTarget as HTMLInputElement).value) })} />
               <span class="muted small" dir="ltr">{Math.round(selectedClip.gain * 100)}%</span>
               <button class="btn ghost small-btn" onClick={() => updateSfx(selectedClip.id, { at: time })}>{t('העבר לכאן')}</button>
-              <button class="icon-btn" aria-label={t('מחק')} onClick={() => { setSfx(sfx.filter((c) => c.id !== selectedClip.id)); setSelectedSfx(null) }}><CloseIcon size={18} /></button>
+              <button class="icon-btn" aria-label={t('מחק')} onClick={() => { setSfxH(sfx.filter((c) => c.id !== selectedClip.id)); setSelectedSfx(null) }}><CloseIcon size={18} /></button>
             </div>
           )}
         </div>
@@ -347,15 +440,18 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           onToggleTrack={toggle}
           onSelectSfx={setSelectedSfx}
           onMoveSfx={(id, at) => updateSfx(id, { at })}
+          controls={timelineControls}
         />
       </div>
 
       <aside class="side">
-        <div class="seg tabs" role="tablist">
-          <button role="tab" class={tab === 'faces' ? 'on' : ''} aria-selected={tab === 'faces'} onClick={() => setTab('faces')}>{t('פנים')}</button>
-          <button role="tab" class={tab === 'subs' ? 'on' : ''} aria-selected={tab === 'subs'} onClick={() => setTab('subs')}>{t('כתוביות')}</button>
-          <button role="tab" class={tab === 'sound' ? 'on' : ''} aria-selected={tab === 'sound'} onClick={() => setTab('sound')}>{t('סאונד')}{sfx.length > 0 ? ` · ${sfx.length}` : ''}</button>
-          <button role="tab" class={tab === 'mark' ? 'on' : ''} aria-selected={tab === 'mark'} onClick={() => setTab('mark')}>{t('סימן מים')}</button>
+        <div class="tabs" role="tablist">
+          {GROUPS.map(([id, label, Icon, color], k) => (
+            <button role="tab" class={tab === id ? 'on' : ''} aria-selected={tab === id} style={{ '--g': color } as any} title={`${t(label)} (${k + 1})`} onClick={() => setTab(id)}>
+              <span class="pill-ic"><Icon size={22} /></span>
+              <span>{t(label)}{id === 'sound' && sfx.length > 0 ? <span class="count"> · {sfx.length}</span> : null}</span>
+            </button>
+          ))}
         </div>
         {tab === 'faces' && !analyzed && (
           <section class="card">
@@ -367,7 +463,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         {tab === 'faces' && analyzed && (
           <>
         <section class="card">
-          <h3 class="section-title">{t('פנים')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{t('%d מתוך %d מטושטשות', enabled.length, tracks.length)}</span></h3>
+          <h3 class="section-title">{t('טשטוש פנים')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{t('%d מתוך %d מטושטשות', enabled.length, tracks.length)}</span></h3>
           {tracks.length === 0 ? (
             <p class="muted small" style="margin:0">{t('לא נמצאו פנים בסרטון.')}</p>
           ) : (
@@ -383,8 +479,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
               </div>
               <p class="small muted" style="margin:12px 0 8px">{t('הקש על פנים כדי לבטל או להחזיר את הטשטוש שלהן.')}</p>
               <div class="actions">
-                <button class="btn tonal" onClick={() => setOff(new Set())}>{t('הכל')}</button>
-                <button class="btn tonal" onClick={() => setOff(new Set(tracks.map((x) => x.id)))}>{t('אף אחד')}</button>
+                <button class="btn tonal" onClick={() => setOffH(new Set())}>{t('הכל')}</button>
+                <button class="btn tonal" onClick={() => setOffH(new Set(tracks.map((x) => x.id)))}>{t('אף אחד')}</button>
               </div>
             </>
           )}
@@ -420,7 +516,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             voiceBusy={voiceBusy}
             clips={sfx}
             time={time}
-            onChange={setSfx}
+            onChange={setSfxH}
             onSeek={(at) => { const v = video.current; if (v) v.currentTime = at }}
           />
         )}
@@ -429,7 +525,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           <SubtitlesTab
             file={file}
             cues={cues}
-            onCues={setCues}
+            onCues={setCuesH}
             words={words}
             onWords={setWords}
             bleeped={bleeped}
@@ -443,6 +539,18 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           />
         )}
 
+        <details class="keys">
+          <summary>{t('קיצורי מקלדת')}</summary>
+          <dl>
+            <dt><kbd>Space</kbd></dt><dd>{t('ניגון ועצירה')}</dd>
+            <dt dir="ltr"><kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd></dt><dd>{t('אחורה, עצירה, קדימה')}</dd>
+            <dt dir="ltr"><kbd>←</kbd> <kbd>→</kbd></dt><dd>{t('פריים אחורה או קדימה')}</dd>
+            <dt dir="ltr"><kbd>Ctrl+Z</kbd> <kbd>Ctrl+Shift+Z</kbd></dt><dd>{t('בטל ובצע שוב')}</dd>
+            <dt dir="ltr"><kbd>−</kbd> <kbd>+</kbd></dt><dd>{t('זום בציר הזמן')}</dd>
+            <dt dir="ltr"><kbd>1</kbd>–<kbd>4</kbd></dt><dd>{t('קבוצות הכלים')}</dd>
+            <dt><kbd>Delete</kbd></dt><dd>{t('מחיקת האפקט הנבחר')}</dd>
+          </dl>
+        </details>
         <div class="export-bar">
           <button
             class="btn primary"

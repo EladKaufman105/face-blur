@@ -27,6 +27,8 @@ type Props = {
   onToggleTrack: (id: number) => void
   onSelectSfx: (id: number | null) => void
   onMoveSfx: (id: number, at: number) => void
+  /** Filled with the timeline's zoom, for the keyboard (− and +). */
+  controls?: { zoom?: (factor: number) => void }
 }
 
 const MIN_PPS = 8
@@ -94,6 +96,7 @@ export function Timeline(p: Props) {
 
   const zoom = (factor: number) => {
     const next = clamp(pps * factor, MIN_PPS, MAX_PPS)
+    if (next === pps) return
     setPps(next)
     // Keep the playhead's time in the middle.
     requestAnimationFrame(() => {
@@ -103,6 +106,7 @@ export function Timeline(p: Props) {
       el.scrollLeft = p.time * next
     })
   }
+  if (p.controls) p.controls.zoom = zoom
 
   // Two fingers pinch; a mouse zooms with Ctrl (or ⌘) and the wheel.
   const onPointerDown = (e: PointerEvent) => {
@@ -214,8 +218,8 @@ export function Timeline(p: Props) {
       </div>
       <div class="tl-playhead" />
       <div class="tl-zoom">
-        <button aria-label="−" onClick={() => zoom(1 / 1.5)}>−</button>
-        <button aria-label="+" onClick={() => zoom(1.5)}>+</button>
+        <button aria-label="−" title="−" onClick={() => zoom(1 / 1.5)}>−</button>
+        <button aria-label="+" title="+" onClick={() => zoom(1.5)}>+</button>
       </div>
     </div>
   )
