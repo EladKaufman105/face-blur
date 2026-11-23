@@ -105,6 +105,9 @@ class EditorController(
         private set
     var previewAvailable by mutableStateOf(true)
 
+    /** The player's GPU effects failed on this device: it plays the plain video (and outlines). */
+    var effectsFailed by mutableStateOf(false)
+
     /**
      * The tool panel that's open, if any: one at a time, so opening one closes the one before
      * (they never pile up). Each also has its own flag below, for the code that opens and closes it.

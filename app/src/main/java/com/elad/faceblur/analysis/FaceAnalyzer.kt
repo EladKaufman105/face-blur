@@ -84,7 +84,14 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     // Detection workers: each thread keeps its own detector (OpenCV nets aren't shared).
     private val detectors = java.util.Collections.synchronizedList(ArrayList<FaceDetector>())
     private val workerDetector = ThreadLocal<FaceDetector>()
-    private val pool = Executors.newFixedThreadPool(WORKERS) { r -> Thread(r, "face-detect").apply { priority = Thread.NORM_PRIORITY + 1 } }
+    // Below the app's own threads: on a slow tablet the detectors take every core, and the
+    // screen (progress, preview) must still move. When nothing else runs they get it all anyway.
+    private val pool = Executors.newFixedThreadPool(WORKERS) { r ->
+        Thread({
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            r.run()
+        }, "face-detect")
+    }
     // Frames waiting for or in detection (bounds the memory they take).
     private val slots = Semaphore(WORKERS + 1)
     private val failure = AtomicReference<Throwable?>(null)
@@ -133,6 +140,8 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     private val followed = ArrayList<Followed>()
     @Volatile private var detectEvery = baseEvery
     @Volatile private var lite = false
+    // The fine pass's long side on the CPU: lowered on a device too slow for it.
+    @Volatile private var cpuSide = RetinaFaceDetector.CPU_FINE_SIDE
     private var windowStart = 0L
     private var blockedMs = 0L
 
@@ -148,7 +157,8 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         get() {
             val n = max(1, times.size)
             val d = max(1, detections)
-            return "$accelerator/${half.state} · every $detectEvery${if (lite) " lite" else ""} · " +
+            val side = if (gpu != null && gpu.active) "1280" else "$cpuSide"
+            return "$accelerator/${half.state} ${side}px · every $detectEvery${if (lite) " lite" else ""} · " +
                 "detect ${detectMsTotal / d} ms · frame ${frameMsTotal / n} ms · wait ${waitMsTotal / n} ms/frame"
         }
 
@@ -171,6 +181,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         cuts.clear()
         detectEvery = baseEvery
         lite = false
+        cpuSide = RetinaFaceDetector.CPU_FINE_SIDE
         windowStart = 0L
         blockedMs = 0L
         detectMsTotal = 0L
@@ -255,7 +266,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
                 try {
                     if (gen == generation) {
                         val d0 = SystemClock.elapsedRealtime()
-                        val found = detector().detect(frame, lite, known)
+                        val found = detector().detect(frame, lite, known, cpuSide)
                         detectMsTotal += SystemClock.elapsedRealtime() - d0
                         detections++
                         if (gen == generation) {
@@ -310,8 +321,10 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     }
 
     /**
-     * Every 2 s or so: if the frames spent over a third of the time waiting for a free
-     * detector, detection is what holds the analysis back, so it runs less often (and lighter).
+     * Every 1.5 s or so: if the frames spent over a third of the time waiting for a free
+     * detector, detection is what holds the analysis back, so it gets lighter: on the CPU, the
+     * fine pass at 640 px first (about half the work); then less often (down to [MIN_RATE]).
+     * Lighter also means crops only for uncertain faces and no YuNet.
      */
     private fun adapt(idx: Int) {
         val now = SystemClock.elapsedRealtime()
@@ -321,11 +334,18 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             return
         }
         val span = now - windowStart
-        if (span < 2000 || idx < 30) return
-        if (blockedMs > span / 3 && detectEvery < maxEvery) {
-            detectEvery++
-            lite = true
-            android.util.Log.i("ONIT", "face detection slower than the video: every $detectEvery frames, lite")
+        if (span < 1500 || idx < 20) return
+        if (blockedMs > span / 3) {
+            val onCpu = gpu == null || !gpu.active
+            if (onCpu && cpuSide > LOW_SIDE) {
+                cpuSide = LOW_SIDE
+                lite = true
+                android.util.Log.i("ONIT", "face detection slower than the video: $LOW_SIDE px, lite")
+            } else if (detectEvery < maxEvery) {
+                detectEvery++
+                lite = true
+                android.util.Log.i("ONIT", "face detection slower than the video: every $detectEvery frames, lite")
+            }
         }
         windowStart = now
         blockedMs = 0L
@@ -400,6 +420,8 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         /** Detections per second of video, and the fewest a slow device goes down to. */
         private const val RATE = 15f
         private const val MIN_RATE = 8f
+        /** The fine pass's long side on the CPU when the device can't keep up. */
+        private const val LOW_SIDE = 640
         /** Detections in a row after which a clear face isn't re-checked on a crop. */
         private const val FOLLOWED_AFTER = 4
 

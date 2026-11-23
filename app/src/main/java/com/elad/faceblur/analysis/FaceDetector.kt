@@ -29,15 +29,16 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
     private val yunetInput = Mat()
 
     /**
-     * @param lite re-check only uncertain faces on a crop (a slow device).
+     * @param lite a slow device: no YuNet, and crops only for uncertain faces.
      * @param followed boxes of clear faces already found in several detections in a row: a clear
      *   face there isn't re-checked.
+     * @param cpuSide the fine pass's long side when it runs on the CPU.
      */
-    fun detect(bgr: Mat, lite: Boolean = false, followed: List<Box> = emptyList()): List<Det> {
+    fun detect(bgr: Mat, lite: Boolean = false, followed: List<Box> = emptyList(), cpuSide: Int = RetinaFaceDetector.CPU_FINE_SIDE): List<Det> {
         val w = bgr.cols()
         val h = bgr.rows()
-        val rf = retina.detect(bgr, RF_THRESHOLD)
-        val yn = runYunet(bgr, w, h)
+        val rf = retina.detect(bgr, RF_THRESHOLD, cpuSide)
+        val yn = if (lite) emptyList() else runYunet(bgr, w, h)
 
         val fused = ArrayList<Det>()
         val usedYn = HashSet<Int>()

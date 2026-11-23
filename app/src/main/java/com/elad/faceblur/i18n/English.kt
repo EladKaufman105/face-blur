@@ -23,6 +23,7 @@ internal val English: Map<String, String> = mapOf(
     "צא" to "Leave",
     "המשך לערוך" to "Keep editing",
     "תצוגת הטשטוש לא נתמכת כאן. מוצגות מסגרות בלבד." to "Live blur preview isn't supported here. Showing outlines only.",
+    "לא הצלחתי להציג את הסרטון" to "Couldn't show the video",
     "פריים קודם" to "Previous frame",
     "השהה" to "Pause",
     "נגן" to "Play",

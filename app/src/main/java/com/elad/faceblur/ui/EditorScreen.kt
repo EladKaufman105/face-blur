@@ -546,14 +546,18 @@ private fun VideoWithOverlay(
     val aspect = if (analysis.uprightH > 0) analysis.uprightW.toFloat() / analysis.uprightH else 9f / 16f
     val times = ctrl.model.times
     val preview = remember(ctrl) { PreviewSource(if (times.isEmpty()) 0L else times[0]) }
-    val player = remember(ctrl) {
+    // Made again, without any GPU effect, if the effects fail on this device.
+    val plain = ctrl.effectsFailed
+    val player = remember(ctrl, plain) {
         // Bleeps and the robot voice are heard live; the pitch is set on the player.
         ExoPlayer.Builder(context, VoicePreviewRenderers(context) { ctrl.voiceDsp }).build().apply {
-            // The background (replaced or blurred live), then the faces' blur over it.
-            val bg = BackgroundEffect(ctrl.bgState)
-            // Steadying last: it moves the finished picture (turned on and off without a restart).
-            val steady = StabilizeEffect { ctrl.stabilizer }
-            setVideoEffects(if (ctrl.previewAvailable) listOf<Effect>(bg, BlurEffect(preview, { ctrl.session.settings.mode }, { ctrl.session.settings.strength }), steady) else listOf<Effect>(bg, steady))
+            if (!plain) {
+                // The background (replaced or blurred live), then the faces' blur over it.
+                val bg = BackgroundEffect(ctrl.bgState)
+                // Steadying last: it moves the finished picture (turned on and off without a restart).
+                val steady = StabilizeEffect { ctrl.stabilizer }
+                setVideoEffects(if (ctrl.previewAvailable) listOf<Effect>(bg, BlurEffect(preview, { ctrl.session.settings.mode }, { ctrl.session.settings.strength }), steady) else listOf<Effect>(bg, steady))
+            }
             setMediaItem(MediaItem.fromUri(ctrl.session.info.uri))
             prepare()
         }
@@ -704,12 +708,19 @@ private class PlayerSync(
     }
 
     override fun onPlayerError(error: PlaybackException) {
-        // The live blur is the riskiest part of playback: drop it and play plain video.
-        if (ctrl.previewAvailable) {
+        android.util.Log.e("ONIT", "editor player error", error)
+        // What failed, short, so a screenshot of the message says it.
+        var root: Throwable = error
+        while (root.cause != null && root.cause !== root) root = root.cause!!
+        val detail = error.errorCodeName + (if (root !== error) " · ${root.javaClass.simpleName}: ${root.message.orEmpty().take(120)}" else "")
+        // The GPU effects (live blur, background, steadying) are the riskiest part of playback:
+        // a new player without any plays the plain video, with outlines over it.
+        if (!ctrl.effectsFailed) {
             ctrl.previewAvailable = false
-            ctrl.notice = t("תצוגת הטשטוש לא נתמכת כאן. מוצגות מסגרות בלבד.")
-            player.setVideoEffects(emptyList())
-            player.prepare()
+            ctrl.effectsFailed = true
+            ctrl.notice = t("תצוגת הטשטוש לא נתמכת כאן. מוצגות מסגרות בלבד.") + "\n" + detail
+        } else {
+            ctrl.notice = t("לא הצלחתי להציג את הסרטון") + "\n" + detail
         }
     }
 }

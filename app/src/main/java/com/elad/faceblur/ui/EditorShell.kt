@@ -369,7 +369,8 @@ internal fun EditorMessages(ctrl: EditorController, modifier: Modifier = Modifie
         }
         ctrl.notice?.let { msg ->
             LaunchedEffect(msg) {
-                delay(4000)
+                // A message with technical details stays long enough to be read (or captured).
+                delay(if ('\n' in msg) 12000 else 4000)
                 if (ctrl.notice == msg) ctrl.notice = null
             }
         }

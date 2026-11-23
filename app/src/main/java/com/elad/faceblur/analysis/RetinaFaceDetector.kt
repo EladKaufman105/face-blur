@@ -50,15 +50,16 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
      * it's most of the time) + coarse pass at 480 px for faces bigger than the anchors. The two
      * passes overlap; the caller's NMS merges them.
      */
-    fun detect(bgr: Mat, threshold: Float): List<Det> {
+    fun detect(bgr: Mat, threshold: Float, cpuSide: Int = CPU_FINE_SIDE): List<Det> {
         val w = bgr.cols()
         val h = bgr.rows()
         val out = ArrayList<Det>()
         val iw = max(32, (w / 32f).roundToInt() * 32)
         val ih = max(32, (h / 32f).roundToInt() * 32)
-        val fine = if (gpu?.supports(iw, ih) == true) max(w, h) else min(max(w, h), CPU_FINE_SIDE)
+        val fine = if (gpu?.supports(iw, ih) == true) max(w, h) else min(max(w, h), cpuSide)
         run(bgr, fine, threshold, 0f, out)
-        if (max(w, h) > COARSE_SIDE * 1.3f) run(bgr, COARSE_SIDE, threshold, COARSE_MIN_BOX, out)
+        // Below ~800 px the fine pass's biggest anchors (512 px) already cover the biggest faces.
+        if (fine > 800 && max(w, h) > COARSE_SIDE * 1.3f) run(bgr, COARSE_SIDE, threshold, COARSE_MIN_BOX, out)
         return out
     }
 
