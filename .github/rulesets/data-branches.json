@@ -1,0 +1,19 @@
+{
+  "name": "data branches: no deletion",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/gpu-model",
+        "refs/heads/speaker-model",
+        "refs/heads/ml-models",
+        "refs/heads/opencv-min2",
+        "refs/heads/test-media"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [ { "type": "deletion" } ]
+}
