@@ -6,8 +6,8 @@
 
     <application
         android:allowBackup="false"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher"
+        android:icon="${appIcon}"
+        android:roundIcon="${appIcon}"
         android:label="${appLabel}"
         android:largeHeap="true"
         android:supportsRtl="true"

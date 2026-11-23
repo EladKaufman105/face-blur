@@ -4,14 +4,17 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
@@ -21,17 +24,24 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.elad.faceblur.MainViewModel
 import com.elad.faceblur.QuickTool
@@ -68,11 +78,34 @@ internal fun HomeContent(vm: MainViewModel, wide: Boolean, onPick: () -> Unit, o
 /** The logo, the name, the promise (nothing leaves the phone) and the app's settings. */
 @Composable
 internal fun Header(onSettings: () -> Unit) {
+    // Left to right in every language (the logo on the left), in both builds. The beta build adds
+    // a BETA tag on the logo and "Beta" after the name.
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { HeaderRow(isBetaBuild, onSettings) }
+}
+
+@Composable
+private fun HeaderRow(beta: Boolean, onSettings: () -> Unit) {
     Row(Modifier.padding(top = Space.S, bottom = Space.XS), verticalAlignment = Alignment.CenterVertically) {
-        LogoMark(44.dp)
+        if (beta) {
+            // Fixed to the logo's size: a large system font grows the tag, not the row.
+            Box(Modifier.size(44.dp)) {
+                LogoMark(44.dp)
+                BetaBadge(Modifier.align(Alignment.BottomEnd).wrapContentSize(Alignment.BottomEnd, unbounded = true).offset(x = 6.dp, y = 4.dp))
+            }
+        } else {
+            LogoMark(44.dp)
+        }
         Spacer(Modifier.width(Space.M))
         Column(Modifier.weight(1f)) {
-            Text("ONIT", style = AppType.Display, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
+            if (beta) {
+                val title = buildAnnotatedString {
+                    append("ONIT")
+                    withStyle(SpanStyle(fontSize = 0.5.em, fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp)) { append(" Beta") }
+                }
+                Text(title, style = AppType.Display, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
+            } else {
+                Text("ONIT", style = AppType.Display, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(AppIcons.Lock, null, Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(Space.XS))

@@ -1,6 +1,6 @@
 name: Build APK
 
-# push to develop: a beta ("ONIT Test", its own app id, pre-release, never "latest").
+# push to develop: a beta ("ONIT Beta", its own app id, pre-release, never "latest").
 # push to main: a release. Both publish only what passed the emulator end-to-end test.
 #
 # build-release  arm64 release APK (the one that ships)       \  in parallel
@@ -84,7 +84,7 @@ jobs:
           mkdir -p out
           case "$GITHUB_REF" in
             refs/heads/main) NAME="ONIT-$VERSION" ;;
-            refs/heads/develop) NAME="ONIT-Test-$VERSION" ;;
+            refs/heads/develop) NAME="ONIT-Beta-$VERSION" ;;
             *) NAME="ONIT-dev-$GITHUB_RUN_NUMBER" ;;
           esac
           cp app/build/outputs/apk/release/*.apk "out/$NAME.apk"
@@ -311,8 +311,8 @@ jobs:
         with:
           tag_name: v${{ env.VERSION }}
           target_commitish: ${{ github.sha }}
-          name: ONIT Test ${{ env.VERSION }}
-          body: "Beta ${{ env.VERSION }} from develop (installs beside ONIT as \"ONIT Test\"), build ${{ github.run_number }}. Commit ${{ github.sha }}"
+          name: ONIT Beta ${{ env.VERSION }}
+          body: "Beta ${{ env.VERSION }} from develop (installs beside ONIT as \"ONIT Beta\"), build ${{ github.run_number }}. Commit ${{ github.sha }}"
           files: out/*.apk
           prerelease: true
           make_latest: false

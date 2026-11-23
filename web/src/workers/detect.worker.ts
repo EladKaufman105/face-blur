@@ -1,0 +1,36 @@
+// One CPU face detector on its own thread. WebAssembly runs on one thread here (no shared memory
+// on a plain static host), so a few of these side by side are what use the other cores.
+import { FaceDetector, type DetectStats } from '../lib/detector'
+import type { Det } from '../lib/types'
+
+export type DetectRequest =
+  | { type: 'init'; model: Uint8Array }
+  | { type: 'frame'; id: number; frame: ImageBitmap }
+export type DetectReply =
+  | { type: 'ready'; precision: string }
+  | { type: 'dets'; id: number; dets: Det[]; ms: number; stats: DetectStats }
+  | { type: 'error'; message: string }
+
+const post = (m: DetectReply) => (self as unknown as Worker).postMessage(m)
+let detector: FaceDetector | null = null
+let canvas: OffscreenCanvas | null = null
+
+self.onmessage = async (e: MessageEvent<DetectRequest>) => {
+  const m = e.data
+  try {
+    if (m.type === 'init') {
+      detector = await FaceDetector.create('', 'wasm', m.model)
+      post({ type: 'ready', precision: detector.precision })
+    } else if (detector) {
+      const f = m.frame
+      if (!canvas || canvas.width !== f.width || canvas.height !== f.height) canvas = new OffscreenCanvas(f.width, f.height)
+      canvas.getContext('2d', { willReadFrequently: true })!.drawImage(f, 0, 0)
+      f.close()
+      const t = performance.now()
+      const dets = await detector.detect(canvas)
+      post({ type: 'dets', id: m.id, dets, ms: performance.now() - t, stats: detector.stats })
+    }
+  } catch (err) {
+    post({ type: 'error', message: String((err as Error)?.message ?? err) })
+  }
+}

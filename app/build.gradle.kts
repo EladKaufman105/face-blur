@@ -23,11 +23,13 @@ android {
         ?.takeIf { it.matches(Regex("""\d+\.\d+\.\d+""")) }
         ?.let { ndkVersion = it }
 
-    // The beta build (from develop, -Plabs=true): "ONIT Test", its own app beside the real one.
+    // The beta build (from develop, -Plabs=true): "ONIT Beta", its own app beside the real one,
+    // with a BETA mark on its icon.
     val labs = (findProperty("labs") as String?) == "true"
     defaultConfig {
         applicationId = if (labs) "com.elad.faceblur.labs" else "com.elad.faceblur"
-        manifestPlaceholders["appLabel"] = if (labs) "ONIT Test" else "@string/app_name"
+        manifestPlaceholders["appLabel"] = if (labs) "ONIT Beta" else "@string/app_name"
+        manifestPlaceholders["appIcon"] = if (labs) "@mipmap/ic_launcher_beta" else "@mipmap/ic_launcher"
         minSdk = 29
         targetSdk = 36
         versionCode = buildNumber

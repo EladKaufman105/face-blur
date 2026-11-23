@@ -5,7 +5,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 ## Branches
 
 - `main`: releases only. A merge publishes a public GitHub release (APK) once the emulator e2e passes, and deploys the web app to GitHub Pages when web files changed.
-- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Test" (separate app id, installs beside ONIT) once the emulator e2e passes. Merges that change only `web/` make no beta.
+- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Beta" (separate app id, installs beside ONIT) once the emulator e2e passes. Merges that change only `web/` make no beta.
 - Never push, force-push, rebase or delete `main` or `develop`. Repository rulesets enforce this. Do not try to work around them.
 - `labs` is retired. Do not push to it. It is kept as history.
 - `hotfix/<name>`: branch from `main`, PR into `main`, then a PR `main` -> `develop` (merge commit) to bring the fix back.
@@ -67,7 +67,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 
 CI computes SemVer from git tags in `ci/version.sh`. Nobody types version numbers.
 
-- Merge into `develop`: pre-release `vX.Y.Z-beta.N` ("ONIT Test <version>").
+- Merge into `develop`: pre-release `vX.Y.Z-beta.N` ("ONIT Beta <version>").
 - Merge `develop` -> `main`: release `vX.Y.Z`, a minor bump. The first one is 2.1.0.
 - Hotfix into `main`: patch bump (for example 2.1.1).
 - Major bump: a PR into `develop` that raises `major=` in `version.properties`. Only when the user asks.

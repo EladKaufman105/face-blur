@@ -21,7 +21,8 @@ export function Analyzing({ file, sensitive, twoSteps, onDone, onError, onCancel
   const [ready, setReady] = useState(false)
   const [backend, setBackend] = useState('')
   const [stats, setStats] = useState('')
-  const debug = new URLSearchParams(location.search).has('debug')
+  // Tap the percentage to show where the time goes (?debug shows it from the start).
+  const [debug, setDebug] = useState(() => new URLSearchParams(location.search).has('debug'))
   const [aspect, setAspect] = useState(16 / 9)
   const started = useRef(performance.now())
 
@@ -80,7 +81,7 @@ export function Analyzing({ file, sensitive, twoSteps, onDone, onError, onCancel
       onError(e.message || t('משהו השתבש'))
     }
     const forced = new URLSearchParams(location.search).get('backend')
-    const req: AnalyzeRequest = { file, sensitive, base: new URL('.', document.baseURI).href, backend: forced === 'wasm' || forced === 'webgpu' ? forced : undefined }
+    const req: AnalyzeRequest = { file, sensitive, base: new URL('.', document.baseURI).href, backend: forced === 'wasm' || forced === 'webgpu' ? forced : undefined, workers: Number(new URLSearchParams(location.search).get('workers')) || undefined }
     worker.postMessage(req)
     return () => worker.terminate()
   }, [file, sensitive])
@@ -104,7 +105,7 @@ export function Analyzing({ file, sensitive, twoSteps, onDone, onError, onCancel
             <strong>{ready ? (twoSteps ? t('שלב 1 מתוך 2 · מזהה פנים') : t('מזהה פנים')) : t('מכין את המודל…')}</strong>
             <div class="small muted">{[ready ? t('עברו %s', duration(elapsed)) : '', left !== null ? t('נותרו כ-%s', duration(left)) : '', backend ? (backend === 'webgpu' ? t('על המעבד הגרפי') : t('על המעבד')) : ''].filter(Boolean).join(' · ') || '\u00a0'}</div>
           </div>
-          <div class="big-num">{ready ? pct : 0}%</div>
+          <div class="big-num" onClick={() => setDebug((d) => !d)}>{ready ? pct : 0}%</div>
         </div>
         <div class="progress" style="margin:14px 0 12px"><div style={{ width: `${ready ? pct : 2}%` }} /></div>
         {backend === 'wasm' && <p class="small" style="margin:0 0 10px;color:var(--primary)">{t('הדפדפן הזה לא נותן גישה למעבד הגרפי (WebGPU), אז הזיהוי איטי. ב-Chrome או Safari מעודכנים זה מהיר הרבה יותר.')}</p>}
