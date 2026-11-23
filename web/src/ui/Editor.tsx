@@ -21,6 +21,7 @@ import { ASPECT_RATIO, cropFraction, reframePath, steady, viewRect } from '../li
 import type { PictureMessage, PictureRequest } from '../workers/picture.worker'
 import { createProject, saveProject, type ProjectPicture, type ProjectState } from '../lib/projects'
 import { reserveCueIds } from '../lib/subtitles'
+import { speakerColor } from '../lib/speakers'
 import { reserveClipIds } from './EditorTabs'
 import { cleanupOn, type Cleanup } from '../lib/cleanup'
 import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
@@ -273,7 +274,10 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       const m = state.current.mark
       if (watermarkOn(m)) drawWatermark(tc, m, fw, fh, m.image ? logo.current : null)
       const cue = cueAt(state.current.cues, state.current.mediaTime)
-      if (cue) drawSubtitle(tc, shownText(cue, maskCue(cue, state.current.words, state.current.bleeped), state.current.subStyle.show), state.current.subStyle, fw, fh)
+      if (cue) {
+        const st = state.current.subStyle
+        drawSubtitle(tc, shownText(cue, maskCue(cue, state.current.words, state.current.bleeped), st.show), { ...st, color: speakerColor(st.color, cue.speaker) }, fw, fh)
+      }
       tc.restore()
     }
   }

@@ -5,6 +5,8 @@ import { NO_WATERMARK, POSITIONS, type Watermark, type WatermarkLook } from '../
 import { CloseIcon, CutIcon, DeleteIcon, MergeIcon, PlayIcon } from './icons'
 import { LANGUAGES, newCueId, parseSrt, splitCue, toSrt, wordsToCues, type Cue, type SubLook, type SubPosition, type SubShow, type SubStyle, type Word } from '../lib/subtitles'
 import { canTranslate, guessLang, LANG_NAMES, translateAll } from '../lib/translate'
+import { MAX_SPEAKERS } from '../lib/speakers'
+import { SpeakerDot, SpeakersCard } from './Speakers'
 import { VOICES, type VoiceFx } from '../lib/voice'
 import type { SubsMessage, SubsRequest } from '../workers/subs.worker'
 import type { Cleanup } from '../lib/cleanup'
@@ -291,6 +293,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
   // Where the cursor is in each subtitle's text (for splitting there).
   const caret = useRef(new Map<number, number>())
   const sorted = [...cues].sort((a, b) => a.start - b.start)
+  const speakers = cues.reduce((m, c) => Math.max(m, c.speaker ?? 0), 0)
   const replaceAll = () => {
     let n = 0
     const esc = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -437,6 +440,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
         </section>
       )}
       {cues.length > 0 && <TranslateCard cues={cues} onCues={onCues} show={style.show ?? 'src'} onShow={(v) => set({ show: v })} />}
+      {cues.length > 0 && <SpeakersCard file={file} cues={cues} onCues={onCues} color={style.color} />}
       {cues.length > 0 && (
         <section class="card">
           <h3 class="section-title">{t('מראה')}</h3>
@@ -491,7 +495,10 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
             {sorted.map((c) => (
               <div class={'clip' + (time >= c.start && time < c.end ? ' now' : '')}>
                 <div class="row">
-                  <button class="time-btn" onClick={() => onSeek(c.start + 0.01)} dir="ltr">{duration(c.start)}</button>
+                  <div class="cue-meta">
+                    <button class="time-btn" onClick={() => onSeek(c.start + 0.01)} dir="ltr">{duration(c.start)}</button>
+                    {speakers > 1 && <SpeakerDot speaker={c.speaker} color={style.color} max={Math.min(MAX_SPEAKERS, speakers + 1)} onChange={(sp) => onCues(cues.map((x) => (x.id === c.id ? { ...x, speaker: sp } : x)), true)} />}
+                  </div>
                   {bleepMode ? (
                     <div class="word-chips" dir="auto">
                       {words.map((w, k) => (w.start >= c.start - 0.01 && w.start < c.end ? (

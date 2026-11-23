@@ -368,6 +368,13 @@ const EN: Record<string, string> = {
   'שניהם': 'Both',
   'או ייבא קובץ SRT': 'or import an SRT file',
   'לא נמצאו כתוביות בקובץ': 'No subtitles found in the file',
+  'זיהוי דוברים': 'Find speakers',
+  'נמצאו %d דוברים. הקש על הנקודה ליד כתובית כדי להחליף דובר.': '%d speakers found. Tap the dot next to a subtitle to change its speaker.',
+  'כל דובר בצבע משלו, גם ברשימת הכתוביות': 'Each speaker in its own color, in the subtitle list too',
+  'מזהה דוברים… %d%': 'Finding speakers… %d%',
+  'כמה מדברים בסרטון?': 'How many people speak?',
+  'זהה דוברים': 'Find speakers',
+  'דובר %d': 'Speaker %d',
 }
 
 export function t(he: string, ...args: (string | number)[]): string {

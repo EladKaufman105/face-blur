@@ -62,6 +62,8 @@ jobs:
           node tests/picture.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/green_screen.mp4 /tmp/samples/classroom.mp4 /tmp/samples/walk.mp4 /tmp/samples/speech_two.mp4 /tmp/web-results/picture
           # Subtitles as a list (from an SRT) and their translation; projects kept, opened, renamed, deleted.
           node tests/project.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/project
+          # Speakers found from their voices (the sample's two halves).
+          node tests/speakers.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/speakers
       - uses: actions/upload-artifact@v4
         if: always()
         with:

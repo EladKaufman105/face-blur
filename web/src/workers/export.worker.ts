@@ -13,6 +13,7 @@ import { frameAt, trackBox, type Look, type Track } from '../lib/types'
 import { mixInto, type SfxSamples } from '../lib/sfx'
 import { cueAt, drawSubtitle, type Cue, type SubStyle } from '../lib/subtitles'
 import { CutMap, type Range } from '../lib/cutmap'
+import { speakerColor } from '../lib/speakers'
 
 export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; font: string; voice: { rate: number; data: Float32Array } | null; cuts: Range[]; options?: ExportOptions; picture?: ExportPicture }
 export type ExportMessage =
@@ -201,7 +202,7 @@ async function run(req: ExportRequest) {
             const ctx = layer.getContext('2d')!
             ctx.clearRect(0, 0, w, h)
             if (overlay) ctx.drawImage(overlay, 0, 0, w, h)
-            if (cue) drawSubtitle(ctx, cue.text, subStyle, w, h, family)
+            if (cue) drawSubtitle(ctx, cue.text, { ...subStyle, color: speakerColor(subStyle.color, cue.speaker) }, w, h, family)
             if (!camera) renderer.setOverlay(layer)
           }
         }

@@ -489,3 +489,10 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .project-acts .btn { padding: 4px 8px; font-size: 12px; }
 .confirm { display: grid; gap: var(--space-1); margin-top: var(--space-1); }
 .danger-btn { background: #e5484d; color: #fff; }
+
+/* Speakers: a dot in each one's color. */
+.speakers { display: grid; gap: var(--space-2); }
+.speakers .section-title { margin: 0; }
+.cue-meta { display: grid; justify-items: center; gap: 4px; align-self: flex-start; }
+.speaker-dot { width: 22px; height: 22px; border-radius: 50%; border: 0; display: inline-grid; place-items: center; font: 700 11px/1 system-ui, sans-serif; color: #1a1a1a; flex: none; }
+.speaker-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }

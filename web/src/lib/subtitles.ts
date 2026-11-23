@@ -9,6 +9,8 @@ export interface Cue {
   text: string
   /** Its translation, if it was translated. */
   tr?: string
+  /** Who says it (1..; none: like speaker 1). */
+  speaker?: number
 }
 
 /** What the video shows of a translated subtitle. */
@@ -222,7 +224,7 @@ export function splitCue(cue: Cue, at: number, words: Word[]): [Cue, Cue] | null
   const len = cue.end - cue.start
   let t = inCue.length === a.split(/\s+/).length + b.split(/\s+/).length ? inCue[before].start : cue.start + len * (a.length / (a.length + b.length))
   t = Math.min(cue.end - 0.2, Math.max(cue.start + 0.2, t))
-  return [{ ...cue, end: t, text: a, tr: undefined }, { ...cue, id: newCueId(), start: t, text: b, tr: undefined }]
+  return [{ ...cue, end: t, text: a, tr: undefined }, { ...cue, id: newCueId(), start: t, text: b, tr: undefined, speaker: cue.speaker }]
 }
 
 /** The cue's text with its bleeped words as **** (the words timed inside the cue). */
