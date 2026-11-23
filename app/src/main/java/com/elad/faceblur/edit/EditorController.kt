@@ -105,8 +105,11 @@ class EditorController(
         private set
     var previewAvailable by mutableStateOf(true)
 
-    /** The player's GPU effects failed on this device: it plays the plain video (and outlines). */
-    var effectsFailed by mutableStateOf(false)
+    /**
+     * How far the player's GPU effects were cut back after failing on this device: 0 all of them
+     * (background, blur, steadying), 1 the live blur alone, 2 none (plain video and outlines).
+     */
+    var effectsLevel by mutableIntStateOf(0)
 
     /**
      * The tool panel that's open, if any: one at a time, so opening one closes the one before

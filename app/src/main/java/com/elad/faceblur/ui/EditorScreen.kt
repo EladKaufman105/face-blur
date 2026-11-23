@@ -546,17 +546,22 @@ private fun VideoWithOverlay(
     val aspect = if (analysis.uprightH > 0) analysis.uprightW.toFloat() / analysis.uprightH else 9f / 16f
     val times = ctrl.model.times
     val preview = remember(ctrl) { PreviewSource(if (times.isEmpty()) 0L else times[0]) }
-    // Made again, without any GPU effect, if the effects fail on this device.
-    val plain = ctrl.effectsFailed
-    val player = remember(ctrl, plain) {
+    // Made again with fewer GPU effects if they fail on this device (see effectsLevel).
+    val level = ctrl.effectsLevel
+    val player = remember(ctrl, level) {
         // Bleeps and the robot voice are heard live; the pitch is set on the player.
         ExoPlayer.Builder(context, VoicePreviewRenderers(context) { ctrl.voiceDsp }).build().apply {
-            if (!plain) {
-                // The background (replaced or blurred live), then the faces' blur over it.
-                val bg = BackgroundEffect(ctrl.bgState)
-                // Steadying last: it moves the finished picture (turned on and off without a restart).
-                val steady = StabilizeEffect { ctrl.stabilizer }
-                setVideoEffects(if (ctrl.previewAvailable) listOf<Effect>(bg, BlurEffect(preview, { ctrl.session.settings.mode }, { ctrl.session.settings.strength }), steady) else listOf<Effect>(bg, steady))
+            val blur = if (ctrl.previewAvailable) BlurEffect(preview, { ctrl.session.settings.mode }, { ctrl.session.settings.strength }) else null
+            when (level) {
+                0 -> {
+                    // The background (replaced or blurred live), then the faces' blur over it.
+                    val bg = BackgroundEffect(ctrl.bgState)
+                    // Steadying last: it moves the finished picture (turned on and off without a restart).
+                    val steady = StabilizeEffect { ctrl.stabilizer }
+                    setVideoEffects(listOfNotNull<Effect>(bg, blur, steady))
+                }
+                1 -> if (blur != null) setVideoEffects(listOf<Effect>(blur))
+                else -> Unit
             }
             setMediaItem(MediaItem.fromUri(ctrl.session.info.uri))
             prepare()
@@ -595,6 +600,8 @@ private fun VideoWithOverlay(
             factory = { ctx ->
                 (LayoutInflater.from(ctx).inflate(R.layout.editor_player, null) as PlayerView).also { it.player = player }
             },
+            // The player is made again when its effects are cut back: the view must show the new one.
+            update = { if (it.player !== player) it.player = player },
             modifier = Modifier.fillMaxSize(),
         )
         Overlay(ctrl, subs, style, frameShape, watermark, Modifier.fillMaxSize())
@@ -712,15 +719,22 @@ private class PlayerSync(
         // What failed, short, so a screenshot of the message says it.
         var root: Throwable = error
         while (root.cause != null && root.cause !== root) root = root.cause!!
-        val detail = error.errorCodeName + (if (root !== error) " · ${root.javaClass.simpleName}: ${root.message.orEmpty().take(120)}" else "")
-        // The GPU effects (live blur, background, steadying) are the riskiest part of playback:
-        // a new player without any plays the plain video, with outlines over it.
-        if (!ctrl.effectsFailed) {
-            ctrl.previewAvailable = false
-            ctrl.effectsFailed = true
-            ctrl.notice = t("תצוגת הטשטוש לא נתמכת כאן. מוצגות מסגרות בלבד.") + "\n" + detail
-        } else {
-            ctrl.notice = t("לא הצלחתי להציג את הסרטון") + "\n" + detail
+        // The cause, and where it was thrown (an argument check has no message of its own).
+        val at = root.stackTrace.firstOrNull()?.let { " @ ${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }.orEmpty()
+        val detail = error.errorCodeName + (if (root !== error) " · ${root.javaClass.simpleName}${root.message?.let { ": " + it.take(100) }.orEmpty()}$at" else "")
+        // The GPU effects are the riskiest part of playback: first the live blur alone is kept
+        // (the background and the steadying go), then none (the plain video, outlines over it).
+        when (ctrl.effectsLevel) {
+            0 -> {
+                ctrl.effectsLevel = 1
+                ctrl.notice = t("תצוגת הרקע והייצוב לא נתמכת כאן; הטשטוש מוצג.") + "\n" + detail
+            }
+            1 -> {
+                ctrl.effectsLevel = 2
+                ctrl.previewAvailable = false
+                ctrl.notice = t("תצוגת הטשטוש לא נתמכת כאן. מוצגות מסגרות בלבד.") + "\n" + detail
+            }
+            else -> ctrl.notice = t("לא הצלחתי להציג את הסרטון") + "\n" + detail
         }
     }
 }

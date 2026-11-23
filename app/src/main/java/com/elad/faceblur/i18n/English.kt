@@ -24,6 +24,7 @@ internal val English: Map<String, String> = mapOf(
     "המשך לערוך" to "Keep editing",
     "תצוגת הטשטוש לא נתמכת כאן. מוצגות מסגרות בלבד." to "Live blur preview isn't supported here. Showing outlines only.",
     "לא הצלחתי להציג את הסרטון" to "Couldn't show the video",
+    "תצוגת הרקע והייצוב לא נתמכת כאן; הטשטוש מוצג." to "Background and steadying previews aren't supported here; the blur is shown.",
     "פריים קודם" to "Previous frame",
     "השהה" to "Pause",
     "נגן" to "Play",
