@@ -1,13 +1,25 @@
 name: Web app
 
+# main: build and deploy to Pages, no tests (develop -> main merges were tested in their PR).
+# Pull requests run the tests (pr.yml); a push to develop doesn't repeat them.
+# Manual and weekly runs build and run every test, including the slow subtitles one.
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - 'web/**'
-      - 'app/src/main/assets/**'
+      # What web/scripts/copy-assets.mjs takes from the Android app.
+      - 'app/src/main/assets/retinaface_mv2.onnx'
+      - 'app/src/main/assets/human_segmentation_pphumanseg_2023mar.onnx'
+      - 'app/src/main/assets/fonts/**'
+      - 'app/src/main/assets/sfx/**'
       - '.github/workflows/web.yml'
+      - '.github/workflows/web-tests.yml'
+      - 'ci/web-tests.sh'
+      - '.github/actions/**'
   workflow_dispatch:
+  schedule:
+    - cron: '23 5 * * 1'
 
 permissions:
   contents: read
@@ -19,80 +31,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - name: Build
-        working-directory: web
-        run: |
-          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core > /dev/null
-          pip install --quiet onnx numpy onnxconverter-common fonttools
-          npm ci
-          npm run build
-      - name: Test in Chromium (face detection on the CPU path, editor, export)
-        working-directory: web
-        run: |
-          git fetch --depth 1 origin test-media
-          mkdir -p /tmp/samples && git -C .. archive FETCH_HEAD | tar -x -C /tmp/samples && ls /tmp/samples
-          npx playwright install --with-deps chromium
-          npx vite preview --port 4173 --strictPort &
-          sleep 3
-          node tests/e2e.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/desktop
-          node tests/e2e.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/phone phone
-          node tests/e2e.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/classroom.mp4 /tmp/web-results/tablet tablet
-          # A deep voice on a clip with speech.
-          VOICE=1 node tests/e2e.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/voice
-          # A tool from the home screen; faces found later; the editor kept across the export.
-          node tests/tools.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/tools
-          # The keyboard: groups by number, play / pause, a frame step, undo and redo.
-          node tests/keys.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/keys.png
-          # Editing: a blur by hand (followed, split, deleted, ended), cuts by hand and of pauses.
-          node tests/edit.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/edit
-          node tests/edit.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/edit-phone phone
-          # The sound's cleanup, MP3 (from the editor and the home screen), a lower size and frame rate.
-          node tests/sound.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/samples/speech_en.mp4 /tmp/samples/classroom60.mp4 /tmp/web-results/sound
-          # The picture: a green screen, a 9:16 frame, a steadied camera, the people's background.
-          node tests/picture.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/green_screen.mp4 /tmp/samples/classroom.mp4 /tmp/samples/walk.mp4 /tmp/samples/speech_two.mp4 /tmp/web-results/picture
-          # Subtitles as a list (from an SRT) and their translation; projects kept, opened, renamed, deleted.
-          node tests/project.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/project
-          # Speakers found from their voices (the sample's two halves).
-          node tests/speakers.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/speakers
-          # Subtitle design: styles, fonts (one imported with Hebrew, one without), effects, burned into the export.
-          node tests/style.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 ../app/src/main/assets/fonts/heebo.ttf /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf /tmp/web-results/style
-          # Where it was filmed and on what phone don't go out with the export.
-          node tests/privacy.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/privacy
-          # Settings: language, light / dark / the device's, the color palette; kept after a reload.
-          node tests/settings.cjs "http://localhost:4173/?backend=wasm" /tmp/web-results/settings
-          # The ready screen: the video first, the blur's settings, "blur and save" without the editor.
-          node tests/ready.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/samples/classroom.mp4 /tmp/web-results/ready
-          # A video shared to the installed app (Web Share Target) or opened with it.
-          node tests/share.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/share
-          # Sounds imported from the device: kept, placed, mixed into the export, deleted.
-          node tests/mysounds.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/mysounds
-          # No faces found: wider detection offered, a blur by hand in the editor.
-          node tests/nofaces.cjs "http://localhost:4173/?backend=wasm" /tmp/web-results/nofaces
-          # The landing page (/home/): it loads whole, its parts work, its links lead to the editor.
-          node tests/home.cjs "http://localhost:4173/" /tmp/web-results/home
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: web-results
-          path: /tmp/web-results
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: web/dist
+  web:
+    uses: ./.github/workflows/web-tests.yml
+    with:
+      tests: ${{ github.event_name != 'push' }}
+      subtitles: ${{ github.event_name != 'push' }}
+      pages: ${{ github.ref == 'refs/heads/main' }}
 
-  # Only main goes to the site; develop is tested only.
+  # Only main goes to the site.
   deploy:
     if: github.ref == 'refs/heads/main'
-    needs: build
+    needs: web
     runs-on: ubuntu-latest
     concurrency:
       group: pages
@@ -103,36 +52,3 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
-
-  # Speech recognition on the CPU path is slow: its own job, so publishing doesn't wait for it.
-  subtitles:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - name: Build
-        working-directory: web
-        run: |
-          sudo apt-get install -y -qq ffmpeg > /dev/null
-          pip install --quiet onnx numpy onnxconverter-common fonttools
-          npm ci
-          npm run build
-      - name: Test subtitles in Chromium (Whisper, the model from Hugging Face)
-        working-directory: web
-        run: |
-          git fetch --depth 1 origin test-media
-          mkdir -p /tmp/samples && git -C .. archive FETCH_HEAD | tar -x -C /tmp/samples
-          npx playwright install --with-deps chromium
-          npx vite preview --port 4173 --strictPort &
-          sleep 3
-          node tests/subs.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_en.mp4 /tmp/web-results/subs
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: web-subtitles
-          path: /tmp/web-results

@@ -1,0 +1,60 @@
+name: Web test environment
+description: Node and the npm packages, Playwright's Chromium (cached), the built web/dist, the test clips, ffmpeg, and vite preview on port 4173.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: web/package-lock.json
+
+    - uses: actions/download-artifact@v4
+      with:
+        name: web-dist
+        path: web/dist
+
+    - name: npm ci
+      shell: bash
+      working-directory: web
+      run: npm ci
+
+    # The browser is cached by Playwright's version; its system libraries (apt) are installed each time.
+    - name: Playwright version
+      id: pw
+      shell: bash
+      working-directory: web
+      run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+
+    - id: pwcache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+    - name: Playwright's Chromium
+      shell: bash
+      working-directory: web
+      run: |
+        if [ "${{ steps.pwcache.outputs.cache-hit }}" != true ]; then
+          npx playwright install chromium
+        fi
+        # The system libraries (apt, slow when the mirror is): only if Chromium doesn't start without them.
+        node -e "require('playwright').chromium.launch().then((b) => b.close())" || npx playwright install-deps chromium
+
+    - uses: ./.github/actions/apt-install
+      with:
+        packages: ffmpeg fonts-dejavu-core
+
+    - name: The test clips
+      shell: bash
+      run: |
+        git fetch --depth 1 origin test-media
+        mkdir -p /tmp/samples && git archive FETCH_HEAD | tar -x -C /tmp/samples && ls /tmp/samples
+
+    - name: Serve the build
+      shell: bash
+      working-directory: web
+      run: |
+        npx vite preview --port 4173 --strictPort > /tmp/preview.log 2>&1 &
+        timeout 60 bash -c 'until curl -sf http://localhost:4173/ > /dev/null; do sleep 1; done'

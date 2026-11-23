@@ -1,0 +1,5 @@
+# What `npm run build` (scripts/model_web.py, copy-assets.mjs) needs from Python.
+onnx
+numpy
+onnxconverter-common
+fonttools
