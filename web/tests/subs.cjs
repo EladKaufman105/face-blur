@@ -50,9 +50,12 @@ const [, , url, video, out] = process.argv
     await p.click('.split-cues .chip >> text=משפט שלם')
     // A word bleeped: hidden in the subtitles as ****, or shown as said when that's switched off.
     const layer = () => p.evaluate(() => { const c = document.querySelectorAll('.view canvas')[2]; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let h = 0; for (let i = 0; i < d.length; i += 4) h = (h * 31 + d[i] + d[i + 3]) >>> 0; return h })
+    // Inside the first subtitle (a little after it starts, so it's on screen).
     await p.click('.cue-list .time-btn >> nth=0')
-    await p.evaluate(() => document.querySelector('video').pause())
+    await p.evaluate(() => { const v = document.querySelector('video'); v.pause(); v.currentTime += 0.6 })
     await p.waitForTimeout(800)
+    const shown = await p.evaluate(() => { const c = document.querySelectorAll('.view canvas')[2]; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 40) n++; return n })
+    if (shown < 200) throw new Error('no subtitle on screen to bleep')
     const plain = await layer()
     await p.click('button:text-is("בחר מילים")')
     await p.click('.word-chips .word >> nth=0')

@@ -170,7 +170,11 @@ export function maskCue(cue: Cue, words: Word[], bleeped: Set<number>): string {
     const word = w.text.trim()
     const at = text.indexOf(word, from)
     if (at < 0) return
-    if (bleeped.has(k)) text = text.slice(0, at) + '*'.repeat(Math.max(3, [...word].length)) + text.slice(at + word.length)
+    // Always 4 stars, the punctuation around kept: the length shouldn't hint at the word (as the app).
+    if (bleeped.has(k)) {
+      const m = /^([^\p{L}\p{N}]*)[\s\S]*?([^\p{L}\p{N}]*)$/u.exec(word)
+      text = text.slice(0, at) + (m?.[1] ?? '') + '****' + (m?.[2] ?? '') + text.slice(at + word.length)
+    }
     from = at + 1
   })
   return text
