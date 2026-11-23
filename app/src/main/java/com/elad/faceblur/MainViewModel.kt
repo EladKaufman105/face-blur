@@ -551,9 +551,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             session.masks = withContext(Dispatchers.IO) { MaskStore.open(File(dir, "masks.bin"), File(dir, "masks.bin.idx")) }
             val ctrl = EditorController(session, editorScope, app, models, prefs)
             if (session.subtitlesOnly) ctrl.previewAvailable = false
-            j.optString("style").takeIf { it.isNotBlank() }?.let { prefs.updateSubStyle(SubtitleStyle.fromJson(it)) }
-            // A project made from a template exports the way the template said, for this session only.
-            sessionExport = j.optJSONObject("export")?.let { com.elad.faceblur.pipeline.ExportOptions.fromJson(it) }
+            // A project made from a template (it has its own export) keeps the template's export and
+            // subtitle look for this session only; the user's own settings stay as they are.
+            val style = j.optString("style").takeIf { it.isNotBlank() }?.let { SubtitleStyle.fromJson(it) }
+            val ownExport = j.optJSONObject("export")?.let { com.elad.faceblur.pipeline.ExportOptions.fromJson(it) }
+            if (ownExport != null) {
+                sessionExport = ownExport
+                sessionSubStyle = style ?: prefs.subStyle
+            } else {
+                style?.let { prefs.updateSubStyle(it) }
+            }
             val sp = j.optJSONObject("split")
             ctrl.restore(
                 SplitRule(sp?.optInt("words") ?: 0, sp?.optInt("chars") ?: 0),

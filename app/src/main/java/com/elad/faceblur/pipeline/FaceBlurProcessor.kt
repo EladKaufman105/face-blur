@@ -337,19 +337,23 @@ class FaceBlurProcessor(private val context: Context) {
             else -> listOf(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
         }
         var keptHdr = info.isHdr
-        runWithHdrFallback(modes) { hdrMode ->
-            keptHdr = info.isHdr && hdrMode == Composition.HDR_MODE_KEEP_HDR
-            // A video without sound still gets one for its sound effects.
-            export(composition(item, hdrMode, forceAudio = sfx.isNotEmpty()), out, bitrate, mime = export.mimeType(), onProgress)
-        }
-
         val base = "${info.name}_blur_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val saved = withContext(Dispatchers.IO) {
-            // No location or phone details in what's shared.
-            lastScrubbed = runCatching { Mp4Privacy.scrub(out) }.getOrDefault(-1)
-            saveToGallery(out, base)
+        // The temporary file goes whatever happens (each pass has its own, so a failed or
+        // cancelled one isn't overwritten by the next any more).
+        val saved = try {
+            runWithHdrFallback(modes) { hdrMode ->
+                keptHdr = info.isHdr && hdrMode == Composition.HDR_MODE_KEEP_HDR
+                // A video without sound still gets one for its sound effects.
+                export(composition(item, hdrMode, forceAudio = sfx.isNotEmpty()), out, bitrate, mime = export.mimeType(), onProgress)
+            }
+            withContext(Dispatchers.IO) {
+                // No location or phone details in what's shared.
+                lastScrubbed = runCatching { Mp4Privacy.scrub(out) }.getOrDefault(-1)
+                saveToGallery(out, base)
+            }
+        } finally {
+            out.delete()
         }
-        out.delete()
         // Subtitle files in the cut video's time.
         val srtCues = if (cutMap.isEmpty) cues else cues.mapNotNull { c ->
             cutMap.mapMs(c.startMs, c.endMs)?.let { (a, b) -> c.copy().also { it.startMs = a; it.endMs = b } }
