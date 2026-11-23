@@ -1,12 +1,13 @@
 // The analysis pass, off the main thread: decodes every frame (small), finds cuts, detects faces
 // on a regular subset of frames, then builds the face tracks and a thumbnail of each face.
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny'
-import { FaceDetector } from '../lib/detector'
+import { CPU_SIDE, FaceDetector, type DetectStats } from '../lib/detector'
+import { DetectorPool } from '../lib/detector-pool'
 import { CutDetector } from '../lib/cuts'
 import { track } from '../lib/tracker'
 import type { Det, Track } from '../lib/types'
 
-export type AnalyzeRequest = { file: File; sensitive: boolean; base: string; backend?: 'webgpu' | 'wasm' }
+export type AnalyzeRequest = { file: File; sensitive: boolean; base: string; backend?: 'webgpu' | 'wasm'; /** How many CPU detectors to run side by side (default: by core count). */ workers?: number }
 export type AnalyzeMessage =
   | { type: 'ready'; backend: string; width: number; height: number; duration: number }
   | { type: 'progress'; done: number; total: number; preview?: ImageBitmap; dets?: Det[]; faces: number; backend: string; stats: string }
@@ -25,7 +26,18 @@ self.onmessage = async (e: MessageEvent<AnalyzeRequest>) => {
   }
 }
 
-async function analyze({ file, sensitive, base, backend }: AnalyzeRequest) {
+/** One line on where the time goes, per detection (ms) unless said otherwise. */
+function statsLine(head: string, s: DetectStats, rate: number, detectMs: number, decodeWait: number, poolWait: number, cutMs: number, frames: number, fellBack: string | null): string {
+  const n = Math.max(1, s.detections), f = (v: number, k = n) => (v / k).toFixed(0)
+  return [
+    `${head} · ${rate.toFixed(1)}/s`,
+    `detect ${f(detectMs)} = prep ${f(s.pre)} + fine ${f(s.inf)} + decode ${f(s.dec)} + coarse ${f(s.coarse)} (${s.coarseRuns}/${s.detections}) + check ${f(s.check)} + verify ${f(s.verify)} + merge ${f(s.nms)}`,
+    `per frame: frame wait ${f(decodeWait, Math.max(1, frames))} · detector wait ${f(poolWait, Math.max(1, frames))} · cuts ${f(cutMs, Math.max(1, frames))}`,
+    fellBack ? `fell back: ${fellBack}` : '',
+  ].filter(Boolean).join(' · ')
+}
+
+async function analyze({ file, sensitive, base, backend, workers }: AnalyzeRequest) {
   const t0 = performance.now()
   log('start')
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
@@ -40,12 +52,37 @@ async function analyze({ file, sensitive, base, backend }: AnalyzeRequest) {
   const total = Math.max(1, Math.round(duration * nominalFps))
 
   log(`stats ${nominalFps} fps; isolated ${(self as any).crossOriginIsolated}`)
-  const detector = await FaceDetector.create(base + 'models/', backend)
-  log(`detector ${detector.backend} ${detector.precision} ${(performance.now() - t0).toFixed(0)} ms`)
-  post({ type: 'ready', backend: detector.backend, width, height, duration })
+  // On the GPU one detector in this thread. On the CPU, where a detection is a long single-thread
+  // WebAssembly run, a few detectors in workers of their own, each with a frame at a time.
+  const cores = (self.navigator?.hardwareConcurrency ?? 2)
+  // Two even on two cores (measured: about 30% less time); up to four, half the cores, beyond.
+  // Each worker holds its own model and WebAssembly heap: more than two only where the browser
+  // says there is 8 GB (Firefox and Safari don't say, so they get two).
+  const memory = (self.navigator as any)?.deviceMemory as number | undefined
+  const most = memory !== undefined && memory >= 8 ? 4 : 2
+  const asked = workers !== undefined ? Math.min(8, Math.max(1, Math.round(workers))) : undefined
+  const poolSize = asked ?? (cores > 1 ? Math.min(most, Math.max(2, Math.floor(cores / 2))) : 1)
+  // No GPU also where the browser has WebGPU but no adapter for it (common on Android and Linux).
+  const gpu = (self.navigator as any)?.gpu
+  const cpuOnly = backend === 'wasm' || !gpu || !(await gpu.requestAdapter().catch(() => null))
+  // If the workers can't start (memory, a module that won't load), one detector here, as before.
+  let pool: DetectorPool | null = null
+  if (cpuOnly && poolSize > 1) {
+    try {
+      pool = await DetectorPool.create(new Uint8Array(await (await fetch(base + 'models/retinaface_fp32.onnx')).arrayBuffer()), poolSize)
+    } catch (err) {
+      log(`detector pool failed, one detector: ${String((err as Error)?.message ?? err)}`)
+    }
+  }
+  const detector = pool ? null : await FaceDetector.create(base + 'models/', backend)
+  const backendNow = () => detector?.backend ?? 'wasm'
+  const precision = pool?.precision ?? detector!.precision
+  log(`detector ${backendNow()} ${precision}${pool ? ' x' + pool.size : ''} ${(performance.now() - t0).toFixed(0)} ms`)
+  post({ type: 'ready', backend: backendNow(), width, height, duration })
 
   // Frames are decoded at the detector's starting size (it may lower it later).
-  const side = Math.min(Math.max(width, height), detector.side)
+  const startSide = detector?.side ?? CPU_SIDE
+  const side = Math.min(Math.max(width, height), startSide)
   const s = side / Math.max(width, height)
   const iw = Math.max(32, Math.round(width * s / 32) * 32)
   const ih = Math.max(32, Math.round(height * s / 32) * 32)
@@ -53,7 +90,7 @@ async function analyze({ file, sensitive, base, backend }: AnalyzeRequest) {
   // the frames between. On a slow device fewer (down to 4 per second) and at a lower resolution,
   // so a minute of video doesn't take many minutes.
   const maxRate = sensitive ? nominalFps : 15
-  let rate = Math.min(maxRate, detector.backend === 'webgpu' ? 15 : 10)
+  let rate = Math.min(maxRate, backendNow() === 'webgpu' ? 15 : 10)
   const spent: number[] = []
 
   const sink = new CanvasSink(video, { width: iw, height: ih, fit: 'fill', poolSize: 3 })
@@ -65,7 +102,26 @@ async function analyze({ file, sensitive, base, backend }: AnalyzeRequest) {
   let lastDets: Det[] = []
   let lastDetect = -Infinity
   let found = 0
-  let decodeWait = 0, detectMs = 0
+  let decodeWait = 0, detectMs = 0, cutMs = 0, poolWait = 0
+  // Where a detection's result goes (in the pool, in any order), and the pace follows from it.
+  const recordDets = (i: number, got: Det[], ms: number) => {
+    lastDets = got
+    detectMs += ms
+    dets.set(i, got)
+    found = Math.max(found, got.filter((d) => d.score >= 0.6).length)
+    // After the first (warm-up) detections: aim for about 0.6 s of detection per second of
+    // video, between 4 and 15 detections per second, at 640 px if 960 is too slow. With several
+    // detectors working at once each gets that much more time per frame.
+    spent.push(ms)
+    if (spent.length >= 4 && spent.length % 4 === 0) {
+      const recent = spent.slice(-4).reduce((a, b) => a + b, 0) / 4
+      if (detector && recent > 200 && detector.side > CPU_SIDE) detector.side = CPU_SIDE
+      rate = Math.min(maxRate, Math.max(4, Math.min(backendNow() === 'webgpu' ? 15 : 10, 600 * (pool?.size ?? 1) / recent)))
+    }
+  }
+  const statsText = () => statsLine(
+    `${backendNow()}/${precision}${pool ? ' x' + pool.size : ''} ${detector?.side ?? CPU_SIDE}px`,
+    pool?.stats() ?? detector!.stats, rate, detectMs, decodeWait, poolWait, cutMs, times.length, detector?.fellBack ?? null)
   // The next frame decodes while this one is in detection.
   const frames = sink.canvases()
   let next = frames.next()
@@ -79,23 +135,22 @@ async function analyze({ file, sensitive, base, backend }: AnalyzeRequest) {
     const canvas = wc.canvas as OffscreenCanvas
     const i = times.length
     times.push(wc.timestamp)
+    const tc = performance.now()
     const cut = cuts.isCut(canvas)
+    cutMs += performance.now() - tc
     if (cut) cutList.push(i)
     if (cut || wc.timestamp - lastDetect >= 1 / rate - 1e-3) {
       lastDetect = wc.timestamp
-      const td = performance.now()
-      lastDets = await detector.detect(canvas)
-      const ms = performance.now() - td
-      detectMs += ms
-      dets.set(i, lastDets)
-      found = Math.max(found, lastDets.filter((d) => d.score >= 0.6).length)
-      // After the first (warm-up) detections: aim for about 0.6 s of detection per second of
-      // video, between 4 and 15 detections per second, at 640 px if 960 is too slow.
-      spent.push(ms)
-      if (spent.length >= 4 && spent.length % 4 === 0) {
-        const recent = spent.slice(-4).reduce((a, b) => a + b, 0) / 4
-        if (recent > 200 && detector.side > 640) detector.side = 640
-        rate = Math.min(maxRate, Math.max(4, Math.min(detector.backend === 'webgpu' ? 15 : 10, 600 / recent)))
+      if (pool) {
+        // Wait for a free detector (the decoder keeps going meanwhile), then pass the frame on.
+        const tp = performance.now()
+        await pool.free()
+        poolWait += performance.now() - tp
+        await pool.detect(canvas, i, recordDets)
+      } else {
+        const td = performance.now()
+        const got = await detector!.detect(canvas)
+        recordDets(i, got, performance.now() - td)
       }
     }
     const now = performance.now()
@@ -103,12 +158,16 @@ async function analyze({ file, sensitive, base, backend }: AnalyzeRequest) {
       lastPost = now
       const ps = Math.min(1, 480 / Math.max(iw, ih))
       const preview = await createImageBitmap(canvas, { resizeWidth: Math.round(iw * ps), resizeHeight: Math.round(ih * ps) })
-      const n = Math.max(1, spent.length)
-      const stats = `${detector.backend}/${detector.precision} ${detector.side}px · ${rate.toFixed(1)}/s · detect ${(detectMs / n).toFixed(0)} ms · decode wait ${(decodeWait / (i + 1)).toFixed(0)} ms/frame${detector.fellBack ? ' · fell back: ' + detector.fellBack : ''}`
-      post({ type: 'progress', done: i + 1, total: Math.max(total, i + 1), preview, dets: lastDets, faces: found, backend: detector.backend, stats }, [preview])
+      post({ type: 'progress', done: i + 1, total: Math.max(total, i + 1), preview, dets: lastDets, faces: found, backend: backendNow(), stats: statsText() }, [preview])
     }
   }
-  log(`frames ${times.length}, detections ${spent.length}, detect avg ${(detectMs / Math.max(1, spent.length)).toFixed(0)} ms, decode wait ${decodeWait.toFixed(0)} ms, side ${detector.side}, rate ${rate.toFixed(1)}`)
+  try {
+    if (pool) await pool.drain()
+  } finally {
+    pool?.close()
+  }
+  log(`frames ${times.length}, detections ${spent.length}, detect avg ${(detectMs / Math.max(1, spent.length)).toFixed(0)} ms, decode wait ${decodeWait.toFixed(0)} ms, side ${detector?.side ?? CPU_SIDE}, rate ${rate.toFixed(1)}`)
+  log(`stats ${statsText()}`)
   const n = times.length
   const diffs: number[] = []
   for (let i = 1; i < n; i++) if (times[i] > times[i - 1]) diffs.push(times[i] - times[i - 1])
@@ -141,6 +200,6 @@ async function analyze({ file, sensitive, base, backend }: AnalyzeRequest) {
       thumbs[w.i] = out.transferToImageBitmap()
     }
   }
-  const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, cuts: cutList, thumbs, backend: detector.backend, ms: performance.now() - t0 }
+  const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, cuts: cutList, thumbs, backend: backendNow(), ms: performance.now() - t0 }
   post(msg, [msg.times.buffer, ...tracks.map((t) => t.boxes.buffer), ...thumbs.filter((b): b is ImageBitmap => !!b)])
 }
