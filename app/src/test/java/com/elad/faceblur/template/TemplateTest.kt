@@ -55,7 +55,8 @@ class TemplateTest {
 
     @Test
     fun builtInsSurviveJson() {
-        for (t in BuiltInTemplates.all) assertEquals(t.id, t, roundTrip(t))
+        // The built-in flag is not stored: a template read from a file is never a built-in.
+        for (t in BuiltInTemplates.all) assertEquals(t.id, t.copy(builtIn = false), roundTrip(t))
     }
 
     @Test
