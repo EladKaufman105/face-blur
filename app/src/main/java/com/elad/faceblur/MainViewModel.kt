@@ -55,7 +55,10 @@ import com.elad.faceblur.batch.BatchService
 import com.elad.faceblur.batch.BatchState
 import com.elad.faceblur.template.toTemplate
 import org.json.JSONObject
+import com.elad.faceblur.analysis.AnalysisStats
 import com.elad.faceblur.analysis.MaskStore
+import com.elad.faceblur.analysis.StatsHistory
+import com.elad.faceblur.analysis.StatsSnapshot
 import com.elad.faceblur.effects.Background
 import java.io.File
 import java.util.concurrent.Executors
@@ -63,9 +66,11 @@ import java.util.concurrent.Executors
 /** Where a quick tool on the home screen takes the video: the editor, without face detection. */
 enum class QuickTool { SUBTITLES, BACKGROUND, SOUND, MP3 }
 
-/** What the progress screen shows: a small copy of the frame being processed, and faces found on it. */
-/** @param stats how the analysis is doing (where detection runs, times), shown on a tap. */
-class LivePreview(val frame: android.graphics.Bitmap, val faces: List<com.elad.faceblur.analysis.Box>, val gpu: Boolean = false, val stats: String? = null)
+/**
+ * What the progress screen shows: a small copy of the frame being processed, and faces found on it.
+ * @param stats how the analysis is doing (where detection runs, times), shown on a tap.
+ */
+class LivePreview(val frame: android.graphics.Bitmap, val faces: List<com.elad.faceblur.analysis.Box>, val gpu: Boolean = false, val stats: AnalysisStats? = null)
 
 sealed interface UiState {
     data object Empty : UiState
@@ -160,8 +165,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var livePreview by mutableStateOf<LivePreview?>(null)
         private set
 
-    private fun showLive(frame: android.graphics.Bitmap, faces: List<com.elad.faceblur.analysis.Box>, gpu: Boolean = false, stats: String? = null) {
-        main.post { if (state is UiState.Working) livePreview = LivePreview(frame, faces, gpu, stats) }
+    /** [snapshot] goes into [history] (one per analysis run) on the main thread. */
+    private fun showLive(frame: android.graphics.Bitmap, faces: List<com.elad.faceblur.analysis.Box>, gpu: Boolean = false, snapshot: StatsSnapshot? = null, history: StatsHistory? = null) {
+        main.post {
+            if (state is UiState.Working) {
+                val stats = if (snapshot != null && history != null) history.add(snapshot) else null
+                livePreview = LivePreview(frame, faces, gpu, stats)
+            }
+        }
     }
 
     init {
@@ -618,9 +629,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             guard(info, onCancel = { UiState.Ready(info) }) {
                 val processor = FaceBlurProcessor(getApplication())
                 val t0 = SystemClock.elapsedRealtime()
+                // The stats panel's last minute: new for each run.
+                val history = StatsHistory()
                 val analysis = processor.analyze(
                     info, settings,
-                    onPreview = { frame, dets, acc, stats -> showLive(frame, dets.filter { it.score >= 0.5f }.map { it.box }, acc == "gpu", stats) },
+                    onPreview = { frame, dets, acc, snap -> showLive(frame, dets.filter { it.score >= 0.5f }.map { it.box }, acc == "gpu", snap, history) },
                 ) { p -> state = UiState.Working(info, 1, p, auto = auto) }
                 val session = EditSession(info, settings, analysis, SystemClock.elapsedRealtime() - t0)
                 if (info.durationMs > 0) prefs.analysisRatio = session.analysisMs.toFloat() / info.durationMs

@@ -29,6 +29,11 @@ object Tags {
     const val DESELECT = "context.done"
     const val SCRUBBER = "panel.scrubber"
 
+    /** The progress screen's percentage (a tap opens the stats panel), the panel and its copy button. */
+    const val PROGRESS_PERCENT = "progress.percent"
+    const val STATS_PANEL = "progress.stats"
+    const val STATS_COPY = "progress.statsCopy"
+
     /** A group of tools in the editor's bar. */
     fun group(name: String) = "group." + name.lowercase()
 
