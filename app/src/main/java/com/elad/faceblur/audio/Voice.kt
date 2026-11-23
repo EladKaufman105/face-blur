@@ -1,13 +1,19 @@
 package com.elad.faceblur.audio
 
 import android.content.Context
+import android.os.Handler
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.ForwardingAudioSink
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
+import androidx.media3.exoplayer.video.VideoRendererEventListener
+import com.elad.faceblur.pipeline.PreviewVideoRenderer
 import org.json.JSONObject
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -141,9 +147,39 @@ class CutAudioProcessor(private val cuts: com.elad.faceblur.edit.CutMap) : BaseA
 
 /**
  * The editor's player with the voice edits heard live: bleeps and ring modulation are applied
- * to the decoded sound by its media time (pitch is set on the player).
+ * to the decoded sound by its media time (pitch is set on the player). Its video renderer
+ * is [PreviewVideoRenderer], which keeps unusual colour tags from breaking the effects.
  */
 class VoicePreviewRenderers(context: Context, private val dsp: () -> VoiceDsp?) : DefaultRenderersFactory(context) {
+    override fun buildVideoRenderers(
+        context: Context,
+        extensionRendererMode: Int,
+        mediaCodecSelector: MediaCodecSelector,
+        enableDecoderFallback: Boolean,
+        eventHandler: Handler,
+        eventListener: VideoRendererEventListener,
+        allowedVideoJoiningTimeMs: Long,
+        out: ArrayList<Renderer>,
+    ) {
+        super.buildVideoRenderers(
+            context, extensionRendererMode, mediaCodecSelector, enableDecoderFallback,
+            eventHandler, eventListener, allowedVideoJoiningTimeMs, out,
+        )
+        // Swap the stock hardware video renderer for ours, set up the same way.
+        val at = out.indexOfFirst { it is MediaCodecVideoRenderer }
+        if (at < 0) return
+        out[at] = PreviewVideoRenderer(
+            MediaCodecVideoRenderer.Builder(context)
+                .setCodecAdapterFactory(getCodecAdapterFactory())
+                .setMediaCodecSelector(mediaCodecSelector)
+                .setAllowedJoiningTimeMs(allowedVideoJoiningTimeMs)
+                .setEnableDecoderFallback(enableDecoderFallback)
+                .setEventHandler(eventHandler)
+                .setEventListener(eventListener)
+                .setMaxDroppedFramesToNotify(DefaultRenderersFactory.MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY),
+        )
+    }
+
     override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink? {
         val sink = super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams) ?: return null
         return object : ForwardingAudioSink(sink) {
