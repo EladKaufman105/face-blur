@@ -54,7 +54,7 @@ import kotlinx.coroutines.withContext
 import com.elad.faceblur.edit.EditorController
 import com.elad.faceblur.i18n.t
 
-private fun voiceLabel(v: VoiceFx) = when (v) {
+internal fun voiceLabel(v: VoiceFx) = when (v) {
     VoiceFx.NONE -> t("רגיל")
     VoiceFx.DEEP -> t("נמוך")
     VoiceFx.HIGH -> t("גבוה")

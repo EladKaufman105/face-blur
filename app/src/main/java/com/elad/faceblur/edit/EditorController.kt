@@ -565,6 +565,34 @@ class EditorController(
     /** True while a model downloads or subtitles are being made. */
     val subsBusy get() = subsProgress != null || models?.downloading != null || speakersProgress != null
 
+    /**
+     * Anything running in the background: subtitles, speakers, loudness, cuts, finding the
+     * people, measuring the camera's motion.
+     */
+    val busy get() = subsBusy || loudnessBusy || cutBusy || segmentProgress != null || stabilizeProgress != null
+
+    /** Suspends until the background work ([busy]) is done: for a template applied with no editor on screen. */
+    suspend fun awaitIdle(timeoutMs: Long = IDLE_TIMEOUT_MS) {
+        val start = android.os.SystemClock.elapsedRealtime()
+        while (busy) {
+            if (android.os.SystemClock.elapsedRealtime() - start > timeoutMs) {
+                // Don't hang a batch forever: stop what runs and say so (a failure, not a cancellation).
+                cancelSubtitles()
+                cancelMotion()
+                throw com.elad.faceblur.pipeline.WorkTimeoutException()
+            }
+            kotlinx.coroutines.delay(120)
+        }
+    }
+
+    /** The app's context (null in tests that have none). */
+    val context: Context? get() = appContext
+
+    /** Whether new subtitles are translated, for this session only (a template's choice; not remembered). */
+    fun setTranslateTransient(v: Boolean) {
+        translateOnCreate = v
+    }
+
     /** Transcribes the video with [m] (downloaded) and fills the subtitles. */
     fun generateSubtitles(m: SpeechModel) {
         val path = models?.file(m)?.takeIf { models.isReady(m) }?.absolutePath ?: return
@@ -1054,8 +1082,10 @@ class EditorController(
         val ctx = appContext ?: return
         if (segmentJob?.isActive == true) return
         pauser()
-        segmentJob = scope.launch {
-            segmentProgress = 0f
+        // Set before the launch: awaitIdle() must see the work as started.
+        segmentProgress = 0f
+        // ATOMIC: the body (and its finally) runs even if cancelled before it starts, so the progress is always cleared.
+        segmentJob = scope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
             try {
                 val dir = session.projectDir ?: java.io.File(ctx.cacheDir, "masks").apply { mkdirs() }
                 val old = session.masks
@@ -1353,6 +1383,9 @@ class EditorController(
     }
 
     companion object {
+        /** The longest a template step is waited for with no editor on screen. */
+        const val IDLE_TIMEOUT_MS = 60L * 60 * 1000
+
         /** Minimum tap radius, in frame widths. */
         private const val HIT_RADIUS = 0.045f
         /** Width of a new blur when there's no detection under the tap, in frame widths. */

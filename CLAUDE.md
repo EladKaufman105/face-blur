@@ -25,7 +25,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
   - `source-branch`: PRs into `main` must come from `develop` or `hotfix/*`.
   - `android-build`: i18n check and debug APK build.
   - `web-build`: web build and one browser smoke test.
-- The full Android emulator e2e runs after merge (`build.yml`): the 17 instrumented tests in 3 parallel emulator shards, plus the release build's self-test. It gates the release or beta. The arm64 release APK is built in parallel with it and published only when every shard passed.
+- The full Android emulator e2e runs after merge (`build.yml`): the 20 instrumented tests in 3 parallel emulator shards, plus the release build's self-test. It gates the release or beta. The arm64 release APK is built in parallel with it and published only when every shard passed.
 - `pr.yml` runs the Android debug build only when Android files, `ci/` or workflows change, and the web build and Chromium tests (4 parallel shards, `ci/web-tests.sh`) only when `web/`, the assets the web app copies from `app/src/main/assets`, or workflows change. `android-build` and `web-build` always report; they pass when their work was skipped. A push to `develop` doesn't repeat the web tests, and a push to `main` builds and deploys the web app without them. The subtitles test (Whisper, a 1.4 GB download) runs on a PR only when subtitle code changes, and weekly and on manual runs of `web.yml`.
 - Every user-visible string needs its English text. `ci/i18n_check.py` checks this.
 - Fill in `.github/pull_request_template.md`.

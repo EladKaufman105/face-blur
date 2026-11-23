@@ -94,6 +94,10 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --configuration-cache --stacktrace
 
+      - name: Unit tests
+        shell: bash
+        run: ./gradlew testDebugUnitTest --no-daemon --configuration-cache --stacktrace
+
   web:
     needs: changes
     if: needs.changes.outputs.web == 'true'

@@ -40,7 +40,7 @@ Every change reaches `develop` or `main` through a PR. No human approval is requ
 - `android-build`: i18n check and debug APK build.
 - `web-build`: web build and one browser smoke test.
 
-The full Android emulator e2e runs after merge (`build.yml`): the 17 instrumented tests in 3 parallel emulator shards, plus the release build's self-test. It gates the release or beta. The arm64 release APK is built in parallel and published only when every shard passed.
+The full Android emulator e2e runs after merge (`build.yml`): the 20 instrumented tests in 3 parallel emulator shards, plus the release build's self-test. It gates the release or beta. The arm64 release APK is built in parallel and published only when every shard passed.
 
 On a PR, `pr.yml` builds Android (debug) only when Android files, `ci/` or workflows change, and builds and tests the web app (Chromium, 4 parallel shards) only when `web/`, the assets it copies from `app/src/main/assets` or workflows change. `android-build` and `web-build` always report, and pass when their work was skipped. A push to `develop` doesn't repeat the web tests; a push to `main` builds and deploys the web app without them. Results are workflow artifacts on the run.
 

@@ -92,6 +92,8 @@ import androidx.media3.ui.PlayerView
 import com.elad.faceblur.LivePreview
 import com.elad.faceblur.MainViewModel
 import com.elad.faceblur.QuickTool
+import com.elad.faceblur.batch.BatchMath
+import com.elad.faceblur.batch.BatchState
 import com.elad.faceblur.UiState
 import com.elad.faceblur.effects.BlurMode
 import com.elad.faceblur.pipeline.VideoInfo
@@ -108,14 +110,20 @@ fun MainScreen(vm: MainViewModel) {
     }
     val pick = {
         pickFor = null
-        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+        if (!vm.blockedByBatch()) picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
     }
     val pickTool = { tool: QuickTool ->
         pickFor = tool
-        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+        if (!vm.blockedByBatch()) picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
     }
+    val batchPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(BatchMath.MAX_VIDEOS)) { uris ->
+        if (uris.isNotEmpty()) vm.pickedForBatch(uris)
+    }
+    val pickBatch = { if (!vm.blockedByBatch()) batchPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
     val state = vm.state
     val working = state is UiState.Working
+    var saveTemplate by remember { mutableStateOf(false) }
+    var showTemplates by remember { mutableStateOf(false) }
 
     val view = LocalView.current
     DisposableEffect(working) {
@@ -123,6 +131,10 @@ fun MainScreen(vm: MainViewModel) {
         onDispose { view.keepScreenOn = false }
     }
     BackHandler(enabled = working) { /* keep the export alive */ }
+    // The batch's screens: back goes home (a running batch goes on in the background).
+    BackHandler(enabled = state is UiState.BatchSetup || state is UiState.BatchRun) {
+        if (state is UiState.BatchRun) vm.leaveBatch() else vm.reset()
+    }
 
     if (state is UiState.Editing) {
         EditorTheme(vm.prefs.palette) {
@@ -130,16 +142,30 @@ fun MainScreen(vm: MainViewModel) {
                 state.editor,
                 onClose = vm::closeEditor,
                 onExport = vm::export,
-                export = vm.prefs.export,
-                onExportChange = vm.prefs::updateExport,
-                subStyle = vm.prefs.subStyle,
-                onSubStyleChange = vm.prefs::updateSubStyle,
+                export = vm.exportOptions,
+                onExportChange = vm::changeExport,
+                subStyle = vm.subtitleStyle,
+                onSubStyleChange = vm::changeSubStyle,
+                onSaveTemplate = { saveTemplate = true },
             )
+            if (saveTemplate) {
+                val inUse = remember(state.editor) { vm.categoriesInUse(state.editor) }
+                SaveTemplateDialog(
+                    inUse,
+                    onSave = { name, keep ->
+                        vm.saveEditorAsTemplate(state.editor, name, keep)
+                        saveTemplate = false
+                        state.editor.notice = t("התבנית נשמרה")
+                    },
+                    onDismiss = { saveTemplate = false },
+                )
+            }
         }
         return
     }
     var showSettings by remember { mutableStateOf(false) }
-    if (showSettings) AppSettingsSheet(vm.prefs) { showSettings = false }
+    if (showSettings) AppSettingsSheet(vm.prefs, { showSettings = false }, onTemplates = { showSettings = false; showTemplates = true })
+    if (showTemplates) TemplateManagerSheet(vm.templates) { showTemplates = false }
     vm.crashReport?.let { report -> CrashDialog(report, onClose = vm::dismissCrash) }
 
     val light = MaterialTheme.colorScheme.isLight
@@ -190,7 +216,7 @@ fun MainScreen(vm: MainViewModel) {
                     verticalArrangement = Arrangement.spacedBy(Space.L),
                 ) {
                     when (s) {
-                        UiState.Empty -> HomeContent(vm, wide, onPick = pick, onTool = pickTool)
+                        UiState.Empty -> HomeContent(vm, wide, onPick = pick, onTool = pickTool, onBatch = pickBatch)
                         is UiState.Relink -> MessageCard(
                             title = t("הסרטון של הפרויקט לא נמצא"),
                             body = if (s.wrong) t("זה לא אותו סרטון (האורך שונה). בחר את הסרטון המקורי של \"%s\".").format(s.project.name)
@@ -203,6 +229,11 @@ fun MainScreen(vm: MainViewModel) {
                         }
                         is UiState.Ready -> ReadyContent(vm, s, wide, onReplace = pick)
                         is UiState.Working, is UiState.Editing -> Unit
+                        is UiState.BatchSetup -> BatchSetupContent(vm, s, onAddMore = pickBatch, onBack = vm::reset)
+                        UiState.BatchRun -> {
+                            val batch = BatchState.current
+                            if (batch != null) BatchRunContent(vm, batch) else androidx.compose.runtime.LaunchedEffect(Unit) { vm.leaveBatch() }
+                        }
                         is UiState.Done -> DoneCard(
                             s,
                             wide = wide,
@@ -315,6 +346,7 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
                         Text(
                             when {
                                 state.stage == 0 -> t("מכין את הסרטון…")
+                                state.stage == 4 -> t("מחיל את התבנית")
                                 state.stage == 3 -> t("ממיר את הסאונד ל-MP3")
                                 state.subsOnly -> t("שומר את הסרטון עם הכתוביות")
                                 state.stage == 1 && state.auto -> t("שלב 1 מתוך 2 · מזהה פנים")

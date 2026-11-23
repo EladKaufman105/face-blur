@@ -9,6 +9,7 @@ import com.elad.faceblur.edit.EditorPanel
 object Tags {
     const val SETTINGS = "home.settings"
     const val PICK_VIDEO = "home.pick"
+    const val BATCH = "home.batch"
     const val BLUR_FACES = "ready.blur"
     const val BLUR_AND_SAVE = "ready.blurAndSave"
     const val BLUR_SETTINGS = "ready.blurSettings"

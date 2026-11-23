@@ -104,6 +104,13 @@ sealed interface Outcome {
  * Must be called on the main thread (Transformer's application thread).
  */
 class FaceBlurProcessor(private val context: Context) {
+    /** Temp files of this pass have names of their own, so two passes can never share one. */
+    private val tag = java.util.UUID.randomUUID().toString().take(8)
+    private fun temp(kind: String) = File(context.cacheDir, "${kind}_$tag.mp4")
+
+    init {
+        cleanStaleTemp(context)
+    }
 
     /** Analysis + render without editing. */
     suspend fun process(
@@ -135,7 +142,7 @@ class FaceBlurProcessor(private val context: Context) {
         onPreview: ((android.graphics.Bitmap, List<Det>, String, StatsSnapshot) -> Unit)? = null,
         onProgress: (Float) -> Unit,
     ): AnalysisResult {
-        val analysisFile = File(context.cacheDir, "analysis.mp4")
+        val analysisFile = temp("analysis")
         val analyzer = withContext(Dispatchers.IO) { FaceAnalyzer(context, settings.sensitive, info.fps) }
         analyzer.onPreview = onPreview
         try {
@@ -171,7 +178,7 @@ class FaceBlurProcessor(private val context: Context) {
      * pass that hands each frame, small, to a [MotionMeter].
      */
     suspend fun measureMotion(info: VideoInfo, onProgress: (Float) -> Unit): Stabilizer.Motion {
-        val out = File(context.cacheDir, "motion.mp4")
+        val out = temp("motion")
         val meter = withContext(Dispatchers.IO) { MotionMeter() }
         try {
             val long = 640
@@ -207,7 +214,7 @@ class FaceBlurProcessor(private val context: Context) {
      * hands each frame, small, to the [Segmenter]. The masks go into [file].
      */
     suspend fun segment(info: VideoInfo, analysis: AnalysisResult, file: File, onProgress: (Float) -> Unit): MaskStore {
-        val out = File(context.cacheDir, "segment.mp4")
+        val out = temp("segment")
         val store = MaskStore.create(file, analysis.frameCount)
         val segmenter = withContext(Dispatchers.IO) { Segmenter(context, analysis.times, analysis.cuts, store) }
         try {
@@ -268,7 +275,7 @@ class FaceBlurProcessor(private val context: Context) {
             analysis.cuts.map { analysis.times[it] }.toLongArray(),
             analysis.uprightW, analysis.uprightH, analysis.rotation, settings.padding,
         )
-        val out = File(context.cacheDir, "render.mp4")
+        val out = temp("render")
         out.delete()
         val blur = BlurEffect(timeline, settings.mode, settings.strength)
         // Blur at full resolution first, then resize / drop frames for the chosen output.
@@ -330,19 +337,23 @@ class FaceBlurProcessor(private val context: Context) {
             else -> listOf(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
         }
         var keptHdr = info.isHdr
-        runWithHdrFallback(modes) { hdrMode ->
-            keptHdr = info.isHdr && hdrMode == Composition.HDR_MODE_KEEP_HDR
-            // A video without sound still gets one for its sound effects.
-            export(composition(item, hdrMode, forceAudio = sfx.isNotEmpty()), out, bitrate, mime = export.mimeType(), onProgress)
-        }
-
         val base = "${info.name}_blur_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val saved = withContext(Dispatchers.IO) {
-            // No location or phone details in what's shared.
-            lastScrubbed = runCatching { Mp4Privacy.scrub(out) }.getOrDefault(-1)
-            saveToGallery(out, base)
+        // The temporary file goes whatever happens (each pass has its own, so a failed or
+        // cancelled one isn't overwritten by the next any more).
+        val saved = try {
+            runWithHdrFallback(modes) { hdrMode ->
+                keptHdr = info.isHdr && hdrMode == Composition.HDR_MODE_KEEP_HDR
+                // A video without sound still gets one for its sound effects.
+                export(composition(item, hdrMode, forceAudio = sfx.isNotEmpty()), out, bitrate, mime = export.mimeType(), onProgress)
+            }
+            withContext(Dispatchers.IO) {
+                // No location or phone details in what's shared.
+                lastScrubbed = runCatching { Mp4Privacy.scrub(out) }.getOrDefault(-1)
+                saveToGallery(out, base)
+            }
+        } finally {
+            out.delete()
         }
-        out.delete()
         // Subtitle files in the cut video's time.
         val srtCues = if (cutMap.isEmpty) cues else cues.mapNotNull { c ->
             cutMap.mapMs(c.startMs, c.endMs)?.let { (a, b) -> c.copy().also { it.startMs = a; it.endMs = b } }
@@ -454,6 +465,13 @@ class FaceBlurProcessor(private val context: Context) {
     }
 
     companion object {
+        /** Temp videos left behind by a pass that was killed (older than a few hours). */
+        private fun cleanStaleTemp(context: Context) {
+            val old = System.currentTimeMillis() - 6 * 3600_000L
+            context.cacheDir.listFiles { f -> f.isFile && f.lastModified() < old && Regex("((analysis|motion|segment|render)_[0-9a-f]{8}\\.mp4|frames_[0-9a-f]{8}\\.bin)").matches(f.name) }
+                ?.forEach { it.delete() }
+        }
+
         /** Where the last analysis ran its face detection ("gpu", "gpu-checking" or "cpu"). */
         @Volatile var lastAccelerator = "cpu"
 

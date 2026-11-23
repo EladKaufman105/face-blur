@@ -136,6 +136,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
+    // Unit tests (JVM): the real org.json, since the Android stubs return nothing.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
+
     androidTestImplementation(platform("androidx.compose:compose-bom:2025.05.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
