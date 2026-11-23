@@ -14,6 +14,8 @@ import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.Semaphore
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -49,9 +51,11 @@ object OpenCv {
  * every frame. When the pass is done, [result] links everything into face tracks
  * offline. Called on the video pipeline's GL thread; the timeline is read after the pass.
  *
- * Detection runs on [WORKERS] threads of its own, each with its own detector, a few frames at
- * a time: the decoder and the motion measurement don't wait for it, and the CPU's cores are
- * kept busier than by one detector alone.
+ * Detection runs on threads of its own, each with its own detector, a few frames at a time: the
+ * decoder and the motion measurement don't wait for it, and the CPU's cores are kept busier
+ * than by one detector alone. The pool has [WORKERS] threads, but only [BASE_WORKERS] frames
+ * are in flight while the CPU does the fine pass (more threads would only fight over its big
+ * cores); with a trusted GPU doing it, the CPU side of a detection is small and all of them work.
  */
 class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val fps: Float) : Closeable {
 
@@ -95,7 +99,10 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         }, "face-detect")
     }
     // Frames waiting for or in detection (bounds the memory they take).
-    private val slots = Semaphore(WORKERS + 1)
+    private val slots = Semaphore(BASE_WORKERS + 1)
+    // Permits added beyond BASE_WORKERS + 1 while a trusted GPU does the fine pass. Changed only
+    // under the analyzer's lock (onFrame, reset), which drain() runs under too.
+    @Volatile private var extraSlots = 0
     private val failure = AtomicReference<Throwable?>(null)
     // Bumped by reset(): results of an abandoned pass are dropped.
     @Volatile private var generation = 0
@@ -124,8 +131,15 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     private val small = Mat()
 
     // Where the time goes (see [stats]).
-    @Volatile private var detectMsTotal = 0L
-    @Volatile private var detections = 0
+    private val detectMsTotal = AtomicLong()
+    private val detections = AtomicInteger()
+    // Per detection, summed over the workers, in microseconds (see [FaceDetector]'s last... values).
+    private val fineUsTotal = AtomicLong()
+    private val coarseUsTotal = AtomicLong()
+    private val gpuCallUsTotal = AtomicLong()
+    private val yunetUsTotal = AtomicLong()
+    private val cropUsTotal = AtomicLong()
+    private val cropsTotal = AtomicInteger()
     private var frameMsTotal = 0L
     private var waitMsTotal = 0L
 
@@ -152,13 +166,17 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
 
     /**
      * Where the time goes, for whoever tunes this: where detection runs, how often, the time
-     * per detection (one worker), per frame on the video's thread, and how long frames waited
-     * for a free worker.
+     * per detection (one worker) and its parts (the fine and coarse passes, of which the time in
+     * calls to the GPU; YuNet; the crop checks as their count x time each), per frame on the
+     * video's thread, how long frames waited for a free worker, and how many workers there are.
      */
     val stats: String
         get() {
             val n = max(1, times.size)
-            val d = max(1, detections)
+            val d = max(1, detections.get())
+            val crops = cropsTotal.get()
+            val cropMs = if (crops > 0) (cropUsTotal.get() / crops / 100) / 10f else 0f
+            val gpuCall = gpuCallUsTotal.get()
             val g = gpu
             val side = if (g != null && g.active) "1280" else "$cpuSide"
             // On the GPU: its precision and time per frame; on the CPU: why not the GPU.
@@ -167,7 +185,10 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
                 else -> "cpu/${half.state} (${g?.why ?: GpuFaceNet.unavailable})"
             }
             return "$where ${side}px · every $detectEvery${if (lite) " lite" else ""} · " +
-                "detect ${detectMsTotal / d} ms · frame ${frameMsTotal / n} ms · wait ${waitMsTotal / n} ms/frame"
+                "detect ${detectMsTotal.get() / d} ms · frame ${frameMsTotal / n} ms · wait ${waitMsTotal / n} ms/frame · " +
+                "fine ${fineUsTotal.get() / d / 1000}" + (if (gpuCall > 0) " (gpu call ${gpuCall / d / 1000})" else "") +
+                " coarse ${coarseUsTotal.get() / d / 1000} yunet ${yunetUsTotal.get() / d / 1000} " +
+                "crops ${(crops * 10 / d) / 10f}×${cropMs} ms · workers ${BASE_WORKERS + extraSlots}/$WORKERS"
         }
 
     init {
@@ -178,6 +199,9 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     fun reset() {
         generation++
         drain()
+        // Everything is free now: take the extra permits back so a new pass starts at the base.
+        slots.acquireUninterruptibly(extraSlots)
+        extraSlots = 0
         failure.set(null)
         lastDets = emptyList()
         synchronized(followed) { followed.clear() }
@@ -192,8 +216,14 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         cpuSide = RetinaFaceDetector.CPU_FINE_SIDE
         windowStart = 0L
         blockedMs = 0L
-        detectMsTotal = 0L
-        detections = 0
+        detectMsTotal.set(0)
+        detections.set(0)
+        fineUsTotal.set(0)
+        coarseUsTotal.set(0)
+        gpuCallUsTotal.set(0)
+        yunetUsTotal.set(0)
+        cropUsTotal.set(0)
+        cropsTotal.set(0)
         frameMsTotal = 0L
         waitMsTotal = 0L
     }
@@ -263,6 +293,12 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             val frame = Mat()
             Imgproc.cvtColor(src, frame, Imgproc.COLOR_RGBA2BGR)
             val gen = generation
+            // More frames in flight only while a trusted GPU takes the fine pass off the CPU.
+            val g = gpu
+            val want = if (g != null && g.active && g.trusted) WORKERS - BASE_WORKERS else 0
+            if (want > extraSlots) slots.release(want - extraSlots)
+            else if (want < extraSlots) slots.acquireUninterruptibly(extraSlots - want)
+            extraSlots = want
             val waitFrom = SystemClock.elapsedRealtime()
             slots.acquire()
             waited = SystemClock.elapsedRealtime() - waitFrom
@@ -274,9 +310,16 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
                 try {
                     if (gen == generation) {
                         val d0 = SystemClock.elapsedRealtime()
-                        val found = detector().detect(frame, lite, known, cpuSide)
-                        detectMsTotal += SystemClock.elapsedRealtime() - d0
-                        detections++
+                        val det = detector()
+                        val found = det.detect(frame, lite, known, cpuSide)
+                        detectMsTotal.addAndGet(SystemClock.elapsedRealtime() - d0)
+                        detections.incrementAndGet()
+                        fineUsTotal.addAndGet(det.lastFineUs)
+                        coarseUsTotal.addAndGet(det.lastCoarseUs)
+                        gpuCallUsTotal.addAndGet(det.lastGpuCallUs)
+                        yunetUsTotal.addAndGet(det.lastYunetUs)
+                        cropUsTotal.addAndGet(det.lastCropUs)
+                        cropsTotal.addAndGet(det.lastCrops)
                         if (gen == generation) {
                             dets[idx] = found
                             lastDets = found
@@ -378,8 +421,9 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
 
     /** Waits until every frame handed to the workers is done. */
     private fun drain() {
-        slots.acquireUninterruptibly(WORKERS + 1)
-        slots.release(WORKERS + 1)
+        val n = BASE_WORKERS + 1 + extraSlots
+        slots.acquireUninterruptibly(n)
+        slots.release(n)
     }
 
     @Synchronized
@@ -447,8 +491,16 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         /** Detections in a row after which a clear face isn't re-checked on a crop. */
         private const val FOLLOWED_AFTER = 4
 
-        /** Detection threads (measured on ARM: 3 keep the cores busiest). */
-        const val WORKERS = 3
+        /** Detection threads working while the CPU does the fine pass (measured on ARM: 3 keep the cores busiest). */
+        private const val BASE_WORKERS = 3
+
+        /**
+         * The most detection threads, by the device's cores: used only while a trusted GPU does the
+         * fine pass, as then the workers' CPU side (the coarse pass, crops, preparing inputs,
+         * waiting for the one GPU lane) is what holds detection back; on the CPU more threads
+         * would only fight over the big cores.
+         */
+        val WORKERS: Int = Runtime.getRuntime().availableProcessors().let { if (it >= 8) 5 else if (it >= 6) 4 else 3 }
 
         /**
          * The model file to load: the asset, copied out once. Copied again when the app ships a

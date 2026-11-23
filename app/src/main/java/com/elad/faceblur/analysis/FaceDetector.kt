@@ -28,17 +28,40 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
     private val crop = Mat()
     private val yunetInput = Mat()
 
+    // Where the last [detect] call spent its time, in microseconds (read by the same worker
+    // thread right after the call).
+    var lastFineUs = 0L
+        private set
+    var lastCoarseUs = 0L
+        private set
+    /** Of the fine and coarse passes, the time in calls to the GPU (prep, wait for its thread, inference). */
+    var lastGpuCallUs = 0L
+        private set
+    var lastYunetUs = 0L
+        private set
+    var lastCropUs = 0L
+        private set
+    var lastCrops = 0
+        private set
+
     /**
      * @param lite a slow device: no YuNet, and crops only for uncertain faces.
      * @param followed boxes of clear faces already found in several detections in a row: a clear
      *   face there isn't re-checked.
      * @param cpuSide the fine pass's long side when it runs on the CPU.
+     *
+     * Afterwards the time each part took is in the `last...` properties.
      */
     fun detect(bgr: Mat, lite: Boolean = false, followed: List<Box> = emptyList(), cpuSide: Int = RetinaFaceDetector.CPU_FINE_SIDE): List<Det> {
         val w = bgr.cols()
         val h = bgr.rows()
         val rf = retina.detect(bgr, RF_THRESHOLD, cpuSide)
+        lastFineUs = retina.lastFineUs
+        lastCoarseUs = retina.lastCoarseUs
+        lastGpuCallUs = retina.lastGpuCallUs
+        val y0 = System.nanoTime()
         val yn = if (lite) emptyList() else runYunet(bgr, w, h)
+        lastYunetUs = (System.nanoTime() - y0) / 1000
 
         val fused = ArrayList<Det>()
         val usedYn = HashSet<Int>()
@@ -58,12 +81,19 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
             }
         }
         val kept = Geometry.nmsIou(fused, 0.4f)
+        var cropUs = 0L
+        var crops = 0
         for (d in kept) {
             val clear = d.score >= CLEAR
             if (lite && clear) continue
             if (clear && followed.any { Geometry.iou(it, d.box) > 0.3f }) continue
+            val c0 = System.nanoTime()
             d.verify = verify(bgr, d.box)
+            cropUs += (System.nanoTime() - c0) / 1000
+            crops++
         }
+        lastCropUs = cropUs
+        lastCrops = crops
         return kept
     }
 

@@ -45,10 +45,23 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
     // OpenCV's JNI layer calls java.util.ArrayList methods on this: must be a real ArrayList.
     private val outNames = arrayListOf("loc", "conf", "landmarks")
 
+    // Where the last [detect] call spent its time, in microseconds, for whoever tunes the pace
+    // (read by the same worker thread right after the call; each worker has its own detector).
+    /** The fine pass, GPU or CPU, with its resize and decoding. */
+    var lastFineUs = 0L
+        private set
+    /** The coarse 480 px pass (0 when it was skipped). */
+    var lastCoarseUs = 0L
+        private set
+    /** Of the passes' time, what went into calls to the GPU: its input prep, the wait for its thread and the inference. */
+    var lastGpuCallUs = 0L
+        private set
+
     /**
      * Fine pass at the frame's size (on the GPU) or at most [CPU_FINE_SIDE] (on the CPU, where
      * it's most of the time) + coarse pass at 480 px for faces bigger than the anchors. The two
-     * passes overlap; the caller's NMS merges them.
+     * passes overlap; the caller's NMS merges them. How long each took is left in [lastFineUs],
+     * [lastCoarseUs] and [lastGpuCallUs].
      */
     fun detect(bgr: Mat, threshold: Float, cpuSide: Int = CPU_FINE_SIDE): List<Det> {
         val w = bgr.cols()
@@ -57,9 +70,17 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
         val iw = max(32, (w / 32f).roundToInt() * 32)
         val ih = max(32, (h / 32f).roundToInt() * 32)
         val fine = if (gpu?.supports(iw, ih) == true) max(w, h) else min(max(w, h), cpuSide)
+        lastGpuCallUs = 0L
+        val t0 = System.nanoTime()
         run(bgr, fine, threshold, 0f, out)
+        val t1 = System.nanoTime()
+        lastFineUs = (t1 - t0) / 1000
+        lastCoarseUs = 0L
         // Below ~800 px the fine pass's biggest anchors (512 px) already cover the biggest faces.
-        if (fine > 800 && max(w, h) > COARSE_SIDE * 1.3f) run(bgr, COARSE_SIDE, threshold, COARSE_MIN_BOX, out)
+        if (fine > 800 && max(w, h) > COARSE_SIDE * 1.3f) {
+            run(bgr, COARSE_SIDE, threshold, COARSE_MIN_BOX, out)
+            lastCoarseUs = (System.nanoTime() - t1) / 1000
+        }
         return out
     }
 
@@ -89,7 +110,9 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
     private fun forward(input: Mat, iw: Int, ih: Int, threshold: Float, minBox: Float): Pair<FloatArray, FloatArray> {
         val g = gpu
         if (g != null && g.supports(iw, ih)) {
+            val g0 = System.nanoTime()
             val r = g.run(input, iw, ih)
+            lastGpuCallUs += (System.nanoTime() - g0) / 1000
             if (r != null) {
                 if (g.trusted) return r
                 // Not trusted yet: also on the CPU (fp32), and compare what each finds.
