@@ -62,7 +62,9 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
   const most = memory !== undefined && memory >= 8 ? 4 : 2
   const asked = workers !== undefined ? Math.min(8, Math.max(1, Math.round(workers))) : undefined
   const poolSize = asked ?? (cores > 1 ? Math.min(most, Math.max(2, Math.floor(cores / 2))) : 1)
-  const cpuOnly = !(self.navigator as any)?.gpu || backend === 'wasm'
+  // No GPU also where the browser has WebGPU but no adapter for it (common on Android and Linux).
+  const gpu = (self.navigator as any)?.gpu
+  const cpuOnly = backend === 'wasm' || !gpu || !(await gpu.requestAdapter().catch(() => null))
   // If the workers can't start (memory, a module that won't load), one detector here, as before.
   let pool: DetectorPool | null = null
   if (cpuOnly && poolSize > 1) {

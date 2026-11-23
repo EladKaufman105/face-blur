@@ -31,7 +31,7 @@ export class DetectorPool {
             ok()
           } else if (e.data.type === 'error') fail(new Error(e.data.message || FAILED))
         }
-        w.onerror = (e) => fail(new Error(e.message || FAILED))
+        w.onerror = (e) => { e.preventDefault(); fail(new Error(e.message || FAILED)) }
         w.onmessageerror = () => fail(new Error(FAILED))
         w.postMessage({ type: 'init', model })
       })))
@@ -73,7 +73,7 @@ export class DetectorPool {
         if (--this.running === 0) this.drained.splice(0).forEach((r) => r())
       } else if (m.type === 'error') this.fail(m.message)
     }
-    w.onerror = (e) => this.fail(e.message)
+    w.onerror = (e) => { e.preventDefault(); this.fail(e.message) }
     w.onmessageerror = () => this.fail(FAILED)
     w.postMessage({ type: 'frame', id, frame }, [frame])
   }
