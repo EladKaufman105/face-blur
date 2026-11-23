@@ -13,8 +13,10 @@ const [, , url, video, out] = process.argv
     await p.waitForSelector('.editor .tabs', { timeout: 30000 })
     await p.waitForTimeout(1500)
     const selected = () => p.evaluate(() => [...document.querySelectorAll('.tabs button')].findIndex((x) => x.classList.contains('on')))
-    await p.keyboard.press('4'); if ((await selected()) !== 3) throw new Error('key 4 -> ' + (await selected()))
+    await p.keyboard.press('5'); if ((await selected()) !== 4) throw new Error('key 5 -> ' + (await selected()))
     await p.keyboard.press('3'); if ((await selected()) !== 2) throw new Error('key 3 -> ' + (await selected()))
+    // The sound group, for the sound placed below.
+    await p.keyboard.press('4'); if ((await selected()) !== 3) throw new Error('key 4 -> ' + (await selected()))
     await p.keyboard.press('Space'); await p.waitForTimeout(800)
     const playing = await p.evaluate(() => !document.querySelector('video').paused)
     await p.keyboard.press('k'); await p.waitForTimeout(300)

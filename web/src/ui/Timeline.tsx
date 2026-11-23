@@ -3,13 +3,15 @@ import { t, duration as clock } from '../i18n'
 import { SFX_NAMES, type SfxClip } from '../lib/sfx'
 import { trackLast, type Track } from '../lib/types'
 import type { Cue } from '../lib/subtitles'
+import type { Range } from '../lib/cutmap'
 import type { ThumbsMessage, ThumbsRequest } from '../workers/thumbs.worker'
 
 /**
  * The timeline, as in the app: a fixed playhead in the middle and lanes under it (the video's
  * frames, the faces, the subtitles, the sound effects). Drag it (or swipe) to move through the
- * video, pinch or use −/+ to zoom; drag a sound to move it, tap one to select it, tap a face to
- * turn its blur off or on, tap a subtitle to go to it. Runs left to right in any language.
+ * video, pinch or use −/+ to zoom; drag a sound to move it, tap one to select it, tap a blur to
+ * select it (and drag its ends to shorten or lengthen it), tap a subtitle to go to it. The cut
+ * stretches are shaded. Runs left to right in any language.
  */
 type Props = {
   file: File
@@ -24,7 +26,14 @@ type Props = {
   selectedSfx: number | null
   onScrub: (t: number) => void
   onScrubStart: () => void
-  onToggleTrack: (id: number) => void
+  selectedTrack: number | null
+  onSelectTrack: (id: number) => void
+  /** Dragging a blur's end: one undo step per drag. */
+  onTrimStart: () => void
+  onTrim: (id: number, start: boolean, at: number) => void
+  cuts: Range[]
+  /** Where a cut by hand starts, while one is being marked. */
+  cutStart: number | null
   onSelectSfx: (id: number | null) => void
   onMoveSfx: (id: number, at: number) => void
   /** Filled with the timeline's zoom, for the keyboard (− and +). */
@@ -33,6 +42,8 @@ type Props = {
 
 const MIN_PPS = 8
 const MAX_PPS = 600
+/** A frame's length on the timeline (a blur's last frame shows until then). */
+export const FRAME = 1 / 30
 
 export function Timeline(p: Props) {
   const scroller = useRef<HTMLDivElement>(null)
@@ -146,7 +157,7 @@ export function Timeline(p: Props) {
     for (const tr of [...p.tracks].sort((x, y) => x.first - y.first)) {
       const a = p.times[tr.first] ?? 0
       const last = trackLast(tr)
-      const b = (p.times[last] ?? a) + 1 / 30
+      const b = (p.times[last] ?? a) + FRAME
       const row = rows.find((r) => r[r.length - 1].b + 0.05 < a)
       if (row) row.push({ track: tr, a, b })
       else rows.push([{ track: tr, a, b }])
@@ -205,15 +216,28 @@ export function Timeline(p: Props) {
           {faceRows.map((row) => (
             <div class="tl-lane tl-faces">
               {row.map(({ track, a, b }) => (
-                <button
-                  class={'tl-face' + (p.off.has(track.id) ? ' off' : '')}
-                  style={{ left: `${x(a)}px`, width: `${Math.max(6, (b - a) * pps)}px` }}
-                  onClick={() => p.onToggleTrack(track.id)}
-                  title={p.off.has(track.id) ? t('גלוי') : t('מטושטש')}
-                >#{track.id + 1}</button>
+                <FaceBlock
+                  track={track}
+                  left={x(a)}
+                  width={Math.max(6, (b - a) * pps)}
+                  a={a}
+                  b={b}
+                  pps={pps}
+                  off={p.off.has(track.id)}
+                  selected={p.selectedTrack === track.id}
+                  onSelect={() => p.onSelectTrack(track.id)}
+                  onTrimStart={p.onTrimStart}
+                  onTrim={(start, at) => p.onTrim(track.id, start, clamp(at, 0, dur))}
+                />
               ))}
             </div>
           ))}
+          {p.cuts.map(([a, b]) => (
+            <div class="tl-cut" style={{ left: `${x(a)}px`, width: `${Math.max(2, (b - a) * pps)}px` }} />
+          ))}
+          {p.cutStart !== null && (
+            <div class="tl-cut pending" style={{ left: `${x(Math.min(p.cutStart, p.time))}px`, width: `${Math.max(2, Math.abs(p.time - p.cutStart) * pps)}px` }} />
+          )}
         </div>
       </div>
       <div class="tl-playhead" />
@@ -221,6 +245,53 @@ export function Timeline(p: Props) {
         <button aria-label="−" title="−" onClick={() => zoom(1 / 1.5)}>−</button>
         <button aria-label="+" title="+" onClick={() => zoom(1.5)}>+</button>
       </div>
+    </div>
+  )
+}
+
+/**
+ * A blur on the timeline: tap to select it; the selected one has handles at its ends, dragged to
+ * set where it starts and ends.
+ */
+function FaceBlock(p: { track: Track; left: number; width: number; a: number; b: number; pps: number; off: boolean; selected: boolean; onSelect: () => void; onTrimStart: () => void; onTrim: (start: boolean, at: number) => void }) {
+  const drag = useRef<{ x: number; at: number; start: boolean } | null>(null)
+  const handle = (start: boolean) => ({
+    onPointerDown: (e: PointerEvent) => {
+      e.stopPropagation()
+      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+      drag.current = { x: e.clientX, at: start ? p.a : p.b, start }
+      p.onTrimStart()
+    },
+    onPointerMove: (e: PointerEvent) => {
+      const d = drag.current
+      if (!d) return
+      e.stopPropagation()
+      p.onTrim(d.start, d.at + (e.clientX - d.x) / p.pps)
+    },
+    onPointerUp: () => { drag.current = null },
+    onPointerCancel: () => { drag.current = null },
+  })
+  const cls = 'tl-face' + (p.off ? ' off' : '') + (p.track.manual ? ' manual' : '') + (p.selected ? ' on' : '')
+  return (
+    <div
+      class={cls}
+      role="button"
+      tabIndex={0}
+      aria-pressed={p.selected}
+      data-a={p.a.toFixed(3)}
+      data-b={p.b.toFixed(3)}
+      style={{ left: `${p.left}px`, width: `${p.width}px` }}
+      onClick={p.onSelect}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); p.onSelect() } }}
+      title={p.off ? t('גלוי') : t('מטושטש')}
+    >
+      #{p.track.id + 1}
+      {p.selected && (
+        <>
+          <span class="tl-handle start" aria-label={t('התחלה')} {...handle(true)} />
+          <span class="tl-handle end" aria-label={t('סוף')} {...handle(false)} />
+        </>
+      )}
     </div>
   )
 }

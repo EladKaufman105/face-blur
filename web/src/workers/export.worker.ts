@@ -1,12 +1,13 @@
 // Export: re-encodes the video with the faces hidden (WebCodecs through Mediabunny); the sound
 // is copied as is when the container allows it.
-import { ALL_FORMATS, AudioSample, AudioSampleSource, BlobSource, BufferTarget, Conversion, Input, Mp4OutputFormat, Output, QUALITY_HIGH, canEncodeVideo, getFirstEncodableAudioCodec } from 'mediabunny'
+import { ALL_FORMATS, AudioSample, AudioSampleSource, BlobSource, BufferTarget, Conversion, Input, Mp4OutputFormat, Output, QUALITY_HIGH, VideoSample, canEncodeVideo, getFirstEncodableAudioCodec } from 'mediabunny'
 import { BlurRenderer, ellipseFor } from '../lib/renderer'
 import { frameAt, trackBox, type Look, type Track } from '../lib/types'
 import { mixInto, type SfxSamples } from '../lib/sfx'
 import { cueAt, drawSubtitle, type Cue, type SubStyle } from '../lib/subtitles'
+import { CutMap, type Range } from '../lib/cutmap'
 
-export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; font: string; voice: { rate: number; data: Float32Array } | null }
+export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; font: string; voice: { rate: number; data: Float32Array } | null; cuts: Range[] }
 export type ExportMessage =
   | { type: 'progress'; progress: number }
   | { type: 'done'; blob: Blob; ms: number }
@@ -22,8 +23,28 @@ self.onmessage = async (e: MessageEvent<ExportRequest>) => {
   }
 }
 
-async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, font, voice }: ExportRequest) {
+/**
+ * The parts of a sound (planes at [rate], starting at [ts] in the source) that aren't cut, each
+ * at its time in the result.
+ */
+function keptSamples(planes: Float32Array[], rate: number, ts: number, cuts: CutMap): AudioSample[] {
+  const n = planes[0]?.length ?? 0
+  const ch = planes.length
+  const out: AudioSample[] = []
+  for (const [a, b] of cuts.pieces(ts, ts + n / rate)) {
+    const i0 = Math.max(0, Math.round((a - ts) * rate)), i1 = Math.min(n, Math.round((b - ts) * rate))
+    if (i1 <= i0) continue
+    const m = i1 - i0
+    const data = new Float32Array(ch * m)
+    planes.forEach((p, c) => data.set(p.subarray(i0, i1), c * m))
+    out.push(new AudioSample({ data, format: 'f32-planar', numberOfChannels: ch, sampleRate: rate, timestamp: cuts.out(a) }))
+  }
+  return out
+}
+
+async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, font, voice, cuts: cutList }: ExportRequest) {
   const t0 = performance.now()
+  const cuts = new CutMap(cutList ?? [])
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
   const video = await input.getPrimaryVideoTrack()
   if (!video) return post({ type: 'error', code: 'no-video', message: 'no video track' })
@@ -68,9 +89,7 @@ async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, fo
           if (n <= 0) break
           const planes = Array.from({ length: ch }, () => (voice ? voice.data.slice(i0, i0 + n) : new Float32Array(n)))
           mixInto(planes, rate, t, sfx)
-          const data = new Float32Array(ch * n)
-          planes.forEach((p, c) => data.set(p, c * n))
-          await src.add(new AudioSample({ data, format: 'f32-planar', numberOfChannels: ch, sampleRate: rate, timestamp: t }))
+          for (const sample of keptSamples(planes, rate, t, cuts)) await src.add(sample)
         }
         src.close()
       }
@@ -86,6 +105,8 @@ async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, fo
       forceTranscode: true,
       allowTransformationMetadata: false,
       process: async (sample) => {
+        // A cut frame is dropped; the ones after a cut move up.
+        if (!cuts.empty && cuts.isCut(sample.timestamp)) return null
         if (layer) {
           const cue = cueAt(cues, sample.timestamp)
           if (cue !== shownCue) {
@@ -101,7 +122,7 @@ async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, fo
         const faces = []
         for (const t of tracks) {
           const b = trackBox(t, i)
-          if (b) faces.push(ellipseFor(b, w, h, look.padding))
+          if (b) faces.push(ellipseFor(b, w, h, look.padding * (t.scale ?? 1)))
         }
         let frame: VideoFrame | null = null
         try {
@@ -116,11 +137,13 @@ async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, fo
         } finally {
           frame?.close()
         }
-        return canvas
+        if (cuts.empty) return canvas
+        const ts = sample.timestamp, d = sample.duration
+        return new VideoSample(canvas, { timestamp: cuts.out(ts), duration: cuts.kept(ts, ts + d) || d })
       },
     },
-    // The sound is copied as is, or re-encoded with the sound effects mixed in.
-    audio: voice ? { discard: true } : sfx.length === 0 ? {} : {
+    // The sound is copied as is, or re-encoded with the sound effects mixed in (and the cuts).
+    audio: voice ? { discard: true } : sfx.length === 0 && cuts.empty ? {} : {
       forceTranscode: true,
       process: (sample) => {
         const ch = sample.numberOfChannels, n = sample.numberOfFrames
@@ -131,9 +154,7 @@ async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, fo
           planes.push(p)
         }
         mixInto(planes, sample.sampleRate, sample.timestamp, sfx)
-        const data = new Float32Array(ch * n)
-        planes.forEach((p, c) => data.set(p, c * n))
-        return new AudioSample({ data, format: 'f32-planar', numberOfChannels: ch, sampleRate: sample.sampleRate, timestamp: sample.timestamp })
+        return keptSamples(planes, sample.sampleRate, sample.timestamp, cuts)
       },
     },
   })

@@ -53,6 +53,9 @@ jobs:
           node tests/tools.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/tools
           # The keyboard: groups by number, play / pause, a frame step, undo and redo.
           node tests/keys.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/keys.png
+          # Editing: a blur by hand (followed, split, deleted, ended), cuts by hand and of pauses.
+          node tests/edit.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/edit
+          node tests/edit.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/edit-phone phone
       - uses: actions/upload-artifact@v4
         if: always()
         with:

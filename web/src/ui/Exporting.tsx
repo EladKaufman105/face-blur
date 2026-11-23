@@ -6,8 +6,9 @@ import { sfxSamples, type SfxClip } from '../lib/sfx'
 import { watermarkImage, type Watermark } from '../lib/watermark'
 import type { Cue, SubStyle } from '../lib/subtitles'
 import { BackIcon, CheckIcon, SaveIcon, ShareIcon } from './icons'
+import type { Range } from '../lib/cutmap'
 
-export type ExportJob = { file: File; times: Float64Array; tracks: Track[]; look: Look; width: number; height: number; sfx: SfxClip[]; watermark: Watermark; cues: Cue[]; subStyle: SubStyle; voice: { rate: number; data: Float32Array } | null }
+export type ExportJob = { file: File; times: Float64Array; tracks: Track[]; look: Look; width: number; height: number; sfx: SfxClip[]; watermark: Watermark; cues: Cue[]; subStyle: SubStyle; voice: { rate: number; data: Float32Array } | null; cuts: Range[] }
 
 export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () => void; onNew: () => void }) {
   const [progress, setProgress] = useState(0)
@@ -31,7 +32,7 @@ export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () =
       const sfx = await sfxSamples(job.sfx)
       const overlay = await watermarkImage(job.watermark, job.width, job.height)
       if (cancelled) return
-      const req: ExportRequest = { file: job.file, times: job.times, tracks: job.tracks, look: job.look, sfx, overlay, cues: job.cues, subStyle: job.subStyle, voice: job.voice, font: new URL('fonts/allo_hebrew.ttf', document.baseURI).href }
+      const req: ExportRequest = { file: job.file, times: job.times, tracks: job.tracks, look: job.look, sfx, overlay, cues: job.cues, subStyle: job.subStyle, voice: job.voice, cuts: job.cuts, font: new URL('fonts/allo_hebrew.ttf', document.baseURI).href }
       worker.postMessage(req, overlay ? [overlay] : [])
     })().catch((e) => setError(String(e?.message ?? e)))
     return () => { cancelled = true; worker.terminate() }

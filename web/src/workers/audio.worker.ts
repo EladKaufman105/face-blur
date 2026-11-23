@@ -2,19 +2,30 @@
 // export: decoded once (mono, at its own rate), processed off the main thread.
 import { ALL_FORMATS, AudioSampleSink, BlobSource, Input } from 'mediabunny'
 import { processVoice, type Bleep, type VoiceFx } from '../lib/voice'
+import { findSilences } from '../lib/silence'
+import type { Range } from '../lib/cutmap'
 
-export type AudioRequest = { file: File; voice: VoiceFx; bleeps: Bleep[]; tone: boolean }
+/** The voice change and the bleeps; or ('silences') the pauses longer than [minPause] seconds. */
+export type AudioRequest =
+  | { type?: 'voice'; file: File; voice: VoiceFx; bleeps: Bleep[]; tone: boolean }
+  | { type: 'silences'; file: File; minPause: number; words: Range[] }
 export type AudioMessage =
   | { type: 'done'; rate: number; data: Float32Array }
+  | { type: 'silences'; ranges: Range[] }
   | { type: 'error'; code: string; message: string }
 
 let cache: { file: File; rate: number; data: Float32Array } | null = null
 
 self.onmessage = async (e: MessageEvent<AudioRequest>) => {
   try {
-    const { file, voice, bleeps, tone } = e.data
-    if (cache?.file !== file) cache = await decode(file)
+    const r = e.data
+    if (cache?.file !== r.file) cache = await decode(r.file)
     if (!cache) return (self as unknown as Worker).postMessage({ type: 'error', code: 'no-audio', message: 'no sound' } satisfies AudioMessage)
+    if (r.type === 'silences') {
+      const ranges = findSilences(cache.data, cache.rate, r.minPause, r.words)
+      return (self as unknown as Worker).postMessage({ type: 'silences', ranges } satisfies AudioMessage)
+    }
+    const { voice, bleeps, tone } = r
     const data = processVoice(cache.data, cache.rate, voice, bleeps, tone)
     const msg: AudioMessage = { type: 'done', rate: cache.rate, data }
     ;(self as unknown as Worker).postMessage(msg, [data.buffer])

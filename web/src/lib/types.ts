@@ -18,7 +18,10 @@ export interface Track {
   boxes: Float32Array
   /** The best detection's frame (for the thumbnail). */
   best: number
+  /** Placed by hand (and followed), not found by the detector. */
   manual?: boolean
+  /** The blur's size relative to the face, set by the user (1 if not). */
+  scale?: number
 }
 
 export interface Analysis {

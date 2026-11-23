@@ -303,7 +303,7 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 
 /* The editor's groups of tools (as in the app: privacy, subtitles, sound, branding), each in its
    color, the open one on a tinted pill. */
-.tabs { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-1); padding: var(--space-1); background: var(--surface); border: 1px solid var(--outline-soft); border-radius: var(--radius-panel); box-shadow: var(--shadow); }
+.tabs { position: sticky; top: 0; z-index: 2; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--space-1); padding: var(--space-1); background: var(--surface); border: 1px solid var(--outline-soft); border-radius: var(--radius-panel); box-shadow: var(--shadow); }
 .tabs button { border: 0; background: transparent; border-radius: var(--radius-card); min-height: 56px; padding: var(--space-1) 2px; display: grid; justify-items: center; align-content: center; gap: var(--space-1); color: var(--text); font: var(--text-label); transition: background var(--motion-state); }
 .tabs button .pill-ic { width: 48px; height: 32px; border-radius: 999px; display: grid; place-items: center; color: var(--g); transition: background var(--motion-state); }
 .tabs button.on .pill-ic { background: color-mix(in srgb, var(--g) 22%, transparent); }
@@ -384,3 +384,48 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .sel-sfx { display: flex; align-items: center; gap: var(--space-2); background: var(--surface-2); border-radius: var(--radius-card); padding-block: 2px; padding-inline: 10px 4px; }
 .sel-sfx strong { font-size: 13px; }
 .sel-sfx input[type='range'] { width: 90px; height: 24px; }
+
+/* Blurs by hand: the selected one's bar, its ends on the timeline, adding one on the video. */
+.ctx-bar { display: flex; align-items: center; gap: var(--space-2); background: var(--surface-2); border: 1px solid var(--outline-soft); border-radius: var(--radius-panel); padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2); min-height: 56px; box-shadow: var(--shadow); }
+.ctx-color { width: 4px; height: 32px; border-radius: 2px; background: var(--coral); flex: none; }
+.ctx-name { white-space: nowrap; }
+.ctx-acts { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.ctx-acts::-webkit-scrollbar { display: none; }
+.ctx-act { flex: none; border: 0; background: transparent; color: var(--text); border-radius: var(--radius-card); min-width: 56px; min-height: 48px; padding: 4px 6px; display: grid; justify-items: center; align-content: center; gap: 2px; font: var(--text-label); white-space: nowrap; }
+.ctx-act:hover { background: var(--surface-3); }
+.ctx-act.danger { color: #ff6b6b; }
+.ctx-size { flex: none; display: grid; justify-items: center; font: var(--text-label); padding: 0 6px; }
+.ctx-size input[type='range'] { width: 96px; height: 24px; }
+.ctx-bar .progress { height: 6px; }
+.num { font-variant-numeric: tabular-nums; }
+.tl-face { cursor: pointer; }
+.tl-face.on { overflow: visible; }
+.tl-face.manual { background: color-mix(in srgb, var(--coral) 70%, var(--violet)); }
+.tl-face.on { outline: 2px solid var(--amber); outline-offset: 1px; z-index: 2; }
+.tl-handle { position: absolute; top: -5px; bottom: -5px; width: 14px; border-radius: 5px; background: var(--amber); touch-action: none; cursor: ew-resize; }
+.tl-handle.start { left: -8px; }
+.tl-handle.end { right: -8px; }
+.tl-handle::after { content: ''; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 2px; border-radius: 1px; background: #3a2a00; }
+.tl-cut { position: absolute; top: 18px; bottom: 0; pointer-events: none; z-index: 1; background: repeating-linear-gradient(135deg, rgb(0 0 0 / 0.6) 0 6px, rgb(0 0 0 / 0.38) 6px 12px); box-shadow: inset 2px 0 #e5484d, inset -2px 0 #e5484d; }
+.tl-cut.pending { background: rgb(229 72 77 / 0.28); }
+.screen.adding { cursor: crosshair; outline: 3px dashed var(--amber); outline-offset: -3px; }
+.screen-hint { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgb(0 0 0 / 0.7); color: #fff; border-radius: 999px; padding: 6px 14px; font: var(--text-label); pointer-events: none; white-space: nowrap; }
+.toast { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px); background: rgb(20 22 40 / 0.92); color: #fff; border-radius: var(--radius-card); padding: 8px 14px; font: var(--text-body); pointer-events: none; text-align: center; box-shadow: var(--shadow); }
+.face.sel img, .face.sel .ph { outline: 3px solid var(--amber); outline-offset: 2px; }
+
+/* Cutting */
+.cut { display: grid; gap: var(--space-3); }
+.cut .section-title { margin: 0; }
+.cut .section-title::before { background: var(--primary); }
+.caption { font: var(--text-label); color: var(--muted); margin: var(--space-1) 0 0; text-transform: none; }
+.row.wrap { flex-wrap: wrap; gap: var(--space-2); }
+.cut hr { border: 0; border-top: 1px solid var(--outline-soft); margin: var(--space-1) 0; width: 100%; }
+.cut-cues { display: grid; gap: var(--space-2); }
+.cut-cue { display: flex; align-items: flex-start; gap: var(--space-1); }
+.icon-btn.danger { color: #e5484d; }
+.spinner { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--surface-3); border-top-color: var(--primary); animation: spin 0.8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+/* The selected blur's bar scrolls within the player's width (it never widens the page). */
+.player { grid-template-columns: minmax(0, 1fr); }
+.editor > * { min-width: 0; }
+.screen.sel { touch-action: none; }

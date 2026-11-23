@@ -47,7 +47,7 @@ const DEVICES = {
     await p.screenshot({ path: `${out}/5_pixelate.png` })
     await p.click('.seg:not(.tabs) button >> nth=0')
     // A sound effect at the playhead, and a text watermark.
-    await p.click('.tabs button >> nth=2')
+    await p.click('.tabs button[data-g=sound]')
     await p.click('.sound .name >> nth=0')
     await p.waitForSelector('.tl-sound', { timeout: 5000 })
     if (process.env.VOICE) {
@@ -57,7 +57,7 @@ const DEVICES = {
     }
     await p.waitForTimeout(600)
     await p.screenshot({ path: `${out}/5b_sound.png` })
-    await p.click('.tabs button >> nth=3')
+    await p.click('.tabs button[data-g=mark]')
     await p.fill('.text-in', '@onit')
     await p.waitForTimeout(600)
     await p.screenshot({ path: `${out}/5c_watermark.png` })
