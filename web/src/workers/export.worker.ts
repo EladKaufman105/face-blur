@@ -81,6 +81,8 @@ async function mp3({ file, sfx, voice, cuts: cutList }: ExportRequest, t0: numbe
     const conversion = await Conversion.init({
       input,
       output,
+      // Nothing of the source's metadata goes out (where it was filmed, on what phone), as the app's Mp4Privacy.
+      tags: {},
       video: { discard: true },
       audio: {
         codec: 'mp3',
@@ -180,6 +182,9 @@ async function run(req: ExportRequest) {
     input,
     output,
     composable: feed !== null,
+    // Nothing of the source's metadata goes out (where it was filmed, on what phone), as the app's
+    // Mp4Privacy. (A composable conversion copies none anyway.)
+    ...(feed !== null ? {} : { tags: {} }),
     video: {
       codec,
       bitrate,
