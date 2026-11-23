@@ -78,6 +78,8 @@ jobs:
           node tests/mysounds.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/mysounds
           # No faces found: wider detection offered, a blur by hand in the editor.
           node tests/nofaces.cjs "http://localhost:4173/?backend=wasm" /tmp/web-results/nofaces
+          # The landing page (/home/): it loads whole, its parts work, its links lead to the editor.
+          node tests/home.cjs "http://localhost:4173/" /tmp/web-results/home
       - uses: actions/upload-artifact@v4
         if: always()
         with:

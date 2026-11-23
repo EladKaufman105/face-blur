@@ -69,6 +69,7 @@ const EN: Record<string, string> = {
   'על המעבד': 'on the CPU',
   'הדפדפן הזה לא נותן גישה למעבד הגרפי (WebGPU), אז הזיהוי איטי. ב-Chrome או Safari מעודכנים זה מהיר הרבה יותר.': "This browser doesn't give access to the GPU (WebGPU), so detection is slow. It's much faster in an up-to-date Chrome or Safari.",
   'האפליקציה המלאה לאנדרואיד': 'The full Android app',
+  'על ONIT': 'About ONIT',
   'פנים %d': 'Face %d',
   'מטושטש': 'Blurred',
   'גלוי': 'Visible',
