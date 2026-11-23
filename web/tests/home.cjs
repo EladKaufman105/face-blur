@@ -1,6 +1,8 @@
-// The landing page (/home/): it loads whole (every picture, no failed request), its parts work
-// (the tour of the tools, the before / after slider, the two trailers, Hebrew / English kept after
-// a reload), its links lead to the editor, and nothing is wider than a phone.
+// The landing page (/home/): it loads whole (every picture, no failed request), its videos play
+// (the editor's recording in the hero, the before / after drawn from its video, each tool's
+// recording), its parts work (the tour, the slider, the trailers, Hebrew / English kept after a
+// reload), its links lead to the editor, nothing is wider than a phone, and with less motion asked
+// for, nothing moves.
 // Run: node tests/home.cjs <base url of the built site> <screenshot dir>
 const { chromium } = require('playwright')
 const fs = require('fs')
@@ -22,6 +24,11 @@ const fail = (m) => { console.error('FAIL', m); process.exit(1) }
       await p.goto(url, { waitUntil: 'networkidle' })
 
       if (!(await p.textContent('h1')).includes('עורך וידאו שלם')) fail('the Hebrew headline')
+      // The hero's recording runs.
+      const t1 = await p.evaluate(() => document.querySelector('.hero-browser video').currentTime)
+      await p.waitForTimeout(1500)
+      const t2 = await p.evaluate(() => document.querySelector('.hero-browser video').currentTime)
+      if (!(t2 > t1 + 0.5)) fail(`${name}: the hero's recording doesn't play (${t1} -> ${t2})`)
       if ((await p.getAttribute('html', 'dir')) !== 'rtl') fail('Hebrew is right to left')
 
       // Down the page (the pictures load lazily and parts appear as they come into view).
@@ -35,14 +42,30 @@ const fail = (m) => { console.error('FAIL', m); process.exit(1) }
       const wide = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)
       if (wide > 0) fail(`${name}: the page is ${wide}px wider than the screen`)
 
-      // The tour: a tool picked shows its screen.
+      // The tour: a tool picked plays its recording.
+      await p.evaluate(() => document.querySelector('.tour').scrollIntoView({ block: 'center' }))
       await p.locator('.tour-list [role=tab]').nth(2).click()
-      await p.waitForTimeout(500)
-      if ((await p.getAttribute('.shots img.on', 'data-name')) !== 'web-subs') fail(`${name}: the subtitles tab shows another screen`)
+      await p.waitForTimeout(1500)
+      const tour = await p.evaluate(() => { const v = document.querySelector('.shots video.on'); return [v.dataset.name, v.paused, v.currentTime] })
+      if (tour[0] !== 'web-subs' || tour[1] || !(tour[2] > 0.3)) fail(`${name}: the subtitles recording (${tour})`)
 
-      // The before / after slider follows its control.
+      // The before / after: drawn from its video, and the slider moves the line.
+      await p.evaluate(() => document.getElementById('compare').scrollIntoView({ block: 'center' }))
+      await p.waitForFunction(() => document.getElementById('compare').classList.contains('live'), null, { timeout: 15000 }).catch(() => fail(`${name}: the before / after video never drew`))
       await p.evaluate(() => { const r = document.querySelector('#compare input'); r.value = '20'; r.dispatchEvent(new Event('input', { bubbles: true })) })
       if ((await p.evaluate(() => document.getElementById('compare').style.getPropertyValue('--pos'))) !== '20%') fail(`${name}: the slider`)
+      // Left of the line is the original, right of it the blurred one: the halves differ there.
+      const halves = await p.evaluate(() => {
+        const c = document.querySelector('.cmp-canvas'), x = c.getContext('2d')
+        const v = document.querySelector('.cmp-video'); v.pause()
+        x.drawImage(v, 0, 0, 1280, 720, 0, 0, 1280, 720)
+        const a = x.getImageData(0, 0, 1280, 720).data
+        x.drawImage(v, 0, 720, 1280, 720, 0, 0, 1280, 720)
+        const b = x.getImageData(0, 0, 1280, 720).data
+        let diff = 0; for (let i = 0; i < a.length; i += 16) diff += Math.abs(a[i] - b[i])
+        return diff / (a.length / 16)
+      })
+      if (!(halves > 0.5)) fail(`${name}: the before / after halves are the same (${halves})`)
 
       // The trailers: the app's one loads when picked.
       await p.click('.seg [data-tr=android]')
@@ -78,6 +101,15 @@ const fail = (m) => { console.error('FAIL', m); process.exit(1) }
       console.log(name, 'ok')
       await ctx.close()
     }
+    // Less motion: nothing plays by itself, everything is shown.
+    const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce', locale: 'he-IL' })
+    const p = await ctx.newPage()
+    await p.goto(url, { waitUntil: 'networkidle' })
+    await p.waitForTimeout(1200)
+    const still = await p.evaluate(() => ({ hero: document.querySelector('.hero-browser video').paused, hidden: [...document.querySelectorAll('.reveal, .w')].filter((e) => +getComputedStyle(e).opacity < 0.9).length }))
+    if (!still.hero || still.hidden) fail(`less motion: ${JSON.stringify(still)}`)
+    await ctx.close()
+    console.log('less motion ok')
   } finally {
     await b.close()
   }

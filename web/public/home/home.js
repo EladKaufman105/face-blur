@@ -1,5 +1,7 @@
-// ONIT's landing page: Hebrew / English, reveals on scroll, the before / after slider, the tour of
-// the tools and the trailers. No tracking, nothing sent anywhere.
+// ONIT's landing page: Hebrew / English, reveals and word-by-word headlines on scroll, counters, a
+// moving ribbon, the hero's recording and the app's screens taking turns, the before / after video,
+// a recording for each tool, the trailers. No tracking, nothing sent anywhere; all motion stops for
+// people who ask their device for less of it.
 ;(function () {
   var d = document.documentElement
   d.classList.add('js')
@@ -59,6 +61,13 @@
     finalTitle: 'Your next video,<br><span class="g">without exposing anyone.</span>',
     footLine: 'A video editor that works on your device',
     credits: 'Fonts: Allo Hebrew and Rubik (SIL OFL)',
+    flow1: 'Your video', flowCloud: 'Server', flow2: 'Your device', flow2s: 'Detect · Transcribe · Export', flow3: 'The finished video',
+  }
+  var RIBBON = {
+    he: [['טשטוש פנים', 'פיקסלים', 'כיסוי מלא', 'מעקב אחרי פנים', 'טשטוש ידני', 'חיתוך', 'הסרת שתיקות', 'ייצוב מצלמה', 'מסגרת 9:16', 'HEVC', 'MP3'],
+         ['כתוביות אוטומטיות', '28 סגנונות', '18 אפקטים', 'תרגום', 'זיהוי דוברים', 'שינוי קול', 'ניקוי רעשים', 'צפצוף על מילים', '51 אפקטים קוליים', 'הסרת רקע', 'מסך ירוק']],
+    en: [['Face blur', 'Pixels', 'Solid cover', 'Face tracking', 'Manual blur', 'Cuts', 'Pause removal', 'Stabilization', '9:16 frame', 'HEVC', 'MP3'],
+         ['Auto subtitles', '28 styles', '18 effects', 'Translation', 'Speaker detection', 'Voice changer', 'Noise cleanup', 'Word bleeping', '51 sound effects', 'Background removal', 'Green screen']],
   }
   var HE = {}
   $$('[data-i18n]').forEach(function (el) { HE[el.dataset.i18n] = el.innerHTML })
@@ -76,8 +85,45 @@
     document.title = titles[l]; $('meta[name=description]').content = descs[l]
     var b = $('#lang'); b.textContent = l === 'he' ? 'EN' : 'עב'; b.setAttribute('aria-label', l === 'he' ? 'English' : 'עברית')
     if (save) { try { localStorage.setItem('onit.lang', l) } catch (e) {} }
+    splitAll(); ribbon(l)
   }
-  if (d.dataset.lang === 'en') setLang('en')
+
+  // Headlines in words, each one coming in after the one before (the highlighted run keeps its color).
+  function split(el) {
+    var walk = function (parent, cls) {
+      Array.prototype.slice.call(parent.childNodes).forEach(function (ch) {
+        if (ch.nodeType === 3) {
+          var frag = document.createDocumentFragment()
+          ch.textContent.split(/(\s+)/).forEach(function (w) {
+            if (!w) return
+            if (/^\s+$/.test(w)) { frag.appendChild(document.createTextNode(w)); return }
+            var sp = document.createElement('span'); sp.className = 'w' + (cls ? ' ' + cls : ''); sp.textContent = w; frag.appendChild(sp)
+          })
+          ch.parentNode.replaceChild(frag, ch)
+        } else if (ch.nodeName === 'SPAN' && !ch.classList.contains('w')) {
+          walk(ch, ch.className)
+          while (ch.firstChild) parent.insertBefore(ch.firstChild, ch)
+          parent.removeChild(ch)
+        }
+      })
+    }
+    walk(el, '')
+    $$('.w', el).forEach(function (w, i) { w.style.setProperty('--i', i) })
+  }
+  function splitAll() { $$('[data-split]').forEach(split) }
+
+  // The ribbon: what's inside, twice over so it runs on without a seam.
+  var DOTS = ['var(--coral)', 'var(--amber)', 'var(--cyan)', 'var(--violet)']
+  function ribbon(l) {
+    $$('.ribbon .track').forEach(function (t) {
+      var items = RIBBON[l][+t.dataset.row]
+      t.innerHTML = ''
+      for (var k = 0; k < 2; k++) items.forEach(function (x, i) {
+        var s = document.createElement('span'); s.textContent = x; s.dir = 'auto'; s.style.setProperty('--c', DOTS[(i + +t.dataset.row) % 4]); t.appendChild(s)
+      })
+    })
+  }
+  if (d.dataset.lang === 'en') setLang('en'); else { splitAll(); ribbon('he') }
   $('#lang').addEventListener('click', function () { setLang(d.lang === 'he' ? 'en' : 'he', true) })
 
   // The logo that suits the theme.
@@ -86,7 +132,7 @@
   // ---------------------------------------------------------------- reveals, the bar's line
   if ('IntersectionObserver' in window && !reduce) {
     var io = new IntersectionObserver(function (es) {
-      es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target) } })
+      es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); count(e.target) } })
     }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 })
     $$('.reveal').forEach(function (el) {
       var sib = el.parentElement ? $$(':scope > .reveal', el.parentElement) : []
@@ -94,15 +140,89 @@
       io.observe(el)
     })
   } else $$('.reveal').forEach(function (el) { el.classList.add('in') })
-  var nav = $('.nav')
-  var onScroll = function () { nav.classList.toggle('scrolled', scrollY > 8) }
+
+  // The numbers count up (and the zero counts down to nothing) as they come into view.
+  function count(root) {
+    $$('[data-count]', root).forEach(function (b) {
+      if (b.dataset.done) return
+      b.dataset.done = '1'
+      var to = +b.dataset.count, from = b.dataset.from != null ? +b.dataset.from : 0, t0 = performance.now(), dur = 1500
+      ;(function step(now) {
+        var k = Math.min(1, (now - t0) / dur); k = 1 - Math.pow(1 - k, 4)
+        b.textContent = Math.round(from + (to - from) * k)
+        if (k < 1) requestAnimationFrame(step)
+      })(t0)
+    })
+  }
+  var nav = $('.nav'), line = $('.scrolled-line i'), heroVis = $('.hero-visual'), ticking = false
+  var onScroll = function () {
+    if (ticking) return
+    ticking = true
+    requestAnimationFrame(function () {
+      ticking = false
+      nav.classList.toggle('scrolled', scrollY > 8)
+      var max = document.documentElement.scrollHeight - innerHeight
+      line.style.setProperty('--p', max > 0 ? Math.min(1, scrollY / max) : 0)
+      if (!reduce && scrollY < innerHeight * 1.2) heroVis.style.translate = '0 ' + (scrollY * 0.08).toFixed(1) + 'px'
+    })
+  }
   addEventListener('scroll', onScroll, { passive: true }); onScroll()
 
+  // ---------------------------------------------------------------- the hero
+  // The editor's recording plays while it's on screen; the app's screens take turns.
+  var whenSeen = function (el, on, off, th) {
+    if (!('IntersectionObserver' in window)) { on(); return }
+    new IntersectionObserver(function (es) { es[0].isIntersecting ? on() : off && off() }, { threshold: th || 0.25 }).observe(el)
+  }
+  var heroVideo = $('.hero-browser video')
+  if (!reduce) whenSeen(heroVideo, function () { heroVideo.play().catch(function () {}) }, function () { heroVideo.pause() })
+  var cyc = $$('.cycle img'), ci = 0
+  if (!reduce && cyc.length > 1) setInterval(function () {
+    if (document.hidden) return
+    cyc[ci].classList.remove('on'); ci = (ci + 1) % cyc.length; cyc[ci].classList.add('on')
+  }, 3000)
+  // The hero leans toward the pointer.
+  var hero = $('.hero')
+  if (!reduce && matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    hero.addEventListener('pointermove', function (e) {
+      var r = hero.getBoundingClientRect()
+      hero.style.setProperty('--px', ((e.clientX - r.left) / r.width * 2 - 1).toFixed(3))
+      hero.style.setProperty('--py', ((e.clientY - r.top) / r.height * 2 - 1).toFixed(3))
+    })
+    hero.addEventListener('pointerleave', function () { hero.style.setProperty('--px', 0); hero.style.setProperty('--py', 0) })
+  }
+
+  // A light that follows the pointer over the cards.
+  $$('.card, .plat, .steps li, .stats div').forEach(function (c) {
+    c.addEventListener('pointermove', function (e) {
+      var r = c.getBoundingClientRect()
+      c.style.setProperty('--mx', e.clientX - r.left + 'px'); c.style.setProperty('--my', e.clientY - r.top + 'px')
+    })
+  })
+
   // ---------------------------------------------------------------- before / after
-  var cmp = $('#compare'), range = $('#compare input')
-  var setPos = function (v) { cmp.style.setProperty('--pos', v + '%') }
-  range.addEventListener('input', function () { swept = true; setPos(range.value) })
-  var swept = false
+  // One video holds both, the original over ONIT's export, frame for frame; the canvas shows the
+  // original up to the handle and the blurred one after it. The pictures stay as the fallback.
+  var cmp = $('#compare'), range = $('#compare input'), cv = $('.cmp-video'), canvas = $('.cmp-canvas'), ctx = canvas.getContext('2d')
+  var pos = 50, swept = false
+  var draw = function () {
+    if (cv.readyState < 2) return
+    var W = canvas.width, H = canvas.height, x = Math.round(W * pos / 100)
+    ctx.drawImage(cv, 0, 0, W, H, 0, 0, W, H)
+    ctx.drawImage(cv, x, H, W - x, H, x, 0, W - x, H)
+    cmp.classList.add('live')
+  }
+  var setPos = function (v) { pos = +v; cmp.style.setProperty('--pos', v + '%'); draw() }
+  range.addEventListener('input', function () { swept = true; cmp.classList.add('touched'); setPos(range.value) })
+  var loop = function () {
+    draw()
+    if (cv.paused) return
+    if (cv.requestVideoFrameCallback) cv.requestVideoFrameCallback(loop); else requestAnimationFrame(loop)
+  }
+  cv.addEventListener('playing', loop)
+  cv.addEventListener('loadeddata', draw)
+  cv.addEventListener('seeked', draw)
+  if (!reduce) whenSeen(cmp, function () { cv.preload = 'auto'; cv.play().catch(function () {}) }, function () { cv.pause() }, 0.2)
   if (!reduce && 'IntersectionObserver' in window) {
     var cio = new IntersectionObserver(function (es) {
       if (!es[0].isIntersecting || swept) return
@@ -124,22 +244,34 @@
   }
 
   // ---------------------------------------------------------------- the tour of the tools
-  var tabs = $$('.tour-list [role=tab]'), shots = $$('.shots img'), bar = $('.tour .progress')
-  var cur = 0, timer = null, auto = !reduce, visible = false
+  // A recording for each tool; each plays through, then the next tool's (until one is picked).
+  var tabs = $$('.tour-list [role=tab]'), vids = $$('.shots video'), bar = $('.tour .progress i')
+  var cur = 0, auto = true, visible = false
+  var load = function (v) { var src = v.querySelector('source'); if (!src.src) { src.src = src.dataset.src; v.load() } }
   function show(i, user) {
     cur = i
     tabs.forEach(function (t, j) { t.setAttribute('aria-selected', String(j === i)); t.tabIndex = j === i ? 0 : -1 })
     var name = tabs[i].dataset.img
-    shots.forEach(function (s) { s.classList.toggle('on', s.dataset.name === name) })
-    if (user) { auto = false; bar.classList.remove('run'); clearTimeout(timer) }
-    else restart()
+    vids.forEach(function (v) {
+      var on = v.dataset.name === name
+      v.classList.toggle('on', on)
+      if (!on) v.pause()
+    })
+    if (user) auto = false
+    play()
   }
-  function restart() {
-    clearTimeout(timer); bar.classList.remove('run')
-    if (!auto || !visible) return
-    void bar.offsetWidth; bar.classList.add('run')
-    timer = setTimeout(function () { show((cur + 1) % tabs.length) }, 6000)
+  function play() {
+    var v = vids.filter(function (x) { return x.classList.contains('on') })[0]
+    if (!v || reduce || !visible) { if (v) v.pause(); return }
+    load(v)
+    try { v.currentTime = 0 } catch (e) {}
+    v.loop = !auto
+    v.play().catch(function () {})
   }
+  vids.forEach(function (v) {
+    v.addEventListener('ended', function () { if (auto && v.classList.contains('on')) show((cur + 1) % tabs.length) })
+    v.addEventListener('timeupdate', function () { if (v.classList.contains('on') && v.duration) bar.style.width = (v.currentTime / v.duration * 100) + '%' })
+  })
   tabs.forEach(function (t, i) {
     t.addEventListener('click', function () { show(i, true) })
     t.addEventListener('keydown', function (e) {
@@ -147,9 +279,9 @@
       if (next) { e.preventDefault(); var j = (cur + next + tabs.length) % tabs.length; show(j, true); tabs[j].focus() }
     })
   })
-  if ('IntersectionObserver' in window) {
-    new IntersectionObserver(function (es) { visible = es[0].isIntersecting; restart() }, { threshold: 0.35 }).observe($('.tour'))
-  }
+  // The next recording is fetched ahead, so the change is instant.
+  vids.forEach(function (v, i) { v.addEventListener('playing', function () { var n = vids[(i + 1) % vids.length]; if (n) { var s = n.querySelector('source'); if (!s.src) { s.src = s.dataset.src; n.preload = 'auto'; n.load() } } }) })
+  whenSeen($('.tour'), function () { visible = true; play() }, function () { visible = false; vids.forEach(function (v) { v.pause() }) }, 0.3)
 
   // ---------------------------------------------------------------- the trailers
   var video = $('#trailer'), trTabs = $$('.seg [role=tab]')
