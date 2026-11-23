@@ -217,11 +217,12 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
                 unavailable = "emulator"
                 return null
             }
+            // LiteRT's list of supported GPUs lags behind new phones (a Dimensity 9500's GPU
+            // isn't on it): it's tried anyway. A GPU that can't run it fails when the model
+            // opens, and one that runs it wrong is caught by the comparison with OpenCV.
             return try {
-                if (!CompatibilityList().isDelegateSupportedOnThisDevice) {
-                    unavailable = "GPU not supported"
-                    null
-                } else GpuFaceNet(files)
+                if (!CompatibilityList().isDelegateSupportedOnThisDevice) Log.i(TAG, "GPU not on LiteRT's list: trying it anyway")
+                GpuFaceNet(files)
             } catch (t: Throwable) {
                 Log.w(TAG, "no GPU delegate: $t")
                 unavailable = "no GPU delegate: ${t.javaClass.simpleName}"

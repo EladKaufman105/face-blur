@@ -84,11 +84,13 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     // Detection workers: each thread keeps its own detector (OpenCV nets aren't shared).
     private val detectors = java.util.Collections.synchronizedList(ArrayList<FaceDetector>())
     private val workerDetector = ThreadLocal<FaceDetector>()
-    // Below the app's own threads: on a slow tablet the detectors take every core, and the
-    // screen (progress, preview) must still move. When nothing else runs they get it all anyway.
+    // At the default priority: below the screen's threads (the main thread runs at -2, so on a
+    // slow tablet the progress and preview keep moving), but not "background", which on some
+    // phones keeps a thread on the small cores (a Dimensity 9500 took 411 ms a detection at
+    // 640 px that way, against 186 ms at 960 before).
     private val pool = Executors.newFixedThreadPool(WORKERS) { r ->
         Thread({
-            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_DEFAULT)
             r.run()
         }, "face-detect")
     }
