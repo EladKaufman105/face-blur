@@ -91,8 +91,11 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     // Bumped by reset(): results of an abandoned pass are dropped.
     @Volatile private var generation = 0
 
-    /** Now and then, a small copy of the frame and the faces found lately (progress screen). */
-    var onPreview: ((Bitmap, List<Det>, String) -> Unit)? = null
+    /**
+     * Now and then, a small copy of the frame, the faces found lately, where detection runs
+     * ([accelerator]) and how the pass is doing ([stats]; the progress screen shows it on a tap).
+     */
+    var onPreview: ((Bitmap, List<Det>, String, String) -> Unit)? = null
     private var lastPreview = 0L
     @Volatile private var lastDets: List<Det> = emptyList()
     private val preview = Mat()
@@ -108,11 +111,14 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     private var uprightH = 0
     private var rotation = 0
 
-    private var bytes = ByteArray(0)
-    private var rgba = Mat()
     private val rotated = Mat()
-    private val bgr = Mat()
     private val small = Mat()
+
+    // Where the time goes (see [stats]).
+    @Volatile private var detectMsTotal = 0L
+    @Volatile private var detections = 0
+    private var frameMsTotal = 0L
+    private var waitMsTotal = 0L
 
     // Detection ~15 times per second of video (every frame in sensitive mode); camera motion
     // and cut detection run on every frame. On a slow phone or tablet (where the frames wait
@@ -132,6 +138,19 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
 
     /** How detection adapted to the device: "every frame", "every 2nd frame, lite"... */
     val pace: String get() = "every ${detectEvery}" + (if (lite) ", lite" else "")
+
+    /**
+     * Where the time goes, for whoever tunes this: where detection runs, how often, the time
+     * per detection (one worker), per frame on the video's thread, and how long frames waited
+     * for a free worker.
+     */
+    val stats: String
+        get() {
+            val n = max(1, times.size)
+            val d = max(1, detections)
+            return "$accelerator/${half.state} · every $detectEvery${if (lite) " lite" else ""} · " +
+                "detect ${detectMsTotal / d} ms · frame ${frameMsTotal / n} ms · wait ${waitMsTotal / n} ms/frame"
+        }
 
     init {
         reset()
@@ -154,24 +173,37 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         lite = false
         windowStart = 0L
         blockedMs = 0L
+        detectMsTotal = 0L
+        detections = 0
+        frameMsTotal = 0L
+        waitMsTotal = 0L
     }
 
     /**
+     * The size frames are measured at for camera motion (and kept for the editor's tracking):
+     * [w] x [h] scaled to [MOTION_SIDE] at most. Frames handed in at this size ([onFrame] with
+     * full = false) skip the scaling.
+     */
+    fun motionSize(w: Int, h: Int): Pair<Int, Int> {
+        val s = minOf(1f, MOTION_SIDE.toFloat() / max(w, h))
+        return max(16, (w * s).roundToInt()) to max(16, (h * s).roundToInt())
+    }
+
+    /** Whether the next frame is one to detect faces on (so it's needed at full size). */
+    @Synchronized
+    fun wantsFull(): Boolean = times.size % detectEvery == 0
+
+    /**
+     * @param full the frame is at [maxSide] (for detection); else at [motionSize] (motion only).
      * @param rotation clockwise degrees that make the frame upright (normally 0: the pipeline
      *   already hands effects display-oriented frames).
      */
     @Synchronized
-    fun onFrame(pixels: ByteBuffer, width: Int, height: Int, timeUs: Long, rotation: Int) {
-        val n = width * height * 4
-        if (bytes.size != n) bytes = ByteArray(n)
+    fun onFrame(pixels: ByteBuffer, width: Int, height: Int, timeUs: Long, rotation: Int, full: Boolean = true) {
+        val t0 = SystemClock.elapsedRealtime()
+        // The frame's own buffer, read in place (no copies).
         pixels.rewind()
-        pixels.get(bytes)
-        if (rgba.rows() != height || rgba.cols() != width) {
-            rgba.release()
-            rgba = Mat(height, width, CvType.CV_8UC4)
-        }
-        rgba.put(0, 0, bytes)
-
+        val rgba = Mat(height, width, CvType.CV_8UC4, pixels)
         val src = when (rotation) {
             90 -> { Core.rotate(rgba, rotated, Core.ROTATE_90_CLOCKWISE); rotated }
             180 -> { Core.rotate(rgba, rotated, Core.ROTATE_180); rotated }
@@ -179,18 +211,22 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             else -> rgba
         }
         this.rotation = rotation
-        uprightW = src.cols()
-        uprightH = src.rows()
+        if (full) {
+            uprightW = src.cols()
+            uprightH = src.rows()
+        }
 
         val idx = times.size
         times += timeUs
 
-        val ts = minOf(1f, MOTION_SIDE.toFloat() / max(uprightW, uprightH))
-        val tw = max(16, (uprightW * ts).roundToInt())
-        val th = max(16, (uprightH * ts).roundToInt())
-        Imgproc.resize(src, small, Size(tw.toDouble(), th.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
+        val (tw, th) = motionSize(src.cols(), src.rows())
         val gray = Mat()
-        Imgproc.cvtColor(small, gray, Imgproc.COLOR_RGBA2GRAY)
+        if (src.cols() == tw && src.rows() == th) {
+            Imgproc.cvtColor(src, gray, Imgproc.COLOR_RGBA2GRAY)
+        } else {
+            Imgproc.resize(src, small, Size(tw.toDouble(), th.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
+            Imgproc.cvtColor(small, gray, Imgproc.COLOR_RGBA2GRAY)
+        }
         frames?.append(gray)
         if (cutDetector.isCut(gray)) {
             cuts += idx
@@ -201,25 +237,27 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         motion[2 * idx] = m[0]
         motion[2 * idx + 1] = m[1]
 
-        if (idx % detectEvery == 0) {
+        var waited = 0L
+        if (full && idx % detectEvery == 0) {
             failure.get()?.let { throw it }
-            Imgproc.cvtColor(src, bgr, Imgproc.COLOR_RGBA2BGR)
-            val frame = ByteArray((bgr.total() * bgr.channels()).toInt())
-            bgr.get(0, 0, frame)
-            val fw = bgr.cols()
-            val fh = bgr.rows()
+            // The worker gets its own copy (native, once); the frame's buffer is reused.
+            val frame = Mat()
+            Imgproc.cvtColor(src, frame, Imgproc.COLOR_RGBA2BGR)
             val gen = generation
             val waitFrom = SystemClock.elapsedRealtime()
             slots.acquire()
-            blockedMs += SystemClock.elapsedRealtime() - waitFrom
+            waited = SystemClock.elapsedRealtime() - waitFrom
+            blockedMs += waited
+            waitMsTotal += waited
             adapt(idx)
             val known = followedBoxes()
             pool.execute {
-                var m: Mat? = null
                 try {
                     if (gen == generation) {
-                        m = Mat(fh, fw, CvType.CV_8UC3).also { it.put(0, 0, frame) }
-                        val found = detector().detect(m, lite, known)
+                        val d0 = SystemClock.elapsedRealtime()
+                        val found = detector().detect(frame, lite, known)
+                        detectMsTotal += SystemClock.elapsedRealtime() - d0
+                        detections++
                         if (gen == generation) {
                             dets[idx] = found
                             lastDets = found
@@ -229,7 +267,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
                 } catch (t: Throwable) {
                     failure.compareAndSet(null, t)
                 } finally {
-                    m?.release()
+                    frame.release()
                     slots.release()
                 }
             }
@@ -247,8 +285,10 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             preview.get(0, 0, px)
             val bmp = Bitmap.createBitmap(pw, ph, Bitmap.Config.ARGB_8888)
             bmp.copyPixelsFromBuffer(ByteBuffer.wrap(px))
-            cb(bmp, lastDets, accelerator)
+            cb(bmp, lastDets, accelerator, stats)
         }
+        rgba.release()
+        frameMsTotal += SystemClock.elapsedRealtime() - t0 - waited
     }
 
     /** Boxes of the clear faces seen in at least [FOLLOWED_AFTER] detections in a row. */
@@ -348,9 +388,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         frames = null
         camera.close()
         cutDetector.close()
-        rgba.release()
         rotated.release()
-        bgr.release()
         small.release()
     }
 

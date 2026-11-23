@@ -17,7 +17,9 @@ import kotlin.math.roundToInt
 
 /**
  * Analysis pass effect: downsamples every frame, reads it back and hands it to the
- * [FaceAnalyzer]. Its own video output is a small black frame (the analysis file is discarded).
+ * [FaceAnalyzer]: at the detection size (1280) for frames faces are detected on, else only at
+ * the camera-motion size (640), a quarter of the pixels to read back and handle. Its own video
+ * output is a small black frame (the analysis file is discarded).
  */
 class DetectEffect(
     private val analyzer: FaceAnalyzer,
@@ -46,6 +48,12 @@ private class DetectProgram(
     private var tex = 0
     private var fbo = 0
     private var pixels: ByteBuffer? = null
+    // The motion-only target (0 when the frames are already that small).
+    private var smallW = 0
+    private var smallH = 0
+    private var smallTex = 0
+    private var smallFbo = 0
+    private var smallPixels: ByteBuffer? = null
     private var rotationToApply = 0
     private val target = Gl.SavedTarget()
 
@@ -65,6 +73,14 @@ private class DetectProgram(
             tex = Gl.createTexture(detW, detH, highPrecision = false)
             fbo = Gl.createFbo(tex)
             pixels = ByteBuffer.allocateDirect(detW * detH * 4).order(ByteOrder.nativeOrder())
+            val (sw, sh) = analyzer.motionSize(detW, detH)
+            if (sw < detW && sh < detH) {
+                smallW = sw
+                smallH = sh
+                smallTex = Gl.createTexture(sw, sh, highPrecision = false)
+                smallFbo = Gl.createFbo(smallTex)
+                smallPixels = ByteBuffer.allocateDirect(sw * sh * 4).order(ByteOrder.nativeOrder())
+            }
 
             // Media3 normally hands effects display-oriented frames. If it didn't (frame
             // aspect disagrees with the display aspect), rotate before detection.
@@ -79,26 +95,29 @@ private class DetectProgram(
     }
 
     override fun drawFrame(inputTexId: Int, presentationTimeUs: Long) {
+        val full = smallFbo == 0 || analyzer.wantsFull()
+        val w = if (full) detW else smallW
+        val h = if (full) detH else smallH
         target.save()
         GLES20.glDisable(GLES20.GL_BLEND)
-        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo)
-        GLES20.glViewport(0, 0, detW, detH)
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, if (full) fbo else smallFbo)
+        GLES20.glViewport(0, 0, w, h)
         GLES20.glUseProgram(program)
         Gl.bindTexture(0, inputTexId)
         GLES20.glUniform1i(uniforms["uSrc"], 0)
         // 4 bilinear taps spread over the minification footprint (anti-aliasing).
-        val spanX = max(0f, inW.toFloat() / detW / 4f) / inW
-        val spanY = max(0f, inH.toFloat() / detH / 4f) / inH
+        val spanX = max(0f, inW.toFloat() / w / 4f) / inW
+        val spanY = max(0f, inH.toFloat() / h / 4f) / inH
         GLES20.glUniform2f(uniforms["uOffset"], spanX, spanY)
         quad!!.draw(program)
 
-        val buf = pixels!!
+        val buf = (if (full) pixels else smallPixels)!!
         buf.rewind()
-        GLES20.glReadPixels(0, 0, detW, detH, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buf)
+        GLES20.glReadPixels(0, 0, w, h, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buf)
         Gl.check("detect readback")
         target.restore()
 
-        analyzer.onFrame(buf, detW, detH, presentationTimeUs, rotationToApply)
+        analyzer.onFrame(buf, w, h, presentationTimeUs, rotationToApply, full)
     }
 
     private fun releaseTarget() {
@@ -106,6 +125,13 @@ private class DetectProgram(
         Gl.deleteTexture(tex)
         fbo = 0
         tex = 0
+        if (smallFbo != 0) {
+            Gl.deleteFbo(smallFbo)
+            Gl.deleteTexture(smallTex)
+        }
+        smallFbo = 0
+        smallTex = 0
+        smallPixels = null
     }
 
     override fun release() {

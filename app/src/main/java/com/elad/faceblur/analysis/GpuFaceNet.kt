@@ -47,7 +47,24 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
         agreed.incrementAndGet()
     }
 
-    private class Net(val interpreter: Interpreter, val delegate: GpuDelegate, val input: ByteBuffer, val loc: Int, val conf: Int, val n: Int)
+    private class Net(val interpreter: Interpreter, val delegate: GpuDelegate, val loc: Int, val conf: Int, val n: Int) {
+        // The outputs' buffers, kept from frame to frame (only the GPU thread uses them).
+        val outs = HashMap<Int, Any>()
+        val locBuf: ByteBuffer = ByteBuffer.allocateDirect(n * 4 * 4).order(ByteOrder.nativeOrder())
+        val confBuf: ByteBuffer = ByteBuffer.allocateDirect(n * 2 * 4).order(ByteOrder.nativeOrder())
+        init {
+            outs[loc] = locBuf
+            outs[conf] = confBuf
+            // Landmarks aren't used: they go to a scratch buffer.
+            for (i in 0 until interpreter.outputTensorCount) {
+                if (i != loc && i != conf) outs[i] = ByteBuffer.allocateDirect(interpreter.getOutputTensor(i).numBytes()).order(ByteOrder.nativeOrder())
+            }
+        }
+    }
+
+    // Each detection worker's input buffer: the frame is converted straight into it (natively)
+    // and handed to the GPU as is.
+    private val inputs = ThreadLocal<ByteBuffer>()
 
     fun supports(w: Int, h: Int) = !off && (w to h) in models
 
@@ -57,15 +74,18 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
      */
     fun run(bgr: Mat, w: Int, h: Int): Pair<FloatArray, FloatArray>? {
         if (!supports(w, h)) return null
-        // Mean-subtracted floats, as the ONNX model's blob; the rows are already NHWC.
-        val f = Mat()
+        // Mean-subtracted floats, as the ONNX model's blob (the rows are already NHWC), written
+        // by OpenCV straight into the buffer the GPU reads.
+        val size = w * h * 3 * 4
+        val input = inputs.get()?.takeIf { it.capacity() == size }
+            ?: ByteBuffer.allocateDirect(size).order(ByteOrder.nativeOrder()).also { inputs.set(it) }
+        input.rewind()
+        val f = Mat(h, w, CvType.CV_32FC3, input)
         bgr.convertTo(f, CvType.CV_32FC3)
         Core.subtract(f, Scalar(104.0, 117.0, 123.0), f)
-        val pixels = FloatArray(w * h * 3)
-        f.get(0, 0, pixels)
         f.release()
         return try {
-            thread.submit(Callable { infer(w, h, pixels) }).get(30, TimeUnit.SECONDS)
+            thread.submit(Callable { infer(w, h, input) }).get(30, TimeUnit.SECONDS)
         } catch (e: Exception) {
             Log.w(TAG, "GPU face detection failed, using the CPU: ${e.cause ?: e}")
             disable()
@@ -73,24 +93,15 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
         }
     }
 
-    private fun infer(w: Int, h: Int, pixels: FloatArray): Pair<FloatArray, FloatArray> {
+    private fun infer(w: Int, h: Int, input: ByteBuffer): Pair<FloatArray, FloatArray> {
         val net = nets.getOrPut(w to h) { open(models.getValue(w to h)) }
-        net.input.rewind()
-        net.input.asFloatBuffer().put(pixels)
-        val loc = ByteBuffer.allocateDirect(net.n * 4 * 4).order(ByteOrder.nativeOrder())
-        val conf = ByteBuffer.allocateDirect(net.n * 2 * 4).order(ByteOrder.nativeOrder())
-        val outs = HashMap<Int, Any>()
-        outs[net.loc] = loc
-        outs[net.conf] = conf
-        // Landmarks aren't used: let them go to a scratch buffer.
-        for (i in 0 until net.interpreter.outputTensorCount) {
-            if (i != net.loc && i != net.conf) outs[i] = ByteBuffer.allocateDirect(net.interpreter.getOutputTensor(i).numBytes()).order(ByteOrder.nativeOrder())
-        }
-        net.interpreter.runForMultipleInputsOutputs(arrayOf<Any>(net.input), outs)
+        input.rewind()
+        net.outs.values.forEach { (it as ByteBuffer).rewind() }
+        net.interpreter.runForMultipleInputsOutputs(arrayOf<Any>(input), net.outs)
         val l = FloatArray(net.n * 4)
         val c = FloatArray(net.n * 2)
-        loc.rewind(); loc.asFloatBuffer().get(l)
-        conf.rewind(); conf.asFloatBuffer().get(c)
+        net.locBuf.rewind(); net.locBuf.asFloatBuffer().get(l)
+        net.confBuf.rewind(); net.confBuf.asFloatBuffer().get(c)
         return l to c
     }
 
@@ -109,8 +120,7 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
             }
         }
         check(loc >= 0 && conf >= 0) { "unexpected outputs" }
-        val input = ByteBuffer.allocateDirect(interpreter.getInputTensor(0).numBytes()).order(ByteOrder.nativeOrder())
-        return Net(interpreter, delegate, input, loc, conf, n)
+        return Net(interpreter, delegate, loc, conf, n)
     }
 
     /** Stops using the GPU for the rest of this pass. */

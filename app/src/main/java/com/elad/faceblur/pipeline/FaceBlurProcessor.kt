@@ -128,7 +128,7 @@ class FaceBlurProcessor(private val context: Context) {
     suspend fun analyze(
         info: VideoInfo,
         settings: Settings,
-        onPreview: ((android.graphics.Bitmap, List<Det>, String) -> Unit)? = null,
+        onPreview: ((android.graphics.Bitmap, List<Det>, String, String) -> Unit)? = null,
         onProgress: (Float) -> Unit,
     ): AnalysisResult {
         val analysisFile = File(context.cacheDir, "analysis.mp4")

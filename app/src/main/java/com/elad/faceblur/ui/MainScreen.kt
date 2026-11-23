@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -292,6 +293,8 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
     }
     val exporting = state.stage == 2
     val feature = if (state.subsOnly) Feature.SUBTITLES else Feature.FACES
+    // A tap on the percentage shows how the analysis is doing (for tuning on a device).
+    var showStats by remember { mutableStateOf(false) }
     val frame: @Composable (Modifier) -> Unit = { modifier ->
         Box(modifier, contentAlignment = Alignment.Center) {
             LiveFrame(
@@ -333,6 +336,15 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
                         ltr("${(overall * 100).roundToInt()}%"),
                         style = MaterialTheme.typography.headlineMedium.tnum(),
                         color = feature.tint,
+                        modifier = Modifier.clickable { showStats = !showStats },
+                    )
+                }
+                val stats = live?.stats
+                if (showStats && stats != null && state.stage == 1) {
+                    Text(
+                        ltr(stats),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 TimelineProgress(

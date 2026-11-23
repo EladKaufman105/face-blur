@@ -47,7 +47,8 @@ import java.util.concurrent.Executors
 enum class QuickTool { SUBTITLES, BACKGROUND, SOUND, MP3 }
 
 /** What the progress screen shows: a small copy of the frame being processed, and faces found on it. */
-class LivePreview(val frame: android.graphics.Bitmap, val faces: List<com.elad.faceblur.analysis.Box>, val gpu: Boolean = false)
+/** @param stats how the analysis is doing (where detection runs, times), shown on a tap. */
+class LivePreview(val frame: android.graphics.Bitmap, val faces: List<com.elad.faceblur.analysis.Box>, val gpu: Boolean = false, val stats: String? = null)
 
 sealed interface UiState {
     data object Empty : UiState
@@ -125,8 +126,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var livePreview by mutableStateOf<LivePreview?>(null)
         private set
 
-    private fun showLive(frame: android.graphics.Bitmap, faces: List<com.elad.faceblur.analysis.Box>, gpu: Boolean = false) {
-        main.post { if (state is UiState.Working) livePreview = LivePreview(frame, faces, gpu) }
+    private fun showLive(frame: android.graphics.Bitmap, faces: List<com.elad.faceblur.analysis.Box>, gpu: Boolean = false, stats: String? = null) {
+        main.post { if (state is UiState.Working) livePreview = LivePreview(frame, faces, gpu, stats) }
     }
 
     init {
@@ -377,7 +378,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val t0 = SystemClock.elapsedRealtime()
                 val analysis = processor.analyze(
                     info, settings,
-                    onPreview = { frame, dets, acc -> showLive(frame, dets.filter { it.score >= 0.5f }.map { it.box }, acc == "gpu") },
+                    onPreview = { frame, dets, acc, stats -> showLive(frame, dets.filter { it.score >= 0.5f }.map { it.box }, acc == "gpu", stats) },
                 ) { p -> state = UiState.Working(info, 1, p, auto = auto) }
                 val session = EditSession(info, settings, analysis, SystemClock.elapsedRealtime() - t0)
                 val ctrl = EditorController(session, editorScope, getApplication(), models, prefs)
