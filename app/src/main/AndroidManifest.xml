@@ -4,6 +4,14 @@
     <!-- Only to download the speech model and the translation pack, once. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- A batch of videos goes on with the screen off: a foreground service (media processing from
+         Android 15, data sync before), its progress notification, and the CPU kept awake. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <application
         android:allowBackup="false"
         android:icon="${appIcon}"
@@ -29,5 +37,10 @@
                 <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".batch.BatchService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProcessing|dataSync" />
     </application>
 </manifest>
