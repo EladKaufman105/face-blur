@@ -158,7 +158,8 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             val n = max(1, times.size)
             val d = max(1, detections)
             val side = if (gpu != null && gpu.active) "1280" else "$cpuSide"
-            return "$accelerator/${half.state} ${side}px · every $detectEvery${if (lite) " lite" else ""} · " +
+            val gpuMs = gpu?.inferMs?.takeIf { it > 0f }?.let { " (gpu ${it.roundToInt()} ms)" } ?: ""
+            return "$accelerator/${half.state} ${side}px$gpuMs · every $detectEvery${if (lite) " lite" else ""} · " +
                 "detect ${detectMsTotal / d} ms · frame ${frameMsTotal / n} ms · wait ${waitMsTotal / n} ms/frame"
         }
 
@@ -336,8 +337,15 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         val span = now - windowStart
         if (span < 1500 || idx < 20) return
         if (blockedMs > span / 3) {
-            val onCpu = gpu == null || !gpu.active
-            if (onCpu && cpuSide > LOW_SIDE) {
+            val g = gpu
+            if (g != null && g.active && g.inferMs > GPU_SLOW_MS) {
+                // A GPU this slow (one lane, ~2-10 frames a second) holds back the CPU's cores:
+                // they do better together, at the lighter size a device like this needs.
+                g.disable()
+                cpuSide = LOW_SIDE
+                lite = true
+                android.util.Log.i("ONIT", "the GPU takes ${g.inferMs.roundToInt()} ms a frame: CPU at $LOW_SIDE px from now on")
+            } else if ((g == null || !g.active) && cpuSide > LOW_SIDE) {
                 cpuSide = LOW_SIDE
                 lite = true
                 android.util.Log.i("ONIT", "face detection slower than the video: $LOW_SIDE px, lite")
@@ -422,6 +430,8 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         private const val MIN_RATE = 8f
         /** The fine pass's long side on the CPU when the device can't keep up. */
         private const val LOW_SIDE = 640
+        /** A GPU slower than this per frame, when detection holds the pass back, gives way to the CPU. */
+        private const val GPU_SLOW_MS = 80f
         /** Detections in a row after which a clear face isn't re-checked on a crop. */
         private const val FOLLOWED_AFTER = 4
 

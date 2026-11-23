@@ -66,6 +66,13 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
     // and handed to the GPU as is.
     private val inputs = ThreadLocal<ByteBuffer>()
 
+    /**
+     * The model's time on the GPU per frame (a running average; 0 before the first). A weak
+     * GPU (a budget tablet's) can be several times slower than the CPU cores together.
+     */
+    @Volatile var inferMs = 0f
+        private set
+
     fun supports(w: Int, h: Int) = !off && (w to h) in models
 
     /**
@@ -97,7 +104,10 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
         val net = nets.getOrPut(w to h) { open(models.getValue(w to h)) }
         input.rewind()
         net.outs.values.forEach { (it as ByteBuffer).rewind() }
+        val t0 = android.os.SystemClock.elapsedRealtime()
         net.interpreter.runForMultipleInputsOutputs(arrayOf<Any>(input), net.outs)
+        val ms = (android.os.SystemClock.elapsedRealtime() - t0).toFloat()
+        inferMs = if (inferMs == 0f) ms else inferMs * 0.8f + ms * 0.2f
         val l = FloatArray(net.n * 4)
         val c = FloatArray(net.n * 2)
         net.locBuf.rewind(); net.locBuf.asFloatBuffer().get(l)
