@@ -6,6 +6,8 @@ name: Subtitle models
 # model-check branch were dropped; the asset's sha256 is in the log.
 on:
   workflow_dispatch:
+  push: # TEMP-VERIFY: remove in the last commit
+    branches: [ci/optimize-workflows]
 
 permissions:
   contents: write
@@ -40,6 +42,7 @@ jobs:
           sha256sum out/*.bin
 
       - name: Publish model
+        if: false # TEMP-VERIFY: the release must not be touched; remove in the last commit
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.MODEL_TAG }}

@@ -5,7 +5,7 @@ name: Web app
 # Manual and weekly runs build and run every test, including the slow subtitles one.
 on:
   push:
-    branches: [main]
+    branches: [main, ci/optimize-workflows] # TEMP-VERIFY: remove in the last commit
     paths:
       - 'web/**'
       # What web/scripts/copy-assets.mjs takes from the Android app.
@@ -34,8 +34,8 @@ jobs:
   web:
     uses: ./.github/workflows/web-tests.yml
     with:
-      tests: ${{ github.event_name != 'push' }}
-      subtitles: ${{ github.event_name != 'push' }}
+      tests: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }} # TEMP-VERIFY
+      subtitles: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }} # TEMP-VERIFY
       pages: ${{ github.ref == 'refs/heads/main' }}
 
   # Only main goes to the site.
