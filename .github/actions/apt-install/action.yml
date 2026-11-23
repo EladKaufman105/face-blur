@@ -1,0 +1,27 @@
+name: apt install, with the .deb files cached
+description: Installs apt packages and keeps the downloaded .deb files in the Actions cache, because the runner's apt mirror is sometimes very slow (minutes for ffmpeg).
+inputs:
+  packages:
+    description: Space-separated package names
+    required: true
+runs:
+  using: composite
+  steps:
+    - id: key
+      shell: bash
+      run: |
+        sudo mkdir -p /tmp/apt-debs/partial
+        sudo chmod -R a+rwX /tmp/apt-debs
+        echo "key=apt-$(. /etc/os-release; echo "$VERSION_ID")-$(echo "${{ inputs.packages }}" | tr ' ' '-')" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/cache@v4
+      with:
+        path: /tmp/apt-debs
+        key: ${{ steps.key.outputs.key }}
+
+    - shell: bash
+      run: |
+        install() { sudo apt-get install -y -qq -o Dir::Cache::archives=/tmp/apt-debs ${{ inputs.packages }} > /dev/null; }
+        # Stale package lists on an old runner image can 404: refresh them only then.
+        install || { sudo apt-get update -qq && install; }
+        sudo chmod -R a+rX /tmp/apt-debs

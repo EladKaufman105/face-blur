@@ -1,8 +1,10 @@
 name: PR checks
 
 # Fast checks only; the emulator test runs after the merge (build.yml).
-# The job names are the checks the branch rulesets require: keep them as they are.
-# The source-branch check is in pr-guard.yml (it also re-runs when a PR's base changes).
+# The job names android-build and web-build are the checks the branch rulesets require: keep
+# them as they are, and keep them always running. They report on every PR, and pass when their
+# work was skipped because nothing it covers changed. The source-branch check is in pr-guard.yml
+# (it also re-runs when a PR's base changes).
 on:
   pull_request:
     branches: [develop, main]
@@ -10,14 +12,62 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  android-build:
-    name: android-build
+  # What the PR touches. Workflow files count for both parts.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      android: ${{ steps.f.outputs.android }}
+      web: ${{ steps.f.outputs.web }}
+      subtitles: ${{ steps.f.outputs.subtitles }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: f
+        with:
+          filters: |
+            workflows: &workflows
+              - '.github/workflows/**'
+              - '.github/actions/**'
+              - 'ci/**'
+            android:
+              - *workflows
+              - 'app/**'
+              - 'build.gradle.kts'
+              - 'settings.gradle.kts'
+              - 'gradle.properties'
+              - 'gradle/**'
+              - 'gradlew'
+              - 'gradlew.bat'
+              - 'version.properties'
+            web:
+              - '.github/workflows/**'
+              - '.github/actions/**'
+              - 'ci/web-tests.sh'
+              - 'web/**'
+              # What web/scripts/copy-assets.mjs takes from the Android app.
+              - 'app/src/main/assets/retinaface_mv2.onnx'
+              - 'app/src/main/assets/human_segmentation_pphumanseg_2023mar.onnx'
+              - 'app/src/main/assets/fonts/**'
+              - 'app/src/main/assets/sfx/**'
+            subtitles:
+              - 'web/src/workers/subs.worker.ts'
+              - 'web/src/lib/subtitles.ts'
+              - 'web/tests/subs.cjs'
+              - 'web/package.json'
+              - 'web/package-lock.json'
+              - '.github/workflows/web-tests.yml'
+              - '.github/actions/**'
+
+  android:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -28,7 +78,10 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      # PRs read the Gradle cache that develop and main write.
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
 
       - name: Every string has its English
         run: python3 ci/i18n_check.py
@@ -39,37 +92,44 @@ jobs:
           bash ci/fetch-whisper.sh
           bash ci/fetch-opencv.sh
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug --no-daemon --configuration-cache --stacktrace
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    uses: ./.github/workflows/web-tests.yml
+    with:
+      subtitles: ${{ needs.changes.outputs.subtitles == 'true' }}
+
+  # The required checks. Always run (unless a newer push cancelled the run); fail only when the work they stand for failed or was cancelled.
+  android-build:
+    name: android-build
+    if: ${{ !cancelled() }}
+    needs: [changes, android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Android build passed or was not needed
+        shell: bash
+        run: |
+          echo "changes=${{ needs.changes.result }} android=${{ needs.android.result }}"
+          case "${{ needs.changes.result }}/${{ needs.android.result }}" in
+            success/success|success/skipped) ;;
+            *) echo "::error::The Android build failed or was cancelled."; exit 1 ;;
+          esac
 
   web-build:
     name: web-build
+    if: ${{ !cancelled() }}
+    needs: [changes, web]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - name: Build
-        working-directory: web
+      - name: Web build and tests passed or were not needed
+        shell: bash
         run: |
-          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core > /dev/null
-          pip install --quiet onnx numpy onnxconverter-common fonttools
-          npm ci
-          npm run build
-      - name: Smoke test in Chromium (face detection on the CPU path, editor, export)
-        working-directory: web
-        run: |
-          git fetch --depth 1 origin test-media
-          mkdir -p /tmp/samples && git -C .. archive FETCH_HEAD | tar -x -C /tmp/samples && ls /tmp/samples
-          npx playwright install --with-deps chromium
-          npx vite preview --port 4173 --strictPort &
-          timeout 60 bash -c 'until curl -sf http://localhost:4173/ > /dev/null; do sleep 1; done'
-          node tests/e2e.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/desktop
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: web-results
-          path: /tmp/web-results
+          echo "changes=${{ needs.changes.result }} web=${{ needs.web.result }}"
+          case "${{ needs.changes.result }}/${{ needs.web.result }}" in
+            success/success|success/skipped) ;;
+            *) echo "::error::The web build or its tests failed or were cancelled."; exit 1 ;;
+          esac

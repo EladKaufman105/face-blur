@@ -51,7 +51,14 @@ class EndToEndTest {
         val exportOpts = ExportOptions(shortSide = 720, fps = 30, quality = ExportQuality.SAVER, codec = ExportCodec.H264)
         if (exportRun != null) runs += exportRun to Settings(BlurMode.BLUR, 0.6f, 1.6f, false)
 
+        // CI runs this test in parts on parallel emulators: -e e2eShards N -e e2eShard I (0-based)
+        // takes every Nth run. Without them every run is done.
+        val args = InstrumentationRegistry.getArguments()
+        val shards = args.getString("e2eShards")?.toIntOrNull() ?: 1
+        val shard = args.getString("e2eShard")?.toIntOrNull() ?: 0
+
         for ((idx, run) in runs.withIndex()) {
+            if (shards > 1 && idx % shards != shard) continue
             val (name, settings) = run
             val withOpts = exportRun != null && idx == runs.size - 1
             val tag = name.removeSuffix(".mp4") + "_" + settings.mode.name.lowercase() +

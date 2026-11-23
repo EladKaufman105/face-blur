@@ -1,27 +1,41 @@
 name: Build APK
 
+# push to develop: a beta ("ONIT Beta", its own app id, pre-release, never "latest").
+# push to main: a release. Both publish only what passed the emulator end-to-end test.
+#
+# build-release  arm64 release APK (the one that ships)       \  in parallel
+# build-test     x86_64 test APKs for the emulator             /
+# avd            AVD + booted snapshot, cached (created once)  /
+# e2e            3 emulator shards over the 17 instrumented tests, in parallel
+# publish        needs build-release and every e2e shard
 on:
   push:
-    # main: releases. develop: betas ("ONIT Beta", its own app id, pre-releases, never "latest").
     branches: [main, develop]
     # The web app has its own workflow.
-    paths-ignore: ['.github/workflows/models.yml', '.github/workflows/web.yml', 'web/**']
+    paths-ignore: ['.github/workflows/models.yml', '.github/workflows/web.yml', '.github/workflows/web-tests.yml', '.github/actions/**', 'ci/web-tests.sh', 'web/**']
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 # One run at a time per branch, so two runs don't take the same version.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  # The cached AVD's key: API level, image, profile and emulator flags. Change it with them.
+  AVD_KEY: avd-33-google_apis-x86_64-pixel_6-swiftshader-4c4096M-v1
+  # setup-gradle saves its cache on develop and main only; everything else reads it.
+  GRADLE_READ_ONLY: ${{ github.ref != 'refs/heads/develop' && github.ref != 'refs/heads/main' }}
+
 jobs:
-  # Release only what passed the emulator end-to-end test.
-  build:
-    needs: e2e
+  # The shipped APK: arm64, minified, signed. Starts at once, doesn't wait for the emulator.
+  build-release:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,6 +64,8 @@ jobs:
           java-version: 17
 
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ env.GRADLE_READ_ONLY }}
 
       - name: Build release APK
         shell: bash
@@ -60,7 +76,7 @@ jobs:
           set -o pipefail
           LABS=""
           if [ "$GITHUB_REF" = "refs/heads/develop" ]; then LABS="-Plabs=true"; fi
-          ./gradlew assembleRelease $LABS "-PversionName=$VERSION" --no-daemon --stacktrace 2>&1 | tee build.log
+          ./gradlew assembleRelease $LABS "-PversionName=$VERSION" --no-daemon --configuration-cache --stacktrace 2>&1 | tee build.log
 
       - name: Rename APK
         shell: bash
@@ -73,52 +89,27 @@ jobs:
           esac
           cp app/build/outputs/apk/release/*.apk "out/$NAME.apk"
 
-      - name: APK size
-        shell: bash
-        run: |
-          ls -l out/*.apk
-          unzip -lv out/*.apk | sort -k3 -n -r | head -15
-
-      - name: Publish release
-        if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          target_commitish: ${{ github.sha }}
-          name: ONIT ${{ steps.version.outputs.version }}
-          body: "ONIT ${{ steps.version.outputs.version }}, build ${{ github.run_number }} (the Android versionCode). APK for arm64 (vivo X300 Pro). Commit ${{ github.sha }}"
-          files: out/*.apk
-          make_latest: true
-          generate_release_notes: true
+          name: release-apk
+          path: out/*.apk
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
 
-      - name: Publish beta
-        if: github.ref == 'refs/heads/develop'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          target_commitish: ${{ github.sha }}
-          name: ONIT Beta ${{ steps.version.outputs.version }}
-          body: "Beta ${{ steps.version.outputs.version }} from develop (installs beside ONIT as \"ONIT Beta\"), build ${{ github.run_number }}. Commit ${{ github.sha }}"
-          files: out/*.apk
-          prerelease: true
-          make_latest: false
-
-      - name: Report build errors
+      - name: Upload the build log
         if: failure()
-        shell: bash
-        run: |
-          [ -f build.log ] || exit 0
-          git config user.name "ci"
-          git config user.email "ci@users.noreply.github.com"
-          git checkout --orphan ci-log
-          git rm -rf --cached . > /dev/null
-          git add -f build.log
-          git commit -m "build log ${{ github.run_number }}" > /dev/null
-          git push -f origin ci-log
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-release
+          path: build.log
+          retention-days: 14
+          if-no-files-found: ignore
 
-  e2e:
+  # The test APKs for the x86_64 emulator, built once and shared by every shard.
+  build-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -126,25 +117,8 @@ jobs:
         run: python3 ci/i18n_check.py
 
       - name: Fetch test media
-        shell: bash
         run: |
-          git fetch --depth 1 origin test-media
-          mkdir -p app/src/androidTest/assets/samples
-          git archive FETCH_HEAD | tar -x -C app/src/androidTest/assets/samples
-          ls -la app/src/androidTest/assets/samples
-          # Whisper "tiny" (MIT) for the subtitles test.
-          mkdir -p app/src/androidTest/assets/models
-          curl -sSfL --retry 3 -o app/src/androidTest/assets/models/ggml-tiny.bin \
-            https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
-          # The speaker model (WeSpeaker, CC BY 4.0), as the app downloads it.
-          curl -sSfL --retry 3 -o app/src/androidTest/assets/models/speaker.onnx \
-            https://raw.githubusercontent.com/EladKaufman105/face-blur/speaker-model/speaker-wespeaker-r34lm-fp16.onnx
-          # Background removal's second model (LR-ASPP, BSD-3), as the app downloads it.
-          for m in lraspp_mbv3_512x288_fp16.onnx lraspp_mbv3_288x512_fp16.onnx; do
-            curl -sSfL --retry 3 -o app/src/androidTest/assets/models/$m \
-              https://raw.githubusercontent.com/EladKaufman105/face-blur/187ecd0f0bdb7e082b132a0e844e3a6785fb463b/seg/$m
-          done
-          ls -la app/src/androidTest/assets/models
+          bash ci/fetch-test-media.sh
           bash ci/fetch-whisper.sh
           bash ci/fetch-opencv.sh
 
@@ -154,15 +128,43 @@ jobs:
           java-version: 17
 
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ env.GRADLE_READ_ONLY }}
 
       - name: Build test APKs (x86_64)
         shell: bash
         run: |
           chmod +x gradlew
           set -o pipefail
-          # The release build too (minified by R8): CI runs its self-test after the tests.
-          ./gradlew assembleDebug assembleDebugAndroidTest assembleRelease -PabiFilters=x86_64 --no-daemon --stacktrace 2>&1 | tee e2e-build.log
+          # The release build too (minified by R8): the self-test shard runs it after its tests.
+          ./gradlew assembleDebug assembleDebugAndroidTest assembleRelease -PabiFilters=x86_64 --no-daemon --configuration-cache --stacktrace 2>&1 | tee e2e-build.log
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            app/build/outputs/apk/release/app-release.apk
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload the build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-test
+          path: e2e-build.log
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # The emulator image and its booted snapshot, created once and cached (API level, image and
+  # emulator flags are the key). The shards boot from it instead of creating an AVD.
+  avd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
       - name: Enable KVM
         shell: bash
         run: |
@@ -170,7 +172,17 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run on emulator
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: ${{ env.AVD_KEY }}
+          lookup-only: true
+
+      - name: Create the AVD and its snapshot
+        if: steps.cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
@@ -179,19 +191,128 @@ jobs:
           target: google_apis
           cores: 4
           ram-size: 4096M
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
-          script: bash ci/e2e.sh
+          force-avd-creation: false
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: echo "Generated the AVD snapshot for caching."
 
-      - name: Publish results
-        if: always()
+  e2e:
+    needs: [build-test, avd]
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # EndToEndTest (one test over 12 clip runs, about half the emulator time) is split three ways
+          # by clip; the other classes are spread over the shards by their measured time. The
+          # release self-test runs in one.
+          - shard: 1
+            part: 0
+            classes: com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.LabsTest
+            selftest: 0
+          - shard: 2
+            part: 1
+            classes: com.elad.faceblur.EndToEndTest,com.elad.faceblur.ProjectsVoiceTest
+            selftest: 0
+          - shard: 3
+            part: 2
+            classes: com.elad.faceblur.EndToEndTest,com.elad.faceblur.SubtitlesTest
+            selftest: 1
+    name: e2e (shard ${{ matrix.shard }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-apks
+          path: app/build/outputs/apk
+
+      - run: find app/build/outputs/apk -name '*.apk'
+
+      # Only the self-test pushes these files to the emulator (the others have them in the test APK).
+      - name: Fetch test media
+        if: matrix.selftest == 1
+        run: bash ci/fetch-test-media.sh
+
+      - name: Enable KVM
         shell: bash
         run: |
-          mkdir -p e2e-results
-          cp e2e-build.log e2e-results/ 2>/dev/null || true
-          cd e2e-results
-          git init -q
-          git checkout -q -b ci-results
-          git add -A
-          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "e2e results ${{ github.run_number }} (${{ github.sha }})"
-          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" ${{ github.ref == 'refs/heads/main' && 'ci-results' || github.ref == 'refs/heads/develop' && 'ci-results:ci-results-develop' || 'ci-results:ci-results-dev' }}
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: ${{ env.AVD_KEY }}
+
+      - name: Run on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          E2E_CLASSES: ${{ matrix.classes }}
+          E2E_SELFTEST: ${{ matrix.selftest }}
+          E2E_SHARDS: 3
+          E2E_SHARD: ${{ matrix.part }}
+        with:
+          api-level: 33
+          arch: x86_64
+          profile: pixel_6
+          target: google_apis
+          cores: 4
+          ram-size: 4096M
+          force-avd-creation: false
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
+          script: bash ci/e2e.sh
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results-${{ matrix.shard }}
+          path: e2e-results
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # Release only what passed the emulator end-to-end test.
+  publish:
+    needs: [build-release, e2e]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.build-release.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-apk
+          path: out
+
+      - name: Publish release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: ONIT ${{ env.VERSION }}
+          body: "ONIT ${{ env.VERSION }}, build ${{ github.run_number }} (the Android versionCode). APK for arm64 (vivo X300 Pro). Commit ${{ github.sha }}"
+          files: out/*.apk
+          make_latest: true
+          generate_release_notes: true
+
+      - name: Publish beta
+        if: github.ref == 'refs/heads/develop'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: ONIT Beta ${{ env.VERSION }}
+          body: "Beta ${{ env.VERSION }} from develop (installs beside ONIT as \"ONIT Beta\"), build ${{ github.run_number }}. Commit ${{ github.sha }}"
+          files: out/*.apk
+          prerelease: true
+          make_latest: false

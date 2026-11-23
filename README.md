@@ -17,7 +17,7 @@ Android video editor that works entirely on-device: blurs faces, makes styled su
 - **Background:** keep the people (PP-HumanSeg from OpenCV Zoo, Apache 2.0, one pass over the video, masks smoothed over time and kept with the project) or everything but a green / blue screen (a CbCr keyer with spill removal), and put a blur, a color or a picture behind. Seen live in the player; faces are blurred over it. CorridorKey 2.0 was considered but needs an NVIDIA GPU and ~5 GB of weights, so it can't run on a phone.
 - Output is saved to `Movies/ONIT`.
 
-CI runs an end-to-end test on an Android emulator over the clips on the `test-media` branch (results on `ci-results`), and only then publishes the APK: a beta (`vX.Y.Z-beta.N`, the "ONIT Beta" app) from `develop`, a release (`vX.Y.Z`) from `main`.
+CI runs an end-to-end test on an Android emulator over the clips on the `test-media` branch (results are artifacts of the workflow run), and only then publishes the APK: a beta (`vX.Y.Z-beta.N`, the "ONIT Beta" app) from `develop`, a release (`vX.Y.Z`) from `main`.
 
 ## Contributing
 
