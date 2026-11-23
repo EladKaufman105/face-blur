@@ -156,6 +156,9 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     private val followed = ArrayList<Followed>()
     @Volatile private var detectEvery = baseEvery
     @Volatile private var lite = false
+    // The latest finished detection found a big face: the coarse pass, which fits those, then
+    // runs on every detection (see [RetinaFaceDetector.detect]).
+    @Volatile private var bigFace = false
     // The fine pass's long side on the CPU: lowered on a device too slow for it.
     @Volatile private var cpuSide = RetinaFaceDetector.CPU_FINE_SIDE
     private var windowStart = 0L
@@ -186,7 +189,8 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             }
             return "$where ${side}px · every $detectEvery${if (lite) " lite" else ""} · " +
                 "detect ${detectMsTotal.get() / d} ms · frame ${frameMsTotal / n} ms · wait ${waitMsTotal / n} ms/frame · " +
-                "fine ${fineUsTotal.get() / d / 1000}" + (if (gpuCall > 0) " (gpu call ${gpuCall / d / 1000})" else "") +
+                "fine ${fineUsTotal.get() / d / 1000}" +
+                (if (gpuCall > 0) " (gpu call ${gpuCall / d / 1000}" + (g?.queueMs?.takeIf { it > 0f }?.let { " (queue ${it.roundToInt()})" } ?: "") + ")" else "") +
                 " coarse ${coarseUsTotal.get() / d / 1000} yunet ${yunetUsTotal.get() / d / 1000} " +
                 "crops ${(crops * 10 / d) / 10f}×${cropMs} ms · workers ${BASE_WORKERS + extraSlots}/$WORKERS"
         }
@@ -213,6 +217,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         cuts.clear()
         detectEvery = baseEvery
         lite = false
+        bigFace = false
         cpuSide = RetinaFaceDetector.CPU_FINE_SIDE
         windowStart = 0L
         blockedMs = 0L
@@ -306,12 +311,15 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             waitMsTotal += waited
             adapt(idx)
             val known = followedBoxes()
+            // On a GPU, every other detection may leave out the coarse pass (it's the CPU's
+            // biggest cost there) unless a big face is in view.
+            val maySkipCoarse = g != null && g.active && !bigFace && (idx / detectEvery) % 2 == 1
             pool.execute {
                 try {
                     if (gen == generation) {
                         val d0 = SystemClock.elapsedRealtime()
                         val det = detector()
-                        val found = det.detect(frame, lite, known, cpuSide)
+                        val found = det.detect(frame, lite, known, cpuSide, maySkipCoarse)
                         detectMsTotal.addAndGet(SystemClock.elapsedRealtime() - d0)
                         detections.incrementAndGet()
                         fineUsTotal.addAndGet(det.lastFineUs)
@@ -323,6 +331,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
                         if (gen == generation) {
                             dets[idx] = found
                             lastDets = found
+                            bigFace = found.any { RetinaFaceDetector.isBig(it.box, frame.cols(), frame.rows()) }
                             follow(idx, found)
                         }
                     }

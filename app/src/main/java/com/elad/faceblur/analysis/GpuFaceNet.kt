@@ -57,23 +57,40 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
     }
 
     private class Net(val interpreter: Interpreter, val delegate: GpuDelegate, val loc: Int, val conf: Int, val n: Int) {
-        // The outputs' buffers, kept from frame to frame (only the GPU thread uses them).
-        val outs = HashMap<Int, Any>()
-        val locBuf: ByteBuffer = ByteBuffer.allocateDirect(n * 4 * 4).order(ByteOrder.nativeOrder())
-        val confBuf: ByteBuffer = ByteBuffer.allocateDirect(n * 2 * 4).order(ByteOrder.nativeOrder())
+        // Landmarks aren't used: they go to scratch buffers that only the GPU thread touches, so
+        // all the workers' outputs can share them.
+        val scratch = HashMap<Int, Any>()
         init {
-            outs[loc] = locBuf
-            outs[conf] = confBuf
-            // Landmarks aren't used: they go to a scratch buffer.
             for (i in 0 until interpreter.outputTensorCount) {
-                if (i != loc && i != conf) outs[i] = ByteBuffer.allocateDirect(interpreter.getOutputTensor(i).numBytes()).order(ByteOrder.nativeOrder())
+                if (i != loc && i != conf) scratch[i] = ByteBuffer.allocateDirect(interpreter.getOutputTensor(i).numBytes()).order(ByteOrder.nativeOrder())
             }
+        }
+    }
+
+    /**
+     * One detection worker's outputs for one model size: the buffers the GPU thread writes the
+     * scores into and the arrays the worker copies them to. Owned by that worker, so the GPU
+     * thread can go on to the next frame while the worker still reads these.
+     */
+    private class Outs(net: Net) {
+        val locBuf: ByteBuffer = ByteBuffer.allocateDirect(net.n * 4 * 4).order(ByteOrder.nativeOrder())
+        val confBuf: ByteBuffer = ByteBuffer.allocateDirect(net.n * 2 * 4).order(ByteOrder.nativeOrder())
+        val loc = FloatArray(net.n * 4)
+        val conf = FloatArray(net.n * 2)
+        val map = HashMap<Int, Any>().also {
+            it[net.loc] = locBuf
+            it[net.conf] = confBuf
+            it.putAll(net.scratch)
         }
     }
 
     // Each detection worker's input buffer: the frame is converted straight into it (natively)
     // and handed to the GPU as is.
     private val inputs = ThreadLocal<ByteBuffer>()
+    // Each detection worker's outputs, by model size (see [Outs]).
+    private val outputs = ThreadLocal<HashMap<Pair<Int, Int>, Outs>>()
+    // "No mask" for OpenCV's subtract (the Java API takes an empty Mat, not null); never written.
+    private val noMask = Mat()
 
     /**
      * The model's time on the GPU per frame (a running average; 0 before the first). A weak
@@ -82,27 +99,48 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
     @Volatile var inferMs = 0f
         private set
 
+    /**
+     * How long a call waited for the GPU's thread, behind the other workers' frames (a running
+     * average like [inferMs]; 0 before the first). With several workers this, not the inference,
+     * is most of the time a call takes.
+     */
+    @Volatile var queueMs = 0f
+        private set
+
     fun supports(w: Int, h: Int) = !off && (w to h) in models
 
     /**
      * The model on [bgr] (already [w] x [h], 8-bit BGR): anchor offsets (n x 4) and scores
      * (n x 2), as from the ONNX model. Null if the GPU can't run it (then it's switched off).
+     * Only the inference itself runs on the GPU's thread: the input is prepared here and the
+     * outputs copied out here, so that thread is never busy with a worker's own work. The
+     * returned arrays belong to the calling worker and are overwritten by its next call.
      */
     fun run(bgr: Mat, w: Int, h: Int): Pair<FloatArray, FloatArray>? {
         if (!supports(w, h)) return null
         // Mean-subtracted floats, as the ONNX model's blob (the rows are already NHWC), written
-        // by OpenCV straight into the buffer the GPU reads.
+        // by OpenCV straight into the buffer the GPU reads, in one pass (8-bit in, float out).
         val size = w * h * 3 * 4
         val input = inputs.get()?.takeIf { it.capacity() == size }
             ?: ByteBuffer.allocateDirect(size).order(ByteOrder.nativeOrder()).also { inputs.set(it) }
         input.rewind()
         val f = Mat(h, w, CvType.CV_32FC3, input)
-        bgr.convertTo(f, CvType.CV_32FC3)
-        Core.subtract(f, Scalar(104.0, 117.0, 123.0), f)
+        Core.subtract(bgr, Scalar(104.0, 117.0, 123.0), f, noMask, CvType.CV_32F)
         f.release()
+        val mine = outputs.get() ?: HashMap<Pair<Int, Int>, Outs>().also { outputs.set(it) }
+        val key = w to h
+        val have = mine[key]
         return try {
-            thread.submit(Callable { infer(w, h, input) }).get(30, TimeUnit.SECONDS)
+            val submitted = System.nanoTime()
+            val o = thread.submit(Callable { infer(w, h, input, have, submitted) }).get(30, TimeUnit.SECONDS)
+            mine[key] = o
+            o.locBuf.rewind(); o.locBuf.asFloatBuffer().get(o.loc)
+            o.confBuf.rewind(); o.confBuf.asFloatBuffer().get(o.conf)
+            o.loc to o.conf
         } catch (e: Exception) {
+            // A call that timed out may still be using these buffers: they're not used again.
+            inputs.remove()
+            outputs.remove()
             val cause = e.cause ?: e
             Log.w(TAG, "GPU face detection failed${if (precise) "" else " in half precision"}: $cause")
             if (!precise) goPrecise() else disable("failed: ${cause.javaClass.simpleName}")
@@ -110,19 +148,20 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
         }
     }
 
-    private fun infer(w: Int, h: Int, input: ByteBuffer): Pair<FloatArray, FloatArray> {
+    /** On the GPU's thread: the model's run and nothing else. [have] is the worker's outputs, if it has them yet. */
+    private fun infer(w: Int, h: Int, input: ByteBuffer, have: Outs?, submittedNs: Long): Outs {
+        val started = System.nanoTime()
+        val waited = (started - submittedNs) / 1_000_000f
+        queueMs = if (queueMs == 0f) waited else queueMs * 0.8f + waited * 0.2f
         val net = nets.getOrPut(w to h) { open(models.getValue(w to h)) }
+        val o = have ?: Outs(net)
         input.rewind()
-        net.outs.values.forEach { (it as ByteBuffer).rewind() }
+        o.map.values.forEach { (it as ByteBuffer).rewind() }
         val t0 = android.os.SystemClock.elapsedRealtime()
-        net.interpreter.runForMultipleInputsOutputs(arrayOf<Any>(input), net.outs)
+        net.interpreter.runForMultipleInputsOutputs(arrayOf<Any>(input), o.map)
         val ms = (android.os.SystemClock.elapsedRealtime() - t0).toFloat()
         inferMs = if (inferMs == 0f) ms else inferMs * 0.8f + ms * 0.2f
-        val l = FloatArray(net.n * 4)
-        val c = FloatArray(net.n * 2)
-        net.locBuf.rewind(); net.locBuf.asFloatBuffer().get(l)
-        net.confBuf.rewind(); net.confBuf.asFloatBuffer().get(c)
-        return l to c
+        return o
     }
 
     private fun open(file: File): Net {
@@ -183,6 +222,7 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
         }
         thread.shutdown()
         thread.awaitTermination(5, TimeUnit.SECONDS)
+        noMask.release()
     }
 
     companion object {

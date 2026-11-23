@@ -49,13 +49,15 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
      * @param followed boxes of clear faces already found in several detections in a row: a clear
      *   face there isn't re-checked.
      * @param cpuSide the fine pass's long side when it runs on the CPU.
+     * @param coarseMaySkip the coarse pass may be left out when the GPU's fine pass found only
+     *   small faces (see [RetinaFaceDetector.detect]).
      *
      * Afterwards the time each part took is in the `last...` properties.
      */
-    fun detect(bgr: Mat, lite: Boolean = false, followed: List<Box> = emptyList(), cpuSide: Int = RetinaFaceDetector.CPU_FINE_SIDE): List<Det> {
+    fun detect(bgr: Mat, lite: Boolean = false, followed: List<Box> = emptyList(), cpuSide: Int = RetinaFaceDetector.CPU_FINE_SIDE, coarseMaySkip: Boolean = false): List<Det> {
         val w = bgr.cols()
         val h = bgr.rows()
-        val rf = retina.detect(bgr, RF_THRESHOLD, cpuSide)
+        val rf = retina.detect(bgr, RF_THRESHOLD, cpuSide, coarseMaySkip)
         lastFineUs = retina.lastFineUs
         lastCoarseUs = retina.lastCoarseUs
         lastGpuCallUs = retina.lastGpuCallUs

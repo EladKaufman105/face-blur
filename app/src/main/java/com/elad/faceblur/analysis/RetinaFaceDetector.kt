@@ -40,7 +40,6 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
             null
         }
     }
-    private val priorCache = HashMap<Long, FloatArray>()
     private val resized = Mat()
     // OpenCV's JNI layer calls java.util.ArrayList methods on this: must be a real ArrayList.
     private val outNames = arrayListOf("loc", "conf", "landmarks")
@@ -62,8 +61,14 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
      * it's most of the time) + coarse pass at 480 px for faces bigger than the anchors. The two
      * passes overlap; the caller's NMS merges them. How long each took is left in [lastFineUs],
      * [lastCoarseUs] and [lastGpuCallUs].
+     *
+     * @param coarseMaySkip this detection may leave out the coarse pass when the fine pass ran on
+     *   the GPU, found a face, and none of the faces is big (see [isBig]): the caller says so on
+     *   every other detection, and not while a big face was seen in the one before. A big face
+     *   is the one thing only the coarse pass is for, and the tracker fills the one detection
+     *   in between. Never skipped on the CPU, where the fine pass is at most 960 px.
      */
-    fun detect(bgr: Mat, threshold: Float, cpuSide: Int = CPU_FINE_SIDE): List<Det> {
+    fun detect(bgr: Mat, threshold: Float, cpuSide: Int = CPU_FINE_SIDE, coarseMaySkip: Boolean = false): List<Det> {
         val w = bgr.cols()
         val h = bgr.rows()
         val out = ArrayList<Det>()
@@ -77,7 +82,9 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
         lastFineUs = (t1 - t0) / 1000
         lastCoarseUs = 0L
         // Below ~800 px the fine pass's biggest anchors (512 px) already cover the biggest faces.
-        if (fine > 800 && max(w, h) > COARSE_SIDE * 1.3f) {
+        val onGpu = fine == max(w, h) && gpu?.supports(iw, ih) == true
+        val skip = coarseMaySkip && onGpu && out.isNotEmpty() && out.none { isBig(it.box, w, h) }
+        if (!skip && fine > 800 && max(w, h) > COARSE_SIDE * 1.3f) {
             run(bgr, COARSE_SIDE, threshold, COARSE_MIN_BOX, out)
             lastCoarseUs = (System.nanoTime() - t1) / 1000
         }
@@ -214,15 +221,18 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
         val n = pri.size / 4
         if (loc.size < n * 4 || conf.size < n * 2) return emptyList()
         val raw = ArrayList<Det>()
+        // Most of the ~38,000 anchors score far below the threshold: they cost one comparison
+        // each, and only the few above it get a box (the landmarks aren't decoded at all).
         for (i in 0 until n) {
             val score = conf[i * 2 + 1]
             if (score < threshold) continue
-            val px = pri[i * 4]; val py = pri[i * 4 + 1]; val pw = pri[i * 4 + 2]; val ph = pri[i * 4 + 3]
-            val cx = px + loc[i * 4] * 0.1f * pw
-            val cy = py + loc[i * 4 + 1] * 0.1f * ph
-            val bw = pw * exp(loc[i * 4 + 2] * 0.2f)
-            val bh = ph * exp(loc[i * 4 + 3] * 0.2f)
+            val o = i * 4
+            val pw = pri[o + 2]; val ph = pri[o + 3]
+            val bw = pw * exp(loc[o + 2] * 0.2f)
+            val bh = ph * exp(loc[o + 3] * 0.2f)
             if (min(bw * iw, bh * ih) < minBox) continue
+            val cx = pri[o] + loc[o] * 0.1f * pw
+            val cy = pri[o + 1] + loc[o + 1] * 0.1f * ph
             raw += Det(Box(cx, cy, bw, bh), score)
         }
         return Geometry.nmsIou(raw, 0.4f)
@@ -236,21 +246,27 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
         return arr
     }
 
-    /** RetinaFace anchors, order: level, row, column, size. */
-    private fun priors(h: Int, w: Int): FloatArray = priorCache.getOrPut((h.toLong() shl 32) or w.toLong()) {
-        val list = ArrayList<Float>()
+    /**
+     * RetinaFace anchors (cx, cy, w, h each, normalized), order: level, row, column, size. Static
+     * per input size, so computed once for all the workers' detectors.
+     */
+    private fun priors(h: Int, w: Int): FloatArray = PRIORS.getOrPut((h.toLong() shl 32) or w.toLong()) {
+        var count = 0
+        for (k in STEPS.indices) count += ceil(h / STEPS[k].toFloat()).toInt() * ceil(w / STEPS[k].toFloat()).toInt() * MIN_SIZES[k].size
+        val out = FloatArray(count * 4)
+        var o = 0
         for (k in STEPS.indices) {
             val step = STEPS[k]
             val fh = ceil(h / step.toFloat()).toInt()
             val fw = ceil(w / step.toFloat()).toInt()
             for (i in 0 until fh) for (j in 0 until fw) for (ms in MIN_SIZES[k]) {
-                list += (j + 0.5f) * step / w
-                list += (i + 0.5f) * step / h
-                list += ms.toFloat() / w
-                list += ms.toFloat() / h
+                out[o++] = (j + 0.5f) * step / w
+                out[o++] = (i + 0.5f) * step / h
+                out[o++] = ms.toFloat() / w
+                out[o++] = ms.toFloat() / h
             }
         }
-        list.toFloatArray()
+        out
     }
 
     override fun close() {
@@ -265,6 +281,13 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
         /** Faces at least this sure are compared between GPU and CPU, fp16 and fp32. */
         private const val AGREE_CLEAR = 0.6f
         private const val COARSE_MIN_BOX = 64f
+        /** A face whose long side is over this many px in a 1280 px frame is "big": only the coarse pass fits it well. */
+        private const val BIG_FACE_PX = 300f
+        // Shared by every detector (the values never change once computed).
+        private val PRIORS = java.util.concurrent.ConcurrentHashMap<Long, FloatArray>()
+
+        /** Whether [b], in a [w] x [h] frame, is a big face (see [BIG_FACE_PX]). */
+        fun isBig(b: Box, w: Int, h: Int): Boolean = max(b.w * w, b.h * h) > BIG_FACE_PX * max(w, h) / 1280f
         private val STEPS = intArrayOf(8, 16, 32)
         private val MIN_SIZES = arrayOf(intArrayOf(16, 32), intArrayOf(64, 128), intArrayOf(256, 512))
     }
