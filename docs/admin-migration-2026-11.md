@@ -1,3 +1,5 @@
+Done on 2026-11-23.
+
 # Admin migration plan: develop / main workflow
 
 **For:** the repo owner's Claude agent. Elad owns `EladKaufman105/face-blur` and is its only admin.
