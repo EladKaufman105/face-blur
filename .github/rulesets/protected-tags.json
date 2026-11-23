@@ -1,0 +1,13 @@
+{
+  "name": "protected tags: no moving or deleting",
+  "target": "tag",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/tags/v*", "refs/tags/models-*", "refs/tags/pinned/*"],
+      "exclude": []
+    }
+  },
+  "rules": [ { "type": "deletion" }, { "type": "update" } ]
+}

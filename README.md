@@ -17,7 +17,11 @@ Android video editor that works entirely on-device: blurs faces, makes styled su
 - **Background:** keep the people (PP-HumanSeg from OpenCV Zoo, Apache 2.0, one pass over the video, masks smoothed over time and kept with the project) or everything but a green / blue screen (a CbCr keyer with spill removal), and put a blur, a color or a picture behind. Seen live in the player; faces are blurred over it. CorridorKey 2.0 was considered but needs an NVIDIA GPU and ~5 GB of weights, so it can't run on a phone.
 - Output is saved to `Movies/ONIT`.
 
-CI runs an end-to-end test on an Android emulator over the clips on the `test-media` branch (results on `ci-results`), and only then publishes a release with the APK.
+CI runs an end-to-end test on an Android emulator over the clips on the `test-media` branch (results on `ci-results`), and only then publishes the APK: a beta (`vX.Y.Z-beta.N`, the "ONIT Test" app) from `develop`, a release (`vX.Y.Z`) from `main`.
+
+## Contributing
+
+Work goes through pull requests: feature branches from `develop`, PRs into `develop`, releases as a PR from `develop` into `main`. See [CONTRIBUTING.md](CONTRIBUTING.md) (people) and [CLAUDE.md](CLAUDE.md) (AI agents).
 
 ## Web version
 
@@ -32,4 +36,4 @@ one by one; the look (blur, pixels, cover), strength and size match the app.
 Build: `cd web && npm ci && npm run build` (needs python3 with onnx, numpy and
 onnxconverter-common: the face model is made in float32 for the CPU and float16 for GPUs with
 half precision). Add `?debug=1` to the address to see where the time goes while it analyzes. The "Web app" workflow tests it in
-Chromium on a sample clip and publishes it to GitHub Pages.
+Chromium on a sample clip and, from `main`, publishes it to GitHub Pages.
