@@ -133,7 +133,7 @@
   if ('IntersectionObserver' in window && !reduce) {
     var io = new IntersectionObserver(function (es) {
       es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); count(e.target) } })
-    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 })
+    }, { rootMargin: '0px 0px 12% 0px', threshold: 0 })
     $$('.reveal').forEach(function (el) {
       var sib = el.parentElement ? $$(':scope > .reveal', el.parentElement) : []
       el.style.setProperty('--d', Math.min(4, sib.indexOf(el)) * 90 + 'ms')
