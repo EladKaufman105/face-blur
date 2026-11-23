@@ -31,6 +31,8 @@ export interface Analysis {
   height: number
   fps: number
   tracks: Track[]
+  /** First frames of the shots after the first (hard cuts). */
+  cuts?: number[]
 }
 
 export type BlurMode = 'blur' | 'pixelate' | 'solid'

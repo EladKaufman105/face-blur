@@ -18,6 +18,12 @@ if (!existsSync(model) || statSync(model).mtimeMs < statSync(src).mtimeMs || !ex
   execFileSync('python3', [join(web, 'scripts', 'model_web.py'), src, join(pub, 'models')], { stdio: 'inherit' })
 }
 copy(join(assets, 'fonts', 'allo_hebrew.ttf'), join(pub, 'fonts', 'allo_hebrew.ttf'))
+// The people model (PP-HumanSeg), for background removal: float32 throughout.
+const people = join(pub, 'models', 'people.onnx')
+const peopleSrc = join(assets, 'human_segmentation_pphumanseg_2023mar.onnx')
+if (!existsSync(people) || statSync(people).mtimeMs < statSync(peopleSrc).mtimeMs) {
+  execFileSync('python3', [join(web, 'scripts', 'model_web.py'), peopleSrc, join(pub, 'models'), 'people', '--fp32-only'], { stdio: 'inherit' })
+}
 // Sound effects as AAC (every browser decodes it; Safari not Ogg Vorbis everywhere).
 mkdirSync(join(pub, 'sfx'), { recursive: true })
 for (const f of readdirSync(join(assets, 'sfx'))) {

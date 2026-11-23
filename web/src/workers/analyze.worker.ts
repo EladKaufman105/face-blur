@@ -10,7 +10,7 @@ export type AnalyzeRequest = { file: File; sensitive: boolean; base: string; bac
 export type AnalyzeMessage =
   | { type: 'ready'; backend: string; width: number; height: number; duration: number }
   | { type: 'progress'; done: number; total: number; preview?: ImageBitmap; dets?: Det[]; faces: number; backend: string; stats: string }
-  | { type: 'done'; times: Float64Array; width: number; height: number; fps: number; tracks: Track[]; thumbs: (ImageBitmap | null)[]; backend: string; ms: number }
+  | { type: 'done'; times: Float64Array; width: number; height: number; fps: number; tracks: Track[]; cuts: number[]; thumbs: (ImageBitmap | null)[]; backend: string; ms: number }
   | { type: 'error'; code: string; message: string }
   | { type: 'log'; message: string }
 
@@ -134,6 +134,6 @@ async function analyze({ file, sensitive, base, backend }: AnalyzeRequest) {
     ctx.drawImage(c, cx - r, cy - r, 2 * r, 2 * r, 0, 0, 160, 160)
     thumbs.push(out.transferToImageBitmap())
   }
-  const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, thumbs, backend: detector.backend, ms: performance.now() - t0 }
+  const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, cuts: cutList, thumbs, backend: detector.backend, ms: performance.now() - t0 }
   post(msg, [msg.times.buffer, ...tracks.map((t) => t.boxes.buffer), ...thumbs.filter((b): b is ImageBitmap => !!b)])
 }

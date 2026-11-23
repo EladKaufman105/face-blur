@@ -3,7 +3,7 @@ import { t, duration } from '../i18n'
 import { BlurRenderer, ellipseFor, type Ellipse } from '../lib/renderer'
 import { DEFAULT_LOOK, frameAt, trackBox, type Analysis, type BlurMode, type Look, type Track } from '../lib/types'
 import type { ExportJob } from './Exporting'
-import { AddIcon, BackIcon, CloseIcon, CutIcon, FaceIcon, MarkIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
+import { AddIcon, BackIcon, CloseIcon, CutIcon, FaceIcon, PictureIcon, MarkIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
 import { FRAME, Timeline } from './Timeline'
 import { BlurBar } from './BlurBar'
 import { CutTab, wordSpan } from './CutTab'
@@ -15,6 +15,10 @@ import { SfxScheduler, type SfxClip } from '../lib/sfx'
 import { drawWatermark, watermarkOn, type Watermark } from '../lib/watermark'
 import { CleanupCard, SoundTab, SubtitlesTab, WatermarkTab, loadWatermark } from './EditorTabs'
 import { ExportSheet } from './ExportSheet'
+import { BackgroundCard, FrameCard, StabilizeCard, type PictureBusy } from './PictureTab'
+import { maskAt, maskIndex, NO_BACKGROUND, type Background, type PeopleMasks } from '../lib/background'
+import { ASPECT_RATIO, cropFraction, reframePath, steady, viewRect } from '../lib/camera'
+import type { PictureMessage, PictureRequest } from '../workers/picture.worker'
 import { cleanupOn, type Cleanup } from '../lib/cleanup'
 import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
 import { Analyzing } from './Analyzing'
@@ -42,15 +46,13 @@ function loadLook(): Look {
   return DEFAULT_LOOK
 }
 
-export type EditorTab = 'faces' | 'edit' | 'subs' | 'sound' | 'mark'
+export type EditorTab = 'faces' | 'edit' | 'picture' | 'subs' | 'sound' | 'mark'
 
-/**
- * The groups of tools, as in the app (its privacy, editing, subtitles, sound and branding; the
- * web has no picture group yet): each in its color, keys 1 to 5.
- */
+/** The groups of tools, as in the app: each in its color, keys 1 to 6. */
 const GROUPS: [EditorTab, string, (p: { size?: number }) => any, string][] = [
   ['faces', 'פרטיות', FaceIcon, 'var(--coral)'],
   ['edit', 'עריכה', CutIcon, 'var(--primary)'],
+  ['picture', 'תמונה', PictureIcon, 'var(--violet)'],
   ['subs', 'כתוביות', SubtitlesIcon, 'var(--amber)'],
   ['sound', 'סאונד', SoundIcon, 'var(--cyan)'],
   ['mark', 'מיתוג', MarkIcon, 'var(--primary)'],
@@ -58,6 +60,15 @@ const GROUPS: [EditorTab, string, (p: { size?: number }) => any, string][] = [
 
 /** What undo and redo move between: the blurs and the ones turned off, the sounds, the subtitles, the cuts. */
 type Snap = { off: Set<number>; sfx: SfxClip[]; cues: Cue[]; tracks: Track[]; cuts: Range[] }
+
+/** A key for frame [k]'s mask of [m] (a new pass gives new keys): the renderer uploads a mask once. */
+const maskGens = new WeakMap<PeopleMasks, number>()
+let maskGen = 0
+function maskKey(m: PeopleMasks, k: number): string {
+  let g = maskGens.get(m)
+  if (g === undefined) { g = ++maskGen; maskGens.set(m, g) }
+  return g + ':' + k
+}
 
 /** Width of a new blur when there's no face under the tap, in frame widths (as in the app). */
 const NEW_BLUR = 0.12
@@ -89,12 +100,26 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [exportOpen, setExportOpen] = useState(false)
   const [exportOpts, setExportOpts] = useState(loadExportOptions)
   const [srcInfo, setSrcInfo] = useState<{ codec: string; fps: number } | null>(null)
+  // The picture tools: the camera's motion, the cuts and the people (from one pass over the video).
+  const [picture, setPicture] = useState<{ motion: Float32Array; cuts: number[]; masks: PeopleMasks | null } | null>(null)
+  const [picBusy, setPicBusy] = useState<PictureBusy>(null)
+  const [background, setBackground] = useState<Background>(NO_BACKGROUND)
+  const [steadyLevel, setSteadyLevel] = useState(0)
+  const bgImage = useRef<HTMLImageElement | null>(null)
+  const steadied = useMemo(() => (picture && steadyLevel > 0 ? steady(picture.motion, picture.cuts, H / W, an.fps, steadyLevel) : null), [picture, steadyLevel, an.fps])
+  const crop = useMemo(() => cropFraction(W, H, ASPECT_RATIO[exportOpts.aspect]), [exportOpts.aspect])
+  const shotCuts = an.cuts ?? picture?.cuts ?? []
+  const framePath = useMemo(
+    () => (exportOpts.aspect !== 'original' && times.length ? reframePath(times.length, tracks, shotCuts, an.fps, crop[0], crop[1]) : null),
+    [exportOpts.aspect, times, tracks, shotCuts, an.fps, crop],
+  )
   const cutMap = useMemo(() => new CutMap(cuts), [cuts])
   const url = useMemo(() => URL.createObjectURL(file), [file])
   useEffect(() => () => URL.revokeObjectURL(url), [url])
   const video = useRef<HTMLVideoElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const overlay = useRef<HTMLCanvasElement>(null)
+  const rings = useRef<HTMLCanvasElement>(null)
   const renderer = useRef<BlurRenderer | null>(null)
   const [off, setOff] = useState<Set<number>>(new Set())
   const [look, setLook] = useState<Look>(loadLook)
@@ -118,10 +143,15 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [mark, setMark] = useState<Watermark>(loadWatermark)
   const logo = useRef<HTMLImageElement | null>(null)
   const scheduler = useMemo(() => new SfxScheduler(), [])
-  const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, voiceBuf: null as AudioBuffer | null, tracks, selected, cuts, cutMap, fps: an.fps, times })
+  const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, voiceBuf: null as AudioBuffer | null, tracks, selected, cuts, cutMap, fps: an.fps, times, steadied, crop, framePath, masks: null as PeopleMasks | null, background })
   // (The drawing runs in callbacks made once: it reads the frame times from here, as they can
   // arrive later, from a search for faces or a first blur by hand.)
   state.current.times = times
+  state.current.steadied = steadied
+  state.current.crop = crop
+  state.current.framePath = framePath
+  state.current.masks = picture?.masks ?? null
+  state.current.background = background
   state.current.tracks = tracks
   state.current.selected = selected
   state.current.cuts = cuts
@@ -162,11 +192,32 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       try { renderer.current = new BlurRenderer(c) } catch { return }
     }
     const i = frameAt(state.current.times, state.current.mediaTime)
-    renderer.current.draw(v, W, H, facesAt(i, false), state.current.look)
+    const r = renderer.current
+    // The background (behind the people, or a screen's color).
+    const bg = state.current.background
+    r.setBackground(bg)
+    const masks = state.current.masks
+    if (bg.key === 'person' && masks) {
+      const k = maskIndex(masks, i)
+      r.setMask(masks.w, masks.h, k >= 0 ? maskAt(masks, k) : null, maskKey(masks, k))
+    } else r.setMask(1, 1, null, null)
+    r.setBackgroundImage(bg.fill === 'image' ? bgImage.current : null, bg.image)
+    r.draw(v, W, H, facesAt(i, false), state.current.look)
+    // The steadied picture (and the blurs' rings with it): moved and enlarged, as exported.
+    const st = state.current.steadied
+    const k = st ? Math.min(i, st.sx.length - 1) : 0
+    const move = st ? `scale(${st.zoom}) translate(${(st.sx[k] * 100).toFixed(3)}%, ${(st.sy[k] * 100).toFixed(3)}%)` : ''
+    c.style.transform = move
+    const rg = rings.current
+    if (rg) {
+      rg.style.transform = move
+      if (rg.width !== W || rg.height !== H) { rg.width = W; rg.height = H }
+    }
     // Faces the user un-blurred: a dashed ring, so they can be tapped back on.
-    const o = overlay.current
-    if (o) {
-      if (o.width !== W || o.height !== H) { o.width = W; o.height = H }
+    const o = rings.current
+    const top = overlay.current
+    if (o && top) {
+      if (top.width !== W || top.height !== H) { top.width = W; top.height = H }
       const ctx = o.getContext('2d')!
       ctx.clearRect(0, 0, W, H)
       ctx.setLineDash([W / 120, W / 160])
@@ -188,10 +239,31 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         ctx.ellipse(se.cx, se.cy, se.rx, se.ry, 0, 0, Math.PI * 2)
         ctx.stroke()
       }
+      // Over the picture: the exported frame (when it's cut to a shape), and in it the watermark
+      // and the subtitle, where they'll be.
+      const tc = top.getContext('2d')!
+      tc.clearRect(0, 0, W, H)
+      const [cw, ch] = state.current.crop
+      let fx = 0, fy = 0, fw = W, fh = H
+      if (cw < 0.999 || ch < 0.999) {
+        const fp = state.current.framePath
+        const q = fp ? Math.min(i, fp.x.length - 1) : 0
+        const [x, y, w, h] = viewRect(W, H, [cw, ch], fp ? [fp.x[q], fp.y[q]] : [0.5, 0.5], 0, 0, 1)
+        fx = x; fy = y; fw = w; fh = h
+        tc.fillStyle = 'rgba(0,0,0,0.6)'
+        tc.fillRect(0, 0, W, H)
+        tc.clearRect(fx, fy, fw, fh)
+        tc.strokeStyle = 'rgba(255,255,255,0.9)'
+        tc.lineWidth = Math.max(2, W / 500)
+        tc.strokeRect(fx, fy, fw, fh)
+      }
+      tc.save()
+      tc.translate(fx, fy)
       const m = state.current.mark
-      if (watermarkOn(m)) drawWatermark(ctx, m, W, H, m.image ? logo.current : null)
+      if (watermarkOn(m)) drawWatermark(tc, m, fw, fh, m.image ? logo.current : null)
       const cue = cueAt(state.current.cues, state.current.mediaTime)
-      if (cue) drawSubtitle(ctx, maskCue(cue, state.current.words, state.current.bleeped), state.current.subStyle, W, H)
+      if (cue) drawSubtitle(tc, maskCue(cue, state.current.words, state.current.bleeped), state.current.subStyle, fw, fh)
+      tc.restore()
     }
   }
 
@@ -271,7 +343,50 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   // Redraw the paused frame when the look, the faces or the watermark change.
   useEffect(() => {
     if (video.current?.paused) draw()
-  }, [off, look, mark, cues, subStyle, tracks, selected])
+  }, [off, look, mark, cues, subStyle, tracks, selected, background, picture, steadied, framePath, crop])
+
+  // The background's picture, loaded once for the preview.
+  useEffect(() => {
+    if (!background.image) { bgImage.current = null; return }
+    const img = new Image()
+    img.onload = () => { bgImage.current = img; if (video.current?.paused) draw() }
+    img.src = background.image
+  }, [background.image])
+
+  // ---------------------------------------------------------------- the picture pass
+
+  const pictureWorker = useRef<Worker | null>(null)
+  useEffect(() => () => pictureWorker.current?.terminate(), [])
+  /** One pass over the video: the camera's motion and the cuts, and ([people]) where the people are. */
+  const runPicture = (people: boolean) => {
+    pictureWorker.current?.terminate()
+    video.current?.pause()
+    const w = new Worker(new URL('../workers/picture.worker.ts', import.meta.url), { type: 'module' })
+    pictureWorker.current = w
+    setPicBusy({ what: people ? 'people' : 'motion', progress: 0 })
+    const end = () => { w.terminate(); if (pictureWorker.current === w) pictureWorker.current = null; setPicBusy(null) }
+    w.onmessage = (e: MessageEvent<PictureMessage>) => {
+      const m = e.data
+      if (m.type === 'progress') { setPicBusy((b) => (b ? { ...b, progress: m.progress } : b)); return }
+      end()
+      if (m.type === 'error') { setNotice(t('משהו השתבש') + ': ' + m.message); return }
+      if (!state.current.times.length) setAn((a) => (a.times.length ? a : { ...a, times: m.times, fps: m.fps }))
+      setPicture((p) => ({ motion: m.motion, cuts: m.cuts, masks: m.masks ?? (people ? null : p?.masks ?? null) }))
+    }
+    w.onerror = (e) => { end(); setNotice(t('משהו השתבש') + ': ' + (e.message || '')) }
+    const forced = new URLSearchParams(location.search).get('backend')
+    const req: PictureRequest = { file, times: state.current.times, people, model: new URL('models/people.onnx', document.baseURI).href, backend: forced === 'wasm' || forced === 'webgpu' ? forced : undefined }
+    w.postMessage(req)
+  }
+  const cancelPicture = () => {
+    pictureWorker.current?.terminate()
+    pictureWorker.current = null
+    setPicBusy(null)
+  }
+  const chooseSteady = (level: number) => {
+    setSteadyLevel(level)
+    if (level > 0 && !picture && !picBusy) runPicture(false)
+  }
 
   // A short message over the video (what a tool did, or why it couldn't).
   useEffect(() => {
@@ -646,7 +761,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         case 'ArrowRight': e.preventDefault(); v.pause(); v.currentTime = Math.min(end, v.currentTime + frame); break
         case '-': case '_': timelineControls.zoom?.(1 / 1.5); break
         case '+': case '=': timelineControls.zoom?.(1.5); break
-        case '1': case '2': case '3': case '4': case '5': setTab(GROUPS[Number(k) - 1][0]); break
+        case '1': case '2': case '3': case '4': case '5': case '6': setTab(GROUPS[Number(k) - 1][0]); break
         case 'Delete': case 'Backspace':
           if (selectedSfx !== null) { setSfxH((list) => list.filter((c) => c.id !== selectedSfx)); setSelectedSfx(null) }
           else if (selected !== null && !following) deleteSel()
@@ -697,8 +812,11 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           </div>
         </div>
         <div class={'screen' + (adding ? ' adding' : '') + (selected !== null ? ' sel' : '')} onPointerDown={onScreenDown} onPointerMove={onScreenMove} onPointerUp={onScreenUp} onPointerCancel={() => { press.current = null }}>
-          <canvas ref={canvas} width={W} height={H} style={{ aspectRatio: `${W} / ${H}` }} />
-          <canvas ref={overlay} width={W} height={H} style={{ position: 'absolute', inset: 0, margin: 'auto', pointerEvents: 'none', aspectRatio: `${W} / ${H}`, maxWidth: '100%', maxHeight: '50dvh' }} />
+          <div class="view" style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc(var(--screen-h) * ${(W / H).toFixed(4)}))` }}>
+            <canvas ref={canvas} width={W} height={H} />
+            <canvas ref={rings} class="layer" width={W} height={H} />
+            <canvas ref={overlay} class="layer" width={W} height={H} />
+          </div>
           <video ref={video} src={url} playsInline preload="auto" />
           {adding && <div class="screen-hint">{t('הקש על הסרטון במקום שצריך לטשטש')}</div>}
           {notice && <div class="toast" role="status">{notice}</div>}
@@ -874,6 +992,13 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             onPause={() => video.current?.pause()}
           />
         )}
+        {tab === 'edit' && <StabilizeCard level={steadyLevel} onLevel={chooseSteady} busy={picBusy} zoom={steadied ? Math.round((steadied.zoom - 1) * 100) : null} onCancel={() => { cancelPicture(); if (!picture) setSteadyLevel(0) }} />}
+        {tab === 'picture' && (
+          <>
+            <BackgroundCard bg={background} onChange={setBackground} masksReady={!!picture?.masks} busy={picBusy} onFindPeople={() => runPicture(true)} onCancel={cancelPicture} />
+            <FrameCard aspect={exportOpts.aspect} onChange={(a) => setExportOpts((o) => ({ ...o, aspect: a }))} hasFaces={tracks.length > 0} />
+          </>
+        )}
         {tab === 'mark' && <WatermarkTab mark={mark} onChange={setMark} />}
         {tab === 'subs' && (
           <SubtitlesTab
@@ -901,7 +1026,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             <dt dir="ltr"><kbd>←</kbd> <kbd>→</kbd></dt><dd>{t('פריים אחורה או קדימה')}</dd>
             <dt dir="ltr"><kbd>Ctrl+Z</kbd> <kbd>Ctrl+Shift+Z</kbd></dt><dd>{t('בטל ובצע שוב')}</dd>
             <dt dir="ltr"><kbd>−</kbd> <kbd>+</kbd></dt><dd>{t('זום בציר הזמן')}</dd>
-            <dt dir="ltr"><kbd>1</kbd>–<kbd>5</kbd></dt><dd>{t('קבוצות הכלים')}</dd>
+            <dt dir="ltr"><kbd>1</kbd>–<kbd>6</kbd></dt><dd>{t('קבוצות הכלים')}</dd>
             <dt><kbd>Delete</kbd></dt><dd>{t('מחיקת הטשטוש או האפקט הנבחר')}</dd>
             <dt><kbd>Esc</kbd></dt><dd>{t('ביטול הבחירה')}</dd>
           </dl>
@@ -925,7 +1050,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       <ExportSheet
         width={W}
         height={H}
-        fps={srcInfo?.fps ?? an.fps}
+        fps={srcInfo?.fps ?? (analyzed ? an.fps : null)}
         sourceHevc={srcInfo?.codec === 'hevc'}
         hasCues={cues.length > 0}
         options={exportOpts}
@@ -934,7 +1059,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         onGo={() => {
           setExportOpen(false)
           saveExportOptions(exportOpts)
-          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: maskCue(c, words, bleeped) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, cuts, options: exportOpts })
+          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: maskCue(c, words, bleeped) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, cuts, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
         }}
       />
     )}

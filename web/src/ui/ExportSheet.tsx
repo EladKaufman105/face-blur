@@ -1,12 +1,14 @@
 import { useEffect } from 'preact/hooks'
 import { t } from '../i18n'
 import { fpsChoices, resolutionChoices, type ExportCodec, type ExportOptions, type ExportQuality } from '../lib/exportopts'
+import { ASPECT_RATIO, cropFraction, type Aspect } from '../lib/camera'
 import { CloseIcon, SaveIcon } from './icons'
 
 type Props = {
   width: number
   height: number
-  fps: number
+  /** The source's frame rate (null until it's known). */
+  fps: number | null
   /** The source's codec ('hevc' or another). */
   sourceHevc: boolean
   hasCues: boolean
@@ -23,9 +25,11 @@ type Props = {
 export function ExportSheet(p: Props) {
   const o = p.options
   const set = (patch: Partial<ExportOptions>) => p.onChange({ ...o, ...patch })
-  const short = Math.min(p.width, p.height)
-  const sizes = resolutionChoices(p.width, p.height)
-  const rates = fpsChoices(p.fps)
+  // The sizes of the frame's shape (a 9:16 frame of a wide video is narrower).
+  const [cw, ch] = cropFraction(p.width, p.height, ASPECT_RATIO[o.aspect])
+  const short = Math.round(Math.min(p.width * cw, p.height * ch))
+  const sizes = resolutionChoices(p.width * cw, p.height * ch)
+  const rates = p.fps ? fpsChoices(p.fps) : []
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') p.onClose() }
     window.addEventListener('keydown', onKey)
@@ -49,16 +53,26 @@ export function ExportSheet(p: Props) {
             <p class="small muted" style="margin:0">{t('רק הסאונד, עם כל מה שעשית בו: חיתוכים, ניקוי, שינוי קול ואפקטים.')}</p>
           ) : (
             <>
+              <h4 class="caption">{t('פורמט')}</h4>
+              <div class="seg seg4 export-aspect" role="radiogroup">
+                {([['original', t('מקור')], ['9:16', '9:16'], ['1:1', '1:1'], ['4:5', '4:5']] as [Aspect, string][]).map(([a, label]) => (
+                  <button class={o.aspect === a ? 'on' : ''} role="radio" aria-checked={o.aspect === a} onClick={() => set({ aspect: a, shortSide: 0 })}><bdi dir="ltr">{label}</bdi></button>
+                ))}
+              </div>
               <h4 class="caption">{t('רזולוציה')}</h4>
               <div class="chips export-size">
                 {chip(!sizes.includes(o.shortSide), t('מקור (%s)', `${short}p`), () => set({ shortSide: 0 }))}
                 {sizes.map((s) => chip(o.shortSide === s, `${s}p`, () => set({ shortSide: s })))}
               </div>
               <h4 class="caption">{t('קצב פריימים')}</h4>
-              <div class="chips export-fps">
-                {chip(!rates.includes(o.fps), t('מקור (%s)', `\u2066${Math.round(p.fps)} fps\u2069`), () => set({ fps: 0 }))}
-                {rates.map((f) => chip(o.fps === f, `\u2066${f} fps\u2069`, () => set({ fps: f })))}
-              </div>
+              {p.fps ? (
+                <div class="chips export-fps">
+                  {chip(!rates.includes(o.fps), t('מקור (%s)', `\u2066${Math.round(p.fps)} fps\u2069`), () => set({ fps: 0 }))}
+                  {rates.map((f) => chip(o.fps === f, `\u2066${f} fps\u2069`, () => set({ fps: f })))}
+                </div>
+              ) : (
+                <p class="small muted" style="margin:0">{t('בודק את הסרטון…')}</p>
+              )}
               <h4 class="caption">{t('איכות וגודל קובץ')}</h4>
               <div class="seg" role="radiogroup">
                 {([['original', 'כמו המקור'], ['high', 'גבוהה'], ['saver', 'חיסכון']] as [ExportQuality, string][]).map(([q, label]) => (

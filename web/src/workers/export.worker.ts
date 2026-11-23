@@ -3,13 +3,18 @@
 import { ALL_FORMATS, AudioSample, AudioSampleSource, BlobSource, BufferTarget, Conversion, Input, Mp3OutputFormat, Mp4OutputFormat, Output, QUALITY_HIGH, VideoSample, canEncodeAudio, canEncodeVideo, getFirstEncodableAudioCodec, type VideoCodec } from 'mediabunny'
 import { registerMp3Encoder } from '@mediabunny/mp3-encoder'
 import { DEFAULT_EXPORT, outputSize, videoBitrate, type ExportOptions } from '../lib/exportopts'
+import { maskAt, maskIndex, type Background, type PeopleMasks } from '../lib/background'
+import { ASPECT_RATIO, cropFraction, viewRect, type Steady } from '../lib/camera'
+
+/** The picture tools: the background, the steadying and the frame that follows the faces (per frame of [times]). */
+export type ExportPicture = { background: Background | null; masks: PeopleMasks | null; image: ImageBitmap | null; steady: Steady | null; path: { x: Float32Array; y: Float32Array } | null }
 import { BlurRenderer, ellipseFor } from '../lib/renderer'
 import { frameAt, trackBox, type Look, type Track } from '../lib/types'
 import { mixInto, type SfxSamples } from '../lib/sfx'
 import { cueAt, drawSubtitle, type Cue, type SubStyle } from '../lib/subtitles'
 import { CutMap, type Range } from '../lib/cutmap'
 
-export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; font: string; voice: { rate: number; data: Float32Array } | null; cuts: Range[]; options?: ExportOptions }
+export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; font: string; voice: { rate: number; data: Float32Array } | null; cuts: Range[]; options?: ExportOptions; picture?: ExportPicture }
 export type ExportMessage =
   | { type: 'progress'; progress: number }
   | { type: 'done'; blob: Blob; ms: number }
@@ -110,8 +115,13 @@ async function run(req: ExportRequest) {
   if (!video) return post({ type: 'error', code: 'no-video', message: 'no video track' })
   const sw = video.displayWidth, sh = video.displayHeight
   // The size, frame rate, codec and bitrate asked for (the codec the browser can make).
-  const [w, h] = outputSize(sw, sh, o.shortSide)
-  const resized = w !== sw + (sw & 1) || h !== sh + (sh & 1)
+  const [w, h] = outputSize(sw, sh, o.shortSide, o.aspect)
+  // A frame that follows the faces or a steadied camera: the picture is made at the source's size
+  // and the part shown taken from it here (not resized by the conversion).
+  const pic = req.picture
+  const crop = cropFraction(sw, sh, ASPECT_RATIO[o.aspect])
+  const camera = !!pic?.steady || crop[0] < 0.999 || crop[1] < 0.999
+  const resized = !camera && (w !== sw + (sw & 1) || h !== sh + (sh & 1))
   const stats = await video.computePacketStats(240).catch(() => null)
   const srcFps = stats && stats.averagePacketRate > 0 ? stats.averagePacketRate : 30
   const wanted: VideoCodec = o.codec === 'hevc' || (o.codec === 'same' && video.codec === 'hevc') ? 'hevc' : 'avc'
@@ -120,9 +130,16 @@ async function run(req: ExportRequest) {
   if (!codec) return post({ type: 'error', code: 'encoder', message: 'no H.264/HEVC encoder' })
   const bitrate = videoBitrate(o, sw, sh, srcFps, stats?.averageBitrate ?? 0, codec === 'hevc')
 
-  const canvas = new OffscreenCanvas(w, h)
+  // [rw] x [rh]: what the renderer draws (the frames as they come); [w] x [h]: the result.
+  const rw = camera ? sw : w, rh = camera ? sh : h
+  const canvas = new OffscreenCanvas(rw, rh)
   const renderer = new BlurRenderer(canvas)
-  renderer.setOverlay(overlay)
+  if (!camera) renderer.setOverlay(overlay)
+  const out = camera ? new OffscreenCanvas(w, h) : null
+  const octx = out?.getContext('2d') ?? null
+  if (octx) octx.imageSmoothingQuality = 'high'
+  renderer.setBackground(pic?.background ?? null)
+  if (pic?.image) renderer.setBackgroundImage(pic.image, 'image')
   // Subtitles: the watermark and the current cue on one picture, redrawn when the cue changes.
   let family = "'Allo Hebrew', system-ui, sans-serif"
   if (cues.length > 0) {
@@ -172,6 +189,7 @@ async function run(req: ExportRequest) {
       forceTranscode: true,
       allowTransformationMetadata: false,
       ...(resized ? { width: w, height: h, fit: 'fill' as const } : {}),
+      ...(camera ? { processedWidth: w, processedHeight: h } : {}),
       ...(o.fps > 0 && o.fps < srcFps - 0.5 ? { frameRate: o.fps } : {}),
       process: async (sample) => {
         // A cut frame is dropped; the ones after a cut move up.
@@ -184,31 +202,49 @@ async function run(req: ExportRequest) {
             ctx.clearRect(0, 0, w, h)
             if (overlay) ctx.drawImage(overlay, 0, 0, w, h)
             if (cue) drawSubtitle(ctx, cue.text, subStyle, w, h, family)
-            renderer.setOverlay(layer)
+            if (!camera) renderer.setOverlay(layer)
           }
         }
         const i = frameAt(times, sample.timestamp)
         const faces = []
         for (const t of tracks) {
           const b = trackBox(t, i)
-          if (b) faces.push(ellipseFor(b, w, h, look.padding * (t.scale ?? 1)))
+          if (b) faces.push(ellipseFor(b, rw, rh, look.padding * (t.scale ?? 1)))
+        }
+        const m = pic?.masks
+        if (m && pic?.background?.key === 'person') {
+          const k = maskIndex(m, i)
+          renderer.setMask(m.w, m.h, k >= 0 ? maskAt(m, k) : null, k)
         }
         let frame: VideoFrame | null = null
         try {
           frame = sample.toVideoFrame()
-          renderer.draw(frame, w, h, faces, look)
+          renderer.draw(frame, rw, rh, faces, look)
         } catch {
           // Some browsers can't upload a VideoFrame to WebGL: go through a 2D canvas.
-          scratch ??= new OffscreenCanvas(w, h)
+          scratch ??= new OffscreenCanvas(rw, rh)
           const ctx = scratch.getContext('2d')!
-          sample.draw(ctx, 0, 0, w, h)
-          renderer.draw(scratch, w, h, faces, look)
+          sample.draw(ctx, 0, 0, rw, rh)
+          renderer.draw(scratch, rw, rh, faces, look)
         } finally {
           frame?.close()
         }
-        if (cuts.empty) return canvas
+        let result: OffscreenCanvas = canvas
+        if (out && octx) {
+          // The steadied view, and in it the frame that follows the faces; then the watermark and the subtitles.
+          const st = pic?.steady
+          const k = Math.min(i, (st?.sx.length ?? 1) - 1)
+          const p = pic?.path
+          const q = Math.min(i, (p?.x.length ?? 1) - 1)
+          const [x, y, vw, vh] = viewRect(rw, rh, crop, p ? [p.x[q], p.y[q]] : [0.5, 0.5], st ? st.sx[k] : 0, st ? st.sy[k] : 0, st?.zoom ?? 1)
+          octx.drawImage(canvas, x, y, vw, vh, 0, 0, w, h)
+          if (layer) octx.drawImage(layer, 0, 0)
+          else if (overlay) octx.drawImage(overlay, 0, 0, w, h)
+          result = out
+        }
+        if (cuts.empty) return result
         const ts = sample.timestamp, d = sample.duration
-        return new VideoSample(canvas, { timestamp: cuts.out(ts), duration: cuts.kept(ts, ts + d) || d })
+        return new VideoSample(result, { timestamp: cuts.out(ts), duration: cuts.kept(ts, ts + d) || d })
       },
     },
     // The sound is copied as is, or re-encoded with the sound effects mixed in (and the cuts).

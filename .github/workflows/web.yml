@@ -58,6 +58,8 @@ jobs:
           node tests/edit.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/edit-phone phone
           # The sound's cleanup, MP3 (from the editor and the home screen), a lower size and frame rate.
           node tests/sound.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/samples/speech_en.mp4 /tmp/samples/classroom60.mp4 /tmp/web-results/sound
+          # The picture: a green screen, a 9:16 frame, a steadied camera, the people's background.
+          node tests/picture.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/green_screen.mp4 /tmp/samples/classroom.mp4 /tmp/samples/walk.mp4 /tmp/samples/speech_two.mp4 /tmp/web-results/picture
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -1,5 +1,6 @@
-// What the export makes, as the app's export options: a video (its resolution, frame rate,
-// quality and codec) or only its sound as MP3, and the subtitles as an SRT file too.
+// What the export makes, as the app's export options: a video (its frame, resolution, frame
+// rate, quality and codec) or only its sound as MP3, and the subtitles as an SRT file too.
+import { ASPECT_RATIO, cropFraction, type Aspect } from './camera'
 
 export type ExportFormat = 'mp4' | 'mp3'
 export type ExportQuality = 'original' | 'high' | 'saver'
@@ -15,14 +16,17 @@ export type ExportOptions = {
   codec: ExportCodec
   /** Save the subtitles as an SRT file too. */
   srt: boolean
+  /** As shot, or a vertical, square or 4:5 frame that follows the faces. */
+  aspect: Aspect
 }
 
-export const DEFAULT_EXPORT: ExportOptions = { format: 'mp4', shortSide: 0, fps: 0, quality: 'high', codec: 'same', srt: false }
+export const DEFAULT_EXPORT: ExportOptions = { format: 'mp4', shortSide: 0, fps: 0, quality: 'high', codec: 'same', srt: false, aspect: 'original' }
 
 export function loadExportOptions(): ExportOptions {
   try {
     const o = JSON.parse(localStorage.getItem('onit.export') ?? 'null')
-    if (o && typeof o === 'object') return { ...DEFAULT_EXPORT, ...o, format: 'mp4' }
+    // The frame is the video's own choice: each video starts as shot.
+    if (o && typeof o === 'object') return { ...DEFAULT_EXPORT, ...o, format: 'mp4', aspect: 'original' }
   } catch {}
   return DEFAULT_EXPORT
 }
@@ -39,8 +43,11 @@ export const fpsChoices = (fps: number) => [60, 50, 30, 25, 24].filter((f) => f 
 
 const even = (v: number) => Math.max(2, Math.round(v / 2) * 2)
 
-/** The exported picture's size (even). */
-export function outputSize(w: number, h: number, shortSide: number): [number, number] {
+/** The exported picture's size (even): the frame's crop of [w] x [h], then the resolution asked for. */
+export function outputSize(w: number, h: number, shortSide: number, aspect: Aspect = 'original'): [number, number] {
+  const [cw, ch] = cropFraction(w, h, ASPECT_RATIO[aspect])
+  w = w * cw
+  h = h * ch
   const short = Math.min(w, h)
   if (shortSide <= 0 || shortSide >= short || short <= 0) return [even(w), even(h)]
   const s = shortSide / short
@@ -54,7 +61,7 @@ export const outputFps = (fps: number, wanted: number) => (wanted <= 0 || wanted
  * rates (1080p30 ≈ 8 Mbps), never more than the source's scaled to the new size.
  */
 export function videoBitrate(o: ExportOptions, srcW: number, srcH: number, srcFps: number, srcBitrate: number, hevc: boolean): number {
-  const [w, h] = outputSize(srcW, srcH, o.shortSide)
+  const [w, h] = outputSize(srcW, srcH, o.shortSide, o.aspect)
   const f = outputFps(srcFps, o.fps)
   const recommended = w * h * 30 * 0.13 * Math.pow(f / 30, 0.6) * (hevc ? 0.65 : 1)
   const scaled = srcBitrate * ((w * h) / Math.max(1, srcW * srcH)) * Math.pow(f / Math.max(1, srcFps), 0.6)

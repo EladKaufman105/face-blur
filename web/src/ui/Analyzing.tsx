@@ -65,7 +65,7 @@ export function Analyzing({ file, sensitive, onDone, onError, onCancel }: Props)
           b.close()
           return c.toDataURL('image/jpeg', 0.85)
         })
-        onDone({ times: m.times, width: m.width, height: m.height, fps: m.fps, tracks: m.tracks }, thumbs, m.ms, m.backend)
+        onDone({ times: m.times, width: m.width, height: m.height, fps: m.fps, tracks: m.tracks, cuts: m.cuts }, thumbs, m.ms, m.backend)
         worker.terminate()
       } else if (m.type === 'error') {
         worker.terminate()

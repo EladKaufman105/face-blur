@@ -1,6 +1,7 @@
 // Draws a video frame with its faces blurred, pixelated or covered (WebGL2), the same look as
 // the Android app: a soft ellipse around each face, blur relative to the face's size.
 import type { Look } from './types'
+import type { Background } from './background'
 
 export interface Ellipse {
   /** Pixels, image orientation (origin top-left). */
@@ -103,6 +104,79 @@ void main() {
   }
 }`
 
+// The background replaced or blurred behind the people (from their mask) or in front of a green
+// or blue screen, as in the app. uv here is bottom-up; every texture's row 0 is the image's top.
+const BG_FS = `#version 300 es
+precision highp float;
+in vec2 vUV;
+uniform sampler2D uSrc;
+uniform sampler2D uMask;
+uniform sampler2D uBg;
+uniform int uSource; // 0 people, 1 a screen
+uniform int uFill;   // 1 blur, 2 color, 3 picture
+uniform int uKeyChannel;
+uniform vec3 uColor;
+uniform vec2 uKey;
+uniform float uTol;
+uniform vec2 uRadius;
+uniform vec4 uBgMap;
+uniform vec2 uMaskTexel;
+out vec4 o;
+vec3 srcAt(vec2 uv) { return texture(uSrc, vec2(uv.x, 1.0 - uv.y)).rgb; }
+float maskAt(vec2 uv) { return texture(uMask, vec2(uv.x, 1.0 - uv.y)).r; }
+vec2 cbcr(vec3 c) { return vec2(-0.168736 * c.r - 0.331264 * c.g + 0.5 * c.b, 0.5 * c.r - 0.418688 * c.g - 0.081312 * c.b); }
+// How much of the point is foreground: quick, for the blur's samples.
+float fgAlpha(vec2 uv) {
+  if (uSource == 0) return smoothstep(0.3, 0.7, maskAt(uv));
+  return smoothstep(uTol, uTol + 0.08, distance(cbcr(srcAt(uv)), uKey));
+}
+// The person mask is coarse: around each point it's averaged over neighbours that look alike
+// (joint bilateral), so its edge snaps to the picture's own edges.
+float personAlpha(vec2 uv) {
+  vec3 c0 = srcAt(uv);
+  float acc = 0.0, wsum = 0.0;
+  for (int j = -2; j <= 2; j++) {
+    for (int i = -2; i <= 2; i++) {
+      vec2 d = vec2(float(i), float(j)) * uMaskTexel;
+      vec3 dc = srcAt(uv + d) - c0;
+      float w = exp(-dot(dc, dc) * 40.0 - float(i * i + j * j) * 0.3);
+      acc += maskAt(uv + d) * w;
+      wsum += w;
+    }
+  }
+  return smoothstep(0.38, 0.62, acc / wsum);
+}
+void main() {
+  vec3 fg = srcAt(vUV);
+  float a = uSource == 0 ? personAlpha(vUV) : fgAlpha(vUV);
+  if (uSource == 1) {
+    // Spill: the screen's color reflected on the subject is taken out.
+    if (uKeyChannel == 1) fg.g = min(fg.g, max(fg.r, fg.b));
+    else fg.b = min(fg.b, max(fg.r, fg.g));
+  }
+  vec3 bg;
+  if (uFill == 2) {
+    bg = uColor;
+  } else if (uFill == 3) {
+    bg = texture(uBg, vec2(vUV.x, 1.0 - vUV.y) * uBgMap.xy + uBgMap.zw).rgb;
+  } else {
+    // A disc of samples from the background only, so the person leaves no halo.
+    vec3 acc = vec3(0.0);
+    float wsum = 0.0;
+    for (int i = 0; i < 28; i++) {
+      float fi = float(i);
+      float r = sqrt((fi + 0.5) / 28.0);
+      float th = fi * 2.39996;
+      vec2 uv = clamp(vUV + vec2(cos(th), sin(th)) * r * uRadius, 0.0, 1.0);
+      float w = 1.0 - fgAlpha(uv) + 0.03;
+      acc += srcAt(uv) * w;
+      wsum += w;
+    }
+    bg = acc / wsum;
+  }
+  o = vec4(mix(bg, fg, a), 1.0);
+}`
+
 // A full-frame picture with transparency (the watermark), over everything.
 const OVERLAY_FS = `#version 300 es
 precision highp float;
@@ -127,6 +201,17 @@ export class BlurRenderer {
   private overlayTex: WebGLTexture | null = null
   private srcW = 0
   private srcH = 0
+  private bgProg: Prog
+  private bg: Background | null = null
+  private maskTex: WebGLTexture | null = null
+  private maskKey: unknown = null
+  private maskW = 1
+  private maskH = 1
+  private hasMask = false
+  private bgTex: WebGLTexture | null = null
+  private bgKey: unknown = null
+  private bgW = 1
+  private bgH = 1
 
   constructor(readonly canvas: HTMLCanvasElement | OffscreenCanvas) {
     const gl = canvas.getContext('webgl2', { premultipliedAlpha: false, preserveDrawingBuffer: true, antialias: false }) as WebGL2RenderingContext | null
@@ -140,6 +225,7 @@ export class BlurRenderer {
     this.gauss = this.program(VS, GAUSS_FS, ['uSrc', 'uDir', 'uSigma'])
     this.comp = this.program(COMP_VS, COMP_FS, ['uSrc', 'uBlur', 'uSrcSize', 'uRoi', 'uCanvas', 'uEll', 'uMode', 'uBlock', 'uAlpha'])
     this.overlayProg = this.program(VS, OVERLAY_FS, ['uSrc'])
+    this.bgProg = this.program(VS, BG_FS, ['uSrc', 'uMask', 'uBg', 'uSource', 'uFill', 'uKeyChannel', 'uColor', 'uKey', 'uTol', 'uRadius', 'uBgMap', 'uMaskTexel'])
     this.src = gl.createTexture()!
     for (let i = 0; i < 2; i++) {
       const t = gl.createTexture()!
@@ -175,11 +261,13 @@ export class BlurRenderer {
     gl.disable(gl.BLEND)
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
     gl.viewport(0, 0, w, h)
-    this.use(this.copy)
-    gl.activeTexture(gl.TEXTURE0)
-    gl.bindTexture(gl.TEXTURE_2D, this.src)
-    gl.uniform1i(this.copy.u.uSrc, 0)
-    this.drawQuad(this.copy)
+    if (!this.drawBackground(w, h)) {
+      this.use(this.copy)
+      gl.activeTexture(gl.TEXTURE0)
+      gl.bindTexture(gl.TEXTURE_2D, this.src)
+      gl.uniform1i(this.copy.u.uSrc, 0)
+      this.drawQuad(this.copy)
+    }
 
     for (const f of faces) this.face(f, look)
     if (this.overlayTex) {
@@ -194,6 +282,86 @@ export class BlurRenderer {
       this.drawQuad(this.overlayProg)
       gl.disable(gl.BLEND)
     }
+  }
+
+  /**
+   * The background behind the people or in front of a screen (null: as shot). For the people, a
+   * mask must be set too ([setMask]); for a picture, [setBackgroundImage].
+   */
+  setBackground(bg: Background | null) {
+    this.bg = bg && bg.fill !== 'none' ? bg : null
+  }
+
+  /** The people at the frame drawn next: w x h, 0..255, row 0 at the top. [key]: same key, same mask (not uploaded again). */
+  setMask(w: number, h: number, data: Uint8Array | null, key: unknown) {
+    const gl = this.gl
+    if (!data) { this.hasMask = false; return }
+    this.hasMask = true
+    if (key === this.maskKey) return
+    this.maskKey = key
+    this.maskTex ??= gl.createTexture()!
+    gl.bindTexture(gl.TEXTURE_2D, this.maskTex)
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, w, h, 0, gl.RED, gl.UNSIGNED_BYTE, data)
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4)
+    this.params(gl.LINEAR, gl.LINEAR)
+    this.maskW = w
+    this.maskH = h
+  }
+
+  /** The picture behind (covers the frame, centered). */
+  setBackgroundImage(img: (TexImageSource & { width: number; height: number }) | null, key: unknown) {
+    const gl = this.gl
+    if (!img) { this.bgKey = null; return }
+    if (key === this.bgKey) return
+    this.bgKey = key
+    this.bgTex ??= gl.createTexture()!
+    gl.bindTexture(gl.TEXTURE_2D, this.bgTex)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
+    this.params(gl.LINEAR, gl.LINEAR)
+    this.bgW = img.width
+    this.bgH = img.height
+  }
+
+  /** The frame with its background changed; false when there's nothing to change. */
+  private drawBackground(w: number, h: number): boolean {
+    const bg = this.bg
+    const gl = this.gl
+    if (!bg) return false
+    const person = bg.key === 'person'
+    if (person && (!this.hasMask || !this.maskTex)) return false
+    if (bg.fill === 'image' && !this.bgKey) return false
+    const p = this.bgProg
+    this.use(p)
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, this.src)
+    gl.uniform1i(p.u.uSrc, 0)
+    gl.activeTexture(gl.TEXTURE1)
+    gl.bindTexture(gl.TEXTURE_2D, this.maskTex ?? this.src)
+    gl.uniform1i(p.u.uMask, 1)
+    gl.activeTexture(gl.TEXTURE2)
+    gl.bindTexture(gl.TEXTURE_2D, this.bgTex ?? this.src)
+    gl.uniform1i(p.u.uBg, 2)
+    gl.uniform1i(p.u.uSource, person ? 0 : 1)
+    gl.uniform1i(p.u.uFill, bg.fill === 'blur' ? 1 : bg.fill === 'color' ? 2 : 3)
+    gl.uniform1i(p.u.uKeyChannel, bg.key === 'blue' ? 2 : 1)
+    const c = parseInt(bg.color.slice(1), 16)
+    gl.uniform3f(p.u.uColor, ((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255)
+    // The screen's color in CbCr.
+    const [kr, kg, kb] = bg.key === 'blue' ? [0.1, 0.25, 0.85] : [0.15, 0.75, 0.2]
+    gl.uniform2f(p.u.uKey, -0.168736 * kr - 0.331264 * kg + 0.5 * kb, 0.5 * kr - 0.418688 * kg - 0.081312 * kb)
+    gl.uniform1f(p.u.uTol, 0.08 + 0.22 * bg.tolerance)
+    gl.uniform2f(p.u.uMaskTexel, 1 / this.maskW, 1 / this.maskH)
+    const r = 0.03
+    gl.uniform2f(p.u.uRadius, r, (r * w) / Math.max(1, h))
+    // The picture covers the frame, centered.
+    const s = Math.max(w / this.bgW, h / this.bgH)
+    const sx = w / (this.bgW * s), sy = h / (this.bgH * s)
+    gl.uniform4f(p.u.uBgMap, sx, sy, (1 - sx) / 2, (1 - sy) / 2)
+    this.drawQuad(p)
+    gl.activeTexture(gl.TEXTURE0)
+    return true
   }
 
   /** A frame-sized picture drawn over every frame (null: none). */

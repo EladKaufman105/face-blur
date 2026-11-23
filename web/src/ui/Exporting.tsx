@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
 import { t, duration } from '../i18n'
 import type { Look, Track } from '../lib/types'
-import type { ExportMessage, ExportRequest } from '../workers/export.worker'
+import type { ExportMessage, ExportPicture, ExportRequest } from '../workers/export.worker'
 import { sfxSamples, type SfxClip } from '../lib/sfx'
 import { watermarkImage, type Watermark } from '../lib/watermark'
 import type { Cue, SubStyle } from '../lib/subtitles'
 import { BackIcon, CheckIcon, SaveIcon, ShareIcon, SubtitlesIcon } from './icons'
 import { CutMap, type Range } from '../lib/cutmap'
-import { DEFAULT_EXPORT, type ExportOptions } from '../lib/exportopts'
+import { DEFAULT_EXPORT, outputSize, type ExportOptions } from '../lib/exportopts'
 import { cutCues, toSrt } from '../lib/subtitles'
 
-export type ExportJob = { file: File; times: Float64Array; tracks: Track[]; look: Look; width: number; height: number; sfx: SfxClip[]; watermark: Watermark; cues: Cue[]; subStyle: SubStyle; voice: { rate: number; data: Float32Array } | null; cuts: Range[]; options?: ExportOptions; standalone?: boolean }
+export type ExportJob = { file: File; times: Float64Array; tracks: Track[]; look: Look; width: number; height: number; sfx: SfxClip[]; watermark: Watermark; cues: Cue[]; subStyle: SubStyle; voice: { rate: number; data: Float32Array } | null; cuts: Range[]; options?: ExportOptions; standalone?: boolean; picture?: Omit<ExportPicture, 'image'> }
 
 export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () => void; onNew: () => void }) {
   const [progress, setProgress] = useState(0)
@@ -32,10 +32,19 @@ export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () =
       // The sounds' samples and the watermark's picture are made here (the page has the decoder and
       // the font); track boxes are copied, not transferred: the editor keeps its own.
       const sfx = await sfxSamples(job.sfx)
-      const overlay = await watermarkImage(job.watermark, job.width, job.height)
+      // The watermark at the result's size (its frame and resolution).
+      const o = job.options ?? DEFAULT_EXPORT
+      const [ow, oh] = outputSize(job.width, job.height, o.shortSide, o.aspect)
+      const overlay = await watermarkImage(job.watermark, ow, oh)
+      const bg = job.picture?.background
+      const image = bg?.fill === 'image' && bg.image ? await createImageBitmap(await (await fetch(bg.image)).blob()) : null
       if (cancelled) return
-      const req: ExportRequest = { file: job.file, times: job.times, tracks: job.tracks, look: job.look, sfx, overlay, cues: job.cues, subStyle: job.subStyle, voice: job.voice, cuts: job.cuts, options: job.options, font: new URL('fonts/allo_hebrew.ttf', document.baseURI).href }
-      worker.postMessage(req, overlay ? [overlay] : [])
+      const picture: ExportPicture | undefined = job.picture ? { ...job.picture, image } : undefined
+      const req: ExportRequest = { file: job.file, times: job.times, tracks: job.tracks, look: job.look, sfx, overlay, cues: job.cues, subStyle: job.subStyle, voice: job.voice, cuts: job.cuts, options: job.options, picture, font: new URL('fonts/allo_hebrew.ttf', document.baseURI).href }
+      const transfer: Transferable[] = []
+      if (overlay) transfer.push(overlay)
+      if (image) transfer.push(image)
+      worker.postMessage(req, transfer)
     })().catch((e) => setError(String(e?.message ?? e)))
     return () => { cancelled = true; worker.terminate() }
   }, [job])

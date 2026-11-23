@@ -27,3 +27,4 @@ export const VisibleIcon = svg('M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 
 export const StartHereIcon = svg('M4 5h2v14H4zM8 11h8V7l5 5-5 5v-4H8z')
 export const EndHereIcon = svg('M18 5h2v14h-2zM3 11h8V7l5 5-5 5v-4H3z')
 export const MusicIcon = svg('M12 5v8.55c-.94-.54-2.1-.75-3.33-.32-1.34.48-2.37 1.67-2.61 3.07-.46 2.74 1.86 5.08 4.59 4.65 1.96-.31 3.35-2.11 3.35-4.1V7h2c1.1 0 2-.9 2-2s-.9-2-2-2h-2c-1.1 0-2 .9-2 2z')
+export const PictureIcon = svg('M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm8 4a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zm-5 10h10c0-2.3-2.2-3.5-5-3.5S7 15.7 7 18z')
