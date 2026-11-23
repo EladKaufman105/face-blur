@@ -10,6 +10,8 @@ import { DEFAULT_LOOK } from './lib/types'
 import { NO_WATERMARK } from './lib/watermark'
 import { DEFAULT_SUB_STYLE } from './lib/subtitles'
 import { DEFAULT_EXPORT } from './lib/exportopts'
+import { loadProject, type ProjectPicture, type ProjectState } from './lib/projects'
+import { ProjectsSection } from './ui/Projects'
 
 /** A tool from the home screen: a group of the editor, or straight to an MP3. */
 type Tool = EditorTab | 'mp3'
@@ -17,7 +19,7 @@ type Tool = EditorTab | 'mp3'
 type Screen =
   | { name: 'home'; error?: string }
   | { name: 'analyzing'; file: File }
-  | { name: 'editor'; file: File; analysis: Analysis; thumbs: (string | null)[]; info: string; tab?: EditorTab }
+  | { name: 'editor'; file: File; analysis: Analysis; thumbs: (string | null)[]; info: string; tab?: EditorTab; project?: { id: string; state: ProjectState | null; picture: ProjectPicture | null } }
 
 declare const __BUILD__: string
 
@@ -36,6 +38,20 @@ export function App() {
     if ('VideoDecoder' in window && 'VideoEncoder' in window) return true
     setScreen({ name: 'home', error: t('הדפדפן הזה לא תומך בעיבוד וידאו (WebCodecs). נסה Chrome, Edge או Safari מעודכנים.') })
     return false
+  }
+  // A project opened again: the video and what was done to it, from the browser's storage.
+  const openProject = async (id: string) => {
+    if (!supported()) return
+    const p = await loadProject(id).catch(() => null)
+    if (!p) { setScreen({ name: 'home', error: t('לא ניתן לפתוח את הפרויקט') }); return }
+    const analysis = p.state?.analysis ?? { times: new Float64Array(0), width: 0, height: 0, fps: 30, tracks: [] }
+    if (!analysis.width) {
+      const size = await videoSize(p.file)
+      if (!size) { setScreen({ name: 'home', error: t('לא ניתן לפתוח את הפרויקט') }); return }
+      analysis.width = size[0]
+      analysis.height = size[1]
+    }
+    setScreen({ name: 'editor', file: p.file, analysis, thumbs: [], info: p.state?.detectInfo ?? '', project: { id, state: p.state, picture: p.picture } })
   }
   const pick = (file: File) => {
     if (supported()) setScreen({ name: 'analyzing', file })
@@ -58,7 +74,7 @@ export function App() {
   return (
     <div class="app">
       <Header />
-      {screen.name === 'home' && !job && <Home onPick={pick} onTool={pickTool} sensitive={sensitive} setSensitive={setSensitive} error={screen.error} />}
+      {screen.name === 'home' && !job && <Home onPick={pick} onTool={pickTool} onProject={openProject} sensitive={sensitive} setSensitive={setSensitive} error={screen.error} />}
       {screen.name === 'analyzing' && (
         <Analyzing
           file={screen.file}
@@ -70,7 +86,7 @@ export function App() {
       )}
       {screen.name === 'editor' && (
         <Editor
-          key={screen.file.name + screen.file.size}
+          key={screen.project?.id ?? screen.file.name + screen.file.size + screen.file.lastModified}
           file={screen.file}
           analysis={screen.analysis}
           thumbs={screen.thumbs}
@@ -79,6 +95,7 @@ export function App() {
           hidden={job !== null}
           onExport={setJob}
           onClose={() => setScreen({ name: 'home' })}
+          project={screen.project}
         />
       )}
       {job && (
@@ -112,7 +129,7 @@ function Header() {
   )
 }
 
-function Home({ onPick, onTool, sensitive, setSensitive, error }: { onPick: (f: File) => void; onTool: (f: File, tab: Tool) => void; sensitive: boolean; setSensitive: (v: boolean) => void; error?: string }) {
+function Home({ onPick, onTool, onProject, sensitive, setSensitive, error }: { onPick: (f: File) => void; onTool: (f: File, tab: Tool) => void; onProject: (id: string) => void; sensitive: boolean; setSensitive: (v: boolean) => void; error?: string }) {
   const input = useRef<HTMLInputElement>(null)
   const toolInput = useRef<HTMLInputElement>(null)
   const toolTab = useRef<Tool>('subs')
@@ -163,6 +180,7 @@ function Home({ onPick, onTool, sensitive, setSensitive, error }: { onPick: (f: 
         />
       </section>
       <div class="side">
+        <ProjectsSection onOpen={onProject} />
         <section>
           <h3 class="section-title" style="margin:4px 0 4px">{t('כלים נוספים')}</h3>
           <p class="small muted" style="margin:0 0 10px">{t('פותח את העורך ישר, בלי זיהוי פנים')}</p>

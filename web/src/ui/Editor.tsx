@@ -19,10 +19,13 @@ import { BackgroundCard, FrameCard, StabilizeCard, type PictureBusy } from './Pi
 import { maskAt, maskIndex, NO_BACKGROUND, type Background, type PeopleMasks } from '../lib/background'
 import { ASPECT_RATIO, cropFraction, reframePath, steady, viewRect } from '../lib/camera'
 import type { PictureMessage, PictureRequest } from '../workers/picture.worker'
+import { createProject, saveProject, type ProjectPicture, type ProjectState } from '../lib/projects'
+import { reserveCueIds } from '../lib/subtitles'
+import { reserveClipIds } from './EditorTabs'
 import { cleanupOn, type Cleanup } from '../lib/cleanup'
 import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
 import { Analyzing } from './Analyzing'
-import { bleepRanges, cueAt, DEFAULT_SUB_STYLE, drawSubtitle, maskCue, type Cue, type SubStyle, type Word } from '../lib/subtitles'
+import { bleepRanges, cueAt, DEFAULT_SUB_STYLE, drawSubtitle, maskCue, shownText, type Cue, type SubStyle, type Word } from '../lib/subtitles'
 import { loadSfx, makeBuffer, SFX_NAMES } from '../lib/sfx'
 import type { VoiceFx } from '../lib/voice'
 import type { AudioMessage, AudioRequest } from '../workers/audio.worker'
@@ -36,6 +39,8 @@ type Props = {
   onClose: () => void
   initialTab?: EditorTab
   hidden?: boolean
+  /** A project opened again (its id and what was saved), or none: a new one is made. */
+  project?: { id: string; state: ProjectState | null; picture: ProjectPicture | null }
 }
 
 function loadLook(): Look {
@@ -73,38 +78,43 @@ function maskKey(m: PeopleMasks, k: number): string {
 /** Width of a new blur when there's no face under the tap, in frame widths (as in the app). */
 const NEW_BLUR = 0.12
 
-export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClose, initialTab = 'faces', hidden = false }: Props) {
+export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClose, initialTab = 'faces', hidden = false, project }: Props) {
+  // A project opened again starts as it was left.
+  const saved = project?.state ?? null
+  useMemo(() => {
+    if (saved) { reserveCueIds(saved.cues); reserveClipIds(saved.sfx) }
+  }, [])
   // Opened from a tool on the home screen, faces aren't found yet; they can be, from here.
-  const [an, setAn] = useState(analysis)
-  const [tracks, setTracks] = useState<Track[]>(analysis.tracks)
-  const [thumbOf, setThumbOf] = useState<Map<number, string | null>>(() => new Map(analysis.tracks.map((tr, k) => [tr.id, thumbs0[k] ?? null])))
+  const [an, setAn] = useState(saved?.analysis ?? analysis)
+  const [tracks, setTracks] = useState<Track[]>(saved?.tracks ?? analysis.tracks)
+  const [thumbOf, setThumbOf] = useState<Map<number, string | null>>(() => new Map(saved?.thumbs ?? analysis.tracks.map((tr, k): [number, string | null] => [tr.id, thumbs0[k] ?? null])))
   const [detecting, setDetecting] = useState(false)
-  const [detectInfo, setDetectInfo] = useState(info)
+  const [detectInfo, setDetectInfo] = useState(saved?.detectInfo ?? info)
   // Faces searched for (a video opened from a tool has frame times only once a blur is added).
-  const [analyzed, setAnalyzed] = useState(analysis.times.length > 0)
+  const [analyzed, setAnalyzed] = useState(saved?.analyzed ?? analysis.times.length > 0)
   const { times, width: W, height: H } = an
   const [selected, setSelected] = useState<number | null>(null)
   const [adding, setAdding] = useState(false)
   const [following, setFollowing] = useState<{ id: number; progress: number } | null>(null)
-  const [cuts, setCuts] = useState<Range[]>([])
+  const [cuts, setCuts] = useState<Range[]>(saved?.cuts ?? [])
   const [cutStart, setCutStart] = useState<number | null>(null)
   const [cutBusy, setCutBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   // The sound's cleanup: noise, a clearer voice, the networks' loudness (measured once).
-  const [denoise, setDenoise] = useState(0)
-  const [enhance, setEnhance] = useState(false)
-  const [loudOn, setLoudOn] = useState(false)
+  const [denoise, setDenoise] = useState(saved?.denoise ?? 0)
+  const [enhance, setEnhance] = useState(saved?.enhance ?? false)
+  const [loudOn, setLoudOn] = useState(saved?.loud ?? false)
   /** The gain to the networks' loudness, as measured on the cleaned sound (null until it is). */
   const [loudGain, setLoudGain] = useState<number | null>(null)
   const clean: Cleanup = useMemo(() => ({ denoise, enhance, loud: loudOn }), [denoise, enhance, loudOn])
   const [exportOpen, setExportOpen] = useState(false)
-  const [exportOpts, setExportOpts] = useState(loadExportOptions)
+  const [exportOpts, setExportOpts] = useState(() => ({ ...loadExportOptions(), aspect: saved?.aspect ?? 'original' }))
   const [srcInfo, setSrcInfo] = useState<{ codec: string; fps: number } | null>(null)
   // The picture tools: the camera's motion, the cuts and the people (from one pass over the video).
-  const [picture, setPicture] = useState<{ motion: Float32Array; cuts: number[]; masks: PeopleMasks | null } | null>(null)
+  const [picture, setPicture] = useState<ProjectPicture | null>(project?.picture ?? null)
   const [picBusy, setPicBusy] = useState<PictureBusy>(null)
-  const [background, setBackground] = useState<Background>(NO_BACKGROUND)
-  const [steadyLevel, setSteadyLevel] = useState(0)
+  const [background, setBackground] = useState<Background>(saved?.background ?? NO_BACKGROUND)
+  const [steadyLevel, setSteadyLevel] = useState(saved?.steady ?? 0)
   const bgImage = useRef<HTMLImageElement | null>(null)
   const steadied = useMemo(() => (picture && steadyLevel > 0 ? steady(picture.motion, picture.cuts, H / W, an.fps, steadyLevel) : null), [picture, steadyLevel, an.fps])
   const crop = useMemo(() => cropFraction(W, H, ASPECT_RATIO[exportOpts.aspect]), [exportOpts.aspect])
@@ -121,26 +131,27 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const overlay = useRef<HTMLCanvasElement>(null)
   const rings = useRef<HTMLCanvasElement>(null)
   const renderer = useRef<BlurRenderer | null>(null)
-  const [off, setOff] = useState<Set<number>>(new Set())
-  const [look, setLook] = useState<Look>(loadLook)
+  const [off, setOff] = useState<Set<number>>(() => new Set(saved?.off ?? []))
+  const [look, setLook] = useState<Look>(() => saved?.look ?? loadLook())
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
   const [dur, setDur] = useState(times.length ? times[times.length - 1] : 0)
   const [tab, setTab] = useState<EditorTab>(initialTab)
-  const [cues, setCues] = useState<Cue[]>([])
-  const [words, setWords] = useState<Word[]>([])
-  const [bleeped, setBleeped] = useState<Set<number>>(new Set())
-  const [tone, setTone] = useState(true)
-  const [voice, setVoice] = useState<VoiceFx>('none')
+  const [cues, setCues] = useState<Cue[]>(saved?.cues ?? [])
+  const [words, setWords] = useState<Word[]>(saved?.words ?? [])
+  const [bleeped, setBleeped] = useState<Set<number>>(() => new Set(saved?.bleeped ?? []))
+  const [tone, setTone] = useState(saved?.tone ?? true)
+  const [voice, setVoice] = useState<VoiceFx>(saved?.voice ?? 'none')
   const [voiceAudio, setVoiceAudio] = useState<{ rate: number; data: Float32Array; buffer: AudioBuffer } | null>(null)
   const [voiceBusy, setVoiceBusy] = useState(false)
   const [selectedSfx, setSelectedSfx] = useState<number | null>(null)
   const [sfxLength, setSfxLength] = useState<Map<string, number>>(new Map())
   const [subStyle, setSubStyle] = useState<SubStyle>(() => {
+    if (saved) return saved.subStyle
     try { return { ...DEFAULT_SUB_STYLE, ...JSON.parse(localStorage.getItem('onit.substyle') ?? '{}') } } catch { return DEFAULT_SUB_STYLE }
   })
-  const [sfx, setSfx] = useState<SfxClip[]>([])
-  const [mark, setMark] = useState<Watermark>(loadWatermark)
+  const [sfx, setSfx] = useState<SfxClip[]>(saved?.sfx ?? [])
+  const [mark, setMark] = useState<Watermark>(() => saved?.mark ?? loadWatermark())
   const logo = useRef<HTMLImageElement | null>(null)
   const scheduler = useMemo(() => new SfxScheduler(), [])
   const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, voiceBuf: null as AudioBuffer | null, tracks, selected, cuts, cutMap, fps: an.fps, times, steadied, crop, framePath, masks: null as PeopleMasks | null, background })
@@ -262,7 +273,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       const m = state.current.mark
       if (watermarkOn(m)) drawWatermark(tc, m, fw, fh, m.image ? logo.current : null)
       const cue = cueAt(state.current.cues, state.current.mediaTime)
-      if (cue) drawSubtitle(tc, maskCue(cue, state.current.words, state.current.bleeped), state.current.subStyle, fw, fh)
+      if (cue) drawSubtitle(tc, shownText(cue, maskCue(cue, state.current.words, state.current.bleeped), state.current.subStyle.show), state.current.subStyle, fw, fh)
       tc.restore()
     }
   }
@@ -388,6 +399,50 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     if (level > 0 && !picture && !picBusy) runPicture(false)
   }
 
+  // ---------------------------------------------------------------- the project, kept as it's edited
+
+  const projectId = useRef<string | null>(project?.id ?? null)
+  const savedPicture = useRef<ProjectPicture | null | undefined>(project ? project.picture : undefined)
+  const storageFull = useRef(false)
+  useEffect(() => {
+    if (projectId.current) return
+    createProject(file, { name: file.name.replace(/\.[^.]+$/, ''), duration: 0, blurs: tracks.length, cues: cues.length, thumb: null, detected: analyzed })
+      .then((id) => { projectId.current = id; setProjectTick((n) => n + 1) })
+      .catch(() => { storageFull.current = true; setNotice(t('אין מקום לשמור את הפרויקט בדפדפן. אפשר להמשיך לערוך ולייצא.')) })
+  }, [])
+  const [projectTick, setProjectTick] = useState(0)
+  /** A small picture of the video as edited (faces blurred), for the projects' list. */
+  const snapshot = (): string | null => {
+    const c = canvas.current
+    if (!c || !c.width) return null
+    try {
+      const small = document.createElement('canvas')
+      small.width = 160
+      small.height = Math.max(1, Math.round((160 * c.height) / c.width))
+      small.getContext('2d')!.drawImage(c, 0, 0, small.width, small.height)
+      return small.toDataURL('image/jpeg', 0.7)
+    } catch {
+      return null
+    }
+  }
+  useEffect(() => {
+    const id = projectId.current
+    if (!id || storageFull.current || detecting) return
+    const timer = setTimeout(() => {
+      const state: ProjectState = {
+        analysis: an, analyzed, detectInfo, tracks, thumbs: [...thumbOf.entries()], off: [...off], look, cues, words, bleeped: [...bleeped], tone, voice,
+        sfx, mark, subStyle, cuts, denoise, enhance, loud: loudOn, background, steady: steadyLevel, aspect: exportOpts.aspect,
+      }
+      const pic = savedPicture.current !== picture ? picture : undefined
+      savedPicture.current = picture
+      saveProject(id, { duration: dur, blurs: tracks.length, cues: cues.length, thumb: snapshot(), detected: analyzed }, state, pic).catch(() => {
+        storageFull.current = true
+        setNotice(t('אין מקום לשמור את הפרויקט בדפדפן. אפשר להמשיך לערוך ולייצא.'))
+      })
+    }, 1200)
+    return () => clearTimeout(timer)
+  }, [projectTick, an, analyzed, tracks, thumbOf, off, look, cues, words, bleeped, tone, voice, sfx, mark, subStyle, cuts, denoise, enhance, loudOn, background, steadyLevel, exportOpts.aspect, picture, dur, detecting])
+
   // A short message over the video (what a tool did, or why it couldn't).
   useEffect(() => {
     if (!notice) return
@@ -493,7 +548,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   }
   const setOffH = (v: Set<number> | ((s: Set<number>) => Set<number>)) => { record(false); setOff(v) }
   const setSfxH = (v: SfxClip[] | ((s: SfxClip[]) => SfxClip[])) => { record(); setSfx(v) }
-  const setCuesH = (v: Cue[]) => { record(); setCues(v) }
+  const setCuesH = (v: Cue[], step = false) => { record(!step); setCues(v) }
   const setTracksH = (v: Track[] | ((s: Track[]) => Track[]), merge = false) => { record(merge); setTracks(v) }
   const setCutsH = (v: Range[]) => { record(false); setCuts(v) }
   const seek = (at: number) => { const v = video.current; if (v) v.currentTime = at }
@@ -859,7 +914,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           times={times}
           tracks={tracks}
           off={off}
-          cues={cues.map((c) => ({ ...c, text: maskCue(c, words, bleeped) }))}
+          cues={cues.map((c) => ({ ...c, text: shownText(c, maskCue(c, words, bleeped), subStyle.show) }))}
           sfx={sfx}
           sfxLength={sfxLength}
           selectedSfx={selectedSfx}
@@ -1059,7 +1114,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         onGo={() => {
           setExportOpen(false)
           saveExportOptions(exportOpts)
-          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: maskCue(c, words, bleeped) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, cuts, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
+          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: shownText(c, maskCue(c, words, bleeped), subStyle.show) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, cuts, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
         }}
       />
     )}

@@ -462,3 +462,30 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .bg-thumb { width: 72px; height: 48px; border-radius: var(--radius-control); object-fit: cover; background: var(--surface-3); }
 .swatch.custom { position: relative; overflow: hidden; background: conic-gradient(#ff4d6d, #ffc53d, #3ddcff, #8b6cff, #ff4d6d); }
 .swatch.custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+/* The subtitles' list: each with its translation and its actions. */
+.cue-list { display: grid; gap: var(--space-2); }
+.cue-list .section-title { margin: 0; }
+.cue-fields { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.cue-fields .cue-text { width: 100%; box-sizing: border-box; }
+.cue-tr { border-style: dashed; }
+.cue-acts { display: grid; gap: 0; }
+.cue-acts .icon-btn { width: 32px; height: 30px; }
+.cue-delete { color: #e5484d !important; }
+.find-row { display: grid; gap: var(--space-2); }
+.find-row .text-in { margin: 0; padding: 9px 12px; }
+.translate { display: grid; gap: var(--space-2); }
+.translate .section-title { margin: 0; }
+
+/* The projects on the home screen. */
+.projects { display: grid; gap: var(--space-1); }
+.project-list { display: grid; gap: var(--space-2); }
+.project { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-2); }
+.project-open { border: 0; padding: 0; background: none; flex: none; }
+.project-open img, .project-open .ph { width: 96px; height: 54px; object-fit: cover; border-radius: var(--radius-control); background: var(--surface-3); display: block; }
+.project-info { display: grid; gap: 2px; }
+.project-name { border: 0; background: none; padding: 0; text-align: start; font: var(--text-heading); font-size: 14px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.project-acts { display: grid; flex: none; }
+.project-acts .btn { padding: 4px 8px; font-size: 12px; }
+.confirm { display: grid; gap: var(--space-1); margin-top: var(--space-1); }
+.danger-btn { background: #e5484d; color: #fff; }

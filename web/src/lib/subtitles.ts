@@ -2,7 +2,17 @@ import type { CutMap } from './cutmap'
 // Subtitles: words from speech recognition -> cues, how they look, drawing them, and SRT.
 
 export interface Word { start: number; end: number; text: string }
-export interface Cue { id: number; start: number; end: number; text: string }
+export interface Cue {
+  id: number
+  start: number
+  end: number
+  text: string
+  /** Its translation, if it was translated. */
+  tr?: string
+}
+
+/** What the video shows of a translated subtitle. */
+export type SubShow = 'src' | 'tr' | 'both'
 
 export type SubPosition = 'bottom' | 'middle' | 'top'
 export type SubLook = 'box' | 'outline' | 'shadow'
@@ -10,6 +20,8 @@ export type SubLook = 'box' | 'outline' | 'shadow'
 export interface SubStyle {
   /** Multiplier of the base size (5.5% of the short side). */
   size: number
+  /** The text, its translation or both (on two lines). */
+  show?: SubShow
   position: SubPosition
   look: SubLook
   color: string
@@ -31,9 +43,10 @@ function isNoise(t: string) {
 
 /**
  * Words -> cues, as the Android app makes them: a new one after . ? ! or a pause, or when it
- * would grow past 64 characters. At least 0.8 s on screen, no overlaps.
+ * would grow past 64 characters ([maxWords]: also after that many words, evenly). At least 0.8 s
+ * on screen, no overlaps.
  */
-export function wordsToCues(words: Word[]): Cue[] {
+export function wordsToCues(words: Word[], maxWords = 0): Cue[] {
   const sorted = words.filter((w) => !isNoise(w.text)).sort((a, b) => a.start - b.start)
   const groups: Word[][] = []
   let cur: Word[] = []
@@ -51,6 +64,16 @@ export function wordsToCues(words: Word[]): Cue[] {
       chars = 0
     }
   })
+  if (maxWords > 0) {
+    // Each sentence in nearly equal parts of at most [maxWords].
+    const split: Word[][] = []
+    for (const g of groups) {
+      const parts = Math.ceil(g.length / maxWords)
+      const size = Math.ceil(g.length / parts)
+      for (let i = 0; i < g.length; i += size) split.push(g.slice(i, i + size))
+    }
+    groups.splice(0, groups.length, ...split)
+  }
   return groups.map((g, i) => {
     const a = g[0].start
     const nextStart = groups[i + 1]?.[0].start ?? Infinity
@@ -61,6 +84,11 @@ export function wordsToCues(words: Word[]): Cue[] {
 
 export function newCueId() {
   return nextCue++
+}
+
+/** New subtitles get ids after [cues]' (a project opened again). */
+export function reserveCueIds(cues: Cue[]) {
+  for (const c of cues) nextCue = Math.max(nextCue, c.id + 1)
 }
 
 export function cueAt(cues: Cue[], t: number): Cue | null {
@@ -100,7 +128,8 @@ export function drawSubtitle(ctx: CanvasRenderingContext2D | OffscreenCanvasRend
   ctx.direction = /[֐-ࣿ]/.test(text) ? 'rtl' : 'ltr'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  const lines = wrap(ctx, text, width * 0.86)
+  // Lines of their own (a translation under the text) stay apart, each in its direction.
+  const lines = text.split('\n').filter((l) => l.trim()).flatMap((p) => wrap(ctx, p, width * 0.86))
   const lh = fontSize * 1.28
   const blockH = lines.length * lh
   const margin = height * 0.08
@@ -109,6 +138,7 @@ export function drawSubtitle(ctx: CanvasRenderingContext2D | OffscreenCanvasRend
   const contrast = luminance(s.color) > 0.45 ? '#000000' : '#ffffff'
   lines.forEach((line, k) => {
     const y = top + lh * (k + 0.5)
+    ctx.direction = /[\u0590-\u08ff]/.test(line) ? 'rtl' : 'ltr'
     if (s.look === 'box') {
       const w = ctx.measureText(line).width
       const padX = fontSize * 0.4, padY = fontSize * 0.14
@@ -154,8 +184,45 @@ export function cutCues(cues: Cue[], cuts: CutMap): Cue[] {
   return out
 }
 
+/** Subtitles from an SRT file (times in seconds; HTML-like tags dropped). */
+export function parseSrt(text: string): Cue[] {
+  const out: Cue[] = []
+  const time = (h: string, m: string, s: string, ms: string) => Number(h) * 3600 + Number(m) * 60 + Number(s) + Number(ms.padEnd(3, '0')) / 1000
+  for (const block of text.replace(/\r/g, '').split(/\n\s*\n/)) {
+    const lines = block.split('\n').filter((l) => l.trim())
+    const k = lines.findIndex((l) => l.includes('-->'))
+    if (k < 0) continue
+    const m = lines[k].match(/(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)/)
+    if (!m) continue
+    const body = lines.slice(k + 1).join('\n').replace(/<[^>]+>/g, '').trim()
+    if (!body) continue
+    const start = time(m[1], m[2], m[3], m[4]), end = time(m[5], m[6], m[7], m[8])
+    if (end > start) out.push({ id: nextCue++, start, end, text: body.replace(/\n/g, ' ') })
+  }
+  return out.sort((a, b) => a.start - b.start)
+}
+
 export function toSrt(cues: Cue[]): string {
   return cues.map((c, i) => `${i + 1}\n${srtTime(c.start)} --> ${srtTime(c.end)}\n${c.text}\n`).join('\n')
+}
+
+/** What the video shows of [c] ([text]: its text with the bleeped words masked). */
+export function shownText(c: Cue, text: string, show: SubShow | undefined): string {
+  const tr = c.tr?.trim()
+  if (!tr || !show || show === 'src') return text
+  return show === 'tr' ? tr : text + '\n' + tr
+}
+
+/** [cue] in two at character [at] of its text: the time split where the words say, else by length. */
+export function splitCue(cue: Cue, at: number, words: Word[]): [Cue, Cue] | null {
+  const a = cue.text.slice(0, at).trim(), b = cue.text.slice(at).trim()
+  if (!a || !b) return null
+  const inCue = words.filter((w) => w.start >= cue.start - 0.01 && w.start < cue.end)
+  const before = a.split(/\s+/).length
+  const len = cue.end - cue.start
+  let t = inCue.length === a.split(/\s+/).length + b.split(/\s+/).length ? inCue[before].start : cue.start + len * (a.length / (a.length + b.length))
+  t = Math.min(cue.end - 0.2, Math.max(cue.start + 0.2, t))
+  return [{ ...cue, end: t, text: a, tr: undefined }, { ...cue, id: newCueId(), start: t, text: b, tr: undefined }]
 }
 
 /** The cue's text with its bleeped words as **** (the words timed inside the cue). */
