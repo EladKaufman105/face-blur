@@ -101,10 +101,10 @@ jobs:
     with:
       subtitles: ${{ needs.changes.outputs.subtitles == 'true' }}
 
-  # The required checks. Always run; fail only when the work they stand for failed or was cancelled.
+  # The required checks. Always run (unless a newer push cancelled the run); fail only when the work they stand for failed or was cancelled.
   android-build:
     name: android-build
-    if: always()
+    if: ${{ !cancelled() }}
     needs: [changes, android]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -120,7 +120,7 @@ jobs:
 
   web-build:
     name: web-build
-    if: always()
+    if: ${{ !cancelled() }}
     needs: [changes, web]
     runs-on: ubuntu-latest
     timeout-minutes: 5

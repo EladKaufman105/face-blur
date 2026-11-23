@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 # One run at a time per branch, so two runs don't take the same version.
 concurrency:
@@ -93,7 +93,7 @@ jobs:
         with:
           name: release-apk
           path: out/*.apk
-          retention-days: 1
+          retention-days: 7
           compression-level: 0
           if-no-files-found: error
 
@@ -146,7 +146,7 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             app/build/outputs/apk/release/app-release.apk
-          retention-days: 1
+          retention-days: 7
           compression-level: 0
           if-no-files-found: error
 
@@ -199,7 +199,7 @@ jobs:
   e2e:
     needs: [build-test, avd]
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -283,6 +283,8 @@ jobs:
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
     env:
       VERSION: ${{ needs.build-release.outputs.version }}
     steps:

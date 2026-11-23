@@ -59,7 +59,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 
 - e2e fails after a merge into `develop`: no beta. Fix it with a normal PR into `develop`.
 - e2e fails after a merge into `main`: no release. Fix it with a `hotfix/*` PR.
-- A release or beta exists but has no APK (upload failed): tell the user. Re-running fails on purpose ("already released"); the owner fixes it by hand.
+- A release or beta exists but has no APK (upload failed): tell the user. Re-running the whole workflow fails on purpose ("already released"). Do not re-run only the `publish` job (it would skip that check); the owner fixes it by hand.
 - If you change a PR's base branch, push a new commit so the builds run again.
 - Never put `[skip ci]` in a commit message or merge title. In a PR it stops the required checks; in a merge into `develop` or `main` it stops the beta or release.
 
