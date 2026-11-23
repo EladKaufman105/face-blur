@@ -109,9 +109,9 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
 
     /**
      * Now and then, a small copy of the frame, the faces found lately, where detection runs
-     * ([accelerator]) and how the pass is doing ([stats]; the progress screen shows it on a tap).
+     * ([accelerator]) and the pass's counters ([snapshot]; the progress screen shows them on a tap).
      */
-    var onPreview: ((Bitmap, List<Det>, String, String) -> Unit)? = null
+    var onPreview: ((Bitmap, List<Det>, String, StatsSnapshot) -> Unit)? = null
     private var lastPreview = 0L
     @Volatile private var lastDets: List<Det> = emptyList()
     private val preview = Mat()
@@ -130,7 +130,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     private val rotated = Mat()
     private val small = Mat()
 
-    // Where the time goes (see [stats]).
+    // Where the time goes (see [snapshot]).
     private val detectMsTotal = AtomicLong()
     private val detections = AtomicInteger()
     // Per detection, summed over the workers, in microseconds (see [FaceDetector]'s last... values).
@@ -168,32 +168,43 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     val pace: String get() = "every ${detectEvery}" + (if (lite) ", lite" else "")
 
     /**
-     * Where the time goes, for whoever tunes this: where detection runs, how often, the time
-     * per detection (one worker) and its parts (the fine and coarse passes, of which the time in
-     * calls to the GPU; YuNet; the crop checks as their count x time each), per frame on the
-     * video's thread, how long frames waited for a free worker, and how many workers there are.
+     * Where the time goes, for whoever tunes this (the progress screen's stats panel): the pass's
+     * totals so far (per frame on the video's thread, waits for a free worker, detections and
+     * their parts) and how detection is set up now. Cheap: read with each preview.
      */
-    val stats: String
-        get() {
-            val n = max(1, times.size)
-            val d = max(1, detections.get())
-            val crops = cropsTotal.get()
-            val cropMs = if (crops > 0) (cropUsTotal.get() / crops / 100) / 10f else 0f
-            val gpuCall = gpuCallUsTotal.get()
-            val g = gpu
-            val side = if (g != null && g.active) "1280" else "$cpuSide"
+    private fun snapshot(): StatsSnapshot {
+        val g = gpu?.takeIf { it.active }
+        return StatsSnapshot(
+            atMs = SystemClock.elapsedRealtime(),
+            frames = times.size,
+            frameMs = frameMsTotal,
+            waitMs = waitMsTotal,
+            detections = detections.get(),
+            detectMs = detectMsTotal.get(),
+            fineUs = fineUsTotal.get(),
+            coarseUs = coarseUsTotal.get(),
+            gpuCallUs = gpuCallUsTotal.get(),
+            yunetUs = yunetUsTotal.get(),
+            cropUs = cropUsTotal.get(),
+            crops = cropsTotal.get(),
+            // All from the one read of the GPU above (as [accelerator]), so CPU and GPU fields don't mix.
+            accelerator = when {
+                g == null -> "cpu"
+                g.trusted -> "gpu"
+                else -> "gpu-checking"
+            },
             // On the GPU: its precision and time per frame; on the CPU: why not the GPU.
-            val where = when {
-                g != null && g.active -> "$accelerator ${if (g.precise) "fp32" else "fp16"}" + (g.inferMs.takeIf { it > 0f }?.let { " ${it.roundToInt()} ms" } ?: "")
-                else -> "cpu/${half.state} (${g?.why ?: GpuFaceNet.unavailable})"
-            }
-            return "$where ${side}px · every $detectEvery${if (lite) " lite" else ""} · " +
-                "detect ${detectMsTotal.get() / d} ms · frame ${frameMsTotal / n} ms · wait ${waitMsTotal / n} ms/frame · " +
-                "fine ${fineUsTotal.get() / d / 1000}" +
-                (if (gpuCall > 0) " (gpu call ${gpuCall / d / 1000}" + (g?.queueMs?.takeIf { it > 0f }?.let { " (queue ${it.roundToInt()})" } ?: "") + ")" else "") +
-                " coarse ${coarseUsTotal.get() / d / 1000} yunet ${yunetUsTotal.get() / d / 1000} " +
-                "crops ${(crops * 10 / d) / 10f}×${cropMs} ms · workers ${BASE_WORKERS + extraSlots}/$WORKERS"
-        }
+            precision = if (g != null) (if (g.precise) "fp32" else "fp16") else half.state,
+            gpuMs = g?.inferMs ?: 0f,
+            gpuQueueMs = g?.queueMs ?: 0f,
+            noGpu = if (g != null) null else (gpu?.why ?: GpuFaceNet.unavailable),
+            side = if (g != null) maxSide else cpuSide,
+            every = detectEvery,
+            lite = lite,
+            workers = BASE_WORKERS + extraSlots,
+            maxWorkers = WORKERS,
+        )
+    }
 
     init {
         reset()
@@ -356,7 +367,8 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             preview.get(0, 0, px)
             val bmp = Bitmap.createBitmap(pw, ph, Bitmap.Config.ARGB_8888)
             bmp.copyPixelsFromBuffer(ByteBuffer.wrap(px))
-            cb(bmp, lastDets, accelerator, stats)
+            val snap = snapshot()
+            cb(bmp, lastDets, snap.accelerator, snap)
         }
         rgba.release()
         frameMsTotal += SystemClock.elapsedRealtime() - t0 - waited

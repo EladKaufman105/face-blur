@@ -40,7 +40,7 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
     @Volatile var precise = false
         private set
 
-    /** Why it was turned off (for the stats line), or null while it's on. */
+    /** Why it was turned off (for the stats panel), or null while it's on. */
     @Volatile var why: String? = null
         private set
 
@@ -239,7 +239,7 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
 
         fun file(context: Context, w: Int, h: Int) = File(File(context.filesDir, "models"), "retinaface-mv2-${w}x$h.tflite")
 
-        /** Why the last [create] gave no GPU detector (for the stats line). */
+        /** Why the last [create] gave no GPU detector (for the stats panel). */
         @Volatile var unavailable = ""
             private set
 

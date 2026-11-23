@@ -71,8 +71,18 @@ object CrashLog {
 
     private fun header(context: Context): String {
         val v = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
-        return "ONIT $v · ${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (${Build.VERSION.SDK_INT}) · ${stamp(System.currentTimeMillis())}\n"
+        return "ONIT $v · ${device()} · ${stamp(System.currentTimeMillis())}\n"
     }
+
+    /** "ONIT Beta 2.1.0-beta.3 (build 412)": the app's name, version and build. */
+    fun app(context: Context): String {
+        val label = runCatching { context.applicationInfo.loadLabel(context.packageManager).toString() }.getOrDefault("ONIT")
+        val info = runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()
+        return "$label ${info?.versionName} (build ${info?.longVersionCode})"
+    }
+
+    /** "vivo V2419A · Android 16 (36)": the phone and its Android. */
+    fun device(): String = "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (${Build.VERSION.SDK_INT})"
 
     private fun stamp(t: Long) = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(t))
 }
