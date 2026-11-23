@@ -4,8 +4,8 @@ ONIT is an Android video editor with a browser version in `web/`. See README.md 
 
 ## Branches
 
-- `main`: releases only. Every merge publishes a public GitHub release (APK) and deploys the web app to GitHub Pages.
-- `develop`: integration branch and the default branch. Every merge publishes a beta pre-release of "ONIT Test". It has its own app id and installs beside ONIT.
+- `main`: releases only. A merge publishes a public GitHub release (APK) once the emulator e2e passes, and deploys the web app to GitHub Pages when web files changed.
+- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Test" once the emulator e2e passes (merges that change only `web/` make no beta). It has its own app id and installs beside ONIT.
 - Never push, force-push, rebase or delete `main` or `develop`. Repository rulesets block this.
 - `labs` is retired. Do not push to it.
 
@@ -53,21 +53,21 @@ For every PR into `develop`, and for hotfix PRs into `main`:
 5. Run at most 3 rounds. Only rounds with blocking findings count.
 6. List nits in a PR comment. Fixing them is optional.
 7. After round 3, if blocking findings remain, do not merge. Convert the PR to draft, add the label `needs-human`, and comment with each unresolved finding and both views.
-8. When green with no blocking findings, squash merge into `develop`.
+8. When green with no blocking findings, squash merge into `develop`. Exception: a PR from `main` (hotfix merge-back) uses a merge commit.
 
 ## Release (develop -> main)
 
 1. Open a PR from `develop` into `main`. No review loop.
 2. Check that PR checks are green.
-3. Check that the HEAD of `develop` is the commit of the newest beta tag (`vX.Y.Z-beta.N`), the beta that was tested on a device.
+3. Check that the release is the beta that was tested on a device: nothing outside `web/` changed on `develop` since the newest beta tag.
 
 ```
 git fetch origin --tags
-git rev-parse origin/develop
-git rev-list -n 1 "$(git tag --list 'v*-beta.*' --sort=-v:refname | head -1)"
+BETA=$(git tag --list 'v*-beta.*' --sort=-v:refname | head -1)
+git diff --name-only "$BETA" origin/develop -- . ':!web' ':!.github/workflows/web.yml' ':!.github/workflows/models.yml'
 ```
 
-The two hashes must match. If not, test the newer beta first, or wait.
+It must print nothing. If it prints files, wait for the next beta and test it. If that beta never came because its e2e failed, fix that first.
 
 4. Write release notes in the PR body: the PRs merged into `develop` since the last release.
 5. Ask "Release X.Y.Z?". Merge only after a clear yes.
@@ -83,6 +83,14 @@ gh pr create --base main
 ```
 
 Run the review loop, get a clear yes, then merge with a merge commit. Then open a PR `main` -> `develop` and merge it with a merge commit, so the fix returns to `develop`.
+
+## When CI fails
+
+- e2e fails after a merge into `develop`: no beta. Fix it with a normal PR.
+- e2e fails after a merge into `main`: no release. Fix it with a `hotfix/*` PR.
+- A release exists but has no APK: tell the owner. Re-running fails on purpose.
+- Changed a PR's base branch? Push a new commit so the builds run again.
+- Never put `[skip ci]` in a commit message or merge title.
 
 ## Versioning
 

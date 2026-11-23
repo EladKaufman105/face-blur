@@ -2,14 +2,15 @@ name: PR guard
 
 # PRs into main come only from develop (a release) or hotfix/*. Its own workflow so that
 # changing a PR's base ("edited") re-runs only this check, not the builds in pr.yml.
+# pull_request_target: the check runs as the base branch defines it, so a PR can't edit it
+# away. Safe because it checks out no code and runs nothing from the PR.
 # The job name is a check the branch rulesets require: keep it as it is.
 on:
-  pull_request:
+  pull_request_target:
     branches: [develop, main]
     types: [opened, synchronize, reopened, edited, ready_for_review]
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: pr-guard-${{ github.event.pull_request.number }}
@@ -26,7 +27,13 @@ jobs:
         env:
           HEAD_REF: ${{ github.head_ref }}
           BASE_REF: ${{ github.base_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
         run: |
+          if [ "$BASE_REF" = main ] && [ "$HEAD_REPO" != "$REPO" ]; then
+            echo "::error::PRs into main come only from this repository's develop or hotfix/* branches."
+            exit 1
+          fi
           if [ "$BASE_REF" = main ] && [ "$HEAD_REF" != develop ] && [[ "$HEAD_REF" != hotfix/* ]]; then
             echo "::error::PRs into main come only from develop (release) or hotfix/*, not from '$HEAD_REF'. Open this PR into develop."
             exit 1

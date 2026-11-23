@@ -25,7 +25,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # History and tags for ci/version.sh; blob:none skips the big data branches' files.
           fetch-depth: 0
+          filter: blob:none
 
       # The version from the git tags: main a release, develop a beta, anything else a dev build.
       - name: Version

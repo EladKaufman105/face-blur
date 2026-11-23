@@ -10,7 +10,8 @@
         "refs/heads/speaker-model",
         "refs/heads/ml-models",
         "refs/heads/opencv-min2",
-        "refs/heads/test-media"
+        "refs/heads/test-media",
+        "refs/heads/sfx-fs"
       ],
       "exclude": []
     }
