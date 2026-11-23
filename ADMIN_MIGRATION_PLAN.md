@@ -2,7 +2,7 @@
 
 **For:** the repo owner's Claude agent, which has admin rights on `EladKaufman105/face-blur`.
 **Owner:** Elad. He doesn't write code, so ask him only yes/no questions, in plain words.
-**Prepared on:** branch `ccr-ad3e329a-n7c9zq`, by a collaborator's Claude session. Every file change is already written and reviewed. Your job is to execute, verify and turn on the settings.
+**Prepared on:** branch `migration/develop-workflow`, by a collaborator's Claude session. Every file change is already written and reviewed. Your job is to execute, verify and turn on the settings.
 
 ## What this changes
 
@@ -27,14 +27,14 @@ Files on the branch: `.github/workflows/build.yml`, `web.yml` and the new `pr.ym
 ## Phase 0: Preconditions (5 min)
 
 1. Admin check: `gh api repos/EladKaufman105/face-blur --jq .permissions.admin` must print `true`. If `gh` can't do this, ask Elad to open the repo's Settings tab. If he can see it, he's admin.
-2. Branch check: the person who sent Elad here gave him the expected head commit of `ccr-ad3e329a-n7c9zq`. Compare: `git ls-remote origin ccr-ad3e329a-n7c9zq`. If it differs, **STOP-ASK**: "The prepared branch changed after it was handed over. Should I continue anyway?"
+2. Branch check: the person who sent Elad here gave him the expected head commit of `migration/develop-workflow`. Compare: `git ls-remote origin migration/develop-workflow`. If it differs, **STOP-ASK**: "The prepared branch changed after it was handed over. Should I continue anyway?"
 3. **STOP-ASK**: "For about an hour nobody may push to main, including other Claude sessions. Have you told your collaborator and are no sessions working on main right now?"
 4. Wait until no workflow is running or queued: `gh run list -R EladKaufman105/face-blur --status in_progress` and `--status queued` both print nothing.
 5. Record the current `main` commit: `gh api repos/EladKaufman105/face-blur/commits/main --jq .sha`. Write it down as `OLD_MAIN`; rollback needs it.
 
 ## Phase 1: Merge the prepared changes, without a release (10 min)
 
-1. Open a PR from `ccr-ad3e329a-n7c9zq` into `main`, titled "Branch workflow: develop, PR checks, SemVer". Use this file's "What this changes" table as the body.
+1. Open a PR from `migration/develop-workflow` into `main`, titled "Branch workflow: develop, PR checks, SemVer". Use this file's "What this changes" table as the body.
 2. If GitHub says the PR has conflicts: **STOP-ASK** "main changed during the freeze and conflicts with the prepared work. Should I stop here so the collaborator can update the branch?" Don't resolve conflicts in workflow or version files yourself.
 3. The new "PR checks" workflow runs on this PR. Expected result:
    - `android-build` and `web-build` must pass. If either fails, stop.
