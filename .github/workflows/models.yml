@@ -1,15 +1,11 @@
 name: Subtitle models
 
-# Builds the on-device subtitle model files and checks them on Hebrew speech:
-#  - ivrit.ai's Hebrew fine-tune of Whisper large-v3-turbo (Apache-2.0), quantized to q5_0,
-#    published as a release asset for the app to download;
-#  - a transcription test on synthetic Hebrew + English speech, with the stock multilingual
-#    turbo model for comparison. Results go to the model-check branch.
+# Builds the on-device Hebrew subtitle model and publishes it as a release asset for the app to
+# download: ivrit.ai's Hebrew fine-tune of Whisper large-v3-turbo (Apache-2.0), quantized to q5_0.
+# Manual only. The transcription checks against the stock model (edge-tts speech samples) and the
+# model-check branch were dropped; the asset's sha256 is in the log.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/models.yml']
 
 permissions:
   contents: write
@@ -24,54 +20,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build whisper.cpp tools
+      - name: Build whisper.cpp quantizer
         shell: bash
         run: |
           git clone -q --depth 1 -b "$WHISPER_TAG" https://github.com/ggml-org/whisper.cpp wcpp
           cmake -S wcpp -B wcpp/build -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF > /dev/null
-          cmake --build wcpp/build -j 4 --target whisper-cli whisper-quantize > /dev/null
+          cmake --build wcpp/build -j 4 --target whisper-quantize > /dev/null
           ls -la wcpp/build/bin
 
       - name: Quantize ivrit.ai turbo
         shell: bash
         run: |
           mkdir -p out
-          curl -sSL -o ivrit-f16.bin https://huggingface.co/ivrit-ai/whisper-large-v3-turbo-ggml/resolve/main/ggml-model.bin
+          curl -sSfL --retry 3 -o ivrit-f16.bin https://huggingface.co/ivrit-ai/whisper-large-v3-turbo-ggml/resolve/main/ggml-model.bin
           ls -la ivrit-f16.bin
           wcpp/build/bin/whisper-quantize ivrit-f16.bin out/ggml-ivrit-large-v3-turbo-q5_0.bin q5_0 | tail -3
           rm ivrit-f16.bin
-          curl -sSL -o turbo-q5.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
-          ls -la out turbo-q5.bin
-          sha256sum out/*.bin turbo-q5.bin
-
-      - name: Speech samples
-        shell: bash
-        run: |
-          sudo apt-get install -y -qq ffmpeg > /dev/null
-          pip install -q edge-tts
-          edge-tts --voice he-IL-AvriNeural --text "צוותי החילוץ של פיקוד העורף פועלים באתר ההרס כבר שלוש שעות. החיילים מחפשים לכודים מתחת להריסות ומפנים את הפצועים לבית החולים הקרוב." --write-media he1.mp3
-          edge-tts --voice he-IL-HilaNeural --text "אנחנו לא עוצרים עד שכל האנשים יוצאים בשלום. תודה לכל הכוחות שהגיעו לעזור." --write-media he2.mp3
-          edge-tts --voice en-US-GuyNeural --text "The rescue teams are working around the clock to reach the people trapped under the building." --write-media en1.mp3
-          for f in he1 he2 en1; do ffmpeg -v error -y -i $f.mp3 -ar 16000 -ac 1 $f.wav; done
-          ffmpeg -v error -y -i he1.wav -i en1.wav -i he2.wav -filter_complex "[0:a][1:a][2:a]concat=n=3:v=0:a=1" -ar 16000 -ac 1 mixed.wav
-          ls -la *.wav
-
-      - name: Transcribe
-        shell: bash
-        run: |
-          mkdir -p check
-          run() { # name model lang wav
-            local t0=$(date +%s.%N)
-            wcpp/build/bin/whisper-cli -m "$2" -l "$3" -t 4 -ml 60 -sow -f "$4" -osrt -of "check/$1" > "check/$1.log" 2>&1
-            local t1=$(date +%s.%N)
-            echo "== $1 ($3): $(echo "$t1 - $t0" | bc) s" >> check/summary.txt
-            cat "check/$1.srt" >> check/summary.txt
-          }
-          run ivrit_he out/ggml-ivrit-large-v3-turbo-q5_0.bin he mixed.wav
-          run turbo_he turbo-q5.bin he mixed.wav
-          run turbo_auto turbo-q5.bin auto mixed.wav
-          cat check/summary.txt
-          ffprobe -v error -show_entries format=duration -of csv=p=0 mixed.wav >> check/summary.txt
+          ls -la out
+          sha256sum out/*.bin
 
       - name: Publish model
         uses: softprops/action-gh-release@v2
@@ -81,19 +47,3 @@ jobs:
           body: "Whisper models for on-device subtitles. ivrit.ai whisper-large-v3-turbo (Apache-2.0, https://huggingface.co/ivrit-ai/whisper-large-v3-turbo), quantized to q5_0 with whisper.cpp ${{ env.WHISPER_TAG }}."
           files: out/ggml-ivrit-large-v3-turbo-q5_0.bin
           make_latest: false
-
-      - name: Save results
-        if: always()
-        shell: bash
-        run: |
-          mkdir -p /tmp/res && cp -r check /tmp/res/ 2>/dev/null || true
-          ls -la out >> /tmp/res/files.txt 2>/dev/null || true
-          git config user.name "ci"
-          git config user.email "ci@users.noreply.github.com"
-          git checkout --orphan model-check
-          git rm -rf --cached . > /dev/null
-          rm -rf ./*
-          cp -r /tmp/res/* .
-          git add -A
-          git commit -m "model check ${{ github.run_number }}" > /dev/null
-          git push -f origin model-check
