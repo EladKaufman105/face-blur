@@ -361,6 +361,11 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
                 lite = true
                 android.util.Log.i("ONIT", "face detection slower than the video: every $detectEvery frames, lite")
             }
+        } else if (blockedMs < span / 10 && detectEvery > baseEvery) {
+            // Detection keeps up easily now (the GPU's check is over, say): back toward the
+            // usual pace, and the full checks once there.
+            detectEvery--
+            if (detectEvery == baseEvery && (gpu?.active == true || cpuSide == RetinaFaceDetector.CPU_FINE_SIDE)) lite = false
         }
         windowStart = now
         blockedMs = 0L

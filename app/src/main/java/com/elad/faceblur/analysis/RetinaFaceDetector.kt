@@ -96,8 +96,8 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
                 val ref = cpuForward(net, input, iw, ih)
                 val a = decode(r.first, r.second, iw, ih, threshold, minBox)
                 val b = decode(ref.first, ref.second, iw, ih, threshold, minBox)
-                if (agree(a, b)) {
-                    if (b.isNotEmpty()) g.vouch()
+                if (agree(a, b) && scoresAgree(r.second, ref.second)) {
+                    g.vouch()
                 } else {
                     android.util.Log.w("ONIT", "GPU faces differ from the CPU's (${a.size} vs ${b.size})${if (g.precise) "" else " in half precision"}")
                     g.strike()
@@ -121,8 +121,8 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
             if (r != null) {
                 val a = decode(r.first, r.second, iw, ih, threshold, minBox)
                 val b = decode(ref.first, ref.second, iw, ih, threshold, minBox)
-                if (agree(a, b)) {
-                    if (b.isNotEmpty()) h.vouch()
+                if (agree(a, b) && scoresAgree(r.second, ref.second)) {
+                    h.vouch()
                 } else {
                     android.util.Log.w("ONIT", "fp16 faces differ from fp32's (${a.size} vs ${b.size})")
                     h.strike()
@@ -143,6 +143,34 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
         val conf = floats(outs[1])
         outs.forEach { it.release() }
         return loc to conf
+    }
+
+    /**
+     * The two runs' face scores, anchor by anchor, are about the same: every anchor either run
+     * gives some chance of a face, or all of them when neither does. Unlike the faces alone this
+     * says something on every frame: a close-up whose one big face only the coarse pass finds
+     * left the fine pass with no faces to compare, and the GPU (and fp16) never got trusted,
+     * running the CPU's fp32 pass beside it to the end.
+     */
+    private fun scoresAgree(x: FloatArray, y: FloatArray): Boolean {
+        val n = minOf(x.size, y.size) / 2
+        if (n == 0) return false
+        var count = 0
+        var sum = 0f
+        var worst = 0f
+        var all = 0f
+        for (i in 0 until n) {
+            val a = x[2 * i + 1]
+            val b = y[2 * i + 1]
+            val d = kotlin.math.abs(a - b)
+            all += d
+            if (a >= 0.05f || b >= 0.05f) {
+                count++
+                sum += d
+                if (d > worst) worst = d
+            }
+        }
+        return if (count == 0) all / n < 0.01f else worst < 0.25f && sum / count < 0.06f
     }
 
     /**
