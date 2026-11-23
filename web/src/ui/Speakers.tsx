@@ -8,7 +8,7 @@ import type { SpeakersMessage, SpeakersRequest } from '../workers/speakers.worke
  * Who speaks, as in the app: found on the device (each subtitle's voice), each speaker in a color
  * of its own; how many, if the user knows.
  */
-export function SpeakersCard({ file, cues, onCues, color }: { file: File; cues: Cue[]; onCues: (c: Cue[], step?: boolean) => void; color: string }) {
+export function SpeakersCard({ file, cues, onCues, color, chosen }: { file: File; cues: Cue[]; onCues: (c: Cue[], step?: boolean) => void; color: string; chosen?: string[] }) {
   const [count, setCount] = useState<number | null>(null)
   const [run, setRun] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -60,7 +60,7 @@ export function SpeakersCard({ file, cues, onCues, color }: { file: File; cues: 
           {found.size > 0 && (
             <div class="row wrap speaker-legend">
               {[...found].sort((a, b) => a - b).map((s) => (
-                <span class="speaker-tag"><span class="speaker-dot" style={{ background: speakerColor(color, s) }}>{s}</span>{t('דובר %d', s)}</span>
+                <span class="speaker-tag"><span class="speaker-dot" style={{ background: speakerColor(color, s, chosen) }}>{s}</span>{t('דובר %d', s)}</span>
               ))}
               <button class="btn ghost small-btn" onClick={() => onCues(cues.map(({ speaker, ...c }) => c), true)}>{t('נקה')}</button>
             </div>
@@ -73,10 +73,10 @@ export function SpeakersCard({ file, cues, onCues, color }: { file: File; cues: 
 }
 
 /** Who says a subtitle: a dot in the speaker's color; a tap moves it to the next speaker. */
-export function SpeakerDot({ speaker, color, max, onChange }: { speaker: number | undefined; color: string; max: number; onChange: (s: number) => void }) {
+export function SpeakerDot({ speaker, color, chosen, max, onChange }: { speaker: number | undefined; color: string; chosen?: string[]; max: number; onChange: (s: number) => void }) {
   const s = Math.max(1, speaker ?? 1)
   return (
-    <button class="speaker-dot cue-speaker" style={{ background: speakerColor(color, s) }} title={t('דובר %d', s)} aria-label={t('דובר %d', s)} onClick={() => onChange(s >= max ? 1 : s + 1)}>
+    <button class="speaker-dot cue-speaker" style={{ background: speakerColor(color, s, chosen) }} title={t('דובר %d', s)} aria-label={t('דובר %d', s)} onClick={() => onChange(s >= max ? 1 : s + 1)}>
       {s}
     </button>
   )

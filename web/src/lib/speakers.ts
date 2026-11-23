@@ -9,10 +9,19 @@ export const MAX_SPEAKERS = 6
 const SPEAKER_COLORS = ['#ffd60a', '#3df2ff', '#ff6fb5', '#34e07a', '#ffb020', '#b18cff']
 
 /** The text color of [speaker] (0 or 1: [base]); never the same as speaker 1's. */
-export function speakerColor(base: string, speaker: number | undefined): string {
+export function speakerColor(base: string, speaker: number | undefined, chosen?: string[]): string {
   if (!speaker || speaker <= 1) return base
-  const others = SPEAKER_COLORS.filter((c) => c.toLowerCase() !== base.toLowerCase())
-  return others[(speaker - 2) % others.length]
+  const own = chosen?.[speaker - 2]
+  if (own && own.toLowerCase() !== base.toLowerCase()) return own
+  const others = SPEAKER_COLORS.filter((c) => c.toLowerCase() !== base.toLowerCase() && !chosen?.some((x) => x.toLowerCase() === c.toLowerCase()))
+  return others.length ? others[(speaker - 2) % others.length] : SPEAKER_COLORS[(speaker - 2) % SPEAKER_COLORS.length]
+}
+
+/** [chosen] with [speaker]'s (2..) color set to [color] (the ones before it as they're shown now). */
+export function withSpeakerColor(base: string, chosen: string[] | undefined, speaker: number, color: string): string[] {
+  const list = Array.from({ length: Math.max(speaker - 1, chosen?.length ?? 0) }, (_, k) => speakerColor(base, k + 2, chosen))
+  list[speaker - 2] = color
+  return list
 }
 
 // ------------------------------------------------------------------ features

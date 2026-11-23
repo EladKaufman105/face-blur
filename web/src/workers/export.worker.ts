@@ -22,6 +22,8 @@ export type ExportMessage =
   | { type: 'progress'; progress: number }
   | { type: 'done'; blob: Blob; ms: number }
   | { type: 'error'; code: string; message: string }
+  /** A small picture of the frame just made, now and then: the export, shown as it's made. */
+  | { type: 'frame'; bitmap: ImageBitmap }
 
 const post = (m: ExportMessage) => (self as unknown as Worker).postMessage(m)
 
@@ -150,6 +152,7 @@ async function run(req: ExportRequest) {
   if (cues.length > 0) await loadSubFont(subStyle, (self as any).fonts, base, req.customFont ?? null)
   const animated = subStyle.effect !== 'none'
   const layer = cues.length > 0 ? new OffscreenCanvas(w, h) : null
+  let shownAt = -1e9
   let shownCue: Cue | null | undefined = undefined
   let scratch: OffscreenCanvas | null = null
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: new BufferTarget() })
@@ -206,7 +209,7 @@ async function run(req: ExportRequest) {
             if (cue) {
               const blocks = cue.text.split('\n')
               const times = subStyle.show === 'tr' ? [] : [cueWordTimes(blocks[0], cue.start, cue.end, words)]
-              drawCue(ctx, blocks, cue.start, cue.end, sample.timestamp, { ...subStyle, color: speakerColor(subStyle.color, cue.speaker) }, w, h, times)
+              drawCue(ctx, blocks, cue.start, cue.end, sample.timestamp, { ...subStyle, color: speakerColor(subStyle.color, cue.speaker, subStyle.speakerColors) }, w, h, times)
             }
             if (!camera) renderer.setOverlay(layer)
           }
@@ -247,6 +250,13 @@ async function run(req: ExportRequest) {
           if (layer) octx.drawImage(layer, 0, 0)
           else if (overlay) octx.drawImage(overlay, 0, 0, w, h)
           result = out
+        }
+        const now = performance.now()
+        if (now - shownAt > 500) {
+          shownAt = now
+          createImageBitmap(result, { resizeWidth: Math.min(480, result.width), resizeQuality: 'low' })
+            .then((bitmap) => (self as unknown as Worker).postMessage({ type: 'frame', bitmap } satisfies ExportMessage, [bitmap]))
+            .catch(() => {})
         }
         if (cuts.empty) return result
         const ts = sample.timestamp, d = sample.duration

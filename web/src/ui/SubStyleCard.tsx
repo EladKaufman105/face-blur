@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { t } from '../i18n'
 import { deleteFont, listFonts, saveFont } from '../lib/projects'
+import { FontAxes } from './FontAxes'
+import { MAX_SPEAKERS, speakerColor, withSpeakerColor } from '../lib/speakers'
 import { ACCENT_EFFECTS, DEFAULT_SUB_STYLE, fontFamily, loadSubFont, SUB_COLORS, SUB_EFFECTS, SUB_FONTS, SUB_PRESETS, type SubStyle } from '../lib/substyle'
 
 const BOX_COLORS = ['#000000b8', '#000000e6', '#fffffff2', '#ff2d55e6', '#4d8dffe6', '#34e07ae6']
@@ -25,6 +27,7 @@ export function SubStyleCard({ style, onStyle }: { style: SubStyle; onStyle: (s:
   const [custom, setCustom] = useState<string[]>([])
   const [note, setNote] = useState<string | null>(null)
   const [, setReady] = useState(0)
+  const [speaker, setSpeaker] = useState(2)
   const input = useRef<HTMLInputElement>(null)
   // Every font loaded, so each name shows in its own font.
   useEffect(() => {
@@ -34,10 +37,6 @@ export function SubStyleCard({ style, onStyle }: { style: SubStyle; onStyle: (s:
       for (const f of list) loadSubFont({ ...DEFAULT_SUB_STYLE, customFont: f.name }, document.fonts, document.baseURI, f.data).then(() => setReady((n) => n + 1))
     })
   }, [])
-  const font = SUB_FONTS.find((f) => f.id === style.font)
-  const variable = !style.customFont && !!font?.weight
-  const weights = variable ? [Math.max(font!.min ?? 100, 300), Math.min(font!.max ?? 900, 500), font!.weight] : []
-  const weightNow = style.weight > 0 ? style.weight : font?.weight ?? 0
   const outline = style.outline <= 0 ? 0 : style.outline < 0.13 ? 1 : 2
   return (
     <section class="card sub-style">
@@ -53,7 +52,7 @@ export function SubStyleCard({ style, onStyle }: { style: SubStyle; onStyle: (s:
       <h4 class="caption">{t('גופן')}</h4>
       <div class="chips fonts">
         {SUB_FONTS.map((f) => (
-          <button class={'chip' + (!style.customFont && style.font === f.id ? ' on' : '')} style={{ fontFamily: fontFamily({ ...DEFAULT_SUB_STYLE, font: f.id }) }} onClick={() => set({ font: f.id, customFont: null, weight: 0 })}>
+          <button class={'chip' + (!style.customFont && style.font === f.id ? ' on' : '')} style={{ fontFamily: fontFamily({ ...DEFAULT_SUB_STYLE, font: f.id }) }} onClick={() => set({ font: f.id, customFont: null, weight: 0, round: undefined })}>
             {f.id === 'system' ? t('של המכשיר') : f.label}
           </button>
         ))}
@@ -79,13 +78,7 @@ export function SubStyleCard({ style, onStyle }: { style: SubStyle; onStyle: (s:
         setNote(hasHebrew(`'ONIT custom ${name}'`) ? t('הגופן נוסף.') : t('הגופן נוסף, אבל אין בו אותיות עבריות: טקסט בעברית יוצג בגופן אחר.'))
       }} />
       {note && <p class="small muted" style="margin:0">{note}</p>}
-      {variable && (
-        <div class="seg weights" role="radiogroup">
-          {weights.map((wv, k) => (
-            <button class={Math.abs(weightNow - wv) < 50 ? 'on' : ''} role="radio" onClick={() => set({ weight: wv })}>{[t('דק'), t('בינוני'), t('עבה')][k]}</button>
-          ))}
-        </div>
-      )}
+      <FontAxes choice={style} onChange={(weight, round) => set({ weight, round })} />
 
       <h4 class="caption">{t('אפקט')}</h4>
       <div class="chips effects">
@@ -126,6 +119,18 @@ export function SubStyleCard({ style, onStyle }: { style: SubStyle; onStyle: (s:
           </div>
         </>
       )}
+
+      <h4 class="caption">{t('צבעי דוברים')}</h4>
+      <div class="row speaker-colors">
+        {Array.from({ length: MAX_SPEAKERS }, (_, k) => k + 1).map((n) => (
+          <button class={'speaker-dot pick' + (n === speaker ? ' on' : '')} disabled={n === 1} style={{ background: speakerColor(style.color, n, style.speakerColors) }} aria-label={t('דובר %d', n)} title={t('דובר %d', n)} onClick={() => setSpeaker(n)}>{n}</button>
+        ))}
+      </div>
+      <div class="swatches speaker-swatches">
+        {SUB_COLORS.filter((c) => c !== style.color).map((c) => (
+          <button class={'swatch' + (speakerColor(style.color, speaker, style.speakerColors) === c ? ' on' : '')} style={{ background: c }} aria-label={c} onClick={() => set({ speakerColors: withSpeakerColor(style.color, style.speakerColors, speaker, c) })} />
+        ))}
+      </div>
 
       <h4 class="caption">{t('גודל ומיקום')}</h4>
       <div class="slider-row">

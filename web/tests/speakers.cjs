@@ -43,6 +43,13 @@ const SRT = spans.map(([a, b], i) => `${i + 1}\n${ts(a)} --> ${ts(b)}\nמשפט 
     const changed = await p.evaluate(() => Number(document.querySelector('.cue-speaker').textContent))
     console.log('first subtitle tapped → speaker', changed)
     if (changed !== 2) throw new Error('changing the speaker')
+    // Speaker 2's color chosen in the design (speaker 1 keeps the text color).
+    await p.click('.speaker-colors .speaker-dot >> nth=1')
+    await p.click('.speaker-swatches .swatch[aria-label="#ff2d55"]')
+    const colors = await p.evaluate(() => [...document.querySelectorAll('.cue-speaker')].map((e) => [e.textContent, getComputedStyle(e).backgroundColor]))
+    const two = colors.filter(([s]) => s === '2').map(([, c]) => c), one = colors.filter(([s]) => s === '1').map(([, c]) => c)
+    console.log('speaker 2 in red:', JSON.stringify([...new Set(two)]), '· speaker 1:', JSON.stringify([...new Set(one)]))
+    if (!two.length || two.some((c) => c !== 'rgb(255, 45, 85)') || one.some((c) => c === 'rgb(255, 45, 85)')) throw new Error('speaker colors')
     console.log('PASS')
   } finally {
     fs.writeFileSync(`${out}/console.txt`, logs.join('\n'))

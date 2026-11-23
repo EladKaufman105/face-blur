@@ -1,6 +1,29 @@
 // Sound effects: loading, hearing them while editing (in step with the video), and the samples
 // the export mixes in.
+import { SFX_NAMES } from './sfx-list'
+import { getSound } from './projects'
+import { t } from '../i18n'
 export { SFX_GROUPS, SFX_NAMES } from './sfx-list'
+
+/** A sound the user imported is "user:<its name>" (its bytes kept in the browser). */
+export const USER_SFX = 'user:'
+/** At most this long, as the app's imported sounds. */
+export const MAX_IMPORT_SEC = 20
+
+/** A sound's name as shown: a bundled one's (translated) or the imported file's. */
+export function sfxName(sound: string): string {
+  return sound.startsWith(USER_SFX) ? sound.slice(USER_SFX.length) : t(SFX_NAMES.get(sound) ?? sound)
+}
+
+/** Decodes an imported sound's bytes: the first [MAX_IMPORT_SEC] seconds. */
+export async function decodeSound(bytes: ArrayBuffer): Promise<AudioBuffer> {
+  const b = await audio().decodeAudioData(bytes)
+  const n = Math.min(b.length, Math.round(MAX_IMPORT_SEC * b.sampleRate))
+  if (n === b.length) return b
+  const c = audio().createBuffer(b.numberOfChannels, n, b.sampleRate)
+  for (let ch = 0; ch < b.numberOfChannels; ch++) c.copyToChannel(b.getChannelData(ch).subarray(0, n), ch)
+  return c
+}
 
 /** A sound placed on the video. */
 export interface SfxClip {
@@ -33,11 +56,18 @@ export function loadSfx(sound: string): Promise<AudioBuffer> {
   let p = buffers.get(sound)
   if (!p) {
     const url = new URL(`sfx/${sound}.m4a`, document.baseURI)
-    p = fetch(url).then((r) => r.arrayBuffer()).then((b) => audio().decodeAudioData(b))
+    p = sound.startsWith(USER_SFX)
+      ? getSound(sound.slice(USER_SFX.length)).then((b) => { if (!b) throw new Error('no sound'); return decodeSound(b) })
+      : fetch(url).then((r) => r.arrayBuffer()).then((b) => audio().decodeAudioData(b))
     p.catch(() => buffers.delete(sound))
     buffers.set(sound, p)
   }
   return p
+}
+
+/** Forgets a decoded sound (an imported one deleted). */
+export function forgetSfx(sound: string) {
+  buffers.delete(sound)
 }
 
 let previewNode: AudioBufferSourceNode | null = null

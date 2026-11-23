@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { t, duration as clock } from '../i18n'
-import { SFX_NAMES, type SfxClip } from '../lib/sfx'
+import { sfxName, type SfxClip } from '../lib/sfx'
 import { trackLast, type Track } from '../lib/types'
 import type { Cue } from '../lib/subtitles'
 import type { Range } from '../lib/cutmap'
@@ -320,7 +320,7 @@ function SfxBlock({ clip, left, width, pps, selected, onSelect, onMove }: { clip
       onPointerUp={() => { drag.current = null }}
       onPointerCancel={() => { drag.current = null }}
     >
-      {t(SFX_NAMES.get(clip.sound) ?? clip.sound)}
+      {sfxName(clip.sound)}
     </div>
   )
 }

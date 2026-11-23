@@ -47,6 +47,19 @@ export interface Look {
 
 export const DEFAULT_LOOK: Look = { mode: 'blur', strength: 0.6, padding: 1.6 }
 
+/** The look last chosen (the ready screen and the editor share it). */
+export function loadLook(): Look {
+  try {
+    const l = JSON.parse(localStorage.getItem('onit.look') ?? 'null')
+    if (l && ['blur', 'pixelate', 'solid'].includes(l.mode)) return { ...DEFAULT_LOOK, ...l }
+  } catch {}
+  return DEFAULT_LOOK
+}
+
+export function saveLook(look: Look) {
+  try { localStorage.setItem('onit.look', JSON.stringify(look)) } catch {}
+}
+
 export function trackBox(t: Track, i: number): [number, number, number, number] | null {
   const k = i - t.first
   if (k < 0 || k * 4 >= t.boxes.length) return null

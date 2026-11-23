@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { lang, setLang, t, duration } from './i18n'
 import { palette, PALETTES, setPalette, setTheme, theme, type Theme } from './theme'
-import type { Analysis } from './lib/types'
+import type { Analysis, Look } from './lib/types'
 import { Editor, type EditorTab } from './ui/Editor'
 import { Analyzing } from './ui/Analyzing'
 import { Exporting, type ExportJob } from './ui/Exporting'
@@ -9,16 +9,22 @@ import { LockIcon, AddIcon, SubtitlesIcon, SoundIcon, MarkIcon, MusicIcon, Setti
 import { DEFAULT_LOOK } from './lib/types'
 import { NO_WATERMARK } from './lib/watermark'
 import { DEFAULT_SUB_STYLE } from './lib/subtitles'
-import { DEFAULT_EXPORT } from './lib/exportopts'
+import { DEFAULT_EXPORT, type ExportOptions } from './lib/exportopts'
+import { ASPECT_RATIO, cropFraction, reframePath } from './lib/camera'
+import { loadWatermark } from './ui/EditorTabs'
+import { NoFaces, Ready } from './ui/Ready'
 import { loadProject, type ProjectPicture, type ProjectState } from './lib/projects'
 import { ProjectsSection } from './ui/Projects'
+import { installed, takeShared } from './lib/share'
 
 /** A tool from the home screen: a group of the editor, or straight to an MP3. */
 type Tool = EditorTab | 'mp3'
 
 type Screen =
   | { name: 'home'; error?: string }
-  | { name: 'analyzing'; file: File }
+  | { name: 'ready'; file: File }
+  | { name: 'analyzing'; file: File; save?: { look: Look; options: ExportOptions } }
+  | { name: 'noFaces'; file: File; analysis: Analysis; save?: { look: Look; options: ExportOptions } }
   | { name: 'editor'; file: File; analysis: Analysis; thumbs: (string | null)[]; info: string; tab?: EditorTab; project?: { id: string; state: ProjectState | null; picture: ProjectPicture | null } }
 
 declare const __BUILD__: string
@@ -30,6 +36,8 @@ export function App() {
   // Exporting keeps the editor (and everything in it) underneath, for "back to editing".
   const [job, setJob] = useState<ExportJob | null>(null)
   const [sensitive, setSensitive] = useState(false)
+  // What was found in a video saved straight away (to open the editor on it afterwards).
+  const saved = useRef<{ file: File; analysis: Analysis } | null>(null)
   // Re-render on a change of language, theme or palette.
   void lang.value
   void theme.value
@@ -55,8 +63,19 @@ export function App() {
     setScreen({ name: 'editor', file: p.file, analysis, thumbs: [], info: p.state?.detectInfo ?? '', project: { id, state: p.state, picture: p.picture } })
   }
   const pick = (file: File) => {
-    if (supported()) setScreen({ name: 'analyzing', file })
+    if (supported()) setScreen({ name: 'ready', file })
   }
+  // A video shared to the installed app (from the gallery), or opened with it (a file handler).
+  useEffect(() => {
+    if (new URLSearchParams(location.search).has('shared')) {
+      history.replaceState(null, '', location.pathname)
+      takeShared().then((f) => { if (f) pick(f) })
+    }
+    ;(window as any).launchQueue?.setConsumer?.(async (p: { files?: FileSystemFileHandle[] }) => {
+      const h = p.files?.[0]
+      if (h) pick(await h.getFile())
+    })
+  }, [])
   // A tool from the home screen: straight to the editor (faces can be found from there).
   const pickTool = async (file: File, tab: Tool) => {
     if (!supported()) return
@@ -75,14 +94,56 @@ export function App() {
   return (
     <div class="app">
       <Header />
-      {screen.name === 'home' && !job && <Home onPick={pick} onTool={pickTool} onProject={openProject} sensitive={sensitive} setSensitive={setSensitive} error={screen.error} />}
-      {screen.name === 'analyzing' && (
+      {screen.name === 'home' && !job && <Home onPick={pick} onTool={pickTool} onProject={openProject} error={screen.error} />}
+      {screen.name === 'ready' && !job && (
+        <Ready
+          key={screen.file.name + screen.file.size + screen.file.lastModified}
+          file={screen.file}
+          sensitive={sensitive}
+          onSensitive={setSensitive}
+          onBlur={() => setScreen({ name: 'analyzing', file: screen.file })}
+          onBlurAndSave={(look, options) => setScreen({ name: 'analyzing', file: screen.file, save: { look, options } })}
+          onReplace={pick}
+          onBack={() => setScreen({ name: 'home' })}
+        />
+      )}
+      {screen.name === 'analyzing' && !job && (
         <Analyzing
           file={screen.file}
           sensitive={sensitive}
-          onCancel={() => setScreen({ name: 'home' })}
+          twoSteps={!!screen.save}
+          onCancel={() => setScreen({ name: 'ready', file: screen.file })}
           onError={(error) => setScreen({ name: 'home', error })}
-          onDone={(analysis, thumbs, ms, backend) => setScreen({ name: 'editor', file: screen.file, analysis, thumbs, info: t('זמן עיבוד: %s', duration(ms / 1000)) + ' · ' + t('הזיהוי רץ על %s', backend === 'webgpu' ? t('המעבד הגרפי') : t('המעבד')) })}
+          onDone={(analysis, thumbs, ms, backend) => {
+            const save = screen.save
+            // No faces found: say so, with what can be done (as the app).
+            if (analysis.tracks.length === 0) {
+              setScreen({ name: 'noFaces', file: screen.file, analysis, save })
+              return
+            }
+            if (!save) {
+              setScreen({ name: 'editor', file: screen.file, analysis, thumbs, info: t('זמן עיבוד: %s', duration(ms / 1000)) + ' · ' + t('הזיהוי רץ על %s', backend === 'webgpu' ? t('המעבד הגרפי') : t('המעבד')) })
+              return
+            }
+            // Saved straight away, as found: every face blurred, the watermark last used, and for
+            // a frame of another shape, a frame that follows the faces (as the editor would).
+            const { width: w, height: h, times, tracks, fps } = analysis
+            const [cw, ch] = cropFraction(w, h, ASPECT_RATIO[save.options.aspect])
+            const path = save.options.aspect !== 'original' && times.length ? reframePath(times.length, tracks, analysis.cuts ?? [], fps, cw, ch) : null
+            setScreen({ name: 'ready', file: screen.file })
+            saved.current = { file: screen.file, analysis }
+            setJob({ file: screen.file, times, tracks, look: save.look, width: w, height: h, sfx: [], watermark: loadWatermark(), cues: [], subStyle: DEFAULT_SUB_STYLE, voice: null, cuts: [], options: save.options, standalone: true, twoSteps: true, picture: { background: null, masks: null, steady: null, path } })
+          }}
+        />
+      )}
+      {screen.name === 'noFaces' && (
+        <NoFaces
+          file={screen.file}
+          canEdit={!screen.save}
+          sensitive={sensitive}
+          onEdit={() => setScreen({ name: 'editor', file: screen.file, analysis: screen.analysis, thumbs: [], info: '', tab: 'faces' })}
+          onRetry={() => { setSensitive(true); setScreen({ name: 'analyzing', file: screen.file, save: screen.save }) }}
+          onBack={() => setScreen({ name: 'ready', file: screen.file })}
         />
       )}
       {screen.name === 'editor' && (
@@ -100,7 +161,12 @@ export function App() {
         />
       )}
       {job && (
-        <Exporting job={job} onBack={() => setJob(null)} onNew={() => { setJob(null); setScreen({ name: 'home' }) }} />
+        <Exporting
+          job={job}
+          onBack={() => setJob(null)}
+          onNew={() => { setJob(null); setScreen({ name: 'home' }) }}
+          onEdit={job.twoSteps && saved.current ? () => { const s = saved.current!; setJob(null); setScreen({ name: 'editor', file: s.file, analysis: s.analysis, thumbs: [], info: '' }) } : undefined}
+        />
       )}
       <footer class="footer">
         {t('גרסת ווב')} <bdi dir="ltr" class="num">2.0 ({__BUILD__})</bdi> · <a href={RELEASES} target="_blank" rel="noopener">{t('האפליקציה המלאה לאנדרואיד')}</a>
@@ -170,7 +236,7 @@ function Settings({ onClose }: { onClose: () => void }) {
   )
 }
 
-function Home({ onPick, onTool, onProject, sensitive, setSensitive, error }: { onPick: (f: File) => void; onTool: (f: File, tab: Tool) => void; onProject: (id: string) => void; sensitive: boolean; setSensitive: (v: boolean) => void; error?: string }) {
+function Home({ onPick, onTool, onProject, error }: { onPick: (f: File) => void; onTool: (f: File, tab: Tool) => void; onProject: (id: string) => void; error?: string }) {
   const input = useRef<HTMLInputElement>(null)
   const toolInput = useRef<HTMLInputElement>(null)
   const toolTab = useRef<Tool>('subs')
@@ -208,6 +274,11 @@ function Home({ onPick, onTool, onProject, sensitive, setSensitive, error }: { o
           <AddIcon /> {t('בחר סרטון')}
         </button>
         <div class="drop-hint">{t('או גרור סרטון לכאן')}</div>
+        {installed() ? (
+          <div class="drop-hint share-hint">{t('אפשר גם לשתף סרטון מהגלריה ישירות לאפליקציה')}</div>
+        ) : matchMedia('(pointer: coarse)').matches ? (
+          <div class="drop-hint share-hint">{t('אחרי הוספת האתר למסך הבית אפשר לשתף אליו סרטונים ישירות מהגלריה.')}</div>
+        ) : null}
         <input
           ref={input}
           type="file"
@@ -251,16 +322,6 @@ function Home({ onPick, onTool, onProject, sensitive, setSensitive, error }: { o
             <p class="small" style="margin:6px 0 0">{error}</p>
           </div>
         )}
-        <label class="card row" style="cursor:pointer">
-          <div class="grow">
-            <strong>{t('זיהוי מורחב')}</strong>
-            <div class="small muted" style="margin-top:4px">{t('מוצא יותר פנים קטנות ורחוקות, עם יותר טשטושים מיותרים.')}</div>
-          </div>
-          <span class="switch">
-            <input type="checkbox" checked={sensitive} onChange={(e) => setSensitive((e.currentTarget as HTMLInputElement).checked)} />
-            <span />
-          </span>
-        </label>
       </div>
     </main>
   )

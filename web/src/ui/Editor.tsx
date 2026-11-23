@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { t, duration } from '../i18n'
 import { BlurRenderer, ellipseFor, type Ellipse } from '../lib/renderer'
-import { DEFAULT_LOOK, frameAt, trackBox, type Analysis, type BlurMode, type Look, type Track } from '../lib/types'
+import { frameAt, loadLook, saveLook, trackBox, type Analysis, type BlurMode, type Look, type Track } from '../lib/types'
 import type { ExportJob } from './Exporting'
-import { AddIcon, BackIcon, CloseIcon, CutIcon, FaceIcon, PictureIcon, MarkIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
+import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIcon, FaceIcon, PictureIcon, MarkIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
 import { FRAME, Timeline } from './Timeline'
 import { BlurBar } from './BlurBar'
 import { CutTab, wordSpan } from './CutTab'
-import { addCuts, CutMap, cutTotal, type Range } from '../lib/cutmap'
+import { addCuts, CutMap, cutAt, cutTotal, uncut, type Range } from '../lib/cutmap'
 import { isFiller } from '../lib/silence'
 import { applyFollow, boxNear, newTrack, nextTrackId, retime, setEnd, setStart, shift, split, type Box } from '../lib/tracks'
 import type { FollowMessage, FollowRequest } from '../workers/follow.worker'
 import { SfxScheduler, type SfxClip } from '../lib/sfx'
-import { drawWatermark, watermarkOn, type Watermark } from '../lib/watermark'
+import { drawWatermark, normalizeWatermark, watermarkOn, type Watermark } from '../lib/watermark'
 import { CleanupCard, SoundTab, SubtitlesTab, WatermarkTab, loadWatermark } from './EditorTabs'
 import { ExportSheet } from './ExportSheet'
 import { BackgroundCard, FrameCard, StabilizeCard, type PictureBusy } from './PictureTab'
@@ -30,7 +30,7 @@ import { bleepRanges, cueAt, maskCue, shownText, type Cue, type SubStyle, type W
 import { loadSubFont, normalizeStyle } from '../lib/substyle'
 import { cueWordTimes, drawCue } from '../lib/subrender'
 import { getFont } from '../lib/projects'
-import { loadSfx, makeBuffer, SFX_NAMES } from '../lib/sfx'
+import { loadSfx, makeBuffer, sfxName } from '../lib/sfx'
 import type { VoiceFx } from '../lib/voice'
 import type { AudioMessage, AudioRequest } from '../workers/audio.worker'
 
@@ -45,14 +45,6 @@ type Props = {
   hidden?: boolean
   /** A project opened again (its id and what was saved), or none: a new one is made. */
   project?: { id: string; state: ProjectState | null; picture: ProjectPicture | null }
-}
-
-function loadLook(): Look {
-  try {
-    const l = JSON.parse(localStorage.getItem('onit.look') ?? 'null')
-    if (l && ['blur', 'pixelate', 'solid'].includes(l.mode)) return { ...DEFAULT_LOOK, ...l }
-  } catch {}
-  return DEFAULT_LOOK
 }
 
 export type EditorTab = 'faces' | 'edit' | 'picture' | 'subs' | 'sound' | 'mark'
@@ -155,7 +147,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     try { return normalizeStyle(JSON.parse(localStorage.getItem('onit.substyle') ?? 'null')) } catch { return normalizeStyle(null) }
   })
   const [sfx, setSfx] = useState<SfxClip[]>(saved?.sfx ?? [])
-  const [mark, setMark] = useState<Watermark>(() => saved?.mark ?? loadWatermark())
+  const [mark, setMark] = useState<Watermark>(() => (saved?.mark ? normalizeWatermark(saved.mark) : loadWatermark()))
   const logo = useRef<HTMLImageElement | null>(null)
   const scheduler = useMemo(() => new SfxScheduler(), [])
   const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, voiceBuf: null as AudioBuffer | null, tracks, selected, cuts, cutMap, fps: an.fps, times, steadied, crop, framePath, masks: null as PeopleMasks | null, background })
@@ -183,7 +175,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   state.current.voiceBuf = voiceAudio?.buffer ?? null
 
   useEffect(() => {
-    try { localStorage.setItem('onit.look', JSON.stringify(look)) } catch {}
+    saveLook(look)
   }, [look])
 
   const ellipseOf = (tr: Track, i: number): Ellipse | null => {
@@ -279,10 +271,10 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       const cue = cueAt(state.current.cues, state.current.mediaTime)
       if (cue) {
         const st = state.current.subStyle
-        const text = maskCue(cue, state.current.words, state.current.bleeped)
+        const text = state.current.subStyle.maskBleeped === false ? cue.text : maskCue(cue, state.current.words, state.current.bleeped)
         const blocks = shownText(cue, text, st.show).split('\n')
         const times = st.show === 'tr' ? [] : [cueWordTimes(text, cue.start, cue.end, state.current.words)]
-        drawCue(tc, blocks, cue.start, cue.end, state.current.mediaTime, { ...st, color: speakerColor(st.color, cue.speaker) }, fw, fh, times)
+        drawCue(tc, blocks, cue.start, cue.end, state.current.mediaTime, { ...st, color: speakerColor(st.color, cue.speaker, st.speakerColors) }, fw, fh, times)
       }
       tc.restore()
     }
@@ -364,7 +356,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   // Redraw the paused frame when the look, the faces or the watermark change.
   useEffect(() => {
     if (video.current?.paused) draw()
-  }, [off, look, mark, cues, subStyle, tracks, selected, background, picture, steadied, framePath, crop])
+  }, [off, look, mark, cues, subStyle, tracks, selected, background, picture, steadied, framePath, crop, bleeped, words])
 
   // The background's picture, loaded once for the preview.
   useEffect(() => {
@@ -464,6 +456,13 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     try { localStorage.setItem('onit.substyle', JSON.stringify(subStyle)) } catch {}
   }, [subStyle])
 
+  // The watermark's font, loaded for the preview.
+  useEffect(() => {
+    let live = true
+    if (!mark.image && mark.text.trim()) loadSubFont(mark, document.fonts, document.baseURI).then((ok) => { if (ok && live && video.current?.paused) draw() })
+    return () => { live = false }
+  }, [mark.font, mark.round, mark.image, !!mark.text.trim()])
+
   // The subtitles' font, loaded for the preview (an imported one from the browser's storage).
   useEffect(() => {
     let live = true
@@ -472,7 +471,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       if (await loadSubFont(subStyle, document.fonts, document.baseURI, bytes)) { if (live && video.current?.paused) draw() }
     })()
     return () => { live = false }
-  }, [subStyle.font, subStyle.customFont])
+  }, [subStyle.font, subStyle.customFont, subStyle.round])
 
   // The logo, decoded once for the preview.
   useEffect(() => {
@@ -826,14 +825,13 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       if ((e.ctrlKey || e.metaKey) && (k === 'z' || k === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return }
       if ((e.ctrlKey || e.metaKey) && (k === 'y' || k === 'Y')) { e.preventDefault(); redo(); return }
       if (e.ctrlKey || e.metaKey || e.altKey) return
-      const frame = 1 / (an.fps || 30)
       switch (k) {
         case ' ': e.preventDefault(); playPause(); break
         case 'k': case 'K': v.pause(); break
         case 'j': case 'J': v.currentTime = Math.max(0, v.currentTime - 2); break
         case 'l': case 'L': if (v.paused) v.play().catch(() => {}); else v.currentTime = Math.min(end, v.currentTime + 2); break
-        case 'ArrowLeft': e.preventDefault(); v.pause(); v.currentTime = Math.max(0, v.currentTime - frame); break
-        case 'ArrowRight': e.preventDefault(); v.pause(); v.currentTime = Math.min(end, v.currentTime + frame); break
+        case 'ArrowLeft': e.preventDefault(); stepFrame(-1); break
+        case 'ArrowRight': e.preventDefault(); stepFrame(1); break
         case '-': case '_': timelineControls.zoom?.(1 / 1.5); break
         case '+': case '=': timelineControls.zoom?.(1.5); break
         case '1': case '2': case '3': case '4': case '5': case '6': setTab(GROUPS[Number(k) - 1][0]); break
@@ -849,6 +847,18 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
 
   const enabled = tracks.filter((tr) => !off.has(tr.id))
   const setMode = (mode: BlurMode) => setLook({ ...look, mode })
+  /** The cut the paused playhead is in (as the app says, with a way to bring it back). */
+  const cutHere = cutAt(cuts, time)
+  /** One frame back (-1) or forward (1), paused. */
+  const stepFrame = (dir: number) => {
+    const v = video.current
+    if (!v) return
+    const end = isFinite(v.duration) ? v.duration : dur
+    v.pause()
+    v.currentTime = Math.min(end, Math.max(0, v.currentTime + dir / (an.fps || 30)))
+  }
+  /** A subtitle's text with the bleeped words hidden (unless they're to show as said). */
+  const masked = (c: Cue) => (subStyle.maskBleeped === false ? c.text : maskCue(c, words, bleeped))
 
   return (
     <>
@@ -894,15 +904,25 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           </div>
           <video ref={video} src={url} playsInline preload="auto" />
           {adding && <div class="screen-hint">{t('הקש על הסרטון במקום שצריך לטשטש')}</div>}
+          {!adding && !playing && cutHere && (
+            <div class="banner cut-here" onPointerDown={(e) => e.stopPropagation()}>
+              <span>{t('הקטע הזה נחתך מהסרטון')}</span>
+              <button class="btn ghost small-btn" onClick={() => setCutsH(uncut(cuts, cutHere[0], cutHere[1]))}>{t('החזר')}</button>
+            </div>
+          )}
           {notice && <div class="toast" role="status">{notice}</div>}
         </div>
         <div class="transport">
-          <button class="round" onClick={playPause} aria-label={playing ? t('השהה') : t('נגן')}>{playing ? <PauseIcon size={26} /> : <PlayIcon size={26} />}</button>
+          <div class="step-group" dir="ltr">
+            <button class="icon-btn frame-prev" onClick={() => stepFrame(-1)} aria-label={t('פריים קודם')} title={t('פריים קודם')}><ChevronLeftIcon size={26} /></button>
+            <button class="round" onClick={playPause} aria-label={playing ? t('השהה') : t('נגן')}>{playing ? <PauseIcon size={26} /> : <PlayIcon size={26} />}</button>
+            <button class="icon-btn frame-next" onClick={() => stepFrame(1)} aria-label={t('פריים הבא')} title={t('פריים הבא')}><ChevronRightIcon size={26} /></button>
+          </div>
           <span class="time">{duration(time)} / {duration(dur)}</span>
           <div class="grow" />
           {selectedClip && (
             <div class="sel-sfx">
-              <strong>{t(SFX_NAMES.get(selectedClip.sound) ?? selectedClip.sound)}</strong>
+              <strong>{sfxName(selectedClip.sound)}</strong>
               <input type="range" min={0} max={2} step={0.05} value={selectedClip.gain} aria-label={t('עוצמה')} onInput={(e) => updateSfx(selectedClip.id, { gain: Number((e.currentTarget as HTMLInputElement).value) })} />
               <span class="muted small" dir="ltr">{Math.round(selectedClip.gain * 100)}%</span>
               <button class="btn ghost small-btn" onClick={() => updateSfx(selectedClip.id, { at: time })}>{t('העבר לכאן')}</button>
@@ -934,7 +954,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           times={times}
           tracks={tracks}
           off={off}
-          cues={cues.map((c) => ({ ...c, text: shownText(c, maskCue(c, words, bleeped), subStyle.show) }))}
+          cues={cues.map((c) => ({ ...c, text: shownText(c, masked(c), subStyle.show) }))}
           sfx={sfx}
           sfxLength={sfxLength}
           selectedSfx={selectedSfx}
@@ -1134,7 +1154,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         onGo={() => {
           setExportOpen(false)
           saveExportOptions(exportOpts)
-          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: shownText(c, maskCue(c, words, bleeped), subStyle.show) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, cuts, words, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
+          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: shownText(c, masked(c), subStyle.show) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, cuts, words, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
         }}
       />
     )}

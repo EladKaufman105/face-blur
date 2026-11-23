@@ -20,6 +20,23 @@ if (!existsSync(model) || statSync(model).mtimeMs < statSync(src).mtimeMs || !ex
 // Every subtitle font (all under the SIL Open Font License, its text beside them).
 for (const f of readdirSync(join(assets, 'fonts'))) if (f.endsWith('.ttf')) copy(join(assets, 'fonts', f), join(pub, 'fonts', f))
 copy(join(assets, 'fonts', 'licenses'), join(pub, 'fonts', 'licenses'))
+// Allo with its roundness set (the canvas can't set a font's axes; weight stays variable), as the
+// app's roundness slider: 0, 25, 75 and 100 (50 is the font's own).
+{
+  const allo = join(assets, 'fonts', 'allo_hebrew.ttf')
+  const outs = [0, 25, 75, 100].map((r) => [r, join(pub, 'fonts', `allo_hebrew_r${r}.ttf`)])
+  if (outs.some(([, f]) => !existsSync(f) || statSync(f).mtimeMs < statSync(allo).mtimeMs)) {
+    const py = `
+import sys
+from fontTools.ttLib import TTFont
+from fontTools.varLib.instancer import instantiateVariableFont
+for arg in sys.argv[2:]:
+    r, out = arg.split('=', 1)
+    instantiateVariableFont(TTFont(sys.argv[1]), {'ROND': int(r)}).save(out)
+`
+    execFileSync('python3', ['-c', py, allo, ...outs.map(([r, f]) => `${r}=${f}`)], { stdio: 'inherit' })
+  }
+}
 // The speaker model (WeSpeaker ResNet34, CC BY 4.0), as the Android app downloads it, float32.
 const speaker = join(pub, 'models', 'speaker.onnx')
 if (!existsSync(speaker)) {

@@ -1,8 +1,11 @@
-import { useRef, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { t, duration } from '../i18n'
-import { previewSfx, SFX_GROUPS, SFX_NAMES, type SfxClip } from '../lib/sfx'
-import { NO_WATERMARK, POSITIONS, type Watermark, type WatermarkLook } from '../lib/watermark'
-import { CloseIcon, CutIcon, DeleteIcon, MergeIcon, PlayIcon } from './icons'
+import { decodeSound, forgetSfx, MAX_IMPORT_SEC, previewSfx, sfxName, SFX_GROUPS, USER_SFX, type SfxClip } from '../lib/sfx'
+import { NO_WATERMARK, normalizeWatermark, POSITIONS, type Watermark, type WatermarkLook } from '../lib/watermark'
+import { fontFamily, SUB_COLORS, SUB_FONTS } from '../lib/substyle'
+import { FontAxes } from './FontAxes'
+import { AddIcon, CloseIcon, CutIcon, DeleteIcon, MergeIcon, PlayIcon } from './icons'
+import { deleteSound, listSounds, saveSound } from '../lib/projects'
 import { LANGUAGES, newCueId, parseSrt, splitCue, toSrt, wordsToCues, type Cue, type SubShow, type SubStyle, type Word } from '../lib/subtitles'
 import { SubStyleCard } from './SubStyleCard'
 import { canTranslate, guessLang, LANG_NAMES, translateAll } from '../lib/translate'
@@ -67,6 +70,30 @@ export function reserveClipIds(clips: SfxClip[]) {
 /** The sound effects: pick a group, ▶ to hear, tap to add at the playhead; the added ones below. */
 export function SoundTab({ clips, time, onChange, onSeek, voice, onVoice, voiceBusy }: { clips: SfxClip[]; time: number; onChange: (c: SfxClip[]) => void; onSeek: (at: number) => void; voice: VoiceFx; onVoice: (v: VoiceFx) => void; voiceBusy: boolean }) {
   const [group, setGroup] = useState(0)
+  // The sounds imported from the device ("mine", the last group), kept in the browser.
+  const MINE = SFX_GROUPS.length
+  const [mine, setMine] = useState<string[] | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importNote, setImportNote] = useState<string | null>(null)
+  const importer = useRef<HTMLInputElement>(null)
+  useEffect(() => { listSounds().then(setMine) }, [])
+  const importSound = async (f: File) => {
+    setImporting(true)
+    setImportNote(null)
+    try {
+      const bytes = await f.arrayBuffer()
+      await decodeSound(bytes.slice(0))
+      const base = f.name.replace(/\.[^.]+$/, '') || t('צליל')
+      const taken = new Set(mine ?? [])
+      let name = base
+      for (let k = 2; taken.has(name); k++) name = `${base} (${k})`
+      await saveSound(name, bytes)
+      setMine([...(mine ?? []), name].sort())
+    } catch {
+      setImportNote(t('לא הצלחתי לקרוא את הקובץ'))
+    }
+    setImporting(false)
+  }
   const add = (sound: string) => onChange([...clips, { id: nextClip++, sound, at: time, gain: 1 }].sort((a, b) => a.at - b.at))
   const update = (id: number, patch: Partial<SfxClip>) => onChange(clips.map((c) => (c.id === id ? { ...c, ...patch } : c)).sort((a, b) => a.at - b.at))
   return (
@@ -86,16 +113,37 @@ export function SoundTab({ clips, time, onChange, onSeek, voice, onVoice, voiceB
           {SFX_GROUPS.map((g, k) => (
             <button class={'chip' + (k === group ? ' on' : '')} onClick={() => setGroup(k)}>{t(g.label)}</button>
           ))}
+          <button class={'chip mine-chip' + (group === MINE ? ' on' : '')} onClick={() => setGroup(MINE)}>{t('שלי')}</button>
         </div>
-        <p class="small muted" style="margin:10px 0">{t('הקש על צליל כדי להוסיף אותו במיקום הנוכחי. ▶ כדי לשמוע.')}</p>
+        <p class="small muted" style="margin:10px 0">
+          {group === MINE && mine?.length === 0 ? t('כאן יופיעו צלילים שתייבא מהמכשיר (עד %d שניות כל אחד).', MAX_IMPORT_SEC) : t('הקש על צליל כדי להוסיף אותו במיקום הנוכחי. ▶ כדי לשמוע.')}
+        </p>
         <div class="sounds">
-          {SFX_GROUPS[group].sounds.map((s) => (
+          {group < MINE && SFX_GROUPS[group].sounds.map((s) => (
             <div class="sound">
               <button class="play" aria-label={t('השמע')} onClick={() => previewSfx(s.id)}><PlayIcon size={18} /></button>
               <button class="name" onClick={() => add(s.id)}>{t(s.name)}</button>
             </div>
           ))}
+          {group === MINE && (mine ?? []).map((name) => (
+            <div class="sound mine">
+              <button class="play" aria-label={t('השמע')} onClick={() => previewSfx(USER_SFX + name)}><PlayIcon size={18} /></button>
+              <button class="name" onClick={() => add(USER_SFX + name)}>{name}</button>
+              <button class="icon-btn small-icon" aria-label={t('מחק')} onClick={async () => { await deleteSound(name); forgetSfx(USER_SFX + name); setMine((mine ?? []).filter((x) => x !== name)) }}><CloseIcon size={14} /></button>
+            </div>
+          ))}
+          {group === MINE && (
+            <button class="sound import-sound" disabled={importing} onClick={() => importer.current?.click()}>
+              <AddIcon size={18} /> {importing ? t('מייבא…') : t('ייבוא צליל')}
+            </button>
+          )}
         </div>
+        {importNote && <p class="small" style="margin:8px 0 0;color:var(--primary)">{importNote}</p>}
+        <input ref={importer} type="file" accept="audio/*" hidden onChange={(e) => {
+          const f = (e.currentTarget as HTMLInputElement).files?.[0]
+          ;(e.currentTarget as HTMLInputElement).value = ''
+          if (f) importSound(f)
+        }} />
       </section>
       {clips.length > 0 && (
         <section class="card">
@@ -105,7 +153,7 @@ export function SoundTab({ clips, time, onChange, onSeek, voice, onVoice, voiceB
               <div class="clip">
                 <div class="row">
                   <button class="time-btn" onClick={() => onSeek(c.at)} dir="ltr">{duration(c.at)}.{Math.floor((c.at % 1) * 10)}</button>
-                  <strong class="grow">{t(SFX_NAMES.get(c.sound) ?? c.sound)}</strong>
+                  <strong class="grow">{sfxName(c.sound)}</strong>
                   <button class="btn ghost small-btn" onClick={() => update(c.id, { at: time })}>{t('העבר לכאן')}</button>
                   <button class="icon-btn" aria-label={t('מחק')} onClick={() => onChange(clips.filter((x) => x.id !== c.id))}><CloseIcon size={18} /></button>
                 </div>
@@ -193,12 +241,11 @@ function TranslateCard({ cues, onCues, show, onShow }: { cues: Cue[]; onCues: (c
 export function loadWatermark(): Watermark {
   try {
     const w = JSON.parse(localStorage.getItem('onit.watermark') ?? 'null')
-    if (w && typeof w.text === 'string') return { ...NO_WATERMARK, ...w, image: null }
+    if (w && typeof w.text === 'string') return { ...normalizeWatermark(w), image: null }
   } catch {}
   return NO_WATERMARK
 }
 
-const COLORS = ['#ffffff', '#000000', '#ff4d6d', '#ffc53d', '#3ddcff', '#8b6cff']
 const LOOKS: [WatermarkLook, string][] = [['plain', 'רגיל'], ['shadow', 'צל'], ['outline', 'קו מתאר'], ['box', 'רקע']]
 const ARROWS: Record<string, string> = { tl: '↖', tc: '↑', tr: '↗', cl: '←', c: '•', cr: '→', bl: '↙', bc: '↓', br: '↘' }
 
@@ -229,7 +276,18 @@ export function WatermarkTab({ mark, onChange }: { mark: Watermark; onChange: (w
         }}
       />
       {!mark.image && (
-        <input class="text-in" type="text" dir="auto" placeholder={t('למשל @שם_הערוץ')} value={mark.text} onInput={(e) => set({ text: (e.currentTarget as HTMLInputElement).value })} />
+        <>
+          <input class="text-in" type="text" dir="auto" placeholder={t('למשל @שם_הערוץ')} value={mark.text} onInput={(e) => set({ text: (e.currentTarget as HTMLInputElement).value })} />
+          <h4 class="caption">{t('פונט')}</h4>
+          <div class="chips mark-fonts">
+            {SUB_FONTS.map((f) => (
+              <button class={'chip' + (mark.font === f.id ? ' on' : '')} style={{ fontFamily: fontFamily({ font: f.id, weight: 0 }) }} onClick={() => set({ font: f.id, weight: 0, round: undefined })}>
+                {f.id === 'system' ? t('של המכשיר') : f.label}
+              </button>
+            ))}
+          </div>
+          <FontAxes choice={mark} onChange={(weight, round) => set({ weight, round })} />
+        </>
       )}
       {mark.image && (
         <div class="row" style="margin-top:10px">
@@ -253,7 +311,7 @@ export function WatermarkTab({ mark, onChange }: { mark: Watermark; onChange: (w
                 ))}
               </div>
               <div class="swatches">
-                {COLORS.map((c) => (
+                {SUB_COLORS.map((c) => (
                   <button class={'swatch' + (mark.color === c ? ' on' : '')} style={{ background: c }} aria-label={c} onClick={() => set({ color: c })} />
                 ))}
               </div>
@@ -289,7 +347,6 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
   const [repl, setRepl] = useState('')
   const [findResult, setFindResult] = useState<string | null>(null)
   const [listNote, setListNote] = useState<string | null>(null)
-  const [group, setGroup] = useState(0)
   // Where the cursor is in each subtitle's text (for splitting there).
   const caret = useRef(new Map<number, number>())
   const sorted = [...cues].sort((a, b) => a.start - b.start)
@@ -328,10 +385,13 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
     const tr = c.tr || n.tr ? [c.tr ?? '', n.tr ?? ''].join(' ').trim() : undefined
     onCues(cues.filter((x) => x.id !== n.id).map((x) => (x.id === c.id ? { ...x, end: n.end, text: (x.text + ' ' + n.text).trim(), tr } : x)), true)
   }
-  const regroup = (maxWords: number) => {
-    setGroup(maxWords)
+  // How the subtitles are cut (as the app's): by spoken words or by characters, up to whole sentences.
+  const [byChars, setByChars] = useState(false)
+  const [split, setSplit] = useState<{ words: number; chars: number }>({ words: 0, chars: 0 })
+  const regroup = (rule: { words: number; chars: number }) => {
+    setSplit(rule)
     onBleeped(new Set())
-    onCues(wordsToCues(words, maxWords), true)
+    onCues(wordsToCues(words, rule.words, rule.chars), true)
   }
   const [lang, setLang] = useState<string | null>(() => { try { return localStorage.getItem('onit.subs.lang') } catch { return null } })
   const [run, setRun] = useState<SubsRun>(null)
@@ -428,19 +488,21 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
       {words.length > 0 && (
         <section class="card">
           <h3 class="section-title">{t('צפצוף מילים')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{bleeped.size > 0 ? t('%d מילים', bleeped.size) : ''}</span></h3>
-          <p class="small muted" style="margin:0 0 10px">{t('בחר מילים בטקסט: הן יוחלפו בצפצוף (או בשקט) וב-**** בכתוביות.')}</p>
+          <p class="small muted" style="margin:0 0 10px">{t('בחר מילים בטקסט, והן יוחלפו בצפצוף או בשקט.')}</p>
           <div class="actions">
             <button class={'btn ' + (bleepMode ? 'primary' : 'tonal')} onClick={() => setBleepMode(!bleepMode)}>{bleepMode ? t('סיום') : t('בחר מילים')}</button>
             {bleeped.size > 0 && <button class="btn ghost" onClick={() => onBleeped(new Set())}>{t('נקה')}</button>}
           </div>
-          <div class="seg" style="grid-template-columns:1fr 1fr;margin-top:10px">
+          <h4 class="caption">{t('במקום המילה')}</h4>
+          <div class="seg" style="grid-template-columns:1fr 1fr">
             <button class={tone ? 'on' : ''} onClick={() => onTone(true)}>{t('צפצוף')}</button>
             <button class={!tone ? 'on' : ''} onClick={() => onTone(false)}>{t('שקט')}</button>
           </div>
+          <SwitchRow cls="mask-subs" title={t('הסתר אותן גם בכתוביות')} text="****" on={style.maskBleeped !== false} onChange={(on) => onStyle({ ...style, maskBleeped: on })} />
         </section>
       )}
       {cues.length > 0 && <TranslateCard cues={cues} onCues={onCues} show={style.show ?? 'src'} onShow={(v) => set({ show: v })} />}
-      {cues.length > 0 && <SpeakersCard file={file} cues={cues} onCues={onCues} color={style.color} />}
+      {cues.length > 0 && <SpeakersCard file={file} cues={cues} onCues={onCues} color={style.color} chosen={style.speakerColors} />}
       {cues.length > 0 && <SubStyleCard style={style} onStyle={onStyle} />}
       {cues.length > 0 && (
         <section class="card cue-list">
@@ -460,11 +522,21 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
             </div>
           )}
           {words.length > 0 && (
-            <div class="row wrap">
-              <span class="small">{t('חלוקת הכתוביות')}</span>
-              {[[3, t('עד 3 מילים')], [6, t('עד 6 מילים')], [0, t('משפט שלם')]].map(([n, label]) => (
-                <button class={'chip' + (group === n ? ' on' : '')} onClick={() => regroup(n as number)}>{label}</button>
-              ))}
+            <div class="split-cues">
+              <div class="row">
+                <span class="small grow">{t('חלוקת הכתוביות')}</span>
+                <div class="seg seg2 split-by" role="radiogroup">
+                  <button class={!byChars ? 'on' : ''} role="radio" aria-checked={!byChars} onClick={() => setByChars(false)}>{t('מילים')}</button>
+                  <button class={byChars ? 'on' : ''} role="radio" aria-checked={byChars} onClick={() => setByChars(true)}>{t('תווים')}</button>
+                </div>
+              </div>
+              <div class="chips">
+                {(byChars ? [10, 15, 20, 25, 32, 42] : [1, 2, 3, 4, 5, 6, 8]).map((n) => {
+                  const rule = byChars ? { words: 0, chars: n } : { words: n, chars: 0 }
+                  return <button class={'chip' + (split.words === rule.words && split.chars === rule.chars ? ' on' : '')} onClick={() => regroup(rule)}>{byChars ? t('עד %d', n) : <bdi dir="ltr">{n}</bdi>}</button>
+                })}
+                <button class={'chip' + (!split.words && !split.chars ? ' on' : '')} onClick={() => regroup({ words: 0, chars: 0 })}>{t('משפט שלם')}</button>
+              </div>
             </div>
           )}
           {listNote && <p class="small" style="margin:0;color:var(--primary)">{listNote}</p>}
@@ -474,7 +546,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
                 <div class="row">
                   <div class="cue-meta">
                     <button class="time-btn" onClick={() => onSeek(c.start + 0.01)} dir="ltr">{duration(c.start)}</button>
-                    {speakers > 1 && <SpeakerDot speaker={c.speaker} color={style.color} max={Math.min(MAX_SPEAKERS, speakers + 1)} onChange={(sp) => onCues(cues.map((x) => (x.id === c.id ? { ...x, speaker: sp } : x)), true)} />}
+                    {speakers > 1 && <SpeakerDot speaker={c.speaker} color={style.color} chosen={style.speakerColors} max={Math.min(MAX_SPEAKERS, speakers + 1)} onChange={(sp) => onCues(cues.map((x) => (x.id === c.id ? { ...x, speaker: sp } : x)), true)} />}
                   </div>
                   {bleepMode ? (
                     <div class="word-chips" dir="auto">

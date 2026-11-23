@@ -16,6 +16,8 @@ export type ExportOptions = {
   codec: ExportCodec
   /** Save the subtitles as an SRT file too. */
   srt: boolean
+  /** Burn the subtitles into the picture (false: only the SRT, if asked for). */
+  burn?: boolean
   /** As shot, or a vertical, square or 4:5 frame that follows the faces. */
   aspect: Aspect
 }

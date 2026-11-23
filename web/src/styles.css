@@ -544,3 +544,52 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .palette.on { color: var(--text); font-weight: 700; }
 .palette-dot { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: #fff; border: 2px solid transparent; }
 .palette.on .palette-dot { outline: 3px solid var(--primary); outline-offset: 2px; }
+
+/* Ready: the picked video, the big button, the blur's settings folded away */
+.ready { display: grid; gap: var(--space-4); align-items: start; }
+@media (min-width: 900px) { .ready { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: var(--space-5); } }
+.video-card { display: grid; gap: var(--space-3); }
+.ready-frame { background: var(--surface-3); border-radius: var(--radius-card); overflow: hidden; display: grid; place-items: center; }
+.ready-frame video { display: block; max-width: 100%; max-height: 300px; width: auto; height: auto; }
+.ready-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.info-chips { margin-top: var(--space-2); }
+.info-chip { background: var(--surface-3); color: var(--muted); border-radius: 999px; padding: 3px 10px; font: var(--text-label); }
+.ready-side { display: grid; gap: var(--space-4); }
+.ready-actions { display: grid; gap: var(--space-2); }
+.ready-actions .blur-faces { width: 100%; }
+.ready-actions p { margin: 0; }
+.fold { padding: 0; overflow: hidden; }
+.fold-head { width: 100%; display: flex; align-items: center; gap: var(--space-3); border: 0; background: transparent; color: inherit; text-align: start; padding: var(--space-3) var(--space-4); min-height: var(--touch); cursor: pointer; font: inherit; }
+.fold-head .grow { display: grid; gap: 2px; }
+.fold-summary { padding-inline-start: 26px; }
+.chevron { color: var(--muted); font-size: 20px; line-height: 1; transition: transform var(--motion-state); }
+.chevron.up { transform: rotate(180deg); }
+.fold-body { border-top: 1px solid var(--outline-soft); padding: var(--space-4); display: grid; gap: var(--space-2); }
+.range-ends { display: flex; justify-content: space-between; }
+.ready-top { grid-column: 1 / -1; margin-bottom: calc(-1 * var(--space-2)); }
+.ready-back { padding-inline: 0; }
+
+/* A variable font's weight and roundness */
+.font-axes { display: grid; gap: var(--space-1); }
+.axis { display: flex; align-items: center; gap: var(--space-2); }
+.axis input { flex: 1; min-width: 0; }
+.axis-value { min-width: 40px; text-align: end; }
+.mark-fonts { margin-top: var(--space-1); }
+.mark-fonts .chip { font-size: 15px; }
+.sound.import-sound { border: 1px dashed var(--outline); color: var(--primary); padding: 0 12px; height: 40px; gap: 6px; font-weight: 600; font-size: 14px; background: transparent; cursor: pointer; }
+.sound.mine .small-icon { width: 28px; height: 28px; margin-inline-end: 4px; }
+.speaker-colors { gap: var(--space-2); flex-wrap: wrap; }
+.speaker-dot.pick { width: 34px; height: 34px; font-size: 13px; cursor: pointer; }
+.speaker-dot.pick.on { outline: 3px solid var(--primary); outline-offset: 2px; }
+.speaker-dot.pick:disabled { cursor: default; }
+.live { position: relative; border-radius: var(--radius); overflow: hidden; background: #000; display: grid; place-items: center; max-height: 46dvh; }
+.live canvas { max-width: 100%; max-height: 46dvh; display: block; }
+.live.empty { display: none; }
+.message-card { display: grid; gap: var(--space-3); }
+.message-card .actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.step-group { display: flex; align-items: center; gap: var(--space-1); }
+.step-group .icon-btn { width: 40px; height: 40px; color: var(--text); }
+.split-cues { display: grid; gap: var(--space-2); }
+.split-by { width: 180px; }
+.banner { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: var(--space-2); background: rgb(20 22 40 / 0.92); color: #fff; border-radius: 999px; padding: 4px 6px 4px 14px; font: var(--text-label); box-shadow: var(--shadow); white-space: nowrap; z-index: 2; }
+.banner .btn { color: var(--amber); padding: 4px 10px; }

@@ -33,7 +33,7 @@ function isNoise(t: string) {
  * would grow past 64 characters ([maxWords]: also after that many words, evenly). At least 0.8 s
  * on screen, no overlaps.
  */
-export function wordsToCues(words: Word[], maxWords = 0): Cue[] {
+export function wordsToCues(words: Word[], maxWords = 0, maxChars = 0): Cue[] {
   const sorted = words.filter((w) => !isNoise(w.text)).sort((a, b) => a.start - b.start)
   const groups: Word[][] = []
   let cur: Word[] = []
@@ -58,6 +58,21 @@ export function wordsToCues(words: Word[], maxWords = 0): Cue[] {
       const parts = Math.ceil(g.length / maxWords)
       const size = Math.ceil(g.length / parts)
       for (let i = 0; i < g.length; i += size) split.push(g.slice(i, i + size))
+    }
+    groups.splice(0, groups.length, ...split)
+  } else if (maxChars > 0) {
+    // Each sentence cut before the word that would pass [maxChars] (as the app's split by characters).
+    const split: Word[][] = []
+    for (const g of groups) {
+      let part: Word[] = []
+      let len = 0
+      for (const w of g) {
+        const n = w.text.trim().length
+        const add = len === 0 ? n : len + 1 + n
+        if (len > 0 && add > maxChars) { split.push(part); part = [w]; len = n }
+        else { part.push(w); len = add }
+      }
+      if (part.length) split.push(part)
     }
     groups.splice(0, groups.length, ...split)
   }

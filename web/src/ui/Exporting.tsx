@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { t, duration } from '../i18n'
+import { canKeepAwake, useWakeLock } from '../lib/wakelock'
 import type { Look, Track } from '../lib/types'
 import type { ExportMessage, ExportPicture, ExportRequest } from '../workers/export.worker'
 import { sfxSamples, type SfxClip } from '../lib/sfx'
@@ -11,20 +12,32 @@ import { CutMap, type Range } from '../lib/cutmap'
 import { DEFAULT_EXPORT, outputSize, type ExportOptions } from '../lib/exportopts'
 import { cutCues, toSrt } from '../lib/subtitles'
 
-export type ExportJob = { file: File; times: Float64Array; tracks: Track[]; look: Look; width: number; height: number; sfx: SfxClip[]; watermark: Watermark; cues: Cue[]; subStyle: SubStyle; words?: Word[]; voice: { rate: number; data: Float32Array } | null; cuts: Range[]; options?: ExportOptions; standalone?: boolean; picture?: Omit<ExportPicture, 'image'> }
+export type ExportJob = { file: File; times: Float64Array; tracks: Track[]; look: Look; width: number; height: number; sfx: SfxClip[]; watermark: Watermark; cues: Cue[]; subStyle: SubStyle; words?: Word[]; voice: { rate: number; data: Float32Array } | null; cuts: Range[]; options?: ExportOptions; standalone?: boolean; picture?: Omit<ExportPicture, 'image'>; /** The second of two steps (found and saved straight away). */ twoSteps?: boolean }
 
-export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () => void; onNew: () => void }) {
+export function Exporting({ job, onBack, onNew, onEdit }: { job: ExportJob; onBack: () => void; onNew: () => void; /** Open the editor on what was saved straight away. */ onEdit?: () => void }) {
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState<{ blob: Blob; ms: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const started = useMemo(() => performance.now(), [job])
+  // The export as it's made: a small picture now and then.
+  const live = useRef<HTMLCanvasElement>(null)
+  const [seen, setSeen] = useState(false)
+  useWakeLock(!result && !error)
 
   useEffect(() => {
     const worker = new Worker(new URL('../workers/export.worker.ts', import.meta.url), { type: 'module' })
     worker.onmessage = (e: MessageEvent<ExportMessage>) => {
       const m = e.data
       if (m.type === 'progress') setProgress(m.progress)
-      else if (m.type === 'done') { setResult({ blob: m.blob, ms: m.ms }); worker.terminate() }
+      else if (m.type === 'frame') {
+        const c = live.current
+        if (c) {
+          if (c.width !== m.bitmap.width || c.height !== m.bitmap.height) { c.width = m.bitmap.width; c.height = m.bitmap.height }
+          c.getContext('2d')!.drawImage(m.bitmap, 0, 0)
+          setSeen(true)
+        }
+        m.bitmap.close()
+      } else if (m.type === 'done') { setResult({ blob: m.blob, ms: m.ms }); worker.terminate() }
       else { setError(m.message); worker.terminate() }
     }
     worker.onerror = (e) => { setError(e.message || 'error'); worker.terminate() }
@@ -42,7 +55,7 @@ export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () =
       const customFont = job.subStyle.customFont ? await getFont(job.subStyle.customFont) : null
       if (cancelled) return
       const picture: ExportPicture | undefined = job.picture ? { ...job.picture, image } : undefined
-      const req: ExportRequest = { file: job.file, times: job.times, tracks: job.tracks, look: job.look, sfx, overlay, cues: job.cues, subStyle: job.subStyle, voice: job.voice, cuts: job.cuts, options: job.options, picture, base: new URL('.', document.baseURI).href, words: job.words ?? [], customFont }
+      const req: ExportRequest = { file: job.file, times: job.times, tracks: job.tracks, look: job.look, sfx, overlay, cues: job.options?.burn === false ? [] : job.cues, subStyle: job.subStyle, voice: job.voice, cuts: job.cuts, options: job.options, picture, base: new URL('.', document.baseURI).href, words: job.words ?? [], customFont }
       const transfer: Transferable[] = []
       if (overlay) transfer.push(overlay)
       if (image) transfer.push(image)
@@ -84,18 +97,24 @@ export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () =
     const left = progress > 0.05 ? (elapsed / progress) * (1 - progress) : null
     return (
       <main class="side narrow">
+        {!mp3 && (
+          <div class={'live' + (seen ? '' : ' empty')}>
+            <canvas ref={live} />
+            {seen && <div class="pill"><span class="dot" />{t('תצוגה חיה של הייצוא')}</div>}
+          </div>
+        )}
         <div class="card">
           <div class="row">
             <div class="face-icon"><SaveIcon /></div>
             <div class="grow">
-              <strong>{t('מייצא')}</strong>
-              <div class="small muted">{left !== null ? t('נותרו כ-%s', duration(left)) : ' '}</div>
+              <strong>{job.twoSteps ? t('שלב 2 מתוך 2 · מטשטש ושומר') : t('מייצא')}</strong>
+              <div class="small muted">{[t('עברו %s', duration(elapsed)), left !== null ? t('נותרו כ-%s', duration(left)) : ''].filter(Boolean).join(' · ')}</div>
             </div>
             <div class="big-num">{pct}%</div>
           </div>
           <div class="progress" style="margin:14px 0 12px"><div style={{ width: `${Math.max(2, pct)}%` }} /></div>
           <div class="row">
-            <div class="small muted grow">{t('אל תסגור את הלשונית עד הסיום.')}</div>
+            <div class="small muted grow">{canKeepAwake() ? t('השאר את הלשונית פתוחה עד הסוף. המסך יישאר דלוק.') : t('אל תסגור את הלשונית עד הסיום.')}</div>
             <button class="btn tonal" onClick={onBack}>{t('ביטול')}</button>
           </div>
         </div>
@@ -114,6 +133,8 @@ export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () =
           <div class="small muted">{name} · {(result.blob.size / 1e6).toFixed(1)} MB</div>
         </div>
       </div>
+      {!mp3 && (job.tracks.length > 0 || job.twoSteps) && <p class="small muted review-note">{t('כדאי לעבור על הסרטון לפני פרסום: זיהוי אוטומטי עלול לפספס פנים מסובבות, מוסתרות או קטנות מאוד.')}</p>}
+      {!mp3 && job.tracks.length === 0 && !job.twoSteps && (job.words?.length ?? 0) > 0 && <p class="small muted review-note">{t('כדאי לעבור על הכתוביות לפני פרסום: זיהוי דיבור ותרגום אוטומטיים עלולים לטעות.')}</p>}
       <div class="actions">
         <a class="btn primary" href={url} download={name} style="text-decoration:none"><SaveIcon /> {t('שמור')}</a>
         {canShare && (
@@ -123,6 +144,7 @@ export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () =
       {srt && <a class="btn tonal srt-link" href={srt} download={base + '.srt'} style="text-decoration:none"><SubtitlesIcon /> {t('שמור כתוביות SRT')}</a>}
       <div class="actions">
         {!job.standalone && <button class="btn ghost" onClick={onBack}><span class="flip"><BackIcon /></span> {t('חזרה לעריכה')}</button>}
+        {onEdit && <button class="btn ghost edit-saved" onClick={onEdit}>{t('ערוך')}</button>}
         <button class="btn ghost" onClick={onNew}>{t('סרטון חדש')}</button>
       </div>
       </div>

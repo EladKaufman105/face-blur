@@ -37,6 +37,13 @@ const [, , url, video, out] = process.argv
     const t1 = await p.evaluate(() => document.querySelector('video').currentTime)
     console.log('frame step', (t1 - t0).toFixed(3))
     if (!(t1 > t0)) throw new Error('arrow step')
+    // The same with the buttons beside play (for touch screens): forward, then back.
+    await p.click('.frame-next'); await p.waitForTimeout(300)
+    const t2 = await p.evaluate(() => document.querySelector('video').currentTime)
+    await p.click('.frame-prev'); await p.click('.frame-prev'); await p.waitForTimeout(300)
+    const t3 = await p.evaluate(() => document.querySelector('video').currentTime)
+    console.log('buttons: next', (t2 - t1).toFixed(3), '· back twice', (t3 - t2).toFixed(3))
+    if (!(t2 > t1 && t3 < t2)) throw new Error('frame buttons')
     await p.screenshot({ path: out })
     console.log('PASS')
   } finally { await b.close() }

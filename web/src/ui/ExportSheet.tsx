@@ -16,6 +16,8 @@ type Props = {
   onChange: (o: ExportOptions) => void
   onGo: () => void
   onClose: () => void
+  /** What the button says (when it isn't "export"). */
+  action?: string
 }
 
 /**
@@ -93,6 +95,16 @@ export function ExportSheet(p: Props) {
               </p>
             </>
           )}
+          {p.hasCues && o.format !== 'mp3' && (
+            <>
+              <h4 class="caption">{t('כתוביות בסרטון המיוצא')}</h4>
+              <div class="seg seg2 burn-seg" role="radiogroup">
+                <button class={o.burn !== false ? 'on' : ''} role="radio" aria-checked={o.burn !== false} onClick={() => set({ burn: true })}>{t('לצרוב בסרטון')}</button>
+                <button class={o.burn === false ? 'on' : ''} role="radio" aria-checked={o.burn === false} onClick={() => set({ burn: false })}>{t('לא לצרוב')}</button>
+              </div>
+              <p class="small muted" style="margin:0">{o.burn === false ? t('הכתוביות לא ייצרבו בסרטון.') : t('הכתוביות ייצרבו בתמונה ויופיעו בכל נגן.')}</p>
+            </>
+          )}
           {p.hasCues && (
             <label class="row switch-row" style="cursor:pointer">
               <div class="grow">
@@ -106,7 +118,7 @@ export function ExportSheet(p: Props) {
             </label>
           )}
         </div>
-        <button class="btn primary export-go" onClick={p.onGo}><SaveIcon /> {o.format === 'mp3' ? t('שמור MP3') : t('ייצא')}</button>
+        <button class="btn primary export-go" onClick={p.onGo}><SaveIcon /> {o.format === 'mp3' ? t('שמור MP3') : p.action ?? t('ייצא')}</button>
       </div>
     </div>
   )

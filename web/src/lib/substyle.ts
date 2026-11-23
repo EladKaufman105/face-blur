@@ -47,6 +47,12 @@ export interface SubStyle {
   position: number
   /** A variable font's weight (0: its default). */
   weight: number
+  /** Allo's roundness, 0..100 (50 its own). */
+  round?: number
+  /** Text colors of speakers 2, 3, ... (speaker 1: [color]). */
+  speakerColors?: string[]
+  /** Bleeped words shown as **** in the subtitles too (as they're said: false). */
+  maskBleeped?: boolean
   /** The text, its translation or both. */
   show?: SubShow
 }
@@ -126,6 +132,9 @@ export function normalizeStyle(o: any): SubStyle {
   if (typeof o.boxColor === 'string') st.boxColor = o.boxColor
   if (typeof o.effect === 'string' && SUB_EFFECTS.some(([e]) => e === o.effect)) st.effect = o.effect
   if (typeof o.weight === 'number') st.weight = o.weight
+  if (typeof o.round === 'number') st.round = snapRound(o.round)
+  if (typeof o.maskBleeped === 'boolean') st.maskBleeped = o.maskBleeped
+  if (Array.isArray(o.speakerColors) && o.speakerColors.every((c: unknown) => typeof c === 'string')) st.speakerColors = o.speakerColors
   if (o.show === 'src' || o.show === 'tr' || o.show === 'both') st.show = o.show
   if (typeof o.position === 'number') st.position = Math.min(0.95, Math.max(0.05, o.position))
   // The first web shape.
@@ -139,40 +148,60 @@ export function normalizeStyle(o: any): SubStyle {
   return st
 }
 
-/** The font family the canvas draws [st] with. */
-export function fontFamily(st: SubStyle): string {
-  if (st.customFont) return `'ONIT custom ${st.customFont}', system-ui, sans-serif`
-  const f = SUB_FONTS.find((x) => x.id === st.font)
-  return f?.file ? `'ONIT ${f.label}', system-ui, sans-serif` : 'system-ui, sans-serif'
+/** A font as chosen for subtitles or the watermark: bundled (with its weight and roundness) or imported. */
+export type FontChoice = { font: SubFontId; customFont?: string | null; weight: number; round?: number }
+
+/** Allo's roundness choices: each a copy of the font with the roundness set (made at build time); 50 is its own. */
+export const ROUNDS = [0, 25, 50, 75, 100]
+export const ROUND_DEFAULT = 50
+export const snapRound = (r?: number) => ROUNDS.reduce((a, b) => (Math.abs(b - (r ?? ROUND_DEFAULT)) < Math.abs(a - (r ?? ROUND_DEFAULT)) ? b : a))
+/** Whether [font] has a roundness to choose (Allo). */
+export const isRounded = (font: SubFontId) => font === 'allo'
+
+/** The family name and file of a bundled font (Allo per roundness). */
+function bundled(c: FontChoice): { family: string; file: string } | null {
+  const f = SUB_FONTS.find((x) => x.id === c.font)
+  if (!f?.file) return null
+  const r = isRounded(c.font) ? snapRound(c.round) : ROUND_DEFAULT
+  if (r === ROUND_DEFAULT) return { family: `ONIT ${f.label}`, file: f.file }
+  return { family: `ONIT ${f.label} r${r}`, file: f.file.replace('.ttf', `_r${r}.ttf`) }
+}
+
+/** The font family the canvas draws [c] with. */
+export function fontFamily(c: FontChoice): string {
+  if (c.customFont) return `'ONIT custom ${c.customFont}', system-ui, sans-serif`
+  const b = bundled(c)
+  return b ? `'${b.family}', system-ui, sans-serif` : 'system-ui, sans-serif'
 }
 
 /** The weight drawn with: the variable font's chosen one (within its range), else bold. */
-export function fontWeight(st: SubStyle): number {
-  if (st.customFont) return 700
-  const f = SUB_FONTS.find((x) => x.id === st.font)
+export function fontWeight(c: FontChoice): number {
+  if (c.customFont) return 700
+  const f = SUB_FONTS.find((x) => x.id === c.font)
   if (!f || !f.weight) return f?.file ? 400 : 700
-  const w = st.weight > 0 ? st.weight : f.weight
+  const w = c.weight > 0 ? c.weight : f.weight
   return Math.min(f.max ?? 900, Math.max(f.min ?? 100, w))
 }
 
 const loaded = new Map<string, Promise<boolean>>()
 
 /**
- * Loads [st]'s font into [fonts] (the page's or a worker's), from [base] (the site's root URL) or,
+ * Loads [c]'s font into [fonts] (the page's or a worker's), from [base] (the site's root URL) or,
  * for an imported one, [custom] (its bytes). Resolves when it can be drawn with.
  */
-export function loadSubFont(st: SubStyle, fonts: FontFaceSet, base: string, custom?: ArrayBuffer | null): Promise<boolean> {
-  const f = SUB_FONTS.find((x) => x.id === st.font)
-  const key = st.customFont ? 'custom:' + st.customFont : f?.file ?? ''
+export function loadSubFont(c: FontChoice, fonts: FontFaceSet, base: string, custom?: ArrayBuffer | null): Promise<boolean> {
+  const f = SUB_FONTS.find((x) => x.id === c.font)
+  const b = c.customFont ? null : bundled(c)
+  const key = c.customFont ? 'custom:' + c.customFont : b?.file ?? ''
   if (!key) return Promise.resolve(true)
-  if (st.customFont && !custom && !loaded.has(key)) return Promise.resolve(false)
+  if (c.customFont && !custom && !loaded.has(key)) return Promise.resolve(false)
   let p = loaded.get(key)
   if (!p) {
     p = (async () => {
       try {
-        const face = st.customFont
-          ? custom ? new FontFace(`ONIT custom ${st.customFont}`, custom) : null
-          : new FontFace(`ONIT ${f!.label}`, `url(${new URL('fonts/' + f!.file, base).href})`, f!.weight ? { weight: `${f!.min ?? 100} ${f!.max ?? 900}` } : {})
+        const face = c.customFont
+          ? custom ? new FontFace(`ONIT custom ${c.customFont}`, custom) : null
+          : new FontFace(b!.family, `url(${new URL('fonts/' + b!.file, base).href})`, f!.weight ? { weight: `${f!.min ?? 100} ${f!.max ?? 900}` } : {})
         if (!face) return false
         await face.load()
         fonts.add(face)

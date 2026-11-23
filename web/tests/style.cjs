@@ -79,6 +79,21 @@ const layer = () => {
     await p.screenshot({ path: `${out}/1_viral.png` })
     if (!(viral.yellow > 800 && classic.yellow < 100)) throw new Error('the yellow style is not drawn')
 
+    // A variable font's weight, and Allo's roundness (a copy of the font per roundness).
+    await chip('fonts', 'Allo')
+    const slide = (sel, v) => p.evaluate(([sel, v]) => { const el = document.querySelector(sel); el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })) }, [sel, v])
+    await slide('.sub-style .weight-slider', 300); await seek(1.6); const thin = await p.evaluate(layer)
+    await slide('.sub-style .weight-slider', 900); await seek(1.6); const thick = await p.evaluate(layer)
+    await slide('.sub-style .round-slider', 0)
+    await p.waitForFunction(() => document.fonts.check("20px 'ONIT Allo r0'", 'שלום'), null, { timeout: 20000 })
+    await seek(1.6); const sharp = await p.evaluate(layer)
+    await slide('.sub-style .round-slider', 100)
+    await p.waitForFunction(() => document.fonts.check("20px 'ONIT Allo r100'", 'שלום'), null, { timeout: 20000 })
+    await seek(1.6); const round = await p.evaluate(layer)
+    console.log('Allo: weight 300 →', thin.n, '· 900 →', thick.n, '· roundness 0 / 100:', sharp.hash !== round.hash ? 'differ' : 'same')
+    if (!(thick.n > thin.n * 1.1) || sharp.hash === round.hash) throw new Error('weight / roundness')
+    await chip('presets', 'ויראלי צהוב')
+
     // An effect moves while the cue is on screen; without one it holds still.
     await chip('effects', 'בלי')
     await seek(1.1); const still1 = await p.evaluate(layer)
@@ -143,6 +158,25 @@ const layer = () => {
     if (!(at.on.yellow > 300 && at.on.low > at.on.yellow * 0.8 && at.second.yellow > 300 && at.off.yellow < 30 && at.pop.yellow < at.on.yellow)) throw new Error('the exported subtitles')
     await p.click('text=חזרה לעריכה')
 
+    // Not burned in, when so chosen (the SRT keeps them): no subtitle in the picture.
+    await p.click('.export-bar .btn')
+    await p.click('.burn-seg button >> nth=1')
+    await p.click('.export-sheet .switch')
+    await p.click('.export-go')
+    await p.waitForSelector('.result video, .card.error', { timeout: 900000 })
+    const href2 = await p.getAttribute('a[download]', 'href')
+    const bytes2 = await p.evaluate(async (h) => Array.from(new Uint8Array(await (await fetch(h)).arrayBuffer())), href2)
+    fs.writeFileSync(`${out}/out.mp4`, Buffer.from(bytes2))
+    const srt = await p.evaluate(async () => (await fetch(document.querySelector('.srt-link').href)).text())
+    const bare = frame(1.6)
+    console.log('not burned in: yellow', bare.yellow, '· SRT', srt.split('\n').slice(0, 3).join(' | '))
+    if (bare.yellow > 30 || !srt.includes('שלום לכולם')) throw new Error('not burning in')
+    await p.click('text=חזרה לעריכה')
+    await p.click('.export-bar .btn')
+    await p.click('.burn-seg button >> nth=0')
+    await p.click('.export-sheet .switch')
+    await p.keyboard.press('Escape')
+
     // Kept with the project, the imported font too.
     await p.waitForTimeout(2500)
     await p.click('.editor .btn.ghost >> nth=0')
@@ -157,6 +191,27 @@ const layer = () => {
     await p.waitForFunction(() => document.fonts.check("20px 'ONIT custom Hebrew Sans'", 'שלום'), null, { timeout: 10000 })
     console.log('opened again:', JSON.stringify(kept))
     if (!kept.font[0]?.startsWith('Hebrew Sans') || kept.effect[0] !== 'קפיצה' || !kept.box) throw new Error('the style was not kept')
+
+    // The watermark's font, as the app's: Rubik at first, another chosen; one saved before fonts could be chosen stays in Allo.
+    await p.click('.tabs button[data-g=mark]')
+    await p.fill('.text-in', '@onit שלום')
+    const markFont = async () => (await on('.mark-fonts .chip.on'))[0]
+    const first = await markFont()
+    await seek(1.6); const rubik = await p.evaluate(layer)
+    await p.click('.mark-fonts >> text="Karantina"')
+    await p.waitForFunction(() => document.fonts.check("20px 'ONIT Karantina'", 'שלום'))
+    await seek(1.6); const karantina = await p.evaluate(layer)
+    await p.evaluate(() => localStorage.setItem('onit.watermark', JSON.stringify({ text: '@old', position: 'br', size: 1, opacity: 0.8, color: '#ffffff', look: 'shadow', weight: 700 })))
+    await p.goto(url)
+    await p.waitForTimeout(800)
+    const chooser2 = p.waitForEvent('filechooser')
+    await p.click('.tool >> nth=0')
+    await (await chooser2).setFiles(video)
+    await p.waitForSelector('.editor .tabs', { timeout: 30000 })
+    await p.click('.tabs button[data-g=mark]')
+    const legacy = await markFont()
+    console.log('watermark font:', first, '→ Karantina', rubik.hash !== karantina.hash ? 'drawn' : 'NOT drawn', '· an old one:', legacy)
+    if (first !== 'Rubik' || rubik.hash === karantina.hash || legacy !== 'Allo') throw new Error('watermark font')
     console.log('PASS')
   } finally {
     fs.writeFileSync(`${out}/console.txt`, logs.join('\n'))

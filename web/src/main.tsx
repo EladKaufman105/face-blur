@@ -12,3 +12,6 @@ setLang(lang.value)
 applyTheme(theme.value)
 applyPalette(palette.value)
 render(<App />, document.getElementById('app')!)
+
+// Only for videos shared to the installed app (see public/sw.js): nothing is cached.
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {})

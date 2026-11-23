@@ -1,5 +1,7 @@
 // A logo or a line of text on the video, drawn as the Android app draws it.
 
+import { fontFamily, fontWeight, loadSubFont, SUB_FONTS, type SubFontId } from './substyle'
+
 export type WatermarkPosition = 'tl' | 'tc' | 'tr' | 'cl' | 'c' | 'cr' | 'bl' | 'bc' | 'br'
 export type WatermarkLook = 'plain' | 'shadow' | 'outline' | 'box'
 
@@ -13,10 +15,19 @@ export interface Watermark {
   opacity: number
   color: string
   look: WatermarkLook
+  /** The text's font (bundled), its weight (0: the font's own) and Allo's roundness. */
+  font: SubFontId
   weight: number
+  round?: number
 }
 
-export const NO_WATERMARK: Watermark = { text: '', image: null, position: 'br', size: 1, opacity: 0.8, color: '#ffffff', look: 'shadow', weight: 700 }
+export const NO_WATERMARK: Watermark = { text: '', image: null, position: 'br', size: 1, opacity: 0.8, color: '#ffffff', look: 'shadow', font: 'rubik', weight: 0 }
+
+/** A watermark as saved (one saved before fonts could be chosen was drawn in Allo). */
+export function normalizeWatermark(o: any): Watermark {
+  if (!o || typeof o !== 'object') return NO_WATERMARK
+  return { ...NO_WATERMARK, ...o, font: SUB_FONTS.some((f) => f.id === o.font) ? o.font : 'allo' }
+}
 
 export const POSITIONS: WatermarkPosition[] = ['tl', 'tc', 'tr', 'cl', 'c', 'cr', 'bl', 'bc', 'br']
 
@@ -54,7 +65,7 @@ export function drawWatermark(ctx: CanvasRenderingContext2D | OffscreenCanvasRen
   const text = w.text.trim()
   if (!text) { ctx.restore(); return }
   const fontSize = short * 0.04 * w.size
-  ctx.font = `${w.weight} ${fontSize}px 'Allo Hebrew', system-ui, sans-serif`
+  ctx.font = `${fontWeight(w)} ${fontSize}px ${fontFamily(w)}`
   ctx.textBaseline = 'alphabetic'
   ctx.direction = /[֐-ۿ]/.test(text) ? 'rtl' : 'ltr'
   ctx.textAlign = 'left'
@@ -97,6 +108,7 @@ export function drawWatermark(ctx: CanvasRenderingContext2D | OffscreenCanvasRen
 /** The watermark alone on a transparent frame-sized picture (for the export). */
 export async function watermarkImage(w: Watermark, width: number, height: number): Promise<ImageBitmap | null> {
   if (!watermarkOn(w)) return null
+  if (!w.image) await loadSubFont(w, document.fonts, document.baseURI)
   await document.fonts.ready
   const logo = w.image ? await createImageBitmap(await (await fetch(w.image)).blob()) : null
   const c = new OffscreenCanvas(width, height)

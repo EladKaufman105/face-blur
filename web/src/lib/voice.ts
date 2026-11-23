@@ -5,13 +5,13 @@
 export type VoiceFx = 'none' | 'deep' | 'high' | 'robot' | 'disguise' | 'mute'
 
 export const VOICES: { id: VoiceFx; label: string; pitch: number; ringHz: number; ringMix: number }[] = [
-  { id: 'none', label: 'ללא', pitch: 1, ringHz: 0, ringMix: 0 },
-  { id: 'deep', label: 'עמוק', pitch: 0.72, ringHz: 0, ringMix: 0 },
+  { id: 'none', label: 'רגיל', pitch: 1, ringHz: 0, ringMix: 0 },
+  { id: 'deep', label: 'נמוך', pitch: 0.72, ringHz: 0, ringMix: 0 },
   { id: 'high', label: 'גבוה', pitch: 1.45, ringHz: 0, ringMix: 0 },
   { id: 'robot', label: 'רובוט', pitch: 0.94, ringHz: 55, ringMix: 1 },
   // Lower and buzzing: the hardest to recognize.
-  { id: 'disguise', label: 'הסוואה', pitch: 0.8, ringHz: 32, ringMix: 0.75 },
-  { id: 'mute', label: 'השתק', pitch: 1, ringHz: 0, ringMix: 0 },
+  { id: 'disguise', label: 'מוסווה', pitch: 0.8, ringHz: 32, ringMix: 0.75 },
+  { id: 'mute', label: 'ללא קול', pitch: 1, ringHz: 0, ringMix: 0 },
 ]
 
 export interface Bleep { start: number; end: number }

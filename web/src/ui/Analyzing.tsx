@@ -3,16 +3,19 @@ import { t, duration } from '../i18n'
 import type { Analysis } from '../lib/types'
 import type { AnalyzeMessage, AnalyzeRequest } from '../workers/analyze.worker'
 import { FaceIcon } from './icons'
+import { canKeepAwake, useWakeLock } from '../lib/wakelock'
 
 type Props = {
   file: File
   sensitive: boolean
+  /** The first of two steps (found, then saved straight away). */
+  twoSteps?: boolean
   onDone: (a: Analysis, thumbs: (string | null)[], ms: number, backend: string) => void
   onError: (message: string) => void
   onCancel: () => void
 }
 
-export function Analyzing({ file, sensitive, onDone, onError, onCancel }: Props) {
+export function Analyzing({ file, sensitive, twoSteps, onDone, onError, onCancel }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const [progress, setProgress] = useState({ done: 0, total: 1, faces: 0 })
   const [ready, setReady] = useState(false)
@@ -82,6 +85,7 @@ export function Analyzing({ file, sensitive, onDone, onError, onCancel }: Props)
     return () => worker.terminate()
   }, [file, sensitive])
 
+  useWakeLock(true)
   const pct = Math.min(99, Math.floor((progress.done / progress.total) * 100))
   const elapsed = (performance.now() - started.current) / 1000
   const rate = progress.done / Math.max(elapsed, 0.001)
@@ -97,8 +101,8 @@ export function Analyzing({ file, sensitive, onDone, onError, onCancel }: Props)
         <div class="row">
           <div class="face-icon"><FaceIcon /></div>
           <div class="grow">
-            <strong>{ready ? t('מזהה פנים') : t('מכין את המודל…')}</strong>
-            <div class="small muted">{[left !== null ? t('נותרו כ-%s', duration(left)) : '', backend ? (backend === 'webgpu' ? t('על המעבד הגרפי') : t('על המעבד')) : ''].filter(Boolean).join(' · ') || '\u00a0'}</div>
+            <strong>{ready ? (twoSteps ? t('שלב 1 מתוך 2 · מזהה פנים') : t('מזהה פנים')) : t('מכין את המודל…')}</strong>
+            <div class="small muted">{[ready ? t('עברו %s', duration(elapsed)) : '', left !== null ? t('נותרו כ-%s', duration(left)) : '', backend ? (backend === 'webgpu' ? t('על המעבד הגרפי') : t('על המעבד')) : ''].filter(Boolean).join(' · ') || '\u00a0'}</div>
           </div>
           <div class="big-num">{ready ? pct : 0}%</div>
         </div>
@@ -106,7 +110,7 @@ export function Analyzing({ file, sensitive, onDone, onError, onCancel }: Props)
         {backend === 'wasm' && <p class="small" style="margin:0 0 10px;color:var(--primary)">{t('הדפדפן הזה לא נותן גישה למעבד הגרפי (WebGPU), אז הזיהוי איטי. ב-Chrome או Safari מעודכנים זה מהיר הרבה יותר.')}</p>}
         {debug && stats && <p class="small muted" dir="ltr" style="margin:0 0 10px;font-family:monospace">{stats}</p>}
         <div class="row">
-          <div class="small muted grow">{t('בטלפון: השאר את המסך פתוח עד הסיום.')}</div>
+          <div class="small muted grow">{canKeepAwake() ? t('השאר את הלשונית פתוחה עד הסוף. המסך יישאר דלוק.') : t('בטלפון: השאר את המסך פתוח עד הסיום.')}</div>
           <button class="btn tonal" onClick={onCancel}>{t('ביטול')}</button>
         </div>
       </div>

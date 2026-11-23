@@ -33,7 +33,7 @@ jobs:
         working-directory: web
         run: |
           sudo apt-get install -y -qq ffmpeg fonts-dejavu-core > /dev/null
-          pip install --quiet onnx numpy onnxconverter-common
+          pip install --quiet onnx numpy onnxconverter-common fonttools
           npm ci
           npm run build
       - name: Test in Chromium (face detection on the CPU path, editor, export)
@@ -70,6 +70,14 @@ jobs:
           node tests/privacy.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/privacy
           # Settings: language, light / dark / the device's, the color palette; kept after a reload.
           node tests/settings.cjs "http://localhost:4173/?backend=wasm" /tmp/web-results/settings
+          # The ready screen: the video first, the blur's settings, "blur and save" without the editor.
+          node tests/ready.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/samples/classroom.mp4 /tmp/web-results/ready
+          # A video shared to the installed app (Web Share Target) or opened with it.
+          node tests/share.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/share
+          # Sounds imported from the device: kept, placed, mixed into the export, deleted.
+          node tests/mysounds.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/mysounds
+          # No faces found: wider detection offered, a blur by hand in the editor.
+          node tests/nofaces.cjs "http://localhost:4173/?backend=wasm" /tmp/web-results/nofaces
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -104,7 +112,7 @@ jobs:
         working-directory: web
         run: |
           sudo apt-get install -y -qq ffmpeg > /dev/null
-          pip install --quiet onnx numpy onnxconverter-common
+          pip install --quiet onnx numpy onnxconverter-common fonttools
           npm ci
           npm run build
       - name: Test subtitles in Chromium (Whisper, the model from Hugging Face)

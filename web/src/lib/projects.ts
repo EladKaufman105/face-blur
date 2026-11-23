@@ -62,13 +62,15 @@ const DB = 'onit-projects'
 const STORES = ['meta', 'state', 'picture', 'video'] as const
 /** Fonts the user imported for subtitles (by name), kept apart from the projects. */
 const FONTS = 'fonts'
+/** Sounds the user imported (by name: the file's bytes), as the app's "mine". */
+const SOUNDS = 'sounds'
 type Store = (typeof STORES)[number]
 
 let db: Promise<IDBDatabase> | null = null
 function open(): Promise<IDBDatabase> {
   db ??= new Promise((resolve, reject) => {
-    const r = indexedDB.open(DB, 2)
-    r.onupgradeneeded = () => { for (const s of [...STORES, FONTS]) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s) }
+    const r = indexedDB.open(DB, 3)
+    r.onupgradeneeded = () => { for (const s of [...STORES, FONTS, SOUNDS]) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s) }
     r.onsuccess = () => resolve(r.result)
     r.onerror = () => { db = null; reject(r.error) }
   })
@@ -179,6 +181,40 @@ export async function getFont(name: string): Promise<ArrayBuffer | null> {
   try {
     const d = await open()
     return ((await req(d.transaction(FONTS).objectStore(FONTS).get(name))) as ArrayBuffer | undefined) ?? null
+  } catch {
+    return null
+  }
+}
+
+// ------------------------------------------------------------------ imported sounds
+
+export async function listSounds(): Promise<string[]> {
+  try {
+    const d = await open()
+    return ((await req(d.transaction(SOUNDS).objectStore(SOUNDS).getAllKeys())) as string[]).sort()
+  } catch {
+    return []
+  }
+}
+
+export async function saveSound(name: string, data: ArrayBuffer) {
+  const d = await open()
+  const t = d.transaction(SOUNDS, 'readwrite')
+  t.objectStore(SOUNDS).put(data, name)
+  await new Promise<void>((resolve, reject) => { t.oncomplete = () => resolve(); t.onerror = () => reject(t.error) })
+}
+
+export async function deleteSound(name: string) {
+  const d = await open()
+  const t = d.transaction(SOUNDS, 'readwrite')
+  t.objectStore(SOUNDS).delete(name)
+  await new Promise<void>((resolve, reject) => { t.oncomplete = () => resolve(); t.onerror = () => reject(t.error) })
+}
+
+export async function getSound(name: string): Promise<ArrayBuffer | null> {
+  try {
+    const d = await open()
+    return ((await req(d.transaction(SOUNDS).objectStore(SOUNDS).get(name))) as ArrayBuffer | undefined) ?? null
   } catch {
     return null
   }
