@@ -99,7 +99,7 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
                 if (agree(a, b)) {
                     if (b.isNotEmpty()) g.vouch()
                 } else {
-                    android.util.Log.w("ONIT", "GPU faces differ from the CPU's (${a.size} vs ${b.size})")
+                    android.util.Log.w("ONIT", "GPU faces differ from the CPU's (${a.size} vs ${b.size})${if (g.precise) "" else " in half precision"}")
                     g.strike()
                 }
                 return ref

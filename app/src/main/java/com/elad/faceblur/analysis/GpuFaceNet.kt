@@ -26,14 +26,23 @@ import java.util.concurrent.TimeUnit
  * thread that made it); the detection workers wait their turn.
  *
  * Before trusting it, the first frames with faces are also run through OpenCV and compared (see
- * [RetinaFaceDetector]); two frames that disagree ([strike]), or a failure ([disable]), turn it
- * off for the rest of the pass.
+ * [RetinaFaceDetector]). It starts in the GPU's half precision; two frames that disagree
+ * ([strike]) or a failure, and it tries full precision (still far faster than the CPU) and is
+ * checked again; the same once more turns it off for the rest of the pass ([why] says why).
  */
 class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, File>) : Closeable {
 
     private val thread = Executors.newSingleThreadExecutor { r -> Thread(r, "face-gpu") }
     private val nets = HashMap<Pair<Int, Int>, Net>()
     @Volatile private var off = false
+
+    /** Full precision on the GPU (after half precision disagreed with OpenCV or failed). */
+    @Volatile var precise = false
+        private set
+
+    /** Why it was turned off (for the stats line), or null while it's on. */
+    @Volatile var why: String? = null
+        private set
 
     // Frames with faces where the GPU and OpenCV agreed, and where they didn't.
     private val agreed = java.util.concurrent.atomic.AtomicInteger()
@@ -94,8 +103,9 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
         return try {
             thread.submit(Callable { infer(w, h, input) }).get(30, TimeUnit.SECONDS)
         } catch (e: Exception) {
-            Log.w(TAG, "GPU face detection failed, using the CPU: ${e.cause ?: e}")
-            disable()
+            val cause = e.cause ?: e
+            Log.w(TAG, "GPU face detection failed${if (precise) "" else " in half precision"}: $cause")
+            if (!precise) goPrecise() else disable("failed: ${cause.javaClass.simpleName}")
             null
         }
     }
@@ -117,7 +127,9 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
 
     private fun open(file: File): Net {
         val buffer = FileInputStream(file).use { it.channel.map(FileChannel.MapMode.READ_ONLY, 0, it.channel.size()) }
-        val delegate = GpuDelegate(CompatibilityList().bestOptionsForThisDevice)
+        val options = CompatibilityList().bestOptionsForThisDevice
+        if (precise) options.setPrecisionLossAllowed(false)
+        val delegate = GpuDelegate(options)
         val interpreter = Interpreter(buffer, Interpreter.Options().addDelegate(delegate))
         var loc = -1
         var conf = -1
@@ -134,16 +146,32 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
     }
 
     /** Stops using the GPU for the rest of this pass. */
-    fun disable() {
+    fun disable(reason: String) {
+        if (!off) why = reason
         off = true
     }
 
     /**
      * A frame where the GPU's faces differed from OpenCV's. One can be a borderline face that
-     * fp16 put just over or under a score; a second means the GPU isn't to be trusted here.
+     * fp16 put just over or under a score; a second means half precision isn't to be trusted
+     * here (full precision is tried), and two more in full precision the GPU itself.
      */
     fun strike() {
-        if (strikes.incrementAndGet() >= MAX_STRIKES) off = true
+        if (strikes.incrementAndGet() < MAX_STRIKES) return
+        if (!precise) goPrecise() else disable("differed from the CPU")
+    }
+
+    /** Half precision didn't do: the models open again in full precision and are checked again. */
+    private fun goPrecise() {
+        if (precise || off) return
+        precise = true
+        strikes.set(0)
+        agreed.set(0)
+        Log.i(TAG, "GPU face detection: full precision from now on")
+        thread.execute {
+            nets.values.forEach { it.interpreter.close(); it.delegate.close() }
+            nets.clear()
+        }
     }
 
     val active get() = !off
@@ -171,18 +199,32 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
 
         fun file(context: Context, w: Int, h: Int) = File(File(context.filesDir, "models"), "retinaface-mv2-${w}x$h.tflite")
 
+        /** Why the last [create] gave no GPU detector (for the stats line). */
+        @Volatile var unavailable = ""
+            private set
+
         /**
          * The GPU detector if this phone can run it and the models are downloaded, else null.
          */
         fun create(context: Context): GpuFaceNet? {
             val files = SIZES.associateWith { (w, h) -> file(context, w, h) }.filterValues { it.length() > 1_000_000L }
-            if (files.isEmpty()) return null
+            if (files.isEmpty()) {
+                unavailable = "no GPU models yet"
+                return null
+            }
             // Emulators' GPUs can't run it reliably (and can't check it): CPU there.
-            if (android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.HARDWARE.contains("goldfish")) return null
+            if (android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.HARDWARE.contains("goldfish")) {
+                unavailable = "emulator"
+                return null
+            }
             return try {
-                if (!CompatibilityList().isDelegateSupportedOnThisDevice) null else GpuFaceNet(files)
+                if (!CompatibilityList().isDelegateSupportedOnThisDevice) {
+                    unavailable = "GPU not supported"
+                    null
+                } else GpuFaceNet(files)
             } catch (t: Throwable) {
                 Log.w(TAG, "no GPU delegate: $t")
+                unavailable = "no GPU delegate: ${t.javaClass.simpleName}"
                 null
             }
         }

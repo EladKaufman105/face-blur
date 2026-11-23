@@ -157,9 +157,14 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         get() {
             val n = max(1, times.size)
             val d = max(1, detections)
-            val side = if (gpu != null && gpu.active) "1280" else "$cpuSide"
-            val gpuMs = gpu?.inferMs?.takeIf { it > 0f }?.let { " (gpu ${it.roundToInt()} ms)" } ?: ""
-            return "$accelerator/${half.state} ${side}px$gpuMs · every $detectEvery${if (lite) " lite" else ""} · " +
+            val g = gpu
+            val side = if (g != null && g.active) "1280" else "$cpuSide"
+            // On the GPU: its precision and time per frame; on the CPU: why not the GPU.
+            val where = when {
+                g != null && g.active -> "$accelerator ${if (g.precise) "fp32" else "fp16"}" + (g.inferMs.takeIf { it > 0f }?.let { " ${it.roundToInt()} ms" } ?: "")
+                else -> "cpu/${half.state} (${g?.why ?: GpuFaceNet.unavailable})"
+            }
+            return "$where ${side}px · every $detectEvery${if (lite) " lite" else ""} · " +
                 "detect ${detectMsTotal / d} ms · frame ${frameMsTotal / n} ms · wait ${waitMsTotal / n} ms/frame"
         }
 
@@ -341,7 +346,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             if (g != null && g.active && g.inferMs > GPU_SLOW_MS) {
                 // A GPU this slow (one lane, ~2-10 frames a second) holds back the CPU's cores:
                 // they do better together, at the lighter size a device like this needs.
-                g.disable()
+                g.disable("slow (${g.inferMs.roundToInt()} ms)")
                 cpuSide = LOW_SIDE
                 lite = true
                 android.util.Log.i("ONIT", "the GPU takes ${g.inferMs.roundToInt()} ms a frame: CPU at $LOW_SIDE px from now on")
