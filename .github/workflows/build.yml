@@ -10,7 +10,7 @@ name: Build APK
 # publish        needs build-release and every e2e shard
 on:
   push:
-    branches: [main, develop, ci/optimize-workflows] # TEMP-VERIFY: remove in the last commit
+    branches: [main, develop]
     # The web app has its own workflow.
     paths-ignore: ['.github/workflows/models.yml', '.github/workflows/web.yml', '.github/workflows/web-tests.yml', '.github/actions/**', 'ci/web-tests.sh', 'web/**']
   workflow_dispatch:
@@ -280,7 +280,7 @@ jobs:
   # Release only what passed the emulator end-to-end test.
   publish:
     needs: [build-release, e2e]
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/ci/optimize-workflows' # TEMP-VERIFY 2
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -290,8 +290,6 @@ jobs:
         with:
           name: release-apk
           path: out
-
-      - run: ls -l out # TEMP-VERIFY 2: the APK is where the publish steps look
 
       - name: Publish release
         if: github.ref == 'refs/heads/main'
