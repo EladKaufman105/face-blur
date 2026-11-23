@@ -719,9 +719,14 @@ private class PlayerSync(
         // What failed, short, so a screenshot of the message says it.
         var root: Throwable = error
         while (root.cause != null && root.cause !== root) root = root.cause!!
-        // The cause, and where it was thrown (an argument check has no message of its own).
-        val at = root.stackTrace.firstOrNull()?.let { " @ ${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }.orEmpty()
-        val detail = error.errorCodeName + (if (root !== error) " · ${root.javaClass.simpleName}${root.message?.let { ": " + it.take(100) }.orEmpty()}$at" else "")
+        // The cause, and the calls that led to it (an argument check has no message of its own,
+        // so the checks themselves are skipped), and whether the video is HDR.
+        val at = root.stackTrace.filter { !it.methodName.startsWith("check") }.take(3)
+            .joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}" }
+        val detail = error.errorCodeName +
+            (if (root !== error) " · ${root.javaClass.simpleName}${root.message?.let { ": " + it.take(100) }.orEmpty()}" else "") +
+            (if (ctrl.session.info.isHdr) " · HDR" else "") +
+            (if (at.isNotEmpty()) "\n$at" else "")
         // The GPU effects are the riskiest part of playback: first the live blur alone is kept
         // (the background and the steadying go), then none (the plain video, outlines over it).
         when (ctrl.effectsLevel) {
