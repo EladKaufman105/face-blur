@@ -336,17 +336,16 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
                         ltr("${(overall * 100).roundToInt()}%"),
                         style = MaterialTheme.typography.headlineMedium.tnum(),
                         color = feature.tint,
-                        modifier = Modifier.clickable { showStats = !showStats },
+                        modifier = Modifier.clickable { showStats = !showStats }.testTag(Tags.PROGRESS_PERCENT),
                     )
                 }
-                val stats = live?.stats
-                if (showStats && stats != null && state.stage == 1) {
-                    Text(
-                        ltr(stats),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                AnalysisStatsPanel(
+                    visible = showStats && state.stage == 1,
+                    stats = live?.stats,
+                    info = state.info,
+                    percent = (overall * 100).roundToInt(),
+                    elapsedMs = { android.os.SystemClock.elapsedRealtime() - eta.startedAt },
+                )
                 TimelineProgress(
                     overall,
                     colors = if (state.subsOnly) listOf(Brand.Amber, Color(0xFFFFE08A)) else listOf(Brand.Coral, Brand.Amber),
@@ -378,7 +377,8 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
             verticalAlignment = Alignment.CenterVertically,
         ) {
             frame(Modifier.weight(1f).fillMaxHeight())
-            Box(Modifier.width(400.dp)) { progress() }
+            // Scrolls when the stats panel makes it taller than the screen.
+            Box(Modifier.width(400.dp).verticalScroll(rememberScrollState())) { progress() }
         }
     } else {
         // The frame and the progress together, in the middle: a wide video leaves no hole between them.
@@ -387,7 +387,8 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
             verticalArrangement = Arrangement.spacedBy(Space.L, Alignment.CenterVertically),
         ) {
             frame(Modifier.fillMaxWidth().weight(1f, fill = false))
-            progress()
+            // Scrolls when the stats panel makes it taller than the screen (the frame gives way first).
+            Box(Modifier.verticalScroll(rememberScrollState())) { progress() }
         }
     }
 }

@@ -37,6 +37,7 @@ import com.elad.faceblur.audio.AudioEdit
 import com.elad.faceblur.edit.ExportAspect
 import com.elad.faceblur.analysis.MaskStore
 import com.elad.faceblur.analysis.Segmenter
+import com.elad.faceblur.analysis.StatsSnapshot
 import com.elad.faceblur.effects.Background
 import com.elad.faceblur.effects.BackgroundEffect
 import com.elad.faceblur.effects.BackgroundState
@@ -124,11 +125,14 @@ class FaceBlurProcessor(private val context: Context) {
         }
     }
 
-    /** @param onPreview now and then: a small copy of the frame being analyzed and the faces found lately. */
+    /**
+     * @param onPreview now and then: a small copy of the frame being analyzed, the faces found
+     *   lately, where detection runs and the analysis's counters.
+     */
     suspend fun analyze(
         info: VideoInfo,
         settings: Settings,
-        onPreview: ((android.graphics.Bitmap, List<Det>, String, String) -> Unit)? = null,
+        onPreview: ((android.graphics.Bitmap, List<Det>, String, StatsSnapshot) -> Unit)? = null,
         onProgress: (Float) -> Unit,
     ): AnalysisResult {
         val analysisFile = File(context.cacheDir, "analysis.mp4")
