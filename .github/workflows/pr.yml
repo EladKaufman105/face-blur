@@ -1,0 +1,75 @@
+name: PR checks
+
+# Fast checks only; the emulator test runs after the merge (build.yml).
+# The job names are the checks the branch rulesets require: keep them as they are.
+# The source-branch check is in pr-guard.yml (it also re-runs when a PR's base changes).
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  android-build:
+    name: android-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Every string has its English
+        run: python3 ci/i18n_check.py
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          bash ci/fetch-whisper.sh
+          bash ci/fetch-opencv.sh
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+  web-build:
+    name: web-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build
+        working-directory: web
+        run: |
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core > /dev/null
+          pip install --quiet onnx numpy onnxconverter-common fonttools
+          npm ci
+          npm run build
+      - name: Smoke test in Chromium (face detection on the CPU path, editor, export)
+        working-directory: web
+        run: |
+          git fetch --depth 1 origin test-media
+          mkdir -p /tmp/samples && git -C .. archive FETCH_HEAD | tar -x -C /tmp/samples && ls /tmp/samples
+          npx playwright install --with-deps chromium
+          npx vite preview --port 4173 --strictPort &
+          timeout 60 bash -c 'until curl -sf http://localhost:4173/ > /dev/null; do sleep 1; done'
+          node tests/e2e.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/walk.mp4 /tmp/web-results/desktop
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-results
+          path: /tmp/web-results

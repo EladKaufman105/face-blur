@@ -2,7 +2,7 @@ name: Web app
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - 'web/**'
       - 'app/src/main/assets/**'
@@ -15,7 +15,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: web-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -89,9 +89,14 @@ jobs:
         with:
           path: web/dist
 
+  # Only main goes to the site; develop is tested only.
   deploy:
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

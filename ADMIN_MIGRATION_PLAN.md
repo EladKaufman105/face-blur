@@ -13,7 +13,7 @@
 | Version names `2.0.<build>` | SemVer (major.minor.patch), worked out by CI from git tags (`ci/version.sh`) |
 | No rules on any branch | Rulesets: `main` and `develop` accept PRs only; data branches and `v*` tags can't be deleted |
 
-Files on the branch: `.github/workflows/build.yml`, `web.yml` and the new `pr.yml`; `ci/version.sh` and `ci/test_version.sh`; `version.properties`; `app/build.gradle.kts` (version lines only); `CLAUDE.md`, `CONTRIBUTING.md`, `.github/pull_request_template.md`; `.github/rulesets/*.json`; `README.md` (2 paragraphs); this file.
+Files on the branch: `.github/workflows/build.yml`, `web.yml` and the new `pr.yml` and `pr-guard.yml`; `ci/version.sh` and `ci/test_version.sh`; `version.properties`; `app/build.gradle.kts` (version lines only); `CLAUDE.md`, `CONTRIBUTING.md`, `.github/pull_request_template.md`; `.github/rulesets/*.json`; `README.md` (2 paragraphs); this file.
 
 ## Rules for you, the executing agent
 
@@ -36,7 +36,7 @@ Files on the branch: `.github/workflows/build.yml`, `web.yml` and the new `pr.ym
 
 1. Open a PR from `migration/develop-workflow` into `main`, titled "Branch workflow: develop, PR checks, SemVer". Use this file's "What this changes" table as the body.
 2. If GitHub says the PR has conflicts: **STOP-ASK** "main changed during the freeze and conflicts with the prepared work. Should I stop here so the collaborator can update the branch?" Don't resolve conflicts in workflow or version files yourself.
-3. The new "PR checks" workflow runs on this PR. Expected result:
+3. The new "PR checks" and "PR guard" workflows run on this PR. Expected result:
    - `android-build` and `web-build` must pass. If either fails, stop.
    - `source-branch` **fails, and that is correct**: this PR doesn't come from `develop`. No rules are on yet, so it doesn't block.
 4. Merge with a **merge commit** whose title ends in `[skip ci]`, so this merge doesn't publish a release:

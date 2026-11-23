@@ -34,7 +34,7 @@ Every user-visible string needs its English text. The UI is Hebrew and English. 
 
 ## Pull request checks
 
-Every change reaches `develop` or `main` through a PR. No human approval is required. These checks must pass (workflow "PR checks"):
+Every change reaches `develop` or `main` through a PR. No human approval is required. These checks must pass (workflows "PR guard" and "PR checks"):
 
 - `source-branch`: PRs into `main` must come from `develop` or `hotfix/*`.
 - `android-build`: i18n check and debug APK build.
