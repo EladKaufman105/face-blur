@@ -5,7 +5,7 @@ ONIT is an Android video editor with a browser version in `web/`. See README.md 
 ## Branches
 
 - `main`: releases only. A merge publishes a public GitHub release (APK) once the emulator e2e passes, and deploys the web app to GitHub Pages when web files changed.
-- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Test" once the emulator e2e passes (merges that change only `web/` make no beta). It has its own app id and installs beside ONIT.
+- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Beta" once the emulator e2e passes (merges that change only `web/` make no beta). It has its own app id and installs beside ONIT.
 - Never push, force-push, rebase or delete `main` or `develop`. Repository rulesets block this.
 - `labs` is retired. Do not push to it.
 

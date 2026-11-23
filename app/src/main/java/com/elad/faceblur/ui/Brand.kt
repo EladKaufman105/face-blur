@@ -60,10 +60,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -113,6 +116,35 @@ fun LogoMark(size: Dp, animate: Boolean = true) {
                 drawImage(right, dstSize = d, filterQuality = FilterQuality.High)
             }
         }
+    }
+}
+
+/** True in the beta build ("ONIT Beta", -Plabs=true): its app id ends in ".labs". */
+val isBetaBuild: Boolean
+    @Composable get() = LocalContext.current.packageName.endsWith(".labs")
+
+/** The beta build's "BETA" tag, like the one on its launcher icon (scripts/make_beta_icon.py). */
+@Composable
+fun BetaBadge(modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(50)
+    Box(
+        modifier
+            .clip(shape)
+            .background(Brand.Ink)
+            .border(1.dp, Color.White.copy(alpha = 0.92f), shape)
+            .padding(horizontal = 5.dp, vertical = 1.dp),
+    ) {
+        Text(
+            "BETA",
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+            fontSize = 8.sp,
+            lineHeight = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.6.sp,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }
 
