@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Runs the end-to-end instrumented test on the CI emulator and collects its outputs.
 # CI runs it in shards (build.yml matrix), each with its own part of the work:
-#   E2E_CLASSES   comma-separated test classes to run (default: all five)
+#   E2E_CLASSES   comma-separated test classes to run (default: all six)
 #   E2E_SELFTEST  1 (default) to finish with the release build's self-test, 0 to skip it
 #   E2E_SHARD, E2E_SHARDS  run every E2E_SHARDS-th clip of EndToEndTest, starting at E2E_SHARD (0-based)
 set -x
-ALL_CLASSES=com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.SubtitlesTest,com.elad.faceblur.ProjectsVoiceTest,com.elad.faceblur.LabsTest
+ALL_CLASSES=com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.SubtitlesTest,com.elad.faceblur.ProjectsVoiceTest,com.elad.faceblur.LabsTest,com.elad.faceblur.BatchTest
 CLASSES="${E2E_CLASSES:-$ALL_CLASSES}"
 SHARD_ARGS=""
 [ -n "${E2E_SHARDS:-}" ] && SHARD_ARGS="-e e2eShards $E2E_SHARDS -e e2eShard ${E2E_SHARD:-0}"

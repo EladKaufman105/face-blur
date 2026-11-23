@@ -209,7 +209,7 @@ jobs:
           # release self-test runs in one.
           - shard: 1
             part: 0
-            classes: com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.LabsTest
+            classes: com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.LabsTest,com.elad.faceblur.BatchTest
             selftest: 0
           - shard: 2
             part: 1
