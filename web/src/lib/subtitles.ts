@@ -13,24 +13,9 @@ export interface Cue {
   speaker?: number
 }
 
-/** What the video shows of a translated subtitle. */
-export type SubShow = 'src' | 'tr' | 'both'
-
-export type SubPosition = 'bottom' | 'middle' | 'top'
-export type SubLook = 'box' | 'outline' | 'shadow'
-
-export interface SubStyle {
-  /** Multiplier of the base size (5.5% of the short side). */
-  size: number
-  /** The text, its translation or both (on two lines). */
-  show?: SubShow
-  position: SubPosition
-  look: SubLook
-  color: string
-  weight: number
-}
-
-export const DEFAULT_SUB_STYLE: SubStyle = { size: 1, position: 'bottom', look: 'box', color: '#ffffff', weight: 700 }
+export type { SubShow, SubStyle } from './substyle'
+export { DEFAULT_SUB_STYLE } from './substyle'
+import type { SubShow } from './substyle'
 
 export const LANGUAGES: [string | null, string][] = [[null, 'אוטומטי'], ['hebrew', 'עברית'], ['arabic', 'ערבית'], ['english', 'אנגלית'], ['persian', 'פרסית']]
 
@@ -96,73 +81,6 @@ export function reserveCueIds(cues: Cue[]) {
 export function cueAt(cues: Cue[], t: number): Cue | null {
   for (const c of cues) if (t >= c.start && t < c.end) return c
   return null
-}
-
-function luminance(hex: string) {
-  const n = parseInt(hex.slice(1), 16)
-  const f = (c: number) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 }
-  return 0.2126 * f(n >> 16 & 255) + 0.7152 * f(n >> 8 & 255) + 0.0722 * f(n & 255)
-}
-
-/** Lines that fit [maxWidth] (words kept whole). */
-function wrap(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  const words = text.split(/\s+/).filter(Boolean)
-  const lines: string[] = []
-  let line = ''
-  for (const w of words) {
-    const t = line ? line + ' ' + w : w
-    if (line && ctx.measureText(t).width > maxWidth) {
-      lines.push(line)
-      line = w
-    } else line = t
-  }
-  if (line) lines.push(line)
-  return lines
-}
-
-/** Draws a cue's [text] on a [width] x [height] frame. */
-export function drawSubtitle(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, text: string, s: SubStyle, width: number, height: number, family = "'Allo Hebrew', system-ui, sans-serif") {
-  if (!text.trim()) return
-  const short = Math.min(width, height)
-  const fontSize = short * 0.055 * s.size
-  ctx.save()
-  ctx.font = `${s.weight} ${fontSize}px ${family}`
-  ctx.direction = /[֐-ࣿ]/.test(text) ? 'rtl' : 'ltr'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  // Lines of their own (a translation under the text) stay apart, each in its direction.
-  const lines = text.split('\n').filter((l) => l.trim()).flatMap((p) => wrap(ctx, p, width * 0.86))
-  const lh = fontSize * 1.28
-  const blockH = lines.length * lh
-  const margin = height * 0.08
-  const top = s.position === 'top' ? margin : s.position === 'middle' ? (height - blockH) / 2 : height - margin - blockH
-  const cx = width / 2
-  const contrast = luminance(s.color) > 0.45 ? '#000000' : '#ffffff'
-  lines.forEach((line, k) => {
-    const y = top + lh * (k + 0.5)
-    ctx.direction = /[\u0590-\u08ff]/.test(line) ? 'rtl' : 'ltr'
-    if (s.look === 'box') {
-      const w = ctx.measureText(line).width
-      const padX = fontSize * 0.4, padY = fontSize * 0.14
-      ctx.fillStyle = contrast === '#000000' ? 'rgba(0,0,0,0.62)' : 'rgba(255,255,255,0.8)'
-      ctx.beginPath()
-      ctx.roundRect(cx - w / 2 - padX, y - lh / 2 + padY / 2, w + 2 * padX, lh - padY, fontSize * 0.22)
-      ctx.fill()
-    } else if (s.look === 'outline') {
-      ctx.lineJoin = 'round'
-      ctx.lineWidth = fontSize * 0.16
-      ctx.strokeStyle = contrast
-      ctx.strokeText(line, cx, y)
-    } else {
-      ctx.shadowColor = 'rgba(0,0,0,0.85)'
-      ctx.shadowBlur = fontSize * 0.25
-      ctx.shadowOffsetY = fontSize * 0.05
-    }
-    ctx.fillStyle = s.color
-    ctx.fillText(line, cx, y)
-    ctx.shadowColor = 'transparent'
-  })
-  ctx.restore()
 }
 
 function srtTime(t: number) {

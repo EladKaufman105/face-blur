@@ -3,7 +3,8 @@ import { t, duration } from '../i18n'
 import { previewSfx, SFX_GROUPS, SFX_NAMES, type SfxClip } from '../lib/sfx'
 import { NO_WATERMARK, POSITIONS, type Watermark, type WatermarkLook } from '../lib/watermark'
 import { CloseIcon, CutIcon, DeleteIcon, MergeIcon, PlayIcon } from './icons'
-import { LANGUAGES, newCueId, parseSrt, splitCue, toSrt, wordsToCues, type Cue, type SubLook, type SubPosition, type SubShow, type SubStyle, type Word } from '../lib/subtitles'
+import { LANGUAGES, newCueId, parseSrt, splitCue, toSrt, wordsToCues, type Cue, type SubShow, type SubStyle, type Word } from '../lib/subtitles'
+import { SubStyleCard } from './SubStyleCard'
 import { canTranslate, guessLang, LANG_NAMES, translateAll } from '../lib/translate'
 import { MAX_SPEAKERS } from '../lib/speakers'
 import { SpeakerDot, SpeakersCard } from './Speakers'
@@ -272,7 +273,6 @@ export function WatermarkTab({ mark, onChange }: { mark: Watermark; onChange: (w
   )
 }
 
-const SUB_COLORS = ['#ffffff', '#ffd60a', '#000000', '#ff4d6d', '#3ddcff']
 
 type SubsRun = { stage: 'start' | 'download' | 'transcribe'; progress: number; loaded?: number; total?: number } | { stage: 'error'; message: string } | null
 
@@ -441,30 +441,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
       )}
       {cues.length > 0 && <TranslateCard cues={cues} onCues={onCues} show={style.show ?? 'src'} onShow={(v) => set({ show: v })} />}
       {cues.length > 0 && <SpeakersCard file={file} cues={cues} onCues={onCues} color={style.color} />}
-      {cues.length > 0 && (
-        <section class="card">
-          <h3 class="section-title">{t('מראה')}</h3>
-          <div class="seg">
-            {(['bottom', 'middle', 'top'] as SubPosition[]).map((p) => (
-              <button class={style.position === p ? 'on' : ''} onClick={() => set({ position: p })}>{t(p === 'bottom' ? 'למטה' : p === 'middle' ? 'באמצע' : 'למעלה')}</button>
-            ))}
-          </div>
-          <div class="chips" style="margin-top:12px">
-            {([['box', 'רקע'], ['outline', 'קו מתאר'], ['shadow', 'צל']] as [SubLook, string][]).map(([l, label]) => (
-              <button class={'chip' + (style.look === l ? ' on' : '')} onClick={() => set({ look: l })}>{t(label)}</button>
-            ))}
-          </div>
-          <div class="swatches">
-            {SUB_COLORS.map((c) => (
-              <button class={'swatch' + (style.color === c ? ' on' : '')} style={{ background: c }} aria-label={c} onClick={() => set({ color: c })} />
-            ))}
-          </div>
-          <div class="slider-row">
-            <label>{t('גודל')}</label>
-            <input type="range" min={0.6} max={2} step={0.05} value={style.size} onInput={(e) => set({ size: Number((e.currentTarget as HTMLInputElement).value) })} />
-          </div>
-        </section>
-      )}
+      {cues.length > 0 && <SubStyleCard style={style} onStyle={onStyle} />}
       {cues.length > 0 && (
         <section class="card cue-list">
           <h3 class="section-title">{t('הטקסט')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{cues.length}</span></h3>

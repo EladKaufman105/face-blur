@@ -496,3 +496,20 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .cue-meta { display: grid; justify-items: center; gap: 4px; align-self: flex-start; }
 .speaker-dot { width: 22px; height: 22px; border-radius: 50%; border: 0; display: inline-grid; place-items: center; font: 700 11px/1 system-ui, sans-serif; color: #1a1a1a; flex: none; }
 .speaker-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+
+/* Subtitle design */
+.sub-style { display: grid; gap: var(--space-2); }
+.sub-style .caption { margin-top: var(--space-2); }
+.sub-style .swatches { margin-top: 0; }
+.sub-style .chip { font-size: 15px; }
+.chip.preset { color: var(--text); }
+.chips.presets { max-height: 168px; overflow-y: auto; padding: 2px; }
+.custom-font { display: inline-flex; align-items: center; gap: 6px; padding-inline-end: 8px; }
+.link-btn { border: 0; background: transparent; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.custom-font .link-btn:last-child { font-size: 18px; line-height: 1; opacity: 0.7; }
+.font-import { justify-self: start; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--primary); }
+.seg.weights { margin-top: var(--space-1); }
+.positions-seg button { white-space: nowrap; font-size: 13px; padding-inline: 2px; }
+.sub-style .swatches { gap: 6px; }

@@ -4,13 +4,14 @@ import type { Look, Track } from '../lib/types'
 import type { ExportMessage, ExportPicture, ExportRequest } from '../workers/export.worker'
 import { sfxSamples, type SfxClip } from '../lib/sfx'
 import { watermarkImage, type Watermark } from '../lib/watermark'
-import type { Cue, SubStyle } from '../lib/subtitles'
+import type { Cue, SubStyle, Word } from '../lib/subtitles'
+import { getFont } from '../lib/projects'
 import { BackIcon, CheckIcon, SaveIcon, ShareIcon, SubtitlesIcon } from './icons'
 import { CutMap, type Range } from '../lib/cutmap'
 import { DEFAULT_EXPORT, outputSize, type ExportOptions } from '../lib/exportopts'
 import { cutCues, toSrt } from '../lib/subtitles'
 
-export type ExportJob = { file: File; times: Float64Array; tracks: Track[]; look: Look; width: number; height: number; sfx: SfxClip[]; watermark: Watermark; cues: Cue[]; subStyle: SubStyle; voice: { rate: number; data: Float32Array } | null; cuts: Range[]; options?: ExportOptions; standalone?: boolean; picture?: Omit<ExportPicture, 'image'> }
+export type ExportJob = { file: File; times: Float64Array; tracks: Track[]; look: Look; width: number; height: number; sfx: SfxClip[]; watermark: Watermark; cues: Cue[]; subStyle: SubStyle; words?: Word[]; voice: { rate: number; data: Float32Array } | null; cuts: Range[]; options?: ExportOptions; standalone?: boolean; picture?: Omit<ExportPicture, 'image'> }
 
 export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () => void; onNew: () => void }) {
   const [progress, setProgress] = useState(0)
@@ -38,9 +39,10 @@ export function Exporting({ job, onBack, onNew }: { job: ExportJob; onBack: () =
       const overlay = await watermarkImage(job.watermark, ow, oh)
       const bg = job.picture?.background
       const image = bg?.fill === 'image' && bg.image ? await createImageBitmap(await (await fetch(bg.image)).blob()) : null
+      const customFont = job.subStyle.customFont ? await getFont(job.subStyle.customFont) : null
       if (cancelled) return
       const picture: ExportPicture | undefined = job.picture ? { ...job.picture, image } : undefined
-      const req: ExportRequest = { file: job.file, times: job.times, tracks: job.tracks, look: job.look, sfx, overlay, cues: job.cues, subStyle: job.subStyle, voice: job.voice, cuts: job.cuts, options: job.options, picture, font: new URL('fonts/allo_hebrew.ttf', document.baseURI).href }
+      const req: ExportRequest = { file: job.file, times: job.times, tracks: job.tracks, look: job.look, sfx, overlay, cues: job.cues, subStyle: job.subStyle, voice: job.voice, cuts: job.cuts, options: job.options, picture, base: new URL('.', document.baseURI).href, words: job.words ?? [], customFont }
       const transfer: Transferable[] = []
       if (overlay) transfer.push(overlay)
       if (image) transfer.push(image)

@@ -60,13 +60,15 @@ export type LoadedProject = { meta: ProjectMeta; file: File; state: ProjectState
 
 const DB = 'onit-projects'
 const STORES = ['meta', 'state', 'picture', 'video'] as const
+/** Fonts the user imported for subtitles (by name), kept apart from the projects. */
+const FONTS = 'fonts'
 type Store = (typeof STORES)[number]
 
 let db: Promise<IDBDatabase> | null = null
 function open(): Promise<IDBDatabase> {
   db ??= new Promise((resolve, reject) => {
-    const r = indexedDB.open(DB, 1)
-    r.onupgradeneeded = () => { for (const s of STORES) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s) }
+    const r = indexedDB.open(DB, 2)
+    r.onupgradeneeded = () => { for (const s of [...STORES, FONTS]) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s) }
     r.onsuccess = () => resolve(r.result)
     r.onerror = () => { db = null; reject(r.error) }
   })
@@ -144,4 +146,40 @@ export async function renameProject(id: string, name: string) {
 
 export async function deleteProject(id: string) {
   await tx([...STORES], 'readwrite', (s) => { for (const k of STORES) s[k].delete(id) })
+}
+
+// ------------------------------------------------------------------ imported fonts
+
+export async function listFonts(): Promise<{ name: string; data: ArrayBuffer }[]> {
+  try {
+    const d = await open()
+    const store = d.transaction(FONTS).objectStore(FONTS)
+    const [keys, values] = await Promise.all([req(store.getAllKeys()), req(store.getAll())])
+    return (keys as string[]).map((name, i) => ({ name, data: values[i] as ArrayBuffer }))
+  } catch {
+    return []
+  }
+}
+
+export async function saveFont(name: string, data: ArrayBuffer) {
+  const d = await open()
+  const t = d.transaction(FONTS, 'readwrite')
+  t.objectStore(FONTS).put(data, name)
+  await new Promise<void>((resolve, reject) => { t.oncomplete = () => resolve(); t.onerror = () => reject(t.error) })
+}
+
+export async function deleteFont(name: string) {
+  const d = await open()
+  const t = d.transaction(FONTS, 'readwrite')
+  t.objectStore(FONTS).delete(name)
+  await new Promise<void>((resolve, reject) => { t.oncomplete = () => resolve(); t.onerror = () => reject(t.error) })
+}
+
+export async function getFont(name: string): Promise<ArrayBuffer | null> {
+  try {
+    const d = await open()
+    return ((await req(d.transaction(FONTS).objectStore(FONTS).get(name))) as ArrayBuffer | undefined) ?? null
+  } catch {
+    return null
+  }
 }

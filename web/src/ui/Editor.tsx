@@ -26,7 +26,10 @@ import { reserveClipIds } from './EditorTabs'
 import { cleanupOn, type Cleanup } from '../lib/cleanup'
 import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
 import { Analyzing } from './Analyzing'
-import { bleepRanges, cueAt, DEFAULT_SUB_STYLE, drawSubtitle, maskCue, shownText, type Cue, type SubStyle, type Word } from '../lib/subtitles'
+import { bleepRanges, cueAt, maskCue, shownText, type Cue, type SubStyle, type Word } from '../lib/subtitles'
+import { loadSubFont, normalizeStyle } from '../lib/substyle'
+import { cueWordTimes, drawCue } from '../lib/subrender'
+import { getFont } from '../lib/projects'
 import { loadSfx, makeBuffer, SFX_NAMES } from '../lib/sfx'
 import type { VoiceFx } from '../lib/voice'
 import type { AudioMessage, AudioRequest } from '../workers/audio.worker'
@@ -148,8 +151,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [selectedSfx, setSelectedSfx] = useState<number | null>(null)
   const [sfxLength, setSfxLength] = useState<Map<string, number>>(new Map())
   const [subStyle, setSubStyle] = useState<SubStyle>(() => {
-    if (saved) return saved.subStyle
-    try { return { ...DEFAULT_SUB_STYLE, ...JSON.parse(localStorage.getItem('onit.substyle') ?? '{}') } } catch { return DEFAULT_SUB_STYLE }
+    if (saved) return normalizeStyle(saved.subStyle)
+    try { return normalizeStyle(JSON.parse(localStorage.getItem('onit.substyle') ?? 'null')) } catch { return normalizeStyle(null) }
   })
   const [sfx, setSfx] = useState<SfxClip[]>(saved?.sfx ?? [])
   const [mark, setMark] = useState<Watermark>(() => saved?.mark ?? loadWatermark())
@@ -276,7 +279,10 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       const cue = cueAt(state.current.cues, state.current.mediaTime)
       if (cue) {
         const st = state.current.subStyle
-        drawSubtitle(tc, shownText(cue, maskCue(cue, state.current.words, state.current.bleeped), st.show), { ...st, color: speakerColor(st.color, cue.speaker) }, fw, fh)
+        const text = maskCue(cue, state.current.words, state.current.bleeped)
+        const blocks = shownText(cue, text, st.show).split('\n')
+        const times = st.show === 'tr' ? [] : [cueWordTimes(text, cue.start, cue.end, state.current.words)]
+        drawCue(tc, blocks, cue.start, cue.end, state.current.mediaTime, { ...st, color: speakerColor(st.color, cue.speaker) }, fw, fh, times)
       }
       tc.restore()
     }
@@ -457,6 +463,16 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   useEffect(() => {
     try { localStorage.setItem('onit.substyle', JSON.stringify(subStyle)) } catch {}
   }, [subStyle])
+
+  // The subtitles' font, loaded for the preview (an imported one from the browser's storage).
+  useEffect(() => {
+    let live = true
+    ;(async () => {
+      const bytes = subStyle.customFont ? await getFont(subStyle.customFont) : null
+      if (await loadSubFont(subStyle, document.fonts, document.baseURI, bytes)) { if (live && video.current?.paused) draw() }
+    })()
+    return () => { live = false }
+  }, [subStyle.font, subStyle.customFont])
 
   // The logo, decoded once for the preview.
   useEffect(() => {
@@ -1118,7 +1134,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         onGo={() => {
           setExportOpen(false)
           saveExportOptions(exportOpts)
-          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: shownText(c, maskCue(c, words, bleeped), subStyle.show) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, cuts, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
+          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: shownText(c, maskCue(c, words, bleeped), subStyle.show) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, cuts, words, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
         }}
       />
     )}

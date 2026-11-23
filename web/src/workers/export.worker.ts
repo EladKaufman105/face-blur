@@ -11,11 +11,13 @@ export type ExportPicture = { background: Background | null; masks: PeopleMasks 
 import { BlurRenderer, ellipseFor } from '../lib/renderer'
 import { frameAt, trackBox, type Look, type Track } from '../lib/types'
 import { mixInto, type SfxSamples } from '../lib/sfx'
-import { cueAt, drawSubtitle, type Cue, type SubStyle } from '../lib/subtitles'
+import { cueAt, type Cue, type SubStyle, type Word } from '../lib/subtitles'
+import { cueWordTimes, drawCue } from '../lib/subrender'
+import { loadSubFont } from '../lib/substyle'
 import { CutMap, type Range } from '../lib/cutmap'
 import { speakerColor } from '../lib/speakers'
 
-export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; font: string; voice: { rate: number; data: Float32Array } | null; cuts: Range[]; options?: ExportOptions; picture?: ExportPicture }
+export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; /** The site's root (for the fonts). */ base: string; /** The recognized words (when each is said). */ words: Word[]; /** An imported font's bytes. */ customFont?: ArrayBuffer | null; voice: { rate: number; data: Float32Array } | null; cuts: Range[]; options?: ExportOptions; picture?: ExportPicture }
 export type ExportMessage =
   | { type: 'progress'; progress: number }
   | { type: 'done'; blob: Blob; ms: number }
@@ -109,7 +111,7 @@ async function run(req: ExportRequest) {
   const t0 = performance.now()
   const o = req.options ?? DEFAULT_EXPORT
   if (o.format === 'mp3') return mp3(req, t0)
-  const { file, times, tracks, look, sfx, overlay, cues, subStyle, font, voice, cuts: cutList } = req
+  const { file, times, tracks, look, sfx, overlay, cues, subStyle, base, words, voice, cuts: cutList } = req
   const cuts = new CutMap(cutList ?? [])
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
   const video = await input.getPrimaryVideoTrack()
@@ -141,16 +143,10 @@ async function run(req: ExportRequest) {
   if (octx) octx.imageSmoothingQuality = 'high'
   renderer.setBackground(pic?.background ?? null)
   if (pic?.image) renderer.setBackgroundImage(pic.image, 'image')
-  // Subtitles: the watermark and the current cue on one picture, redrawn when the cue changes.
-  let family = "'Allo Hebrew', system-ui, sans-serif"
-  if (cues.length > 0) {
-    try {
-      const f = await new FontFace('Allo Hebrew', `url(${font})`, { weight: '100 900' }).load()
-      ;(self as any).fonts?.add(f)
-    } catch {
-      family = 'system-ui, sans-serif'
-    }
-  }
+  // Subtitles: the watermark and the current cue on one picture, redrawn when the cue changes (and
+  // every frame while an effect moves it).
+  if (cues.length > 0) await loadSubFont(subStyle, (self as any).fonts, base, req.customFont ?? null)
+  const animated = subStyle.effect !== 'none'
   const layer = cues.length > 0 ? new OffscreenCanvas(w, h) : null
   let shownCue: Cue | null | undefined = undefined
   let scratch: OffscreenCanvas | null = null
@@ -197,12 +193,16 @@ async function run(req: ExportRequest) {
         if (!cuts.empty && cuts.isCut(sample.timestamp)) return null
         if (layer) {
           const cue = cueAt(cues, sample.timestamp)
-          if (cue !== shownCue) {
+          if (cue !== shownCue || (cue && animated)) {
             shownCue = cue
             const ctx = layer.getContext('2d')!
             ctx.clearRect(0, 0, w, h)
             if (overlay) ctx.drawImage(overlay, 0, 0, w, h)
-            if (cue) drawSubtitle(ctx, cue.text, { ...subStyle, color: speakerColor(subStyle.color, cue.speaker) }, w, h, family)
+            if (cue) {
+              const blocks = cue.text.split('\n')
+              const times = subStyle.show === 'tr' ? [] : [cueWordTimes(blocks[0], cue.start, cue.end, words)]
+              drawCue(ctx, blocks, cue.start, cue.end, sample.timestamp, { ...subStyle, color: speakerColor(subStyle.color, cue.speaker) }, w, h, times)
+            }
             if (!camera) renderer.setOverlay(layer)
           }
         }

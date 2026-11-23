@@ -1,4 +1,4 @@
-// Copies what the web app shares with the Android app (face model, font, sound effects) into public/, so there is one source of truth for each.
+// Copies what the web app shares with the Android app (face model, fonts, sound effects) into public/, so there is one source of truth for each.
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
@@ -17,7 +17,9 @@ const src = join(assets, 'retinaface_mv2.onnx')
 if (!existsSync(model) || statSync(model).mtimeMs < statSync(src).mtimeMs || !existsSync(join(pub, 'models', 'retinaface_fp32.onnx'))) {
   execFileSync('python3', [join(web, 'scripts', 'model_web.py'), src, join(pub, 'models')], { stdio: 'inherit' })
 }
-copy(join(assets, 'fonts', 'allo_hebrew.ttf'), join(pub, 'fonts', 'allo_hebrew.ttf'))
+// Every subtitle font (all under the SIL Open Font License, its text beside them).
+for (const f of readdirSync(join(assets, 'fonts'))) if (f.endsWith('.ttf')) copy(join(assets, 'fonts', f), join(pub, 'fonts', f))
+copy(join(assets, 'fonts', 'licenses'), join(pub, 'fonts', 'licenses'))
 // The speaker model (WeSpeaker ResNet34, CC BY 4.0), as the Android app downloads it, float32.
 const speaker = join(pub, 'models', 'speaker.onnx')
 if (!existsSync(speaker)) {
