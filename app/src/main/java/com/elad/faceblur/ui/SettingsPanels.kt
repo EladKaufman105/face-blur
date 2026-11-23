@@ -144,7 +144,7 @@ internal fun <T> Segments(options: List<Pair<T, String>>, selected: T, onSelect:
 /** Choice chips that wrap to more lines instead of running off the screen. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun <T> Chips(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
+internal fun <T> Chips(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
     FlowRow(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(Space.S),
@@ -302,6 +302,8 @@ fun ExportSheet(
     /** What the button says. */
     action: String = t("ייצא"),
     onEditWatermark: (() -> Unit)? = null,
+    /** In the editor: save what's set here (and in the editor) as a template. */
+    onSaveTemplate: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
@@ -321,6 +323,9 @@ fun ExportSheet(
             }
             // The one place the video leaves the editor: the brand's main button.
             GradientButton(action, onExport, Modifier.fillMaxWidth().testTag(Tags.EXPORT_GO), icon = EditorIcons.ExportIcon)
+            if (onSaveTemplate != null) {
+                TextButton(onClick = onSaveTemplate, modifier = Modifier.fillMaxWidth()) { Text(t("שמור כתבנית")) }
+            }
         }
     }
 }
@@ -328,7 +333,7 @@ fun ExportSheet(
 /** Language, light / dark mode and color palette. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit) {
+fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit, onTemplates: (() -> Unit)? = null) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             Modifier
@@ -395,6 +400,10 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit) {
                         }
                     }
                 }
+            }
+            if (onTemplates != null) {
+                HorizontalDivider()
+                ActionRow(AppIcons.Tune, t("תבניות"), t("מראה, יעד ועיבוד לסרטונים: שינוי שם, שכפול, עריכה ומחיקה"), onClick = onTemplates)
             }
         }
     }

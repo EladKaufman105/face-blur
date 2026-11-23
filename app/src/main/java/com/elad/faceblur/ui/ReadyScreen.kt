@@ -86,14 +86,16 @@ internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, on
             Column(Modifier.weight(1.3f)) { EnterUp(0) { VideoCard(s.info, onReplace = onReplace) } }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.L)) {
                 EnterUp(1) { actions() }
-                EnterUp(2) { BlurSettings(vm) }
+                EnterUp(2) { TemplatePickerCard(vm.templates, vm.templateChoice, vm::chooseTemplates) }
+                EnterUp(3) { BlurSettings(vm) }
             }
         }
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(Space.L)) {
             EnterUp(0) { VideoCard(s.info, onReplace = onReplace) }
             EnterUp(1) { actions() }
-            EnterUp(2) { BlurSettings(vm) }
+            EnterUp(2) { TemplatePickerCard(vm.templates, vm.templateChoice, vm::chooseTemplates) }
+            EnterUp(3) { BlurSettings(vm) }
         }
     }
     if (saveSheet) {

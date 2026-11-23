@@ -17,6 +17,7 @@ import androidx.media3.transformer.ExportException
 import com.elad.faceblur.effects.BlurMode
 import com.elad.faceblur.pipeline.FaceBlurProcessor
 import com.elad.faceblur.pipeline.Outcome
+import com.elad.faceblur.pipeline.ProcessingErrors
 import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
 import kotlinx.coroutines.CancellationException
@@ -36,7 +37,23 @@ import com.elad.faceblur.audio.AudioEdit
 import com.elad.faceblur.edit.SplitRule
 import com.elad.faceblur.project.ProjectMeta
 import com.elad.faceblur.project.ProjectStore
+import com.elad.faceblur.project.projectFields
 import com.elad.faceblur.subs.SubtitleStyle
+import com.elad.faceblur.subs.SpeechModel
+import com.elad.faceblur.template.BuiltInTemplates
+import com.elad.faceblur.template.Template
+import com.elad.faceblur.template.TemplateCategory
+import com.elad.faceblur.template.TemplateChoice
+import com.elad.faceblur.template.TemplateRunner
+import com.elad.faceblur.template.TemplateSettings
+import com.elad.faceblur.template.TemplateStore
+import com.elad.faceblur.template.applyAll
+import com.elad.faceblur.batch.Batch
+import com.elad.faceblur.batch.BatchItem
+import com.elad.faceblur.batch.BatchMath
+import com.elad.faceblur.batch.BatchService
+import com.elad.faceblur.batch.BatchState
+import com.elad.faceblur.template.toTemplate
 import org.json.JSONObject
 import com.elad.faceblur.analysis.MaskStore
 import com.elad.faceblur.effects.Background
@@ -71,6 +88,10 @@ sealed interface UiState {
     data class Failed(val info: VideoInfo?, val message: String, val details: String? = null, val canEdit: Boolean = false) : UiState
     /** A video's sound saved as an MP3. */
     data class AudioDone(val info: VideoInfo, val result: com.elad.faceblur.audio.Mp3Export.Result) : UiState
+    /** Several videos picked for a batch: choose the template and check the time and space before starting. */
+    data class BatchSetup(val videos: List<VideoInfo>) : UiState
+    /** The batch's queue (and, when it's done, its results): the batch itself is in [BatchState]. */
+    data object BatchRun : UiState
 }
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -90,6 +111,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** On-device speech models for subtitles. */
     val models = ModelManager(app)
+
+    /** The user's templates (and the built-in looks and destinations, in [BuiltInTemplates]). */
+    val templates = TemplateStore(app)
+
+    /** What is chosen for the next video: the user's template, or a look and a destination (null: none). */
+    var templateChoice by mutableStateOf(TemplateChoice())
+        private set
+
+    /** What the chosen templates set, to apply to the next video (null: no template chosen). */
+    var templateSettings by mutableStateOf<TemplateSettings?>(null)
+        private set
+    /** The settings before any template was chosen (a template lays over these). */
+    private var templateBase: TemplateSettings? = null
 
     private var job: Job? = null
     private var editor: EditorController? = null
@@ -152,15 +186,215 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** What the editor changes, for project.json. */
-    private fun editorFields(ctrl: EditorController): JSONObject = JSONObject()
-        .put("style", prefs.subStyle.toJson())
-        .put("split", JSONObject().put("words", ctrl.split.words).put("chars", ctrl.split.chars))
-        .put("audio", ctrl.audio.toJson())
-        .put("frame", ctrl.frame)
-        .put("background", ctrl.background.toJson())
-        .put("stabilize", ctrl.stabilizeLevel)
-        .put("settings", ctrl.session.settings.let { st -> JSONObject().put("mode", st.mode.name).put("strength", st.strength.toDouble()).put("padding", st.padding.toDouble()).put("sensitive", st.sensitive) })
+
+
+    // ------------------------------------------------------------------ batch
+
+    /** The template choice of the batch being set up, and what it comes to. */
+    var batchChoice by mutableStateOf(TemplateChoice())
+        private set
+    var batchSettings by mutableStateOf(TemplateSettings())
+        private set
+    /** Short notices from the chosen template (a font or picture that's gone). */
+    var batchNotes by mutableStateOf<List<String>>(emptyList())
+        private set
+    var batchDownloadError by mutableStateOf<String?>(null)
+        private set
+
+    private fun idsOf(choice: TemplateChoice): List<String> =
+        listOfNotNull(choice.user) + (if (choice.user == null) listOfNotNull(choice.look, choice.dest) else emptyList())
+
+    private fun recomputeBatch() {
+        val base = templateBase ?: currentSettings()
+        val notes = ArrayList<String>()
+        val chosen = idsOf(batchChoice).mapNotNull { templates.find(it) }.map { templates.usable(it, notes) }
+        batchSettings = applyAll(base, chosen)
+        batchNotes = notes
+    }
+
+    fun chooseBatchTemplates(choice: TemplateChoice) {
+        batchChoice = choice
+        recomputeBatch()
+    }
+
+    /** Videos picked from the gallery for a batch (up to [BatchMath.MAX_VIDEOS] in all; more can be added on the setup screen). */
+    fun pickedForBatch(uris: List<Uri>) {
+        if (uris.isEmpty() || state is UiState.Working) return
+        val existing = (state as? UiState.BatchSetup)?.videos.orEmpty()
+        if (existing.isEmpty()) {
+            closeSession()
+            batchChoice = TemplateChoice()
+            recomputeBatch()
+        }
+        state = UiState.Loading
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val room = (BatchMath.MAX_VIDEOS - existing.size).coerceAtLeast(0)
+            val probed = withContext(Dispatchers.IO) {
+                uris.filter { u -> existing.none { it.uri == u } }.take(room).mapNotNull { u -> runCatching { VideoInfo.probe(app, u) }.getOrNull() }
+            }
+            val all = existing + probed
+            state = if (all.isEmpty()) UiState.Failed(null, t("לא ניתן לפתוח את הסרטונים שנבחרו")) else UiState.BatchSetup(all)
+        }
+    }
+
+    fun removeBatchVideo(info: VideoInfo) {
+        val setup = state as? UiState.BatchSetup ?: return
+        val left = setup.videos.filter { it !== info }
+        state = if (left.isEmpty()) UiState.Empty else UiState.BatchSetup(left)
+    }
+
+    /** Learned speeds of this phone, for the time estimate. */
+    fun batchSpeeds(): BatchMath.Speeds {
+        val m = batchSettings.speechModel
+        return BatchMath.Speeds(prefs.analysisRatio, prefs.renderRatio, models.speed(models.file(m).path))
+    }
+
+    /** Downloads the speech model the batch's template needs (before anything starts). */
+    fun downloadBatchModel() {
+        val m = batchSettings.speechModel
+        if (models.downloading != null || models.isReady(m)) return
+        batchDownloadError = null
+        viewModelScope.launch {
+            try {
+                models.download(m)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                batchDownloadError = t("הורדת המודל נכשלה: %s").format(e.message ?: e.javaClass.simpleName)
+            }
+        }
+    }
+
+    /** Starts the batch in a foreground service (it goes on with the screen off) and shows its queue. */
+    fun startBatch() {
+        val setup = state as? UiState.BatchSetup ?: return
+        val s = batchSettings
+        if (s.needsSpeechModel && !models.isReady(s.speechModel)) return
+        val items = setup.videos.mapIndexed { i, v ->
+            val thumb = v.thumbnail?.let { b ->
+                val k = 320f / maxOf(b.width, b.height, 1)
+                if (k < 1f) android.graphics.Bitmap.createScaledBitmap(b, (b.width * k).toInt().coerceAtLeast(1), (b.height * k).toInt().coerceAtLeast(1), true) else b
+            }
+            BatchItem(i, v.uri, v.name, v.durationMs, thumb)
+        }
+        val name = idsOf(batchChoice).mapNotNull { templates.find(it) }.joinToString(" + ") { if (it.builtIn) t(it.name) else it.name }
+        BatchState.current = Batch(items, s, name.ifEmpty { t("בלי תבנית") })
+        BatchService.start(getApplication())
+        state = UiState.BatchRun
+    }
+
+    /** Back to the batch's queue or results (from the home screen). */
+    fun showBatch() {
+        if (BatchState.current == null || state is UiState.Working) return
+        closeSession()
+        state = UiState.BatchRun
+    }
+
+    /** Leaves the queue screen; the batch goes on in the background. */
+    fun leaveBatch() {
+        state = UiState.Empty
+    }
+
+    /** Done with the results list. */
+    fun closeBatch() {
+        BatchState.current?.takeIf { it.finished }?.let { BatchState.current = null }
+        state = UiState.Empty
+    }
+
+    /** "Check": opens the video's project in the editor. */
+    fun checkBatchItem(item: BatchItem) {
+        item.projectId?.let { openProject(it) }
+    }
+
+    // ------------------------------------------------------------------ templates
+
+    /** The settings as they stand now (the Ready screen's), for a template to lay over. */
+    private fun currentSettings() = TemplateSettings(
+        mode = mode, strength = strength, padding = padding, sensitive = sensitive,
+        translate = prefs.subsTranslate, subStyle = prefs.subStyle, export = prefs.export,
+    )
+
+    /**
+     * Chooses the templates for the next video: the settings fill in from them (the blur's look,
+     * the subtitle look, the export), and their processing runs after the analysis.
+     */
+    fun chooseTemplates(choice: TemplateChoice) {
+        templateChoice = choice
+        val ids = idsOf(choice)
+        if (ids.isEmpty()) {
+            // Back to what it was before.
+            templateBase?.let { applyToScreen(it) }
+            templateBase = null
+            templateSettings = null
+            return
+        }
+        val base = templateBase ?: currentSettings().also { templateBase = it }
+        val notes = ArrayList<String>()
+        val chosen = ids.mapNotNull { templates.find(it) }.map { templates.usable(it, notes) }
+        val s = applyAll(base, chosen)
+        applyToScreen(s)
+        templateSettings = s
+    }
+
+    private fun applyToScreen(s: TemplateSettings) {
+        mode = s.mode
+        strength = s.strength
+        padding = s.padding
+        sensitive = s.sensitive
+        prefs.updateExport(s.export)
+        prefs.updateSubStyle(s.subStyle)
+    }
+
+    /** The editor's current choices as settings (for "Save as template"). */
+    fun settingsOf(ctrl: EditorController): TemplateSettings {
+        val st = ctrl.session.settings
+        val model = if (models.isReady(SpeechModel.HEBREW) || !models.isReady(SpeechModel.MULTILINGUAL)) SpeechModel.HEBREW else SpeechModel.MULTILINGUAL
+        return TemplateSettings(
+            blurOff = ctrl.session.subtitlesOnly,
+            mode = st.mode, strength = st.strength, padding = st.padding, sensitive = st.sensitive,
+            createSubs = ctrl.model.cues.isNotEmpty(),
+            speechModel = model, language = model.language,
+            translate = ctrl.translateOnCreate,
+            subStyle = prefs.subStyle,
+            split = ctrl.split,
+            audio = ctrl.audio.copy(gainDb = 0f),
+            cutSilences = ctrl.cutCount > 0, cutFillers = ctrl.cutCount > 0 && ctrl.model.cues.isNotEmpty(),
+            background = ctrl.background,
+            stabilize = ctrl.stabilizeLevel,
+            export = prefs.export,
+        )
+    }
+
+    /** Which categories the editor has something in (the ones "Save as template" offers on). */
+    fun categoriesInUse(ctrl: EditorController): Set<TemplateCategory> = buildSet {
+        add(TemplateCategory.EXPORT)
+        if (!ctrl.session.subtitlesOnly) add(TemplateCategory.BLUR)
+        if (ctrl.model.cues.isNotEmpty()) add(TemplateCategory.SUBTITLES)
+        val a = ctrl.audio
+        if (a.voice != com.elad.faceblur.audio.VoiceFx.NONE || a.denoise > 0 || a.enhance || a.loud) add(TemplateCategory.VOICE)
+        if (ctrl.cutCount > 0) add(TemplateCategory.CUTS)
+        if (ctrl.background.active) add(TemplateCategory.BACKGROUND)
+        if (ctrl.stabilizeLevel > 0) add(TemplateCategory.STABILIZE)
+    }
+
+    /** Saves the editor's choices as the user's template [name], with the [keep] categories. */
+    fun saveEditorAsTemplate(ctrl: EditorController, name: String, keep: Set<TemplateCategory>): Template {
+        val id = templates.newId()
+        var tpl = settingsOf(ctrl).toTemplate(id, name.trim().take(60).ifBlank { t("תבנית חדשה") }, keep)
+        tpl.background?.let { b -> tpl = tpl.copy(background = templates.withOwnImage(b, id)) }
+        templates.save(tpl)
+        return tpl
+    }
+
+    /** Runs the chosen template's processing on the open editor session, not waiting (the editor is on screen). */
+    private fun applyTemplateAsync(ctrl: EditorController, s: TemplateSettings) {
+        editorScope.launch {
+            ctrl.notice = t("מחיל את התבנית…")
+            val notes = TemplateRunner.applyProcessing(ctrl, s)
+            ctrl.notice = notes.firstOrNull() ?: t("התבנית הוחלה")
+        }
+    }
 
     /** Every new editing session is saved as a project. */
     private fun beginProject(ctrl: EditorController) {
@@ -168,7 +402,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val id = ProjectStore.newId()
         projectId = id
         s.projectDir = ProjectStore.dir(getApplication(), id)
-        val json = editorFields(ctrl)
+        val json = ctrl.projectFields(prefs.subStyle)
             .put("v", 1)
             .put("name", s.info.name)
             .put("uri", s.info.uri.toString())
@@ -202,7 +436,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun saveProject(ctrl: EditorController? = editor) {
         val id = projectId ?: return
         if (ctrl == null) return
-        val fields = editorFields(ctrl)
+        val fields = ctrl.projectFields(prefs.subStyle)
         val edits = ctrl.model.exportState()
         val app = getApplication<Application>()
         saver.execute {
@@ -259,6 +493,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val ctrl = EditorController(session, editorScope, app, models, prefs)
             if (session.subtitlesOnly) ctrl.previewAvailable = false
             j.optString("style").takeIf { it.isNotBlank() }?.let { prefs.updateSubStyle(SubtitleStyle.fromJson(it)) }
+            // A project made from a template exports the way the template said.
+            j.optJSONObject("export")?.let { prefs.updateExport(com.elad.faceblur.pipeline.ExportOptions.fromJson(it)) }
             val sp = j.optJSONObject("split")
             ctrl.restore(
                 SplitRule(sp?.optInt("words") ?: 0, sp?.optInt("chars") ?: 0),
@@ -367,6 +603,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun start() {
         val info = currentInfo() ?: return
+        val tpl = templateSettings
+        // A template with no face blur: the editor's frames without face detection.
+        if (tpl?.blurOff == true) {
+            startTool(null, tpl)
+            return
+        }
         closeSession()
         val settings = Settings(mode, strength, padding, sensitive)
         val auto = !review
@@ -381,15 +623,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     onPreview = { frame, dets, acc, stats -> showLive(frame, dets.filter { it.score >= 0.5f }.map { it.box }, acc == "gpu", stats) },
                 ) { p -> state = UiState.Working(info, 1, p, auto = auto) }
                 val session = EditSession(info, settings, analysis, SystemClock.elapsedRealtime() - t0)
+                if (info.durationMs > 0) prefs.analysisRatio = session.analysisMs.toFloat() / info.durationMs
                 val ctrl = EditorController(session, editorScope, getApplication(), models, prefs)
                 editor = ctrl
                 beginProject(ctrl)
+                val processing = tpl?.takeIf { it.hasProcessing }
                 if (review) {
                     state = UiState.Editing(info, ctrl)
-                } else if (session.model.tracks.isEmpty()) {
-                    state = UiState.NoFaces(info, canEdit = true)
+                    if (processing != null) applyTemplateAsync(ctrl, processing)
                 } else {
-                    render(ctrl, auto = true)
+                    if (processing != null) {
+                        state = UiState.Working(info, 4, 0f, auto = true)
+                        TemplateRunner.applyProcessing(ctrl, processing)
+                    }
+                    if (session.model.tracks.isEmpty() && processing == null) {
+                        state = UiState.NoFaces(info, canEdit = true)
+                    } else {
+                        render(ctrl, auto = true)
+                    }
                 }
             }
         }
@@ -398,8 +649,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Subtitles without blurring: the editor on the video's frames, no face detection. */
     fun startSubtitles() = startTool(QuickTool.SUBTITLES)
 
-    /** The editor on the video's frames, without face detection, open on [tool]. */
-    fun startTool(tool: QuickTool) {
+    /**
+     * The editor on the video's frames, without face detection, open on [tool] (none: no panel).
+     * With a [template] (from the Ready screen) its processing is applied; with review off, and
+     * no tool, the video is then saved without opening the editor.
+     */
+    fun startTool(tool: QuickTool?, template: TemplateSettings? = null) {
         val info = currentInfo() ?: return
         closeSession()
         state = UiState.Working(info, 0, 0f)
@@ -413,11 +668,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     QuickTool.SUBTITLES -> ctrl.subsSheet = true
                     QuickTool.BACKGROUND -> ctrl.bgPanel = true
                     QuickTool.SOUND -> ctrl.voicePanel = true
-                    QuickTool.MP3 -> Unit
+                    QuickTool.MP3, null -> Unit
                 }
                 editor = ctrl
                 beginProject(ctrl)
-                state = UiState.Editing(info, ctrl)
+                val processing = template?.takeIf { it.hasProcessing }
+                if (template != null && tool == null && !review) {
+                    if (processing != null) {
+                        state = UiState.Working(info, 4, 0f, subsOnly = true, auto = true)
+                        TemplateRunner.applyProcessing(ctrl, processing)
+                    }
+                    render(ctrl, auto = true)
+                } else {
+                    state = UiState.Editing(info, ctrl)
+                    if (processing != null) applyTemplateAsync(ctrl, processing)
+                }
             }
         }
     }
@@ -463,30 +728,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             throw e
         } catch (e: Exception) {
             android.util.Log.w("FaceBlur", "processing failed", e)
-            state = UiState.Failed(info, friendlyError(e), technical(e), canEdit = editor != null)
+            state = UiState.Failed(info, ProcessingErrors.friendly(e), ProcessingErrors.technical(e), canEdit = editor != null)
         }
-    }
-
-    /** What went wrong, said so that it's clear what to try next. */
-    private fun friendlyError(e: Exception): String {
-        if (e is ExportException) {
-            return when (e.errorCode) {
-                in 2000..2999 -> t("לא הצלחתי לקרוא או לכתוב את הקובץ. בדוק שיש מקום פנוי במכשיר ושהסרטון עדיין בגלריה, ונסה שוב.")
-                in 3000..3999 -> t("המכשיר לא הצליח לפענח את הסרטון הזה. נסה רזולוציה נמוכה יותר בהגדרות הייצוא.")
-                in 4000..4999 -> t("המכשיר לא הצליח לשמור ברזולוציה הזו. בחר 1080p או 720p בהגדרות הייצוא ונסה שוב.")
-                in 7000..7999 -> t("השמירה נעצרה באמצע. נסה שוב; אם זה חוזר, בחר רזולוציה נמוכה יותר בהגדרות הייצוא.")
-                else -> t("העיבוד נכשל. נסה שוב; אם זה חוזר, בחר רזולוציה נמוכה יותר בהגדרות הייצוא.")
-            }
-        }
-        if (e is java.io.IOException) return t("לא הצלחתי לקרוא או לכתוב את הקובץ. בדוק שיש מקום פנוי במכשיר ושהסרטון עדיין בגלריה, ונסה שוב.")
-        return t("משהו השתבש בעיבוד. נסה שוב; אם זה חוזר, שלח את הפרטים הטכניים.")
-    }
-
-    /** The technical details of [e], for sending. */
-    private fun technical(e: Throwable): String = buildString {
-        append(e.javaClass.simpleName)
-        if (e is ExportException) append(" ").append(e.errorCodeName).append(" (").append(e.errorCode).append(")")
-        (e.cause?.message ?: e.message)?.let { append(": ").append(it) }
     }
 
     fun cancel() {

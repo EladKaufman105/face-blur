@@ -206,6 +206,7 @@ fun EditorScreen(
     onExportChange: (ExportOptions) -> Unit = {},
     subStyle: SubtitleStyle = SubtitleStyle(),
     onSubStyleChange: (SubtitleStyle) -> Unit = {},
+    onSaveTemplate: (() -> Unit)? = null,
 ) {
     var exportSheet by remember { mutableStateOf(false) }
     // A phone: the selected clip's properties in the timeline's place (the tablet has them beside).
@@ -483,6 +484,7 @@ fun EditorScreen(
             hasSubs = ctrl.model.cues.isNotEmpty(),
             hasTranslation = ctrl.hasTranslation,
             onEditWatermark = { exportSheet = false; ctrl.pauser(); ctrl.watermarkPanel = true },
+            onSaveTemplate = onSaveTemplate?.let { save -> { exportSheet = false; save() } },
         )
     }
 }

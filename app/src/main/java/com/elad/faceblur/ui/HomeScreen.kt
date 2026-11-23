@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.elad.faceblur.MainViewModel
 import com.elad.faceblur.QuickTool
+import com.elad.faceblur.batch.BatchMath
+import com.elad.faceblur.batch.BatchState
 import com.elad.faceblur.i18n.t
 
 /**
@@ -52,14 +54,16 @@ import com.elad.faceblur.i18n.t
  * On a tablet, starting something new on one side and the projects on the other.
  */
 @Composable
-internal fun HomeContent(vm: MainViewModel, wide: Boolean, onPick: () -> Unit, onTool: (QuickTool) -> Unit) {
+internal fun HomeContent(vm: MainViewModel, wide: Boolean, onPick: () -> Unit, onTool: (QuickTool) -> Unit, onBatch: () -> Unit) {
     val projects: @Composable () -> Unit = {
         ProjectsSection(vm.projects, vm::openProject, vm::renameProject, vm::deleteProject)
     }
     if (wide) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.XL)) {
             Column(Modifier.weight(1.15f), verticalArrangement = Arrangement.spacedBy(Space.XL)) {
+                BatchState.current?.let { b -> BatchBanner(b, vm::showBatch) }
                 EnterUp(0) { HeroCard(onPick) }
+                EnterUp(1) { BatchCard(onBatch) }
                 EnterUp(1) { ToolsSection(onTool) }
                 EnterUp(3) { ShareHint() }
             }
@@ -67,7 +71,9 @@ internal fun HomeContent(vm: MainViewModel, wide: Boolean, onPick: () -> Unit, o
         }
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(Space.XL)) {
+            BatchState.current?.let { b -> BatchBanner(b, vm::showBatch) }
             EnterUp(0) { HeroCard(onPick) }
+            EnterUp(1) { BatchCard(onBatch) }
             EnterUp(1) { ToolsSection(onTool) }
             EnterUp(2) { projects() }
             EnterUp(3) { ShareHint() }
@@ -157,6 +163,25 @@ private fun HeroCard(onPick: () -> Unit) {
             )
             Spacer(Modifier.height(Space.XL))
             GradientButton(t("בחר סרטון"), onPick, Modifier.fillMaxWidth().testTag(Tags.PICK_VIDEO), icon = Icons.Filled.Add)
+        }
+    }
+}
+
+/** Several videos at once, with one template (a batch). */
+@Composable
+private fun BatchCard(onClick: () -> Unit) {
+    ClipCard(onClick = onClick, accent = Feature.FACES.color, modifier = Modifier.testTag(Tags.BATCH)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FeatureTile(AppIcons.Folder, Feature.FACES.tint, 48.dp)
+            Spacer(Modifier.width(Space.M))
+            Column(Modifier.weight(1f)) {
+                Text(t("כמה סרטונים"), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    t("עד %d סרטונים בבת אחת, עם תבנית אחת. ממשיך גם כשהמסך כבוי.").format(BatchMath.MAX_VIDEOS),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
