@@ -1,3 +1,4 @@
+import type { CutMap } from './cutmap'
 // Subtitles: words from speech recognition -> cues, how they look, drawing them, and SRT.
 
 export interface Word { start: number; end: number; text: string }
@@ -137,6 +138,20 @@ function srtTime(t: number) {
   const h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, s = Math.floor(ms / 1000) % 60
   const pad = (n: number, l = 2) => String(n).padStart(l, '0')
   return `${pad(h)}:${pad(m)}:${pad(s)},${pad(ms % 1000, 3)}`
+}
+
+/** The subtitles at their times in the result, without what was cut (a cue cut whole is left out). */
+export function cutCues(cues: Cue[], cuts: CutMap): Cue[] {
+  if (cuts.empty) return cues
+  const out: Cue[] = []
+  for (const c of [...cues].sort((a, b) => a.start - b.start)) {
+    const kept = cuts.kept(c.start, c.end)
+    if (kept < 0.05) continue
+    const from = cuts.isCut(c.start) ? cuts.cutEnd(c.start) : c.start
+    const start = cuts.out(from)
+    out.push({ ...c, start, end: start + kept })
+  }
+  return out
 }
 
 export function toSrt(cues: Cue[]): string {

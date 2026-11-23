@@ -102,6 +102,7 @@ const PHONE = { viewport: { width: 393, height: 852 }, deviceScaleFactor: 2, isM
     // The export: shorter by what was cut.
     const t1 = Date.now()
     await p.click('.export-bar .btn')
+    await p.click('.export-go')
     await p.waitForSelector('.result video, .card.error', { timeout: 900000 })
     const err = await p.evaluate(() => document.querySelector('.card.error')?.textContent)
     if (err) throw new Error('export: ' + err)

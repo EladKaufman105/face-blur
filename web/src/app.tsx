@@ -5,7 +5,14 @@ import type { Analysis } from './lib/types'
 import { Editor, type EditorTab } from './ui/Editor'
 import { Analyzing } from './ui/Analyzing'
 import { Exporting, type ExportJob } from './ui/Exporting'
-import { LockIcon, AddIcon, SubtitlesIcon, SoundIcon, MarkIcon } from './ui/icons'
+import { LockIcon, AddIcon, SubtitlesIcon, SoundIcon, MarkIcon, MusicIcon } from './ui/icons'
+import { DEFAULT_LOOK } from './lib/types'
+import { NO_WATERMARK } from './lib/watermark'
+import { DEFAULT_SUB_STYLE } from './lib/subtitles'
+import { DEFAULT_EXPORT } from './lib/exportopts'
+
+/** A tool from the home screen: a group of the editor, or straight to an MP3. */
+type Tool = EditorTab | 'mp3'
 
 type Screen =
   | { name: 'home'; error?: string }
@@ -34,8 +41,12 @@ export function App() {
     if (supported()) setScreen({ name: 'analyzing', file })
   }
   // A tool from the home screen: straight to the editor (faces can be found from there).
-  const pickTool = async (file: File, tab: EditorTab) => {
+  const pickTool = async (file: File, tab: Tool) => {
     if (!supported()) return
+    if (tab === 'mp3') {
+      setJob({ file, times: new Float64Array(0), tracks: [], look: DEFAULT_LOOK, width: 0, height: 0, sfx: [], watermark: NO_WATERMARK, cues: [], subStyle: DEFAULT_SUB_STYLE, voice: null, cuts: [], options: { ...DEFAULT_EXPORT, format: 'mp3' }, standalone: true })
+      return
+    }
     const size = await videoSize(file)
     if (!size) {
       setScreen({ name: 'home', error: t('לא ניתן לפתוח את הסרטון') })
@@ -47,7 +58,7 @@ export function App() {
   return (
     <div class="app">
       <Header />
-      {screen.name === 'home' && <Home onPick={pick} onTool={pickTool} sensitive={sensitive} setSensitive={setSensitive} error={screen.error} />}
+      {screen.name === 'home' && !job && <Home onPick={pick} onTool={pickTool} sensitive={sensitive} setSensitive={setSensitive} error={screen.error} />}
       {screen.name === 'analyzing' && (
         <Analyzing
           file={screen.file}
@@ -101,10 +112,10 @@ function Header() {
   )
 }
 
-function Home({ onPick, onTool, sensitive, setSensitive, error }: { onPick: (f: File) => void; onTool: (f: File, tab: EditorTab) => void; sensitive: boolean; setSensitive: (v: boolean) => void; error?: string }) {
+function Home({ onPick, onTool, sensitive, setSensitive, error }: { onPick: (f: File) => void; onTool: (f: File, tab: Tool) => void; sensitive: boolean; setSensitive: (v: boolean) => void; error?: string }) {
   const input = useRef<HTMLInputElement>(null)
   const toolInput = useRef<HTMLInputElement>(null)
-  const toolTab = useRef<EditorTab>('subs')
+  const toolTab = useRef<Tool>('subs')
   const [dragging, setDragging] = useState(false)
   useEffect(() => {
     // A video dropped anywhere on the page.
@@ -156,8 +167,8 @@ function Home({ onPick, onTool, sensitive, setSensitive, error }: { onPick: (f: 
           <h3 class="section-title" style="margin:4px 0 4px">{t('כלים נוספים')}</h3>
           <p class="small muted" style="margin:0 0 10px">{t('פותח את העורך ישר, בלי זיהוי פנים')}</p>
           <div class="tools">
-            {([['subs', 'כתוביות', SubtitlesIcon, 'var(--amber)'], ['sound', 'קול ואפקטים', SoundIcon, 'var(--cyan)'], ['mark', 'סימן מים', MarkIcon, 'var(--violet)']] as const).map(([tab, label, Icon, color]) => (
-              <button class="tool" onClick={() => { toolTab.current = tab; toolInput.current?.click() }}>
+            {([['subs', 'כתוביות', SubtitlesIcon, 'var(--amber)'], ['sound', 'קול ואפקטים', SoundIcon, 'var(--cyan)'], ['mark', 'סימן מים', MarkIcon, 'var(--violet)'], ['mp3', 'המרה ל-MP3', MusicIcon, 'var(--cyan)']] as const).map(([tab, label, Icon, color]) => (
+              <button class="tool" onClick={() => { toolTab.current = tab; if (toolInput.current) toolInput.current.accept = tab === 'mp3' ? 'video/*,audio/*' : 'video/*'; toolInput.current?.click() }}>
                 <span class="tool-icon" style={{ color, background: `color-mix(in srgb, ${color} 18%, transparent)` }}><Icon /></span>
                 <span>{t(label)}</span>
               </button>

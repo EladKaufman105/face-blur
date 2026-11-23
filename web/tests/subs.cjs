@@ -45,7 +45,15 @@ const [, , url, video, out] = process.argv
     if (!(cut > 0.05)) throw new Error('cut by the text')
     await p.screenshot({ path: `${out}/cut_by_text.png` })
     await p.click('.export-bar .btn')
+    // The subtitles as an SRT file too.
+    await p.click('.export-sheet .switch')
+    await p.click('.export-go')
     await p.waitForSelector('.result video, .card.error', { timeout: 900000 })
+    const srtHref = await p.getAttribute('.srt-link', 'href')
+    const srt = await p.evaluate(async (h) => (await fetch(h)).text(), srtHref)
+    fs.writeFileSync(`${out}/subs.srt`, srt)
+    console.log('SRT:', srt.split('\n').slice(0, 3).join(' | '))
+    if (!srt.includes('-->')) throw new Error('no SRT')
     console.log('PASS')
   } finally {
     fs.writeFileSync(`${out}/console.txt`, logs.join('\n'))

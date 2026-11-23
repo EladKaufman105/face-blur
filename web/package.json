@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.2",
+    "@mediabunny/mp3-encoder": "1.65.2",
     "@preact/signals": "2.11.4",
     "mediabunny": "1.65.2",
     "onnxruntime-web": "1.31.1",

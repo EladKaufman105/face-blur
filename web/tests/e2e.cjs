@@ -63,6 +63,7 @@ const DEVICES = {
     await p.screenshot({ path: `${out}/5c_watermark.png` })
     const t1 = Date.now()
     await p.click('.export-bar .btn')
+    await p.click('.export-go')
     await p.waitForSelector('.result video, .card.error', { timeout: 900000 })
     const exportError = await p.evaluate(() => document.querySelector('.card.error')?.textContent)
     if (exportError) throw new Error('export: ' + exportError)

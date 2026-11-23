@@ -24,7 +24,7 @@ export type FollowRequest =
       guides: { first: number; boxes: Float32Array }[]
     }
 export type FollowMessage =
-  | { type: 'times'; times: Float64Array; fps: number }
+  | { type: 'times'; times: Float64Array; fps: number; codec: string }
   | { type: 'progress'; progress: number }
   | { type: 'done'; first: number; boxes: Float32Array }
   | { type: 'error'; message: string }
@@ -58,7 +58,7 @@ async function times(file: File) {
   diffs.sort((a, b) => a - b)
   const fps = Math.min(240, Math.max(5, diffs.length ? 1 / diffs[diffs.length >> 1] : 30))
   const out = Float64Array.from(ts)
-  post({ type: 'times', times: out, fps }, [out.buffer])
+  post({ type: 'times', times: out, fps, codec: video.codec ?? '' }, [out.buffer])
 }
 
 async function follow(r: Extract<FollowRequest, { type: 'follow' }>) {

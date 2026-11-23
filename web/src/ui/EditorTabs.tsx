@@ -6,6 +6,52 @@ import { CloseIcon, PlayIcon } from './icons'
 import { LANGUAGES, toSrt, wordsToCues, type Cue, type SubLook, type SubPosition, type SubStyle, type Word } from '../lib/subtitles'
 import { VOICES, type VoiceFx } from '../lib/voice'
 import type { SubsMessage, SubsRequest } from '../workers/subs.worker'
+import type { Cleanup } from '../lib/cleanup'
+
+/** A row with a title, a line under it and a switch. */
+function SwitchRow({ title, text, on, disabled, onChange, cls }: { title: string; text: string; on: boolean; disabled?: boolean; onChange: (on: boolean) => void; cls?: string }) {
+  return (
+    <label class={'row switch-row ' + (cls ?? '')} style={disabled ? 'opacity:0.6' : 'cursor:pointer'}>
+      <div class="grow">
+        <strong class="small-title">{title}</strong>
+        <div class="small muted">{text}</div>
+      </div>
+      <span class="switch">
+        <input type="checkbox" checked={on} disabled={disabled} onChange={(e) => onChange((e.currentTarget as HTMLInputElement).checked)} />
+        <span />
+      </span>
+    </label>
+  )
+}
+
+/**
+ * Cleaning up the sound, as in the app: background noise lowered (light, medium, strong), the
+ * voice made clearer, the loudness that social networks expect.
+ */
+export function CleanupCard({ clean, onClean, loud, loudBusy, onLoud }: { clean: Cleanup; onClean: (c: Cleanup) => void; loud: { on: boolean; gainDb: number | null }; loudBusy: boolean; onLoud: (on: boolean) => void }) {
+  const gain = loud.gainDb ?? 0
+  return (
+    <section class="card cleanup">
+      <h3 class="section-title">{t('ניקוי קול')}</h3>
+      <strong class="small-title">{t('הסרת רעשי רקע')}</strong>
+      <div class="small muted" style="margin-bottom:8px">{t('מזגן, רוח, תנועה, זמזום. נשמע בנגן אחרי עיבוד קצר.')}</div>
+      <div class="seg seg4 denoise" role="radiogroup">
+        {[t('כבוי'), t('קל'), t('בינוני'), t('חזק')].map((label, k) => (
+          <button class={clean.denoise === k ? 'on' : ''} role="radio" aria-checked={clean.denoise === k} onClick={() => onClean({ ...clean, denoise: k })}>{label}</button>
+        ))}
+      </div>
+      <SwitchRow cls="enhance" title={t('שיפור קול')} text={t('קול ברור ואחיד: בלי רעמים נמוכים, מילים חדות יותר, עוצמה מאוזנת')} on={clean.enhance} onChange={(on) => onClean({ ...clean, enhance: on })} />
+      <SwitchRow
+        cls="loud"
+        title={t('עוצמה לרשתות')}
+        text={loudBusy ? t('מודד את העוצמה…') : loud.on ? t('מיושר לעוצמה של הרשתות (%s), בלי עיוות', `\u2066${gain >= 0 ? '+' : ''}${gain.toFixed(1)} dB\u2069`) : t('כמו שטיקטוק, אינסטגרם ויוטיוב מצפים')}
+        on={loud.on}
+        disabled={loudBusy}
+        onChange={onLoud}
+      />
+    </section>
+  )
+}
 
 let nextClip = 1
 

@@ -13,7 +13,10 @@ import { applyFollow, boxNear, newTrack, nextTrackId, retime, setEnd, setStart, 
 import type { FollowMessage, FollowRequest } from '../workers/follow.worker'
 import { SfxScheduler, type SfxClip } from '../lib/sfx'
 import { drawWatermark, watermarkOn, type Watermark } from '../lib/watermark'
-import { SoundTab, SubtitlesTab, WatermarkTab, loadWatermark } from './EditorTabs'
+import { CleanupCard, SoundTab, SubtitlesTab, WatermarkTab, loadWatermark } from './EditorTabs'
+import { ExportSheet } from './ExportSheet'
+import { cleanupOn, type Cleanup } from '../lib/cleanup'
+import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
 import { Analyzing } from './Analyzing'
 import { bleepRanges, cueAt, DEFAULT_SUB_STYLE, drawSubtitle, maskCue, type Cue, type SubStyle, type Word } from '../lib/subtitles'
 import { loadSfx, makeBuffer, SFX_NAMES } from '../lib/sfx'
@@ -76,6 +79,16 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [cutStart, setCutStart] = useState<number | null>(null)
   const [cutBusy, setCutBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  // The sound's cleanup: noise, a clearer voice, the networks' loudness (measured once).
+  const [denoise, setDenoise] = useState(0)
+  const [enhance, setEnhance] = useState(false)
+  const [loudOn, setLoudOn] = useState(false)
+  /** The gain to the networks' loudness, as measured on the cleaned sound (null until it is). */
+  const [loudGain, setLoudGain] = useState<number | null>(null)
+  const clean: Cleanup = useMemo(() => ({ denoise, enhance, loud: loudOn }), [denoise, enhance, loudOn])
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportOpts, setExportOpts] = useState(loadExportOptions)
+  const [srcInfo, setSrcInfo] = useState<{ codec: string; fps: number } | null>(null)
   const cutMap = useMemo(() => new CutMap(cuts), [cuts])
   const url = useMemo(() => URL.createObjectURL(file), [file])
   useEffect(() => () => URL.revokeObjectURL(url), [url])
@@ -292,7 +305,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const audioWorker = useMemo(() => new Worker(new URL('../workers/audio.worker.ts', import.meta.url), { type: 'module' }), [file])
   useEffect(() => () => audioWorker.terminate(), [audioWorker])
   useEffect(() => {
-    if (voice === 'none' && bleeped.size === 0) {
+    if (voice === 'none' && bleeped.size === 0 && !cleanupOn(clean)) {
       setVoiceAudio(null)
       setVoiceBusy(false)
       return
@@ -302,14 +315,24 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       audioWorker.onmessage = (e: MessageEvent<AudioMessage>) => {
         const m = e.data
         setVoiceBusy(false)
-        if (m.type === 'done') setVoiceAudio({ rate: m.rate, data: m.data, buffer: makeBuffer(m.data, m.rate) })
-        else setVoiceAudio(null)
+        if (m.type === 'done') {
+          setVoiceAudio({ rate: m.rate, data: m.data, buffer: makeBuffer(m.data, m.rate) })
+          if (clean.loud) {
+            setLoudGain(m.lufs === null ? null : m.gainDb)
+            if (m.lufs === null) { setLoudOn(false); setNotice(t('לא נמצא דיבור למדידה')) }
+            else if (loudGain === null) setNotice(t('העוצמה: %s ← %s', `\u2066${m.lufs.toFixed(1)} LUFS\u2069`, `\u2066${(m.lufs + m.gainDb).toFixed(1)} LUFS\u2069`))
+          }
+        } else {
+          setVoiceAudio(null)
+          if (m.type === 'error' && cleanupOn(clean)) setNotice(t('אין סאונד בסרטון'))
+        }
       }
-      const req: AudioRequest = { file, voice, bleeps: bleepRanges(words, bleeped), tone }
+      const req: AudioRequest = { file, voice, bleeps: bleepRanges(words, bleeped), tone, clean }
       audioWorker.postMessage(req)
     }, 250)
     return () => clearTimeout(timer)
-  }, [voice, bleeped, tone, words])
+  }, [voice, bleeped, tone, words, clean])
+
 
   // Undo and redo. Quick changes in a row (typing, dragging a sound) are one step.
   const past = useRef<Snap[]>([])
@@ -432,6 +455,20 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       if (m.type === 'times') { setAn((a) => ({ ...a, times: m.times, fps: m.fps })); resolve(m) }
       else if (m.type === 'error') reject(new Error(m.message))
     }))
+  }
+
+  /** The source's codec and frame rate (and its frame times, if they weren't known), for the export's choices. */
+  const probe = () => {
+    const w = new Worker(new URL('../workers/follow.worker.ts', import.meta.url), { type: 'module' })
+    w.onmessage = (e: MessageEvent<FollowMessage>) => {
+      w.terminate()
+      const m = e.data
+      if (m.type !== 'times') return
+      setSrcInfo({ codec: m.codec, fps: m.fps })
+      if (!state.current.times.length) setAn((a) => (a.times.length ? a : { ...a, times: m.times, fps: m.fps }))
+    }
+    w.onerror = () => w.terminate()
+    w.postMessage({ type: 'times', file } satisfies FollowRequest)
   }
 
   /** Follows blur [tr] from frame [from]: 0 both ways (a new one), 1 forward, -1 back. */
@@ -801,6 +838,15 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           </>
         )}
         {tab === 'sound' && (
+          <CleanupCard
+            clean={clean}
+            onClean={(c) => { setDenoise(c.denoise); setEnhance(c.enhance) }}
+            loud={{ on: loudOn, gainDb: loudGain }}
+            loudBusy={loudOn && voiceBusy}
+            onLoud={(on) => { setLoudOn(on); if (!on) setLoudGain(null) }}
+          />
+        )}
+        {tab === 'sound' && (
           <SoundTab
             voice={voice}
             onVoice={setVoice}
@@ -866,7 +912,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             disabled={!!following}
             onClick={() => {
               video.current?.pause()
-              onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: maskCue(c, words, bleeped) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, cuts })
+              setExportOpen(true)
+              if (!srcInfo) probe()
             }}
           >
             <SaveIcon /> {t('ייצוא')}
@@ -874,6 +921,23 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         </div>
       </aside>
     </main>
+    {exportOpen && (
+      <ExportSheet
+        width={W}
+        height={H}
+        fps={srcInfo?.fps ?? an.fps}
+        sourceHevc={srcInfo?.codec === 'hevc'}
+        hasCues={cues.length > 0}
+        options={exportOpts}
+        onChange={setExportOpts}
+        onClose={() => setExportOpen(false)}
+        onGo={() => {
+          setExportOpen(false)
+          saveExportOptions(exportOpts)
+          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: maskCue(c, words, bleeped) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, cuts, options: exportOpts })
+        }}
+      />
+    )}
     </>
   )
 }

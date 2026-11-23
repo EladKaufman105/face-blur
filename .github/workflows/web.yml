@@ -56,6 +56,8 @@ jobs:
           # Editing: a blur by hand (followed, split, deleted, ended), cuts by hand and of pauses.
           node tests/edit.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/edit
           node tests/edit.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/edit-phone phone
+          # The sound's cleanup, MP3 (from the editor and the home screen), a lower size and frame rate.
+          node tests/sound.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/samples/speech_en.mp4 /tmp/samples/classroom60.mp4 /tmp/web-results/sound
       - uses: actions/upload-artifact@v4
         if: always()
         with:

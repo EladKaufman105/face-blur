@@ -29,6 +29,7 @@ const [, , url, video, out] = process.argv
     await p.waitForTimeout(1000)
     await p.screenshot({ path: `${out}/3_editor_faces.png` })
     await p.click('.export-bar .btn')
+    await p.click('.export-go')
     await p.waitForSelector('.result video', { timeout: 900000 })
     await p.click('text=חזרה לעריכה')
     await p.click('.tabs button[data-g=mark]')

@@ -1,13 +1,15 @@
 // Export: re-encodes the video with the faces hidden (WebCodecs through Mediabunny); the sound
-// is copied as is when the container allows it.
-import { ALL_FORMATS, AudioSample, AudioSampleSource, BlobSource, BufferTarget, Conversion, Input, Mp4OutputFormat, Output, QUALITY_HIGH, VideoSample, canEncodeVideo, getFirstEncodableAudioCodec } from 'mediabunny'
+// is copied as is when the container allows it. Or only the sound, as MP3.
+import { ALL_FORMATS, AudioSample, AudioSampleSource, BlobSource, BufferTarget, Conversion, Input, Mp3OutputFormat, Mp4OutputFormat, Output, QUALITY_HIGH, VideoSample, canEncodeAudio, canEncodeVideo, getFirstEncodableAudioCodec, type VideoCodec } from 'mediabunny'
+import { registerMp3Encoder } from '@mediabunny/mp3-encoder'
+import { DEFAULT_EXPORT, outputSize, videoBitrate, type ExportOptions } from '../lib/exportopts'
 import { BlurRenderer, ellipseFor } from '../lib/renderer'
 import { frameAt, trackBox, type Look, type Track } from '../lib/types'
 import { mixInto, type SfxSamples } from '../lib/sfx'
 import { cueAt, drawSubtitle, type Cue, type SubStyle } from '../lib/subtitles'
 import { CutMap, type Range } from '../lib/cutmap'
 
-export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; font: string; voice: { rate: number; data: Float32Array } | null; cuts: Range[] }
+export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; font: string; voice: { rate: number; data: Float32Array } | null; cuts: Range[]; options?: ExportOptions }
 export type ExportMessage =
   | { type: 'progress'; progress: number }
   | { type: 'done'; blob: Blob; ms: number }
@@ -42,16 +44,81 @@ function keptSamples(planes: Float32Array[], rate: number, ts: number, cuts: Cut
   return out
 }
 
-async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, font, voice, cuts: cutList }: ExportRequest) {
+/** Only the sound, as MP3: the changed voice fed in, or the source's sound (effects mixed, cuts taken out). */
+async function mp3({ file, sfx, voice, cuts: cutList }: ExportRequest, t0: number) {
+  if (!(await canEncodeAudio('mp3'))) registerMp3Encoder()
+  const cuts = new CutMap(cutList ?? [])
+  const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
+  const audio = await input.getPrimaryAudioTrack()
+  if (!audio) return post({ type: 'error', code: 'no-audio', message: 'no sound' })
+  const output = new Output({ format: new Mp3OutputFormat(), target: new BufferTarget() })
+  if (voice) {
+    const rate = voice.rate
+    const src = new AudioSampleSource({ codec: 'mp3', bitrate: 192e3 })
+    output.addAudioTrack(src)
+    await output.start()
+    const end = voice.data.length / rate
+    for (let t = 0; t < end; t += 1) {
+      const i0 = Math.round(t * rate)
+      const n = Math.min(rate, voice.data.length - i0)
+      if (n <= 0) break
+      const planes = [voice.data.slice(i0, i0 + n)]
+      mixInto(planes, rate, t, sfx)
+      for (const sample of keptSamples(planes, rate, t, cuts)) await src.add(sample)
+      post({ type: 'progress', progress: Math.min(0.99, (t + 1) / end) })
+    }
+    src.close()
+    await output.finalize()
+  } else {
+    const conversion = await Conversion.init({
+      input,
+      output,
+      video: { discard: true },
+      audio: {
+        codec: 'mp3',
+        bitrate: 192e3,
+        forceTranscode: true,
+        process: sfx.length === 0 && cuts.empty ? undefined : (sample) => {
+          const ch = sample.numberOfChannels, n = sample.numberOfFrames
+          const planes: Float32Array[] = []
+          for (let c = 0; c < ch; c++) {
+            const p = new Float32Array(n)
+            sample.copyTo(p, { planeIndex: c, format: 'f32-planar' })
+            planes.push(p)
+          }
+          mixInto(planes, sample.sampleRate, sample.timestamp, sfx)
+          return keptSamples(planes, sample.sampleRate, sample.timestamp, cuts)
+        },
+      },
+    })
+    if (!conversion.isValid) return post({ type: 'error', code: 'invalid', message: conversion.discardedTracks.map((d) => `${d.track.type}: ${d.reason}`).join(', ') })
+    conversion.onProgress = (p) => post({ type: 'progress', progress: p })
+    await conversion.execute()
+  }
+  const buf = (output.target as BufferTarget).buffer!
+  post({ type: 'done', blob: new Blob([buf], { type: 'audio/mpeg' }), ms: performance.now() - t0 })
+}
+
+async function run(req: ExportRequest) {
   const t0 = performance.now()
+  const o = req.options ?? DEFAULT_EXPORT
+  if (o.format === 'mp3') return mp3(req, t0)
+  const { file, times, tracks, look, sfx, overlay, cues, subStyle, font, voice, cuts: cutList } = req
   const cuts = new CutMap(cutList ?? [])
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
   const video = await input.getPrimaryVideoTrack()
   if (!video) return post({ type: 'error', code: 'no-video', message: 'no video track' })
-  const w = video.displayWidth, h = video.displayHeight
-  const ew = w + (w & 1), eh = h + (h & 1)
-  const codec = (await canEncodeVideo('avc', { width: ew, height: eh })) ? 'avc' : (await canEncodeVideo('hevc', { width: ew, height: eh })) ? 'hevc' : null
+  const sw = video.displayWidth, sh = video.displayHeight
+  // The size, frame rate, codec and bitrate asked for (the codec the browser can make).
+  const [w, h] = outputSize(sw, sh, o.shortSide)
+  const resized = w !== sw + (sw & 1) || h !== sh + (sh & 1)
+  const stats = await video.computePacketStats(240).catch(() => null)
+  const srcFps = stats && stats.averagePacketRate > 0 ? stats.averagePacketRate : 30
+  const wanted: VideoCodec = o.codec === 'hevc' || (o.codec === 'same' && video.codec === 'hevc') ? 'hevc' : 'avc'
+  const other: VideoCodec = wanted === 'hevc' ? 'avc' : 'hevc'
+  const codec = (await canEncodeVideo(wanted, { width: w, height: h })) ? wanted : (await canEncodeVideo(other, { width: w, height: h })) ? other : null
   if (!codec) return post({ type: 'error', code: 'encoder', message: 'no H.264/HEVC encoder' })
+  const bitrate = videoBitrate(o, sw, sh, srcFps, stats?.averageBitrate ?? 0, codec === 'hevc')
 
   const canvas = new OffscreenCanvas(w, h)
   const renderer = new BlurRenderer(canvas)
@@ -101,9 +168,11 @@ async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, fo
     composable: feed !== null,
     video: {
       codec,
-      quality: QUALITY_HIGH,
+      bitrate,
       forceTranscode: true,
       allowTransformationMetadata: false,
+      ...(resized ? { width: w, height: h, fit: 'fill' as const } : {}),
+      ...(o.fps > 0 && o.fps < srcFps - 0.5 ? { frameRate: o.fps } : {}),
       process: async (sample) => {
         // A cut frame is dropped; the ones after a cut move up.
         if (!cuts.empty && cuts.isCut(sample.timestamp)) return null
@@ -113,7 +182,7 @@ async function run({ file, times, tracks, look, sfx, overlay, cues, subStyle, fo
             shownCue = cue
             const ctx = layer.getContext('2d')!
             ctx.clearRect(0, 0, w, h)
-            if (overlay) ctx.drawImage(overlay, 0, 0)
+            if (overlay) ctx.drawImage(overlay, 0, 0, w, h)
             if (cue) drawSubtitle(ctx, cue.text, subStyle, w, h, family)
             renderer.setOverlay(layer)
           }
