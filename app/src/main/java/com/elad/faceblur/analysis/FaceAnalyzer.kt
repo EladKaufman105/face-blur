@@ -44,7 +44,8 @@ object OpenCv {
 
 /**
  * Analysis pass: receives each frame (RGBA, top row first) from the GL pipeline, runs face
- * detection on ~30 frames per second of video and measures camera motion and hard cuts on
+ * detection on ~15 frames per second of video (as the web version; the offline tracker fills
+ * the frames between, with the camera's motion) and measures camera motion and hard cuts on
  * every frame. When the pass is done, [result] links everything into face tracks
  * offline. Called on the video pipeline's GL thread; the timeline is read after the pass.
  *
@@ -113,12 +114,17 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     private val bgr = Mat()
     private val small = Mat()
 
-    // Detection ~30 times per second of video (every frame in sensitive mode); camera motion
+    // Detection ~15 times per second of video (every frame in sensitive mode); camera motion
     // and cut detection run on every frame. On a slow phone or tablet (where the frames wait
-    // for the detectors) fewer, down to ~10 per second, and the crop check only for uncertain
+    // for the detectors) fewer, down to ~8 per second, and the crop check only for uncertain
     // faces: the tracker fills the frames between.
-    private val baseEvery = if (sensitive) 1 else max(1, (fps / 30f).roundToInt())
-    private val maxEvery = if (sensitive) 1 else max(baseEvery, (fps / 10f).toInt())
+    private val baseEvery = if (sensitive) 1 else max(1, (fps / RATE).roundToInt())
+    private val maxEvery = if (sensitive) 1 else max(baseEvery, (fps / MIN_RATE).toInt())
+
+    // Clear faces found in several detections in a row (see [FaceDetector]): not re-checked on
+    // a crop. Updated as detections finish (workers finish out of order; close enough).
+    private class Followed(var box: Box, var streak: Int, var seen: Int)
+    private val followed = ArrayList<Followed>()
     @Volatile private var detectEvery = baseEvery
     @Volatile private var lite = false
     private var windowStart = 0L
@@ -137,6 +143,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         drain()
         failure.set(null)
         lastDets = emptyList()
+        synchronized(followed) { followed.clear() }
         camera.reset()
         cutDetector.reset()
         frames?.reset()
@@ -206,15 +213,17 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             slots.acquire()
             blockedMs += SystemClock.elapsedRealtime() - waitFrom
             adapt(idx)
+            val known = followedBoxes()
             pool.execute {
                 var m: Mat? = null
                 try {
                     if (gen == generation) {
                         m = Mat(fh, fw, CvType.CV_8UC3).also { it.put(0, 0, frame) }
-                        val found = detector().detect(m, lite)
+                        val found = detector().detect(m, lite, known)
                         if (gen == generation) {
                             dets[idx] = found
                             lastDets = found
+                            follow(idx, found)
                         }
                     }
                 } catch (t: Throwable) {
@@ -240,6 +249,24 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             bmp.copyPixelsFromBuffer(ByteBuffer.wrap(px))
             cb(bmp, lastDets, accelerator)
         }
+    }
+
+    /** Boxes of the clear faces seen in at least [FOLLOWED_AFTER] detections in a row. */
+    private fun followedBoxes(): List<Box> = synchronized(followed) { followed.filter { it.streak >= FOLLOWED_AFTER }.map { it.box } }
+
+    /** Extends each clear face's run with this detection's faces; drops runs not seen lately. */
+    private fun follow(idx: Int, found: List<Det>) = synchronized(followed) {
+        for (d in found) {
+            if (d.score < FaceDetector.CLEAR) continue
+            val f = followed.maxByOrNull { Geometry.iou(it.box, d.box) }?.takeIf { Geometry.iou(it.box, d.box) > 0.3f }
+            if (f == null) followed += Followed(d.box, 1, idx)
+            else {
+                if (idx > f.seen) { f.streak++; f.seen = idx; f.box = d.box }
+            }
+        }
+        // A run broken for more than a couple of detections starts over.
+        val gap = detectEvery * 3
+        followed.removeAll { idx - it.seen > gap }
     }
 
     /**
@@ -331,6 +358,12 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
         private const val MOTION_SIDE = 640
         private const val PREVIEW_SIDE = 480
         private const val PREVIEW_MS = 200L
+
+        /** Detections per second of video, and the fewest a slow device goes down to. */
+        private const val RATE = 15f
+        private const val MIN_RATE = 8f
+        /** Detections in a row after which a clear face isn't re-checked on a crop. */
+        private const val FOLLOWED_AFTER = 4
 
         /** Detection threads (measured on ARM: 3 keep the cores busiest). */
         const val WORKERS = 3

@@ -11,9 +11,12 @@ import kotlin.math.max
 /**
  * Detector ensemble, tuned on labeled frames of real rescue footage:
  *  - RetinaFace-MobileNetV2 is the main detector.
- *  - YuNet adds faces RetinaFace misses (and raises the score where both agree).
- *  - Every detection is re-checked on a centered 192 px crop: clutter (knees, gloves, walls)
- *    almost never survives that, real faces often do. The tracker uses it as evidence.
+ *  - YuNet adds faces RetinaFace misses (and raises the score where both agree); it runs at
+ *    640 px at most, for the faces RetinaFace's fine pass is weakest on (big, tilted, close).
+ *  - Detections are re-checked on a centered 192 px crop: clutter (knees, gloves, walls)
+ *    almost never survives that, real faces often do. The tracker uses it as evidence, and only
+ *    where a face is uncertain or new: a clear face that has been followed for several
+ *    detections already has all the evidence it needs, so it isn't checked again.
  */
 class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFaceNet? = null, half: HalfPrecision? = null) : Closeable {
 
@@ -23,9 +26,14 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
     private val faces = Mat()
     private val row = FloatArray(15)
     private val crop = Mat()
+    private val yunetInput = Mat()
 
-    /** @param lite re-check only uncertain faces on a crop (a slow device). */
-    fun detect(bgr: Mat, lite: Boolean = false): List<Det> {
+    /**
+     * @param lite re-check only uncertain faces on a crop (a slow device).
+     * @param followed boxes of clear faces already found in several detections in a row: a clear
+     *   face there isn't re-checked.
+     */
+    fun detect(bgr: Mat, lite: Boolean = false, followed: List<Box> = emptyList()): List<Det> {
         val w = bgr.cols()
         val h = bgr.rows()
         val rf = retina.detect(bgr, RF_THRESHOLD)
@@ -49,17 +57,29 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
             }
         }
         val kept = Geometry.nmsIou(fused, 0.4f)
-        for (d in kept) if (!lite || d.score < LITE_VERIFY_BELOW) d.verify = verify(bgr, d.box)
+        for (d in kept) {
+            val clear = d.score >= CLEAR
+            if (lite && clear) continue
+            if (clear && followed.any { Geometry.iou(it, d.box) > 0.3f }) continue
+            d.verify = verify(bgr, d.box)
+        }
         return kept
     }
 
-    private fun runYunet(bgr: Mat, w: Int, h: Int): List<Det> {
+    private fun runYunet(bgr: Mat, fw: Int, fh: Int): List<Det> {
+        val s = minOf(1f, YUNET_SIDE.toFloat() / max(fw, fh))
+        val w = max(16, (fw * s).toInt())
+        val h = max(16, (fh * s).toInt())
+        val input = if (s < 1f) {
+            Imgproc.resize(bgr, yunetInput, Size(w.toDouble(), h.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
+            yunetInput
+        } else bgr
         val size = Size(w.toDouble(), h.toDouble())
         val net = yunet?.takeIf { yunetSize == size } ?: FaceDetectorYN.create(yunetPath, "", size, 0.4f, 0.3f, 5000).also {
             yunet = it
             yunetSize = size
         }
-        net.detect(bgr, faces)
+        net.detect(input, faces)
         val n = if (faces.empty()) 0 else faces.rows()
         val out = ArrayList<Det>(n)
         for (r in 0 until n) {
@@ -101,6 +121,7 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
         retina.close()
         faces.release()
         crop.release()
+        yunetInput.release()
         yunet = null
     }
 
@@ -108,6 +129,8 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
         const val YUNET_MODEL = "face_detection_yunet_2023mar.onnx"
         private const val RF_THRESHOLD = 0.35f
         private const val VERIFY_SIDE = 192
-        private const val LITE_VERIFY_BELOW = 0.8f
+        /** A face this sure counts as strong evidence by itself (see [OfflineTracker]). */
+        const val CLEAR = 0.8f
+        private const val YUNET_SIDE = 640
     }
 }

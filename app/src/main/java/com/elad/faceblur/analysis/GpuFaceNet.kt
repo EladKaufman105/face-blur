@@ -26,7 +26,8 @@ import java.util.concurrent.TimeUnit
  * thread that made it); the detection workers wait their turn.
  *
  * Before trusting it, the first frames with faces are also run through OpenCV and compared (see
- * [RetinaFaceDetector]); [disable] turns it off for the rest of the pass.
+ * [RetinaFaceDetector]); two frames that disagree ([strike]), or a failure ([disable]), turn it
+ * off for the rest of the pass.
  */
 class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, File>) : Closeable {
 
@@ -34,8 +35,9 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
     private val nets = HashMap<Pair<Int, Int>, Net>()
     @Volatile private var off = false
 
-    // Frames with faces where the GPU and OpenCV agreed.
+    // Frames with faces where the GPU and OpenCV agreed, and where they didn't.
     private val agreed = java.util.concurrent.atomic.AtomicInteger()
+    private val strikes = java.util.concurrent.atomic.AtomicInteger()
 
     /** Enough frames agreed with OpenCV to use the GPU's results alone. */
     val trusted get() = agreed.get() >= CHECK_FRAMES
@@ -116,6 +118,14 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
         off = true
     }
 
+    /**
+     * A frame where the GPU's faces differed from OpenCV's. One can be a borderline face that
+     * fp16 put just over or under a score; a second means the GPU isn't to be trusted here.
+     */
+    fun strike() {
+        if (strikes.incrementAndGet() >= MAX_STRIKES) off = true
+    }
+
     val active get() = !off
 
     override fun close() {
@@ -132,6 +142,9 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
 
         /** Frames with faces checked against OpenCV before the GPU's results are used alone. */
         const val CHECK_FRAMES = 3
+
+        /** Frames that may disagree with OpenCV before the GPU is turned off. */
+        const val MAX_STRIKES = 2
 
         /** Fine-pass sizes with a GPU model, and the file each one is in (see ModelManager). */
         val SIZES = listOf(1280 to 736, 736 to 1280)

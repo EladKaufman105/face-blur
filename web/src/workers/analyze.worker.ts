@@ -116,23 +116,30 @@ async function analyze({ file, sensitive, base, backend }: AnalyzeRequest) {
   const fps = Math.min(240, Math.max(5, diffs.length ? 1 / diffs[diffs.length >> 1] : nominalFps))
   const tracks = track(n, dets, cutList, fps, height / width, sensitive)
 
-  // A square thumbnail of each face, from its clearest frame.
-  const thumbs: (ImageBitmap | null)[] = []
+  // A square thumbnail of each face, from its clearest frame. The frames are decoded in one
+  // pass in time order (each packet at most once): fetching them one by one, each from its
+  // keyframe, kept a crowd's video at the end of the progress bar for seconds.
+  const thumbs: (ImageBitmap | null)[] = tracks.map(() => null)
+  const wanted = tracks.slice(0, 40).map((t, i) => ({ i, f: t.best })).sort((a, b) => a.f - b.f)
+  const frameTimes = [...new Set(wanted.map((w) => w.f))]
   const big = new CanvasSink(video, { poolSize: 1, width: Math.round(width * Math.min(1, 1280 / Math.max(width, height))) })
-  for (const t of tracks) {
-    if (thumbs.length >= 40) { thumbs.push(null); continue }
-    const k = t.best - t.first
-    const wc = await big.getCanvas(times[t.best])
-    if (!wc) { thumbs.push(null); continue }
+  let fi = 0
+  for await (const wc of big.canvasesAtTimestamps(frameTimes.map((f) => times[f]))) {
+    const f = frameTimes[fi++]
+    if (!wc) continue
     const c = wc.canvas as OffscreenCanvas
-    const cx = t.boxes[k * 4] * c.width, cy = t.boxes[k * 4 + 1] * c.height
-    const r = Math.max(t.boxes[k * 4 + 2] * c.width, t.boxes[k * 4 + 3] * c.height) * 0.8
-    const out = new OffscreenCanvas(160, 160)
-    const ctx = out.getContext('2d')!
-    ctx.fillStyle = '#000'
-    ctx.fillRect(0, 0, 160, 160)
-    ctx.drawImage(c, cx - r, cy - r, 2 * r, 2 * r, 0, 0, 160, 160)
-    thumbs.push(out.transferToImageBitmap())
+    for (const w of wanted) {
+      if (w.f !== f) continue
+      const t = tracks[w.i], k = t.best - t.first
+      const cx = t.boxes[k * 4] * c.width, cy = t.boxes[k * 4 + 1] * c.height
+      const r = Math.max(t.boxes[k * 4 + 2] * c.width, t.boxes[k * 4 + 3] * c.height) * 0.8
+      const out = new OffscreenCanvas(160, 160)
+      const ctx = out.getContext('2d')!
+      ctx.fillStyle = '#000'
+      ctx.fillRect(0, 0, 160, 160)
+      ctx.drawImage(c, cx - r, cy - r, 2 * r, 2 * r, 0, 0, 160, 160)
+      thumbs[w.i] = out.transferToImageBitmap()
+    }
   }
   const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, cuts: cutList, thumbs, backend: detector.backend, ms: performance.now() - t0 }
   post(msg, [msg.times.buffer, ...tracks.map((t) => t.boxes.buffer), ...thumbs.filter((b): b is ImageBitmap => !!b)])

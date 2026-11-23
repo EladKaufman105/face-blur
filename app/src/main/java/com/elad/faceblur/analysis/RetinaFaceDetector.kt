@@ -46,14 +46,18 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
     private val outNames = arrayListOf("loc", "conf", "landmarks")
 
     /**
-     * Fine pass at the frame's size + coarse pass at 480 px for faces bigger than the anchors.
-     * The two passes overlap; the caller's NMS merges them.
+     * Fine pass at the frame's size (on the GPU) or at most [CPU_FINE_SIDE] (on the CPU, where
+     * it's most of the time) + coarse pass at 480 px for faces bigger than the anchors. The two
+     * passes overlap; the caller's NMS merges them.
      */
     fun detect(bgr: Mat, threshold: Float): List<Det> {
         val w = bgr.cols()
         val h = bgr.rows()
         val out = ArrayList<Det>()
-        run(bgr, max(w, h), threshold, 0f, out)
+        val iw = max(32, (w / 32f).roundToInt() * 32)
+        val ih = max(32, (h / 32f).roundToInt() * 32)
+        val fine = if (gpu?.supports(iw, ih) == true) max(w, h) else min(max(w, h), CPU_FINE_SIDE)
+        run(bgr, fine, threshold, 0f, out)
         if (max(w, h) > COARSE_SIDE * 1.3f) run(bgr, COARSE_SIDE, threshold, COARSE_MIN_BOX, out)
         return out
     }
@@ -94,8 +98,8 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
                 if (agree(a, b)) {
                     if (b.isNotEmpty()) g.vouch()
                 } else {
-                    android.util.Log.w("ONIT", "GPU faces differ from the CPU's (${a.size} vs ${b.size}): CPU from now on")
-                    g.disable()
+                    android.util.Log.w("ONIT", "GPU faces differ from the CPU's (${a.size} vs ${b.size})")
+                    g.strike()
                 }
                 return ref
             }
@@ -119,8 +123,8 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
                 if (agree(a, b)) {
                     if (b.isNotEmpty()) h.vouch()
                 } else {
-                    android.util.Log.w("ONIT", "fp16 faces differ from fp32's (${a.size} vs ${b.size}): fp32 from now on")
-                    h.disable()
+                    android.util.Log.w("ONIT", "fp16 faces differ from fp32's (${a.size} vs ${b.size})")
+                    h.strike()
                 }
             }
             return ref
@@ -140,10 +144,16 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
         return loc to conf
     }
 
-    /** Same faces (by place) with nearly the same scores. */
+    /**
+     * The same clear faces (by place) with about the same scores. Faces near the threshold
+     * aren't compared: in a crowd one of them is easily just over in one precision and just
+     * under in the other, which says nothing about the GPU being wrong.
+     */
     private fun agree(a: List<Det>, b: List<Det>): Boolean {
-        if (a.size != b.size) return false
-        return b.all { d -> a.any { Geometry.iou(it.box, d.box) > 0.8f && kotlin.math.abs(it.score - d.score) < 0.08f } }
+        fun covered(clear: List<Det>, other: List<Det>) = clear.filter { it.score >= AGREE_CLEAR }.all { d ->
+            other.any { Geometry.iou(it.box, d.box) > 0.6f && kotlin.math.abs(it.score - d.score) < 0.15f }
+        }
+        return covered(a, b) && covered(b, a)
     }
 
     /** Boxes above [threshold] (and [minBox] px at the model's size), after NMS. */
@@ -198,6 +208,10 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
     companion object {
         const val MODEL = "retinaface_mv2.onnx"
         private const val COARSE_SIDE = 480
+        /** The fine pass's long side on the CPU (the GPU runs it at the frame's 1280). */
+        const val CPU_FINE_SIDE = 960
+        /** Faces at least this sure are compared between GPU and CPU, fp16 and fp32. */
+        private const val AGREE_CLEAR = 0.6f
         private const val COARSE_MIN_BOX = 64f
         private val STEPS = intArrayOf(8, 16, 32)
         private val MIN_SIZES = arrayOf(intArrayOf(16, 32), intArrayOf(64, 128), intArrayOf(256, 512))
