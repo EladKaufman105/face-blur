@@ -99,6 +99,15 @@ class AppPrefs(context: Context) {
             sp.edit().putFloat("render_ratio", if (old <= 0f) v else old * 0.5f + v * 0.5f).apply()
         }
 
+    /** Learned time of the analysis pass per unit of the video's length (for a batch's time estimate). */
+    var analysisRatio: Float
+        get() = sp.getFloat("analysis_ratio", 1.0f)
+        set(v) {
+            if (v <= 0f || v > 50f) return
+            val old = sp.getFloat("analysis_ratio", -1f)
+            sp.edit().putFloat("analysis_ratio", if (old <= 0f) v else old * 0.5f + v * 0.5f).apply()
+        }
+
     private inline fun <reified E : Enum<E>> enumOr(name: String?, default: E): E =
         name?.let { n -> enumValues<E>().firstOrNull { it.name == n } } ?: default
 }

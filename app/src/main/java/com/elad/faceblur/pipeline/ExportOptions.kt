@@ -7,6 +7,7 @@ import androidx.media3.effect.Presentation
 import com.elad.faceblur.edit.ExportAspect
 import com.elad.faceblur.edit.Reframer
 import com.elad.faceblur.edit.SubLang
+import org.json.JSONObject
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -106,8 +107,27 @@ data class ExportOptions(
     /** HDR can only be kept in HEVC. */
     fun canKeepHdr(info: VideoInfo) = codec != ExportCodec.H264 && (codec == ExportCodec.HEVC || info.isHevc)
 
+    /** For saving with a template or a project. */
+    fun toJson(): JSONObject = JSONObject()
+        .put("shortSide", shortSide).put("fps", fps).put("quality", quality.name).put("codec", codec.name)
+        .put("subs", subs.name).put("saveSrt", saveSrt).put("aspect", aspect.name).put("watermark", watermark.toJson())
+
     companion object {
         private const val AUDIO_BITRATE = 128_000
+
+        fun fromJson(o: JSONObject?): ExportOptions {
+            if (o == null) return ExportOptions()
+            return ExportOptions(
+                shortSide = o.optInt("shortSide", 0),
+                fps = o.optInt("fps", 0),
+                quality = runCatching { ExportQuality.valueOf(o.optString("quality")) }.getOrDefault(ExportQuality.ORIGINAL),
+                codec = runCatching { ExportCodec.valueOf(o.optString("codec")) }.getOrDefault(ExportCodec.SAME),
+                subs = runCatching { SubLang.valueOf(o.optString("subs")) }.getOrDefault(SubLang.ORIGINAL),
+                saveSrt = o.optBoolean("saveSrt", true),
+                aspect = runCatching { ExportAspect.valueOf(o.optString("aspect")) }.getOrDefault(ExportAspect.ORIGINAL),
+                watermark = Watermark.fromJson(o.optString("watermark")),
+            )
+        }
 
         private fun even(v: Float) = max(2, (v / 2f).roundToInt() * 2)
 

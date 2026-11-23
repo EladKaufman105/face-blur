@@ -565,6 +565,22 @@ class EditorController(
     /** True while a model downloads or subtitles are being made. */
     val subsBusy get() = subsProgress != null || models?.downloading != null || speakersProgress != null
 
+    /**
+     * Anything running in the background: subtitles, speakers, loudness, cuts, finding the
+     * people, measuring the camera's motion.
+     */
+    val busy get() = subsBusy || loudnessBusy || cutBusy || segmentProgress != null || stabilizeProgress != null
+
+    /** Suspends until the background work ([busy]) is done: for a template applied with no editor on screen. */
+    suspend fun awaitIdle() {
+        while (busy) kotlinx.coroutines.delay(120)
+    }
+
+    /** Whether new subtitles are translated, for this session only (a template's choice; not remembered). */
+    fun setTranslateTransient(v: Boolean) {
+        translateOnCreate = v
+    }
+
     /** Transcribes the video with [m] (downloaded) and fills the subtitles. */
     fun generateSubtitles(m: SpeechModel) {
         val path = models?.file(m)?.takeIf { models.isReady(m) }?.absolutePath ?: return
