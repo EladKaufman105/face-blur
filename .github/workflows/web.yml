@@ -68,6 +68,8 @@ jobs:
           node tests/style.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 ../app/src/main/assets/fonts/heebo.ttf /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf /tmp/web-results/style
           # Where it was filmed and on what phone don't go out with the export.
           node tests/privacy.cjs "http://localhost:4173/?backend=wasm" /tmp/samples/speech_two.mp4 /tmp/web-results/privacy
+          # Settings: language, light / dark / the device's, the color palette; kept after a reload.
+          node tests/settings.cjs "http://localhost:4173/?backend=wasm" /tmp/web-results/settings
       - uses: actions/upload-artifact@v4
         if: always()
         with:

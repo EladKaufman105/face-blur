@@ -375,6 +375,14 @@ const EN: Record<string, string> = {
   'כמה מדברים בסרטון?': 'How many people speak?',
   'זהה דוברים': 'Find speakers',
   'דובר %d': 'Speaker %d',
+  // Settings
+  'הגדרות': 'Settings',
+  'שפה': 'Language',
+  'ערכת צבעים': 'Color palette',
+  'כחול': 'Blue',
+  'ירוק': 'Green',
+  'כתום': 'Orange',
+  'ורוד': 'Pink',
   // Subtitle design
   'עיצוב כתוביות': 'Subtitle style',
   'סגנונות': 'Styles',

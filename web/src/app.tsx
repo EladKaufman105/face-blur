@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { lang, setLang, t, duration } from './i18n'
-import { nextTheme, theme } from './theme'
+import { palette, PALETTES, setPalette, setTheme, theme, type Theme } from './theme'
 import type { Analysis } from './lib/types'
 import { Editor, type EditorTab } from './ui/Editor'
 import { Analyzing } from './ui/Analyzing'
 import { Exporting, type ExportJob } from './ui/Exporting'
-import { LockIcon, AddIcon, SubtitlesIcon, SoundIcon, MarkIcon, MusicIcon } from './ui/icons'
+import { LockIcon, AddIcon, SubtitlesIcon, SoundIcon, MarkIcon, MusicIcon, SettingsIcon, CloseIcon, CheckIcon } from './ui/icons'
 import { DEFAULT_LOOK } from './lib/types'
 import { NO_WATERMARK } from './lib/watermark'
 import { DEFAULT_SUB_STYLE } from './lib/subtitles'
@@ -30,9 +30,10 @@ export function App() {
   // Exporting keeps the editor (and everything in it) underneath, for "back to editing".
   const [job, setJob] = useState<ExportJob | null>(null)
   const [sensitive, setSensitive] = useState(false)
-  // Re-render on a change of language or theme.
+  // Re-render on a change of language, theme or palette.
   void lang.value
   void theme.value
+  void palette.value
 
   const supported = () => {
     if ('VideoDecoder' in window && 'VideoEncoder' in window) return true
@@ -109,6 +110,7 @@ export function App() {
 }
 
 function Header() {
+  const [open, setOpen] = useState(false)
   return (
     <header class="top">
       <div class="brand">
@@ -119,13 +121,52 @@ function Header() {
           <p class="tag"><LockIcon size={14} /> {t('הכל מעובד על המכשיר. שום דבר לא עולה לרשת.')}</p>
         </div>
       </div>
-      <button class="chip-btn" onClick={nextTheme} aria-label={t('מצב תצוגה')} title={t('מצב תצוגה')}>
-        {theme.value === 'dark' ? t('כהה') : theme.value === 'light' ? t('בהיר') : t('לפי המכשיר')}
-      </button>
-      <button class="chip-btn" onClick={() => setLang(lang.value === 'he' ? 'en' : 'he')} aria-label="Language">
-        {lang.value === 'he' ? 'EN' : 'עב'}
-      </button>
+      <button class="icon-btn settings-btn" onClick={() => setOpen(true)} aria-label={t('הגדרות')} title={t('הגדרות')}><SettingsIcon /></button>
+      {open && <Settings onClose={() => setOpen(false)} />}
     </header>
+  )
+}
+
+/** Language, light / dark mode and the color palette, as the app's settings. */
+function Settings({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    addEventListener('keydown', key)
+    return () => removeEventListener('keydown', key)
+  }, [])
+  const themes: [Theme, string][] = [['dark', t('כהה')], ['light', t('בהיר')], ['system', t('לפי המכשיר')]]
+  return (
+    <div class="sheet-back" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div class="sheet settings-sheet" role="dialog" aria-modal="true" aria-label={t('הגדרות')}>
+        <div class="row">
+          <h2 class="grow sheet-title">{t('הגדרות')}</h2>
+          <button class="icon-btn" aria-label={t('סגור')} onClick={onClose}><CloseIcon /></button>
+        </div>
+        <div class="sheet-body">
+          <h4 class="caption">{t('שפה')}</h4>
+          <div class="seg seg2 lang-seg" role="radiogroup">
+            {([['he', 'עברית'], ['en', 'English']] as const).map(([l, label]) => (
+              <button class={lang.value === l ? 'on' : ''} role="radio" aria-checked={lang.value === l} lang={l} onClick={() => setLang(l)}>{label}</button>
+            ))}
+          </div>
+          <h4 class="caption">{t('מצב תצוגה')}</h4>
+          <div class="seg theme-seg" role="radiogroup">
+            {themes.map(([v, label]) => (
+              <button class={theme.value === v ? 'on' : ''} role="radio" aria-checked={theme.value === v} onClick={() => setTheme(v)}>{label}</button>
+            ))}
+          </div>
+          <h4 class="caption">{t('ערכת צבעים')}</h4>
+          <div class="palettes" role="radiogroup">
+            {PALETTES.map(([p, label, fill]) => (
+              <button class={'palette' + (palette.value === p ? ' on' : '')} role="radio" aria-checked={palette.value === p} data-p={p} onClick={() => setPalette(p)}>
+                <span class="palette-dot" style={{ background: fill }}>{palette.value === p && <CheckIcon size={18} />}</span>
+                <span>{p === 'onit' ? label : t(label)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 

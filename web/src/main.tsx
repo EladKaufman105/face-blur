@@ -1,7 +1,7 @@
 import { render } from 'preact'
 import { App } from './app'
 import { lang, setLang } from './i18n'
-import { applyTheme, theme } from './theme'
+import { applyPalette, applyTheme, palette, theme } from './theme'
 import './styles.css'
 
 // The app's font (Allo Hebrew, with weight and roundness axes), from the same file as Android.
@@ -10,4 +10,5 @@ font.load().then((f) => document.fonts.add(f)).catch(() => {})
 
 setLang(lang.value)
 applyTheme(theme.value)
+applyPalette(palette.value)
 render(<App />, document.getElementById('app')!)
