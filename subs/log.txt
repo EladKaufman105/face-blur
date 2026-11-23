@@ -1,0 +1,11 @@
+audio: 176100 samples = 11.00625s rms=0.0998
+transcribe: 14414ms lang=en translated=true lines=2
+  320-7200 en='And so my fellow Americans ask not what your country can do for' he='ולכן הבחור שלי אמריקאים לא לשאול מה המדינה שלך יכול לעשות'
+  7200-10560 en='you, ask what you can do for your country.' he='אתה, לשאול מה אתה יכול לעשות עבור המדינה שלך.'
+editor generate: 8136ms cues=2 notice=נוצרו 2 כתוביות. אפשר לערוך כל אחת בהקשה.
+2 words per subtitle: 12 subtitles: 320-680 'And so' / '' | 680-1510 'my fellow' / '' | 1510-4020 'Americans ask' / '' | 4020-4900 'not what' / '' | 4900-6310 'your country' / '' | 6310-7010 'can do' / '' | 7010-7200 'for' / '' | 7200-8630 'you, ask' / '' | 8630-9040 'what you' / '' | 9040-9500 'can do' / '' | 9500-9990 'for your' / '' | 9990-10560 'country.' / ''
+15 characters: [And so my, fellow, Americans ask, not what your, country can do, for, you, ask what, you can do for, your country.]
+split at playhead: 320-4020 'And so my fellow Americans ask' | 4020-7200 'not what your country can do for' (word starts [320, 350, 680, 810, 1510, 3280, 4020, 4320, 4900, 5410, 6310, 6710, 7010])
+translated afterwards: true ולכן הבחור שלי אמריקאים לא לשאול מה המדינה שלך יכול לעשות | אתה, לשאול מה אתה יכול לעשות עבור המדינה שלך.
+export: srt=2 renderMs=14926
+near-white pixels added: 4520 ('And so my fellow Americans ask not what your country can do for')

@@ -1,0 +1,36 @@
+samples: [classroom.mp4, classroom60.mp4, green_screen.mp4, headpose.mp4, portrait_rot90.mp4, speech_en.mp4, speech_two.mp4, stress_cuts.mp4, walk.mp4]
+== classroom_blur: 1920x1080 rot=0 fps=30.0 dur=4000ms
+   tracks=4 frames=120 analysis=42725ms render=43773ms
+   out 1920x1080 rot=0 fps=30.0 size=2299KB
+== classroom60_blur: 1920x1080 rot=0 fps=60.0 dur=3000ms
+   tracks=4 frames=180 analysis=20160ms render=56087ms
+   out 1920x1080 rot=0 fps=60.0 size=1600KB
+== green_screen_blur: 640x360 rot=0 fps=30.0 dur=4000ms
+   NO FACES
+== headpose_blur: 768x432 rot=0 fps=12.0 dur=8000ms
+   tracks=2 frames=96 analysis=16874ms render=7729ms
+   out 768x432 rot=0 fps=12.0 size=1108KB
+== portrait_rot90_blur: 1280x720 rot=90 fps=12.0 dur=6000ms
+   tracks=1 frames=72 analysis=19073ms render=8826ms
+   out 1280x720 rot=90 fps=12.0 size=1646KB
+== speech_en_blur: 640x360 rot=0 fps=30.0 dur=11200ms
+   tracks=2 frames=336 analysis=20377ms render=13519ms
+   out 640x360 rot=0 fps=30.0 size=1940KB
+== speech_two_blur: 640x360 rot=0 fps=30.0 dur=23500ms
+   tracks=4 frames=705 analysis=38548ms render=25038ms
+   out 640x360 rot=0 fps=30.0 size=4031KB
+== stress_cuts_blur: 720x1280 rot=0 fps=29.999294 dur=14167ms
+   tracks=11 frames=425 analysis=41421ms render=38449ms
+   out 1280x720 rot=90 fps=30.0 size=3660KB
+== walk_blur: 768x432 rot=0 fps=12.0 dur=10000ms
+   tracks=2 frames=120 analysis=18967ms render=8196ms
+   out 768x432 rot=0 fps=12.0 size=1326KB
+== headpose_pixelate: 768x432 rot=0 fps=12.0 dur=8000ms
+   tracks=2 frames=96 analysis=16290ms render=6942ms
+   out 768x432 rot=0 fps=12.0 size=1080KB
+== classroom_blur_sens: 1920x1080 rot=0 fps=30.0 dur=4000ms
+   tracks=4 frames=120 analysis=27666ms render=31646ms
+   out 1920x1080 rot=0 fps=30.0 size=2337KB
+== classroom60_blur_720p30: 1920x1080 rot=0 fps=60.0 dur=3000ms
+   tracks=4 frames=180 analysis=17120ms render=41224ms
+   out 1280x720 rot=0 fps=30.0 size=454KB

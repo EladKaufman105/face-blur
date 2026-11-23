@@ -1,0 +1,30 @@
+11-23 16:38:27.311 I/ActivityTaskManager(  515): START u0 {flg=0x10000000 cmp=com.elad.faceblur/.MainActivity (has extras)} from uid 2000
+11-23 16:38:27.325 D/CoreBackPreview(  515): Window{dd358d4 u0 Splash Screen com.elad.faceblur}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@1230d72, mPriority=0}
+11-23 16:38:27.331 I/ActivityManager(  515): Start proc 17946:com.elad.faceblur/u0a174 for next-top-activity {com.elad.faceblur/com.elad.faceblur.MainActivity}
+11-23 16:38:27.340 I/m.elad.faceblur(17946): Using CollectorTypeCC GC.
+11-23 16:38:27.341 W/m.elad.faceblur(17946): Unexpected CPU variant for x86: x86_64.
+11-23 16:38:27.341 W/m.elad.faceblur(17946): Known variants: atom, sandybridge, silvermont, kabylake, default
+11-23 16:38:27.462 D/nativeloader(17946): Configuring classloader-namespace for other apk /data/app/~~dnknJD6aWE7Cs6vo3VbcuQ==/com.elad.faceblur-jMnweYwTOlG6LRZRN3zwow==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~dnknJD6aWE7Cs6vo3VbcuQ==/com.elad.faceblur-jMnweYwTOlG6LRZRN3zwow==/lib/x86_64:/data/app/~~dnknJD6aWE7Cs6vo3VbcuQ==/com.elad.faceblur-jMnweYwTOlG6LRZRN3zwow==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/com.elad.faceblur
+11-23 16:38:27.482 V/GraphicsEnvironment(17946): ANGLE Developer option for 'com.elad.faceblur' set to: 'default'
+11-23 16:38:27.482 V/GraphicsEnvironment(17946): ANGLE GameManagerService for com.elad.faceblur: false
+11-23 16:38:27.621 D/CoreBackPreview(  515): Window{e2b087a u0 com.elad.faceblur/com.elad.faceblur.MainActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@7cff488, mPriority=0}
+11-23 16:38:28.597 I/ActivityTaskManager(  515): Displayed com.elad.faceblur/.MainActivity: +1s277ms
+11-23 16:38:28.631 D/CoreBackPreview(  515): Window{dd358d4 u0 Splash Screen com.elad.faceblur EXITING}: Setting back callback null
+11-23 16:38:28.653 W/InputManager-JNI(  515): Input channel object 'dd358d4 Splash Screen com.elad.faceblur (client)' was disposed without first being removed with the input manager!
+11-23 16:38:28.845 I/GoogleInputMethodService( 1669): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-23 16:38:30.847 E/cv::error()(17946): OpenCV(4.10.0) Error: Requested object was not found (could not open directory: /data/app/~~dnknJD6aWE7Cs6vo3VbcuQ==/com.elad.faceblur-jMnweYwTOlG6LRZRN3zwow==/base.apk!/lib/x86_64) in glob_rec, file /home/runner/work/face-blur/opencv/modules/core/src/glob.cpp, line 279
+11-23 16:38:30.847 E/cv::error()(17946): OpenCV(4.10.0) Error: Requested object was not found (could not open directory: /data/app/~~dnknJD6aWE7Cs6vo3VbcuQ==/com.elad.faceblur-jMnweYwTOlG6LRZRN3zwow==/base.apk!/lib/x86_64) in glob_rec, file /home/runner/work/face-blur/opencv/modules/core/src/glob.cpp, line 279
+11-23 16:38:30.847 E/cv::error()(17946): OpenCV(4.10.0) Error: Requested object was not found (could not open directory: /data/app/~~dnknJD6aWE7Cs6vo3VbcuQ==/com.elad.faceblur-jMnweYwTOlG6LRZRN3zwow==/base.apk!/lib/x86_64) in glob_rec, file /home/runner/work/face-blur/opencv/modules/core/src/glob.cpp, line 279
+11-23 16:38:33.140 D/ProfileInstaller(17946): Installing profile for com.elad.faceblur
+11-23 16:38:36.363 I/ONIT    (17946): face detection slower than the video: 640 px, lite
+11-23 16:40:08.098 I/MediaProvider( 1865): Open with lower FS for /storage/emulated/0/Movies/ONIT/.pending-1796056808-video_blur_20261123_164008.mp4. Uid: 10174
+11-23 16:40:08.103 D/MediaProvider( 1865): Moving /storage/emulated/0/Movies/ONIT/.pending-1796056808-video_blur_20261123_164008.mp4 to /storage/emulated/0/Movies/ONIT/video_blur_20261123_164008.mp4
+11-23 16:40:09.225 I/FaceBlurWhisper(17946): model loaded: WHISPER : VITISAI = 0 | COREML = 0 | OPENVINO = 0 | CPU : SSE3 = 1 | SSSE3 = 1 | REPACK = 1 | 
+11-23 16:40:18.144 W/JobScheduler(  515): Job didn't exist in JobStore: 60b2d1c #u0a141/1034 com.google.android.apps.photos/com.google.android.libraries.social.mediamonitor.MediaMonitorJobSchedulerService
+11-23 16:40:18.206 I/MediaProvider( 1865): Open with lower FS for /storage/emulated/0/Movies/ONIT/video_blur_20261123_164008.mp4. Uid: 10141
+11-23 16:40:18.209 I/MediaProvider( 1865): Open with lower FS for /storage/emulated/0/Movies/ONIT/video_blur_20261123_164008.mp4. Uid: 10141
+11-23 16:40:18.218 I/MediaProvider( 1865): Open with lower FS for /storage/emulated/0/Movies/ONIT/video_blur_20261123_164008.mp4. Uid: 10141
+11-23 16:40:18.240 I/MediaProvider( 1865): Open with lower FS for /storage/emulated/0/Movies/ONIT/video_blur_20261123_164008.mp4. Uid: 10141
+11-23 16:40:18.258 I/MediaProvider( 1865): Open with lower FS for /storage/emulated/0/Movies/ONIT/video_blur_20261123_164008.mp4. Uid: 10141
+11-23 16:40:18.280 I/MediaProvider( 1865): Open with lower FS for /storage/emulated/0/Movies/ONIT/video_blur_20261123_164008.mp4. Uid: 10141
+11-23 16:40:18.301 I/MediaProvider( 1865): Open with lower FS for /storage/emulated/0/Movies/ONIT/video_blur_20261123_164008.mp4. Uid: 10141

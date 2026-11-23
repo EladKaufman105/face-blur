@@ -1,0 +1,6 @@
+stabilizer: zoom 1.070, max shift 0.032
+stabilize on: true
+cuts: 1, after undo 0, after redo 1
+fillers cut: total cuts 2
+after playing: frame 46
+steadied export: (8809666, 0)
