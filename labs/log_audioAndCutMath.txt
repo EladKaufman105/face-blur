@@ -1,0 +1,5 @@
+cut map ok
+silences: 1640-2560
+denoise: noise -12.8 dB, tone -0.2 dB
+loudness of -20 dBFS 1 kHz: -19.95 LUFS
+limited peak 0.999

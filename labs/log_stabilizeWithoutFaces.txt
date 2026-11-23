@@ -1,0 +1,2 @@
+level 1 without faces: zoom 3% (motion measured in 3474 ms)
+level 3 without faces: zoom 10% (motion measured in 0 ms)

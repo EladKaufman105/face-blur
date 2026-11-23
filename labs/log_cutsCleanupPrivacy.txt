@@ -1,0 +1,3 @@
+input location: +31.7767+035.2345/
+removed 3000 ms in 2 stretches; input (23466666, 21966077)
+output: (20466666, 20433560), location null, boxes hidden 2

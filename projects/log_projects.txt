@@ -1,0 +1,7 @@
+walk.mp4: tracks=2 cues=[hello there/s3, my friend/s3] frames=120 sum5=3.0477795E7
+project mwthdbow-35314a: 'video' blurs=2 cues=2 bytes=1669930
+reopened cues=[(hello there, 3, 2), (my friend, 3, 2)] bleeps=[[1400, 1750]] audio=AudioEdit(voice=ROBOT, tone=false, maskWords=true, denoise=0, enhance=false, loud=false, gainDb=0.0) split=SplitRule(words=2, chars=0) frame=12
+frames back: 120 sum5=3.0477795E7
+vertical export 244x432
+background: corner ff00b239 (want ~ff00b140)
+background share 95%

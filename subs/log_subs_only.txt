@@ -1,0 +1,2 @@
+frames only: 336 frames, first 0 last 11166666
+subs only export: 7583ms, near-white added 1638

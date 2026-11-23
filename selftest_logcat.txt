@@ -1,0 +1,22 @@
+11-23 16:31:23.610 I/ActivityTaskManager(  513): START u0 {flg=0x10000000 cmp=com.elad.faceblur/.MainActivity (has extras)} from uid 2000
+11-23 16:31:23.625 I/ActivityManager(  513): Start proc 19843:com.elad.faceblur/u0a174 for next-top-activity {com.elad.faceblur/com.elad.faceblur.MainActivity}
+11-23 16:31:23.630 D/CoreBackPreview(  513): Window{698bf58 u0 Splash Screen com.elad.faceblur}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@9867904, mPriority=0}
+11-23 16:31:23.634 I/m.elad.faceblur(19843): Using CollectorTypeCC GC.
+11-23 16:31:23.635 W/m.elad.faceblur(19843): Unexpected CPU variant for x86: x86_64.
+11-23 16:31:23.635 W/m.elad.faceblur(19843): Known variants: atom, sandybridge, silvermont, kabylake, default
+11-23 16:31:23.688 D/nativeloader(19843): Configuring classloader-namespace for other apk /data/app/~~4XDR2matlPMKZwc72t2BsA==/com.elad.faceblur-OaF_pWYjQvF2UiSY5RiplA==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~4XDR2matlPMKZwc72t2BsA==/com.elad.faceblur-OaF_pWYjQvF2UiSY5RiplA==/lib/x86_64:/data/app/~~4XDR2matlPMKZwc72t2BsA==/com.elad.faceblur-OaF_pWYjQvF2UiSY5RiplA==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/com.elad.faceblur
+11-23 16:31:23.706 V/GraphicsEnvironment(19843): ANGLE Developer option for 'com.elad.faceblur' set to: 'default'
+11-23 16:31:23.708 V/GraphicsEnvironment(19843): ANGLE GameManagerService for com.elad.faceblur: false
+11-23 16:31:23.844 D/CoreBackPreview(  513): Window{7e016ff u0 com.elad.faceblur/com.elad.faceblur.MainActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@7f8eb15, mPriority=0}
+11-23 16:31:24.675 I/ActivityTaskManager(  513): Displayed com.elad.faceblur/.MainActivity: +1s55ms
+11-23 16:31:24.709 W/InputManager-JNI(  513): Input channel object '698bf58 Splash Screen com.elad.faceblur (client)' was disposed without first being removed with the input manager!
+11-23 16:31:24.903 I/GoogleInputMethodService( 1593): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=com.elad.faceblur fieldId=-1 fieldName=null extras=null}, false)
+11-23 16:31:26.662 E/cv::error()(19843): OpenCV(4.10.0) Error: Requested object was not found (could not open directory: /data/app/~~4XDR2matlPMKZwc72t2BsA==/com.elad.faceblur-OaF_pWYjQvF2UiSY5RiplA==/base.apk!/lib/x86_64) in glob_rec, file /home/runner/work/face-blur/opencv/modules/core/src/glob.cpp, line 279
+11-23 16:31:26.662 E/cv::error()(19843): OpenCV(4.10.0) Error: Requested object was not found (could not open directory: /data/app/~~4XDR2matlPMKZwc72t2BsA==/com.elad.faceblur-OaF_pWYjQvF2UiSY5RiplA==/base.apk!/lib/x86_64) in glob_rec, file /home/runner/work/face-blur/opencv/modules/core/src/glob.cpp, line 279
+11-23 16:31:26.663 E/cv::error()(19843): OpenCV(4.10.0) Error: Requested object was not found (could not open directory: /data/app/~~4XDR2matlPMKZwc72t2BsA==/com.elad.faceblur-OaF_pWYjQvF2UiSY5RiplA==/base.apk!/lib/x86_64) in glob_rec, file /home/runner/work/face-blur/opencv/modules/core/src/glob.cpp, line 279
+11-23 16:31:29.745 D/ProfileInstaller(19843): Installing profile for com.elad.faceblur
+11-23 16:31:30.662 I/ONIT    (19843): face detection slower than the video: 640 px, lite
+11-23 16:31:33.795 I/m.elad.faceblur(19843): Background concurrent copying GC freed 147123(5354KB) AllocSpace objects, 155(15MB) LOS objects, 49% free, 15MB/30MB, paused 89us,12us total 110.598ms
+11-23 16:32:44.967 I/MediaProvider( 1698): Open with lower FS for /storage/emulated/0/Movies/ONIT/.pending-1796056364-video_blur_20261123_163244.mp4. Uid: 10174
+11-23 16:32:44.971 D/MediaProvider( 1698): Moving /storage/emulated/0/Movies/ONIT/.pending-1796056364-video_blur_20261123_163244.mp4 to /storage/emulated/0/Movies/ONIT/video_blur_20261123_163244.mp4
+11-23 16:32:45.807 I/FaceBlurWhisper(19843): model loaded: WHISPER : VITISAI = 0 | COREML = 0 | OPENVINO = 0 | CPU : SSE3 = 1 | SSSE3 = 1 | REPACK = 1 | 
