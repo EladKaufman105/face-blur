@@ -280,7 +280,7 @@ jobs:
   # Release only what passed the emulator end-to-end test.
   publish:
     needs: [build-release, e2e]
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/ci/optimize-workflows' # TEMP-VERIFY 2
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -290,6 +290,8 @@ jobs:
         with:
           name: release-apk
           path: out
+
+      - run: ls -l out # TEMP-VERIFY 2: the APK is where the publish steps look
 
       - name: Publish release
         if: github.ref == 'refs/heads/main'
