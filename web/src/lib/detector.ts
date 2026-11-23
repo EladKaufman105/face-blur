@@ -11,8 +11,26 @@ export const RF_THRESHOLD = 0.35
 const COARSE_SIDE = 480
 const COARSE_MIN_BOX = 64
 const VERIFY_SIDE = 192
+/** The long side the fine pass runs at on the CPU (960 on the GPU). */
+export const CPU_SIDE = 640
 
 export type Backend = 'webgpu' | 'wasm'
+
+/** Where a detection's time goes, summed over the run (ms); the stats line shows the averages. */
+export interface DetectStats {
+  detections: number
+  /** Fine pass: pixels to tensor, inference, decoding the outputs. */
+  pre: number
+  inf: number
+  dec: number
+  /** The whole coarse pass (resize, prep, inference, decode), and how many detections ran it. */
+  coarse: number
+  coarseRuns: number
+  /** The GPU-vs-CPU check, the crop re-check of uncertain faces, the merge of both passes. */
+  check: number
+  verify: number
+  nms: number
+}
 
 type Session = ort.InferenceSession
 
@@ -31,24 +49,25 @@ export class FaceDetector {
   side: number
   /** Why detection left the GPU, if it did. */
   fellBack: string | null = null
+  readonly stats: DetectStats = { detections: 0, pre: 0, inf: 0, dec: 0, coarse: 0, coarseRuns: 0, check: 0, verify: 0, nms: 0 }
 
   private constructor(private gpu: Session | null, private model32: Uint8Array, public precision: 'fp16' | 'fp32') {
     this.checking = gpu !== null
-    this.side = gpu ? 960 : 640
+    this.side = gpu ? 960 : CPU_SIDE
   }
 
   get backend(): Backend {
     return this.gpu ? 'webgpu' : 'wasm'
   }
 
-  /** [base]: the folder with retinaface_fp32.onnx and retinaface_fp16.onnx. */
-  static async create(base: string, force?: Backend): Promise<FaceDetector> {
+  /** [base]: the folder with retinaface_fp32.onnx and retinaface_fp16.onnx; [fp32]: that model's bytes if already loaded. */
+  static async create(base: string, force?: Backend, fp32?: Uint8Array): Promise<FaceDetector> {
     // One thread: ORT's thread pool can't start from inside a bundled module worker (WebGPU is
     // the fast path anyway).
     ort.env.wasm.numThreads = 1
     ort.env.logLevel = 'error'
     const load = async (name: string) => new Uint8Array(await (await fetch(base + name)).arrayBuffer())
-    const model32 = await load('retinaface_fp32.onnx')
+    const model32 = fp32 ?? await load('retinaface_fp32.onnx')
     const gpuApi = (navigator as any).gpu
     if (gpuApi && force !== 'wasm') {
       try {
@@ -80,7 +99,7 @@ export class FaceDetector {
     this.fellBack = why
     this.gpu = null
     this.checking = false
-    this.side = Math.min(this.side, 640)
+    this.side = Math.min(this.side, CPU_SIDE)
   }
 
   /**
@@ -90,17 +109,34 @@ export class FaceDetector {
    */
   async detect(frame: OffscreenCanvas): Promise<Det[]> {
     const src = Math.max(frame.width, frame.height) > this.side * 1.05 ? this.resize(frame, this.side) : frame
+    const st = this.stats
+    st.detections++
     const out: Det[] = []
     // Below ~800 px the fine pass's biggest anchors (512 px) already cover the biggest faces.
     const big = Math.max(src.width, src.height) > 800
+    let t = performance.now()
     const coarse = big ? this.shrink(src) : src
-    if (this.checking) await this.check(coarse)
-    out.push(...await this.run(src, RF_THRESHOLD, 0))
-    if (big) out.push(...await this.run(coarse, RF_THRESHOLD, COARSE_MIN_BOX))
+    if (big) st.coarse += performance.now() - t
+    if (this.checking) {
+      t = performance.now()
+      await this.check(coarse)
+      st.check += performance.now() - t
+    }
+    out.push(...await this.run(src, RF_THRESHOLD, 0, st))
+    if (big) {
+      t = performance.now()
+      out.push(...await this.run(coarse, RF_THRESHOLD, COARSE_MIN_BOX))
+      st.coarse += performance.now() - t
+      st.coarseRuns++
+    }
+    t = performance.now()
     const kept = nmsIou(out, 0.4)
+    st.nms += performance.now() - t
     // Re-check the uncertain ones (up to 12, all crops in one run); confident faces count as
     // strong evidence in the tracker without it.
+    t = performance.now()
     await this.verify(src, kept.filter((d) => d.score < 0.8).sort((a, b) => a.score - b.score).slice(0, 12))
+    st.verify += performance.now() - t
     return kept
   }
 
@@ -174,13 +210,23 @@ export class FaceDetector {
     })
   }
 
-  private async run(c: OffscreenCanvas, threshold: number, minBox: number): Promise<Det[]> {
+  /** [st] set: the time of each step is added to it (the fine pass; the coarse one is timed whole). */
+  private async run(c: OffscreenCanvas, threshold: number, minBox: number, st?: DetectStats): Promise<Det[]> {
     const w = c.width, h = c.height
+    const t0 = performance.now()
     const px = c.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, w, h).data
     const input = new Float32Array(3 * w * h)
     fill(input, 0, px, w * h)
+    const t1 = performance.now()
     const [loc, conf] = await this.infer(input, [1, 3, h, w])
-    return this.decode(loc, conf, w, h, threshold, minBox)
+    const t2 = performance.now()
+    const dets = this.decode(loc, conf, w, h, threshold, minBox)
+    if (st) {
+      st.pre += t1 - t0
+      st.inf += t2 - t1
+      st.dec += performance.now() - t2
+    }
+    return dets
   }
 
   private async runOn(session: Session, c: OffscreenCanvas, threshold: number, minBox: number): Promise<Det[]> {
