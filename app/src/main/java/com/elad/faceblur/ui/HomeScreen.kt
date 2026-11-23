@@ -63,7 +63,7 @@ internal fun HomeContent(vm: MainViewModel, wide: Boolean, onPick: () -> Unit, o
             Column(Modifier.weight(1.15f), verticalArrangement = Arrangement.spacedBy(Space.XL)) {
                 BatchState.current?.let { b -> BatchBanner(b, vm::showBatch) }
                 EnterUp(0) { HeroCard(onPick) }
-                EnterUp(1) { BatchCard(onBatch) }
+                if (!vm.batchRunning) EnterUp(1) { BatchCard(onBatch) }
                 EnterUp(1) { ToolsSection(onTool) }
                 EnterUp(3) { ShareHint() }
             }
@@ -73,7 +73,7 @@ internal fun HomeContent(vm: MainViewModel, wide: Boolean, onPick: () -> Unit, o
         Column(verticalArrangement = Arrangement.spacedBy(Space.XL)) {
             BatchState.current?.let { b -> BatchBanner(b, vm::showBatch) }
             EnterUp(0) { HeroCard(onPick) }
-            EnterUp(1) { BatchCard(onBatch) }
+            if (!vm.batchRunning) EnterUp(1) { BatchCard(onBatch) }
             EnterUp(1) { ToolsSection(onTool) }
             EnterUp(2) { projects() }
             EnterUp(3) { ShareHint() }

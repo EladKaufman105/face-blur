@@ -6,7 +6,7 @@ name: Build APK
 # build-release  arm64 release APK (the one that ships)       \  in parallel
 # build-test     x86_64 test APKs for the emulator             /
 # avd            AVD + booted snapshot, cached (created once)  /
-# e2e            3 emulator shards over the 17 instrumented tests, in parallel
+# e2e            3 emulator shards over the 20 instrumented tests, in parallel
 # publish        needs build-release and every e2e shard
 on:
   push:

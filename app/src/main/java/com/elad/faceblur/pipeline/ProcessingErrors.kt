@@ -3,6 +3,9 @@ package com.elad.faceblur.pipeline
 import androidx.media3.transformer.ExportException
 import com.elad.faceblur.i18n.t
 
+/** A step of the processing never finished (it was stopped). */
+class WorkTimeoutException : RuntimeException("work did not finish in time")
+
 /** What went wrong in processing a video, in words to act on (and the technical part, to send). */
 object ProcessingErrors {
     /** What went wrong, said so that it's clear what to try next. */
@@ -16,6 +19,7 @@ object ProcessingErrors {
                 else -> t("העיבוד נכשל. נסה שוב; אם זה חוזר, בחר רזולוציה נמוכה יותר בהגדרות הייצוא.")
             }
         }
+        if (e is WorkTimeoutException) return t("אחד משלבי העיבוד לא הסתיים בזמן ונעצר. נסה שוב.")
         if (e is java.io.IOException) return t("לא הצלחתי לקרוא או לכתוב את הקובץ. בדוק שיש מקום פנוי במכשיר ושהסרטון עדיין בגלריה, ונסה שוב.")
         return t("משהו השתבש בעיבוד. נסה שוב; אם זה חוזר, שלח את הפרטים הטכניים.")
     }

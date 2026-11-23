@@ -130,6 +130,51 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** The settings before any template was chosen (a template lays over these). */
     private var templateBase: TemplateSettings? = null
 
+    /**
+     * The export options of this video alone (a chosen template's, or a reopened project's). Null:
+     * the user's own, in [prefs]. A template never writes to [prefs]: later videos stay as they were.
+     */
+    var sessionExport by mutableStateOf<com.elad.faceblur.pipeline.ExportOptions?>(null)
+        private set
+    /** The subtitle look of this video alone (a chosen template's); null: the user's own, in [prefs]. */
+    var sessionSubStyle by mutableStateOf<SubtitleStyle?>(null)
+        private set
+
+    /** The export options in use now. */
+    val exportOptions: com.elad.faceblur.pipeline.ExportOptions get() = sessionExport ?: prefs.export
+    /** The subtitle look in use now. */
+    val subtitleStyle: SubtitleStyle get() = sessionSubStyle ?: prefs.subStyle
+
+    /** A change to the export options: kept for this video if a template or project set them, else remembered. */
+    fun changeExport(v: com.elad.faceblur.pipeline.ExportOptions) {
+        if (sessionExport != null) sessionExport = v else prefs.updateExport(v)
+    }
+
+    /** A change to the subtitle look: kept for this video if a template set it, else remembered. */
+    fun changeSubStyle(v: SubtitleStyle) {
+        if (sessionSubStyle != null) sessionSubStyle = v else prefs.updateSubStyle(v)
+    }
+
+    /** A batch is being processed: it owns the temp files and the models, so a single video waits. */
+    val batchRunning: Boolean get() = BatchState.current?.finished == false
+
+    /** True (with a notice) while a batch runs: starting any other processing waits for it. */
+    fun blockedByBatch(): Boolean {
+        if (!batchRunning) return false
+        android.widget.Toast.makeText(getApplication(), t("אצווה רצה כרגע. אפשר להמשיך כשהיא תסתיים."), android.widget.Toast.LENGTH_LONG).show()
+        return true
+    }
+
+    /** Forgets the template chosen for the last video: its blur look comes back, its export and subtitle look go. */
+    private fun resetTemplate() {
+        templateBase?.let { b -> mode = b.mode; strength = b.strength; padding = b.padding; sensitive = b.sensitive }
+        templateBase = null
+        templateChoice = TemplateChoice()
+        templateSettings = null
+        sessionExport = null
+        sessionSubStyle = null
+    }
+
     private var job: Job? = null
     private var editor: EditorController? = null
 
@@ -230,10 +275,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Videos picked from the gallery for a batch (up to [BatchMath.MAX_VIDEOS] in all; more can be added on the setup screen). */
     fun pickedForBatch(uris: List<Uri>) {
-        if (uris.isEmpty() || state is UiState.Working) return
+        if (uris.isEmpty() || state is UiState.Working || blockedByBatch()) return
         val existing = (state as? UiState.BatchSetup)?.videos.orEmpty()
         if (existing.isEmpty()) {
             closeSession()
+            resetTemplate()
             batchChoice = TemplateChoice()
             recomputeBatch()
         }
@@ -280,6 +326,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Starts the batch in a foreground service (it goes on with the screen off) and shows its queue. */
     fun startBatch() {
         val setup = state as? UiState.BatchSetup ?: return
+        if (blockedByBatch()) return
         val s = batchSettings
         if (s.needsSpeechModel && !models.isReady(s.speechModel)) return
         val items = setup.videos.mapIndexed { i, v ->
@@ -315,6 +362,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** "Check": opens the video's project in the editor. */
     fun checkBatchItem(item: BatchItem) {
+        if (blockedByBatch()) return
         item.projectId?.let { openProject(it) }
     }
 
@@ -335,9 +383,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val ids = idsOf(choice)
         if (ids.isEmpty()) {
             // Back to what it was before.
-            templateBase?.let { applyToScreen(it) }
-            templateBase = null
-            templateSettings = null
+            resetTemplate()
             return
         }
         val base = templateBase ?: currentSettings().also { templateBase = it }
@@ -353,8 +399,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         strength = s.strength
         padding = s.padding
         sensitive = s.sensitive
-        prefs.updateExport(s.export)
-        prefs.updateSubStyle(s.subStyle)
+        // Only for this video: the user's own export options and subtitle look stay as they are.
+        sessionExport = s.export
+        sessionSubStyle = s.subStyle
     }
 
     /** The editor's current choices as settings (for "Save as template"). */
@@ -367,13 +414,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             createSubs = ctrl.model.cues.isNotEmpty(),
             speechModel = model, language = model.language,
             translate = ctrl.translateOnCreate,
-            subStyle = prefs.subStyle,
+            subStyle = subtitleStyle,
             split = ctrl.split,
             audio = ctrl.audio.copy(gainDb = 0f),
             cutSilences = ctrl.cutCount > 0, cutFillers = ctrl.cutCount > 0 && ctrl.model.cues.isNotEmpty(),
             background = ctrl.background,
             stabilize = ctrl.stabilizeLevel,
-            export = prefs.export,
+            export = exportOptions,
         )
     }
 
@@ -413,7 +460,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val id = ProjectStore.newId()
         projectId = id
         s.projectDir = ProjectStore.dir(getApplication(), id)
-        val json = ctrl.projectFields(prefs.subStyle)
+        val json = ctrl.projectFields(subtitleStyle, sessionExport)
             .put("v", 1)
             .put("name", s.info.name)
             .put("uri", s.info.uri.toString())
@@ -434,7 +481,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun startAutosave(ctrl: EditorController) {
         autosave?.cancel()
         autosave = viewModelScope.launch {
-            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, prefs.subStyle, ctrl.background, ctrl.masksReady, ctrl.session.settings, ctrl.stabilizeLevel) }
+            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, subtitleStyle, sessionExport, ctrl.background, ctrl.masksReady, ctrl.session.settings, ctrl.stabilizeLevel) }
                 .drop(1)
                 .collectLatest {
                     delay(1500)
@@ -447,7 +494,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun saveProject(ctrl: EditorController? = editor) {
         val id = projectId ?: return
         if (ctrl == null) return
-        val fields = ctrl.projectFields(prefs.subStyle)
+        val fields = ctrl.projectFields(subtitleStyle, sessionExport)
         val edits = ctrl.model.exportState()
         val app = getApplication<Application>()
         saver.execute {
@@ -458,8 +505,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun openProject(id: String) {
-        if (state is UiState.Working) return
+        if (state is UiState.Working || blockedByBatch()) return
         closeSession()
+        resetTemplate()
         state = UiState.Loading
         job = viewModelScope.launch {
             val app = getApplication<Application>()
@@ -504,8 +552,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val ctrl = EditorController(session, editorScope, app, models, prefs)
             if (session.subtitlesOnly) ctrl.previewAvailable = false
             j.optString("style").takeIf { it.isNotBlank() }?.let { prefs.updateSubStyle(SubtitleStyle.fromJson(it)) }
-            // A project made from a template exports the way the template said.
-            j.optJSONObject("export")?.let { prefs.updateExport(com.elad.faceblur.pipeline.ExportOptions.fromJson(it)) }
+            // A project made from a template exports the way the template said, for this session only.
+            sessionExport = j.optJSONObject("export")?.let { com.elad.faceblur.pipeline.ExportOptions.fromJson(it) }
             val sp = j.optJSONObject("split")
             ctrl.restore(
                 SplitRule(sp?.optInt("words") ?: 0, sp?.optInt("chars") ?: 0),
@@ -533,6 +581,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The project's video, picked again. */
     fun relink(uri: Uri) {
+        if (blockedByBatch()) return
         val project = (state as? UiState.Relink)?.project ?: return
         state = UiState.Loading
         viewModelScope.launch {
@@ -581,8 +630,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** @param tool go straight to the editor on that tool (no face detection). */
     fun load(uri: Uri, tool: QuickTool? = null) {
-        if (state is UiState.Working) return
+        if (state is UiState.Working || blockedByBatch()) return
         closeSession()
+        resetTemplate()
         state = UiState.Loading
         viewModelScope.launch {
             state = try {
@@ -614,6 +664,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun start() {
         val info = currentInfo() ?: return
+        if (blockedByBatch()) return
         val tpl = templateSettings
         // A template with no face blur: the editor's frames without face detection.
         if (tpl?.blurOff == true) {
@@ -669,6 +720,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun startTool(tool: QuickTool?, template: TemplateSettings? = null) {
         val info = currentInfo() ?: return
+        if (blockedByBatch()) return
         closeSession()
         state = UiState.Working(info, 0, 0f)
         job = viewModelScope.launch {
@@ -708,6 +760,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun export() {
         val ctrl = editor ?: return
+        if (blockedByBatch()) return
         ctrl.pauser()
         ctrl.cancelTracking()
         ctrl.cancelSubtitles()
@@ -724,7 +777,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         state = UiState.Working(s.info, 2, 0f, s.subtitlesOnly, auto)
         saveProject(ctrl)
         val saved = FaceBlurProcessor(getApplication()).render(
-            s.info, s.settings, s.analysis, s.model, s.analysisMs, prefs.export, prefs.subStyle, ctrl.audio,
+            s.info, s.settings, s.analysis, s.model, s.analysisMs, exportOptions, subtitleStyle, ctrl.audio,
             ctrl.background, s.masks,
             stabilizer = ctrl.stabilizer,
             onPreview = { frame -> showLive(frame, emptyList()) },

@@ -104,6 +104,7 @@ class BatchService : Service() {
             .setContentTitle(t("עיבוד הסרטונים הסתיים"))
             .setContentText(text)
             .setContentIntent(openApp())
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setAutoCancel(true)
             .build()
         runCatching { nm.notify(DONE_ID, n) }
@@ -115,9 +116,17 @@ class BatchService : Service() {
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setContentIntent(openApp())
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         if (batch == null) return b.setContentTitle("ONIT").build()
+        // On the lock screen: the count only, never the videos' names.
+        b.setPublicVersion(
+            NotificationCompat.Builder(this, CHANNEL)
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setContentTitle(t("מעבד סרטונים · %d מתוך %d").format((batch.doneCount + 1).coerceAtMost(batch.items.size), batch.items.size))
+                .build(),
+        )
         val cur = batch.current
         val n = batch.items.size
         val pos = (batch.doneCount + 1).coerceAtMost(n)

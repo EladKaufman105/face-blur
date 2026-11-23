@@ -110,16 +110,16 @@ fun MainScreen(vm: MainViewModel) {
     }
     val pick = {
         pickFor = null
-        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+        if (!vm.blockedByBatch()) picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
     }
     val pickTool = { tool: QuickTool ->
         pickFor = tool
-        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+        if (!vm.blockedByBatch()) picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
     }
     val batchPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(BatchMath.MAX_VIDEOS)) { uris ->
         if (uris.isNotEmpty()) vm.pickedForBatch(uris)
     }
-    val pickBatch = { batchPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
+    val pickBatch = { if (!vm.blockedByBatch()) batchPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
     val state = vm.state
     val working = state is UiState.Working
     var saveTemplate by remember { mutableStateOf(false) }
@@ -142,10 +142,10 @@ fun MainScreen(vm: MainViewModel) {
                 state.editor,
                 onClose = vm::closeEditor,
                 onExport = vm::export,
-                export = vm.prefs.export,
-                onExportChange = vm.prefs::updateExport,
-                subStyle = vm.prefs.subStyle,
-                onSubStyleChange = vm.prefs::updateSubStyle,
+                export = vm.exportOptions,
+                onExportChange = vm::changeExport,
+                subStyle = vm.subtitleStyle,
+                onSubStyleChange = vm::changeSubStyle,
                 onSaveTemplate = { saveTemplate = true },
             )
             if (saveTemplate) {
@@ -230,7 +230,10 @@ fun MainScreen(vm: MainViewModel) {
                         is UiState.Ready -> ReadyContent(vm, s, wide, onReplace = pick)
                         is UiState.Working, is UiState.Editing -> Unit
                         is UiState.BatchSetup -> BatchSetupContent(vm, s, onAddMore = pickBatch, onBack = vm::reset)
-                        UiState.BatchRun -> BatchState.current?.let { BatchRunContent(vm, it) }
+                        UiState.BatchRun -> {
+                            val batch = BatchState.current
+                            if (batch != null) BatchRunContent(vm, batch) else androidx.compose.runtime.LaunchedEffect(Unit) { vm.leaveBatch() }
+                        }
                         is UiState.Done -> DoneCard(
                             s,
                             wide = wide,

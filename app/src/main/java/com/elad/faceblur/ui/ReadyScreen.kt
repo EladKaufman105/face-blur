@@ -100,7 +100,7 @@ internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, on
     }
     if (saveSheet) {
         ExportSheet(
-            s.info, vm.prefs.export, vm.prefs::updateExport,
+            s.info, vm.exportOptions, vm::changeExport,
             onExport = { saveSheet = false; vm.review = false; vm.start() },
             onDismiss = { saveSheet = false },
             action = t("טשטש ושמור"),

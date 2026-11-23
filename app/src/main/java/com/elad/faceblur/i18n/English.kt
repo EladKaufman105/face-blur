@@ -707,4 +707,6 @@ internal val English: Map<String, String> = mapOf(
     "זמן הקריאות למעבד הגרפי בכל זיהוי." to "Time spent in calls to the graphics chip per detection.",
     "זמן הגלאי השני (YuNet) בכל זיהוי." to "Time of the second detector (YuNet) per detection.",
     "כמה בדיקות חוזרות על פנים לא ודאיות בכל זיהוי, וזמן כל אחת." to "Re-checks of uncertain faces per detection, and the time of each.",
+    "אצווה רצה כרגע. אפשר להמשיך כשהיא תסתיים." to "A batch is running. You can continue when it's done.",
+    "אחד משלבי העיבוד לא הסתיים בזמן ונעצר. נסה שוב." to "One of the processing steps didn't finish in time and was stopped. Try again.",
 )

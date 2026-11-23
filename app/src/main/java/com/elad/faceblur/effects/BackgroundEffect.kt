@@ -57,6 +57,17 @@ data class Background(
             return f.absolutePath
         }
 
+        /** A copy of the picture of [b] in the app's backgrounds folder (for a project of its own); [b] as it is if it has none, null picture if it's gone. */
+        fun withOwnCopy(context: Context, b: Background): Background {
+            val path = b.image ?: return b
+            val src = java.io.File(path)
+            if (!src.exists()) return b.copy(image = null)
+            val dir = java.io.File(context.filesDir, "backgrounds").apply { mkdirs() }
+            val dst = java.io.File.createTempFile("bg_", ".jpg", dir)
+            src.copyTo(dst, overwrite = true)
+            return b.copy(image = dst.absolutePath)
+        }
+
         fun fromJson(o: JSONObject?): Background {
             if (o == null) return Background()
             return Background(

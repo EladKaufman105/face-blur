@@ -70,4 +70,40 @@ class BatchTest {
             inst.runOnMainSync { BatchState.current = null }
         }
     }
+
+    /** A project keeps its own copy of a template's background picture. */
+    @Test
+    fun backgroundPictureIsCopiedForTheProject() {
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val original = File(ctx.cacheDir, "tpl_bg_test.jpg").apply { writeBytes(ByteArray(64) { it.toByte() }) }
+        val bg = com.elad.faceblur.effects.Background(fill = com.elad.faceblur.effects.BgFill.IMAGE, image = original.absolutePath)
+        val own = com.elad.faceblur.effects.Background.withOwnCopy(ctx, bg)
+        try {
+            assertTrue("the copy is another file", own.image != original.absolutePath)
+            original.delete()
+            assertTrue("the copy stays when the template's picture is gone", File(own.image!!).exists())
+        } finally {
+            own.image?.let { File(it).delete() }
+            original.delete()
+        }
+    }
+
+    /** Choosing a template is for one video: the user's own export options and subtitle look are not written. */
+    @Test
+    fun templateDoesNotChangeTheUsersOwnSettings() {
+        val inst = InstrumentationRegistry.getInstrumentation()
+        val app = inst.targetContext.applicationContext as android.app.Application
+        inst.runOnMainSync {
+            val vm = MainViewModel(app)
+            val exportBefore = vm.prefs.export
+            val styleBefore = vm.prefs.subStyle
+            vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice(look = BuiltInTemplates.CLEAN.id, dest = BuiltInTemplates.WHATSAPP.id))
+            assertEquals("the template's resolution is used for this video", 720, vm.exportOptions.shortSide)
+            assertEquals("the user's own export options are untouched", exportBefore, vm.prefs.export)
+            assertEquals("the user's own subtitle look is untouched", styleBefore, vm.prefs.subStyle)
+            vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice())
+            assertEquals(exportBefore, vm.exportOptions)
+            assertEquals(styleBefore, vm.subtitleStyle)
+        }
+    }
 }

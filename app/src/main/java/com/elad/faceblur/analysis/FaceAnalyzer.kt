@@ -117,7 +117,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     private val preview = Mat()
     private val camera = CameraMotion()
     private val cutDetector = CutDetector()
-    private var frames: FrameStore? = FrameStore(File(context.cacheDir, "frames.bin"))
+    private var frames: FrameStore? = FrameStore(File(context.cacheDir, "frames_" + java.util.UUID.randomUUID().toString().take(8) + ".bin"))
 
     private val times = ArrayList<Long>()
     private val dets = ConcurrentHashMap<Int, List<Det>>()

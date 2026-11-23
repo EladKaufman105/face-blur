@@ -139,7 +139,15 @@ object BatchRunner {
             // Kept as a project (when there is one) so the editor can try again.
             val id = projectId
             val c = ctrl
-            if (id != null && c != null) runCatching { saveProject(ctx, id, c, batch) } else item.projectId = null
+            if (id != null && c != null) {
+                try {
+                    saveProject(ctx, id, c, batch)
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (ignored: Exception) {
+                    // The project stays as it was first saved.
+                }
+            } else item.projectId = null
         } finally {
             ctrl?.cancelSubtitles()
             ctrl?.cancelMotion()

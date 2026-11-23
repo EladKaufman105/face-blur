@@ -2,7 +2,10 @@ package com.elad.faceblur.template
 
 import com.elad.faceblur.edit.EditorController
 import com.elad.faceblur.edit.SplitRule
+import com.elad.faceblur.effects.Background
 import com.elad.faceblur.effects.BgKey
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.elad.faceblur.i18n.t
 
 /**
@@ -55,7 +58,10 @@ object TemplateRunner {
 
         if (s.background.active) {
             val needsPeople = s.background.key == BgKey.PERSON
-            ctrl.changeBackground(s.background)
+            // The project gets its own copy of a picture: the template can be deleted or changed later.
+            val ctx = ctrl.context
+            val bg = if (ctx != null) withContext(Dispatchers.IO) { runCatching { Background.withOwnCopy(ctx, s.background) }.getOrDefault(s.background) } else s.background
+            ctrl.changeBackground(bg)
             if (needsPeople) {
                 ctrl.findPeople()
                 ctrl.awaitIdle()

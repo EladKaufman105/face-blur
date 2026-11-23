@@ -317,7 +317,8 @@ private fun BatchRow(vm: MainViewModel, batch: Batch, item: BatchItem) {
                 }
                 when {
                     status == ItemStatus.WAITING || active -> TextButton(onClick = { batch.skip(item) }) { Text(t("דלג")) }
-                    item.projectId != null && status != ItemStatus.SKIPPED -> {
+                    // Opening a video in the editor waits for the batch: both use the same temp files and models.
+                    batch.finished && item.projectId != null && status != ItemStatus.SKIPPED -> {
                         if (item.needsCheck) {
                             AccentOutlinedButton(t("בדיקה"), { vm.checkBatchItem(item) }, accent = MaterialTheme.colorScheme.error, icon = Icons.Filled.Edit, height = 44.dp)
                         } else {
