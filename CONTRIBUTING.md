@@ -40,7 +40,9 @@ Every change reaches `develop` or `main` through a PR. No human approval is requ
 - `android-build`: i18n check and debug APK build.
 - `web-build`: web build and one browser smoke test.
 
-The full Android emulator e2e runs after merge (`build.yml`). It gates the release or beta.
+The full Android emulator e2e runs after merge (`build.yml`): the 17 instrumented tests in 3 parallel emulator shards, plus the release build's self-test. It gates the release or beta. The arm64 release APK is built in parallel and published only when every shard passed.
+
+On a PR, `pr.yml` builds Android (debug) only when Android files, `ci/` or workflows change, and builds and tests the web app (Chromium, 4 parallel shards) only when `web/`, the assets it copies from `app/src/main/assets` or workflows change. `android-build` and `web-build` always report, and pass when their work was skipped. A push to `develop` doesn't repeat the web tests; a push to `main` builds and deploys the web app without them. Results are workflow artifacts on the run.
 
 ## Review loop
 
@@ -64,7 +66,7 @@ For every PR into `develop`, and for hotfix PRs into `main`:
 ```
 git fetch origin --tags
 BETA=$(git tag --list 'v*-beta.*' --sort=-v:refname | head -1)
-git diff --name-only "$BETA" origin/develop -- . ':!web' ':!.github/workflows/web.yml' ':!.github/workflows/models.yml'
+git diff --name-only "$BETA" origin/develop -- . ':!web' ':!.github/workflows/web.yml' ':!.github/workflows/web-tests.yml' ':!.github/actions' ':!ci/web-tests.sh' ':!.github/workflows/models.yml'
 ```
 
 It must print nothing. If it prints files, wait for the next beta and test it. If that beta never came because its e2e failed, fix that first.
@@ -108,7 +110,7 @@ CI computes SemVer from git tags in `ci/version.sh`. Nobody types version number
 
 - Side workflow branches are not merged into `develop`. Pushing runs their workflow: `opencv-src` builds `opencv-min2`, `ml-src` builds `ml-models`, `sfx-src` builds `sfx-fs`, `bench` runs the ARM benchmark (log only).
 - Data branches are downloaded at runtime by the app or CI: `gpu-model`, `speaker-model`, `ml-models` (pinned commit), `opencv-min2` (SHA-pinned in `ci/fetch-opencv.sh`), `test-media`, `sfx-fs` (source of the bundled sounds, see `scripts/build_sfx.py`). Never delete, rebase or force-push them by hand. Installed apps would break.
-- CI output branches are written only by CI: `ci-results`, `ci-results-develop`, `ci-log`, `model-check`. Legacy, kept: `ci-results-labs`, `opencv-min`.
+- CI no longer writes branches. Its outputs are workflow artifacts (e2e results and screenshots, web test results, build logs on failure; kept 14 days). The old output branches `ci-results`, `ci-results-develop`, `ci-results-labs`, `ci-log`, `model-check` are kept but no longer written. Also kept: `opencv-min`.
 
 ## Secrets
 
