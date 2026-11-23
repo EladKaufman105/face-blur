@@ -6,6 +6,8 @@ import type { Det } from './types'
  * CPU detection spread over a few workers. A WebAssembly inference runs on one thread and takes
  * most of a detection's time, so while one worker detects a frame the others take the next ones.
  */
+const FAILED = 'face detector worker failed'
+
 export class DetectorPool {
   private idle: Worker[] = []
   private waiting: (() => void)[] = []
@@ -21,16 +23,22 @@ export class DetectorPool {
   static async create(model: Uint8Array, n: number): Promise<DetectorPool> {
     const workers = Array.from({ length: n }, () => new Worker(new URL('../workers/detect.worker.ts', import.meta.url), { type: 'module' }))
     const pool = new DetectorPool(workers)
-    await Promise.all(workers.map((w) => new Promise<void>((ok, fail) => {
-      w.onmessage = (e: MessageEvent<DetectReply>) => {
-        if (e.data.type === 'ready') {
-          pool.precision = e.data.precision
-          ok()
-        } else if (e.data.type === 'error') fail(new Error(e.data.message))
-      }
-      w.onerror = (e) => fail(new Error(e.message))
-      w.postMessage({ type: 'init', model })
-    })))
+    try {
+      await Promise.all(workers.map((w) => new Promise<void>((ok, fail) => {
+        w.onmessage = (e: MessageEvent<DetectReply>) => {
+          if (e.data.type === 'ready') {
+            pool.precision = e.data.precision
+            ok()
+          } else if (e.data.type === 'error') fail(new Error(e.data.message || FAILED))
+        }
+        w.onerror = (e) => fail(new Error(e.message || FAILED))
+        w.onmessageerror = () => fail(new Error(FAILED))
+        w.postMessage({ type: 'init', model })
+      })))
+    } catch (err) {
+      pool.close()
+      throw err
+    }
     pool.idle = [...workers]
     return pool
   }
@@ -48,9 +56,13 @@ export class DetectorPool {
 
   /** Hands [frame] (copied here, so the canvas can be reused at once) to a free worker; call [free] first. */
   async detect(canvas: OffscreenCanvas, id: number, done: (id: number, dets: Det[], ms: number) => void) {
-    const w = this.idle.pop()!
-    this.running++
     const frame = await createImageBitmap(canvas)
+    const w = this.idle.pop()
+    if (!w) {
+      frame.close()
+      throw new Error(this.failed || FAILED)
+    }
+    this.running++
     w.onmessage = (e: MessageEvent<DetectReply>) => {
       const m = e.data
       if (m.type === 'dets') {
@@ -62,6 +74,7 @@ export class DetectorPool {
       } else if (m.type === 'error') this.fail(m.message)
     }
     w.onerror = (e) => this.fail(e.message)
+    w.onmessageerror = () => this.fail(FAILED)
     w.postMessage({ type: 'frame', id, frame }, [frame])
   }
 
@@ -82,8 +95,8 @@ export class DetectorPool {
     this.all.forEach((w) => w.terminate())
   }
 
-  private fail(message: string) {
-    this.failed = message
+  private fail(message: string | undefined) {
+    this.failed = message || FAILED
     this.waiting.splice(0).forEach((r) => r())
     this.drained.splice(0).forEach((r) => r())
   }

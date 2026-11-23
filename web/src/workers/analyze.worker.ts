@@ -56,13 +56,22 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
   // WebAssembly run, a few detectors in workers of their own, each with a frame at a time.
   const cores = (self.navigator?.hardwareConcurrency ?? 2)
   // Two even on two cores (measured: about 30% less time); up to four, half the cores, beyond.
-  // Each worker holds its own model and WebAssembly heap: two at most where memory is small
-  // (a phone saying 4 GB or less).
+  // Each worker holds its own model and WebAssembly heap: more than two only where the browser
+  // says there is 8 GB (Firefox and Safari don't say, so they get two).
   const memory = (self.navigator as any)?.deviceMemory as number | undefined
-  const most = memory !== undefined && memory <= 4 ? 2 : 4
-  const poolSize = workers ?? (cores > 1 ? Math.min(most, Math.max(2, Math.floor(cores / 2))) : 1)
+  const most = memory !== undefined && memory >= 8 ? 4 : 2
+  const asked = workers !== undefined ? Math.min(8, Math.max(1, Math.round(workers))) : undefined
+  const poolSize = asked ?? (cores > 1 ? Math.min(most, Math.max(2, Math.floor(cores / 2))) : 1)
   const cpuOnly = !(self.navigator as any)?.gpu || backend === 'wasm'
-  const pool = cpuOnly && poolSize > 1 ? await DetectorPool.create(new Uint8Array(await (await fetch(base + 'models/retinaface_fp32.onnx')).arrayBuffer()), poolSize) : null
+  // If the workers can't start (memory, a module that won't load), one detector here, as before.
+  let pool: DetectorPool | null = null
+  if (cpuOnly && poolSize > 1) {
+    try {
+      pool = await DetectorPool.create(new Uint8Array(await (await fetch(base + 'models/retinaface_fp32.onnx')).arrayBuffer()), poolSize)
+    } catch (err) {
+      log(`detector pool failed, one detector: ${String((err as Error)?.message ?? err)}`)
+    }
+  }
   const detector = pool ? null : await FaceDetector.create(base + 'models/', backend)
   const backendNow = () => detector?.backend ?? 'wasm'
   const precision = pool?.precision ?? detector!.precision
@@ -150,10 +159,13 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
       post({ type: 'progress', done: i + 1, total: Math.max(total, i + 1), preview, dets: lastDets, faces: found, backend: backendNow(), stats: statsText() }, [preview])
     }
   }
-  if (pool) await pool.drain()
+  try {
+    if (pool) await pool.drain()
+  } finally {
+    pool?.close()
+  }
   log(`frames ${times.length}, detections ${spent.length}, detect avg ${(detectMs / Math.max(1, spent.length)).toFixed(0)} ms, decode wait ${decodeWait.toFixed(0)} ms, side ${detector?.side ?? CPU_SIDE}, rate ${rate.toFixed(1)}`)
   log(`stats ${statsText()}`)
-  pool?.close()
   const n = times.length
   const diffs: number[] = []
   for (let i = 1; i < n; i++) if (times[i] > times[i - 1]) diffs.push(times[i] - times[i - 1])
