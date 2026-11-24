@@ -816,10 +816,13 @@ private class PlayerSync(
         return if (abs(times[hi] - t) < abs(times[lo] - t)) hi else lo
     }
 
-    /** The play state the editor shows: playing, or buffering on a jump over a cut that was asked for. */
+    /**
+     * The play state the editor shows: playing, or buffering after a seek while it was playing (a jump
+     * over a cut, a sound effect's play): the state holds through the buffering, so nothing flickers.
+     */
     private fun syncPlaying() {
         ctrl.playing = player.isPlaying ||
-            (ctrl.skipPending && player.playWhenReady && player.playbackState == Player.STATE_BUFFERING)
+            (player.playWhenReady && player.playbackState == Player.STATE_BUFFERING && (ctrl.skipPending || ctrl.playing))
     }
 
     override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = syncPlaying()
