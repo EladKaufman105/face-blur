@@ -28,7 +28,7 @@ export type SubsMessage =
   | { type: 'load' }
   | { type: 'download'; progress: number; loaded: number; total: number }
   | { type: 'transcribe'; progress: number }
-  | { type: 'done'; words: Word[]; device: string; /** Milliseconds: loading the model (or finding it kept), and recognizing. */ ms: { load: number; recognize: number } }
+  | { type: 'done'; words: Word[]; device: string; /** Milliseconds: loading the model (or finding it kept), and recognizing. */ ms: { load: number; recognize: number; /** Where recognition went: up to the first token (the audio's features and the encoder), the other tokens, what follows (the word timings), and the token count. */ first: number; decode: number; after: number; tokens: number } }
   | { type: 'error'; code: string; message: string }
 
 const RATE = 16000
@@ -168,6 +168,7 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
   try {
     const words: Word[] = []
     const t1 = performance.now()
+    const stat = { first: 0, decode: 0, after: 0, tokens: 0 }
     // Timestamp tokens say how far into the window the speech has got: the progress between windows.
     const gc = asr.model?.generation_config
     const tsBegin: number = (typeof gc?.no_timestamps_token_id === 'number' ? gc.no_timestamps_token_id : 50363) + 1
@@ -181,10 +182,15 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
       const base = from / x.length, span = (to - from) / x.length
       if (!silent(x, from, to)) {
         let at = 0, sent = 0, tokens = 0
+        let tFirst = 0, tLast = 0
+        const tStart = performance.now()
         // One token at a time through here: a sign of life, and (from the timestamps) how far it is.
         const streamer = {
           put(v: bigint[][]) {
             tokens++
+            stat.tokens++
+            if (tokens === 1) tFirst = performance.now()
+            tLast = performance.now()
             const row = v?.[0]
             const tok = Number(row?.[row.length - 1])
             if (tok >= tsBegin) at = Math.min(winSec, (tok - tsBegin) * 0.02)
@@ -209,6 +215,8 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
           // tokens a second in fast speech, and a smaller cap cuts the end of the window off.
           max_new_tokens: MAX_NEW,
         })
+        const tEnd = performance.now()
+        if (tFirst) { stat.first += tFirst - tStart; stat.decode += tLast - tFirst; stat.after += tEnd - tLast } else stat.first += tEnd - tStart
         const offset = from / RATE
         const chunks = (out.chunks ?? []).filter((c: { timestamp: [number | null, number | null] }) => c.timestamp[0] != null)
         // The cap was hit: the output stopped mid-word, so its last word is cut off (and has no end).
@@ -239,7 +247,7 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
     }
     // The page keeps this worker (and so the model) for a few minutes, or ends it: either way it frees the memory.
     loaded = { key, asr }
-    post({ type: 'done', words, device: `${device}/${encDtype}+${dtype}/${wasm?.numThreads ?? 1}t`, ms: { load: Math.round(t1 - t0), recognize: Math.round(performance.now() - t1) } })
+    post({ type: 'done', words, device: `${device}/${encDtype}+${dtype}/${wasm?.numThreads ?? 1}t`, ms: { load: Math.round(t1 - t0), recognize: Math.round(performance.now() - t1), first: Math.round(stat.first), decode: Math.round(stat.decode), after: Math.round(stat.after), tokens: stat.tokens } })
   } catch (e) {
     loaded = null
     await Promise.race([asr.dispose?.(), sleep(1000)]).catch(() => {})

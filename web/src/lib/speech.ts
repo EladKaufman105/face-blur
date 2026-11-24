@@ -445,7 +445,7 @@ export function transcribeFile(
             phase = m.total > 0 && m.loaded >= m.total ? 'load' : 'download'
             return onStatus({ stage: 'download', progress: m.progress, loaded: m.loaded, total: m.total })
           case 'transcribe': phase = 'recognize'; return onStatus({ stage: 'recognize', progress: m.progress })
-          case 'done': console.info(`ONIT subs: ${m.device}, model ${m.ms.load} ms, recognition ${m.ms.recognize} ms`); return end(() => resolve({ words: m.words, plan }), plan)
+          case 'done': console.info(`ONIT subs: ${m.device}, model ${m.ms.load} ms, recognition ${m.ms.recognize} ms (to the first token ${m.ms.first}, ${m.ms.tokens} tokens ${m.ms.decode}, word timings ${m.ms.after})`); return end(() => resolve({ words: m.words, plan }), plan)
           case 'error': return failOrFallback(m.code, m.message)
         }
       }
