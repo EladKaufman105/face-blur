@@ -13,7 +13,6 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
-import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.elad.faceblur.MainActivity
 import com.elad.faceblur.i18n.t
@@ -72,6 +71,9 @@ class BatchService : Service() {
     /** The system's time limit for this kind of service was reached: stop what's left, keep what's done. */
     override fun onTimeout(startId: Int, fgsType: Int) {
         BatchState.current?.cancelAll()
+        // The system wants the service gone within seconds; the cancelled batch finishes on its own.
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     override fun onDestroy() {
@@ -81,9 +83,27 @@ class BatchService : Service() {
         super.onDestroy()
     }
 
-    private fun startAsForeground(n: Notification) {
-        val type = if (Build.VERSION.SDK_INT >= 35) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING else ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, n, type)
+    /**
+     * Becomes a foreground service: media processing where the system has it (Android 15+), data
+     * sync before, each one tried in turn, called on the platform directly: androidx's
+     * ServiceCompat drops the media-processing type (its mask predates Android 15), which made
+     * every Android 15+ phone refuse the service as "type none". If every type is refused, the
+     * service stays an ordinary one and the batch runs while the app is open.
+     */
+    private fun startAsForeground(n: Notification): Boolean {
+        val types = buildList {
+            if (Build.VERSION.SDK_INT >= 35) add(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING)
+            add(ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        }
+        for (type in types) {
+            try {
+                startForeground(NOTIFICATION_ID, n, type)
+                return true
+            } catch (e: RuntimeException) {
+                android.util.Log.w("ONIT", "foreground service type $type refused", e)
+            }
+        }
+        return false
     }
 
     private fun update(batch: Batch, force: Boolean) {
@@ -162,7 +182,15 @@ class BatchService : Service() {
 
         /** Starts the foreground service for [BatchState.current]. */
         fun start(context: Context) {
-            ContextCompat.startForegroundService(context, Intent(context, BatchService::class.java))
+            val intent = Intent(context, BatchService::class.java)
+            // A batch starts from the screen, so a plain start is allowed. It then becomes a
+            // foreground service itself; if the system refuses that, it stays an ordinary service
+            // (runs while the app is open) instead of being killed for not going foreground in time.
+            try {
+                context.startService(intent)
+            } catch (e: IllegalStateException) {
+                ContextCompat.startForegroundService(context, intent)
+            }
         }
 
         fun statusText(status: ItemStatus, batch: Batch): String = when (status) {
