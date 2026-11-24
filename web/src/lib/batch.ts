@@ -262,7 +262,7 @@ async function processOne(b: Batch, item: BatchItem) {
   let id: string | undefined
   // How long each part took, for the learned speeds.
   const spent: Partial<Record<Phase, number>> = {}
-  let last: { phase: Phase; at: number } = { phase: 'faces', at: performance.now() }
+  let last: { phase: Phase; at: number } = { phase: s.blurOff ? 'read' : 'faces', at: performance.now() }
   const mark = (phase: Phase) => {
     const now = performance.now()
     spent[last.phase] = (spent[last.phase] ?? 0) + (now - last.at)

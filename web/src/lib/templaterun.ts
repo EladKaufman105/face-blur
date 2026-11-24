@@ -193,11 +193,12 @@ export type Processed = {
 }
 
 /** Where a step is, for the queue: its name and how far (0..1) in the video's whole work. */
-export type Phase = 'faces' | 'subtitles' | 'download' | 'sound' | 'picture' | 'export'
+export type Phase = 'read' | 'faces' | 'subtitles' | 'download' | 'sound' | 'picture' | 'export'
 
 /** The share of a video's bar that each part takes. */
 export function shares(s: TemplateSettings): { faces: number; processing: number; export: number } {
-  const faces = s.blurOff ? 0.03 : 0.35
+  // With no face blur the faces are not looked for at all: only the frames' times are read (a moment).
+  const faces = s.blurOff ? 0.02 : 0.35
   const processing = s.createSubs ? 0.25 : hasProcessing(s) ? 0.08 : 0
   return { faces, processing, export: 1 - faces - processing }
 }
@@ -218,10 +219,11 @@ export async function processVideo(file: File, s: TemplateSettings, report: (pha
   let thumbs: (string | null)[] = []
   let detectInfo = ''
   if (s.blurOff) {
+    report('read', 0)
     const [ft, size] = await Promise.all([frameTimes(file, signal), videoSize(file)])
     if (!size) throw new StepError(t('לא ניתן לפתוח את הסרטון'))
     analysis = { times: ft.times, width: size[0], height: size[1], fps: ft.fps, tracks: [] }
-    report('faces', sh.faces)
+    report('read', sh.faces)
   } else {
     report('faces', 0)
     const r = await findFaces(file, s.sensitive, (p) => report('faces', p * sh.faces), signal)
