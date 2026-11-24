@@ -140,6 +140,7 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
@@ -265,13 +266,19 @@ fun EditorScreen(
         ) {
             // Everything is saved in the project as it's edited.
             IconButton(onClick = onClose, modifier = Modifier.testTag(Tags.BACK)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, t("חזרה")) }
-            Text(
-                t("עריכה"),
-                style = AppType.Title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+            // A narrow phone has no room for the title next to the tools and the export button: the
+            // space is kept, the word goes (the screen says what it is by itself).
+            if (LocalConfiguration.current.screenWidthDp >= 400) {
+                Text(
+                    t("עריכה"),
+                    style = AppType.Title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
             // Something selected and the side panel closed: its properties are one tap away
             // (the panel never opens by itself, so nothing on screen jumps).
             if (hidden && selecting && isWide()) {
@@ -309,6 +316,7 @@ fun EditorScreen(
                 enabled = !busy,
                 icon = EditorIcons.ExportIcon,
                 height = 40.dp,
+                sidePadding = Space.M,
                 modifier = Modifier.padding(end = Space.S).testTag(Tags.EXPORT),
             )
         }

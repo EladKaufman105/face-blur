@@ -212,6 +212,8 @@ fun GradientButton(
     height: Dp = 56.dp,
     colors: List<Color> = listOf(Brand.Coral, Color(0xFFFF7A59)),
     enabled: Boolean = true,
+    /** The room on each side of the label (a crowded bar gives less). */
+    sidePadding: Dp = Space.XL,
 ) {
     val source = remember { MutableInteractionSource() }
     Surface(
@@ -227,12 +229,13 @@ fun GradientButton(
             Modifier.background(Brush.horizontalGradient(if (enabled) colors else colors.map { it.copy(alpha = 0.35f) })),
             contentAlignment = Alignment.Center,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(horizontal = Space.XL)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(horizontal = sidePadding)) {
                 if (icon != null) {
                     Icon(icon, null, tint = Brand.Ink, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(Space.S))
                 }
-                Text(text, style = MaterialTheme.typography.titleMedium, color = Brand.Ink)
+                // One line always: a narrow bar must not break the label in two.
+                Text(text, style = MaterialTheme.typography.titleMedium, color = Brand.Ink, maxLines = 1, softWrap = false)
             }
         }
     }
