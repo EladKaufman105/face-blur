@@ -407,7 +407,8 @@ export function transcribeFile(
       const failOrFallback = (code: string, message: string) => {
         if (finished || worker !== w) return
         // Threads that don't start (a phone that refuses the shared memory): once more with one, in a new worker.
-        if (plan.device === 'wasm' && plan.threads > 1 && !usedOneThread && phase === 'load') {
+        // (Only the worker's own 'threads' says so: a stalled or failed download is not the threads.)
+        if (plan.device === 'wasm' && plan.threads > 1 && !usedOneThread && code === 'threads') {
           usedOneThread = true
           threadsFailed = true
           stop()

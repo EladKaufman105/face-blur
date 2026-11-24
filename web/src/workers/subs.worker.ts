@@ -129,6 +129,12 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
     wasm.wasmPaths = { mjs: new URL(ortMjsUrl, self.location.href).href, wasm: new URL(ortWasmUrl, self.location.href).href }
     // Threads are for the CPU's path, and only in an isolated page (else the runtime would say it can't).
     wasm.numThreads = device === 'wasm' && self.crossOriginIsolated ? Math.max(1, threads) : 1
+  }
+  const key = `${repo}|${device}|${encDtype}|${dtype}|${wasm?.numThreads}`
+  // Phase: loading (or starting to download). The files' bytes come as 'download'; when they are all
+  // here the sessions are created, which has no percent: 'load' says so.
+  post({ type: 'load' })
+  if (wasm && loaded?.key !== key) {
     // A phone that can't start the threads says so early (the page then tries again with one). The
     // runtime's own wasm file is fetched first so the timeout measures only the threads' start, not a
     // slow download; with one thread there is no timeout at all.
@@ -140,17 +146,13 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
       wasm.initTimeout = 20000
     } else wasm.initTimeout = 0
   }
-  const key = `${repo}|${device}|${encDtype}|${dtype}|${wasm?.numThreads}`
-  // Phase: loading (or starting to download). The files' bytes come as 'download'; when they are all
-  // here the sessions are created, which has no percent: 'load' says so.
-  post({ type: 'load' })
   const t0 = performance.now()
   let loading = true
   let news = 0
   let lastPost = 0
   let asr: any = loaded?.key === key ? loaded.asr : null
   if (!asr && loaded) { const old = loaded.asr; loaded = null; await Promise.race([old.dispose?.(), sleep(1000)]).catch(() => {}) }
-  asr ??= await pipeline('automatic-speech-recognition', repo, {
+  if (!asr) try { asr = await pipeline('automatic-speech-recognition', repo, {
     device,
     dtype: { encoder_model: encDtype, decoder_model_merged: dtype },
     progress_callback: (p: any) => {
@@ -171,7 +173,14 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
         post({ type: 'tick' })
       }
     },
-  })
+  }) } catch (e) {
+    // Threads that would not start (not a download that failed): the page tries once more with one.
+    const message = String((e as Error)?.message ?? e)
+    if ((wasm?.numThreads ?? 1) > 1 && !/fetch|network|locate|load file|load failed|http|40\d|50\d/i.test(message)) {
+      return post({ type: 'error', code: 'threads', message })
+    }
+    throw e
+  }
 
   try {
     const words: Word[] = []

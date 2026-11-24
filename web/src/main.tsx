@@ -14,7 +14,7 @@ import { startServiceWorker } from './lib/isolation'
 // cross-origin isolated (WebAssembly threads); see lib/isolation.ts. The first visit reloads once,
 // before anything is drawn. The beta's own worker (under beta/, scoped to it) keeps what it
 // receives apart from the release's.
-startServiceWorker().then((reloading) => {
+startServiceWorker().catch(() => false).then((reloading) => {
   if (reloading) return
   setLang(lang.value)
   applyTheme(theme.value)

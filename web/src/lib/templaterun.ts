@@ -142,7 +142,7 @@ export function processSound(file: File, voice: VoiceFx, clean: Cleanup, signal?
 /** One pass over the video: the camera's motion and cuts, and ([people]) where the people are. */
 export function picturePass(file: File, times: Float64Array, people: boolean, onProgress: (p: number) => void, signal?: AbortSignal) {
   return run<{ times: Float64Array; fps: number; motion: Float32Array; cuts: number[]; masks: PeopleMasks | null }, PictureMessage>(
-    () => new Worker(new URL('../workers/picture.worker.ts', import.meta.url), { type: 'module' }),
+    () => { releaseSpeechForExport(); return new Worker(new URL('../workers/picture.worker.ts', import.meta.url), { type: 'module' }) },
     (w) => {
       const req: PictureRequest = { file, times, people, model: new URL('models/people.onnx', document.baseURI).href, backend: forcedBackend() }
       w.postMessage(req)

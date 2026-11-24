@@ -37,8 +37,11 @@ const later = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 export async function startServiceWorker(): Promise<boolean> {
   if (!('serviceWorker' in navigator)) return false
   const mode = coep()
-  const registering = navigator.serviceWorker.register(`sw.js?${BETA ? 'channel=beta&' : ''}coep=${mode}`)
-  registering.catch(() => {})
+  let registering: Promise<ServiceWorkerRegistration>
+  try {
+    registering = navigator.serviceWorker.register(`sw.js?${BETA ? 'channel=beta&' : ''}coep=${mode}`)
+    registering.catch(() => {})
+  } catch { return false } // A browser that refuses outright: the page is drawn, without isolation.
   if (window.crossOriginIsolated) {
     try { sessionStorage.removeItem(GUARD) } catch {}
     try { localStorage.removeItem(FAILED) } catch {}
