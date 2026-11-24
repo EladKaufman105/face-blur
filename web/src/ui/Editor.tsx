@@ -1204,7 +1204,9 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         <div class="export-bar">
           <button
             class="btn primary"
-            disabled={!!following}
+            // Not while a template is still being applied or the sound is being processed: the
+            // export would go out without the voice change (anonymity), the cleanup or the cuts.
+            disabled={!!following || tplBusy || voiceBusy}
             onClick={() => {
               video.current?.pause()
               setExportOpen(true)
