@@ -1,5 +1,5 @@
 Allo Hebrew (fonts/allo_hebrew.ttf): Allo by Josh Puckett with a Hebrew set drawn from Allo's
-own construction rules; converted from WOFF2 to TTF, otherwise unchanged.
+own construction rules: the variable TTF of the Allo Hebrew 1.0.3 package, unchanged.
 Copyright 2026 Josh Puckett (https://joshpuckett.me). Portions Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter).
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
