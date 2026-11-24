@@ -195,6 +195,14 @@ const SEED = { v: 1, id: 'unotes', name: 'התבנית שלי', group: 'USER', b
     const off = await p.evaluate(() => ({ badge: document.querySelector('.tpl-card[data-tpl="unotes"] .tpl-badge')?.textContent, go: document.querySelector('.blur-faces').textContent, save: document.querySelector('.blur-save').textContent }))
     console.log('no face blur:', JSON.stringify(off))
     if (off.badge !== 'בלי טשטוש פנים' || off.go.includes('טשטש') || off.save.includes('טשטש')) fail('a template with no face blur is not labelled so: ' + JSON.stringify(off))
+    // "Save straight" goes out unblurred: a red alert says so on the ready screen, and the blur's settings (which would do nothing) are gone.
+    const warn = await p.evaluate(() => ({ alert: document.querySelector('.ready-actions .batch-noblur[role=alert]')?.textContent ?? null, fold: !!document.querySelector('.blur-settings') }))
+    console.log('no face blur warning:', JSON.stringify(warn))
+    if (!warn.alert || !warn.alert.includes('לא יטושטשו')) fail('no warning that the faces will not be blurred: ' + JSON.stringify(warn))
+    if (warn.fold) fail('the blur settings are shown for a template with no face blur')
+    await p.click('.tpl-card[data-tpl="look.clean"]')
+    const back = await p.evaluate(() => ({ alert: !!document.querySelector('.ready-actions .batch-noblur'), fold: !!document.querySelector('.blur-settings') }))
+    if (back.alert || !back.fold) fail('the no-blur warning stays (or the settings stay gone) with a template that blurs: ' + JSON.stringify(back))
     await p.context().close()
     console.log('OK')
   } catch (e) {
