@@ -78,6 +78,10 @@ case "${1:?shard}" in
     # The same clip on one thread (as before the page was isolated) and again with threads, the model now in the browser's cache: the times are in the log.
     t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base&threads=1" $S/speech_en.mp4 $R/subs1
     t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base" $S/speech_en.mp4 $R/subsN
+    # (temporary) recognition time by thread count on a 55 s clip
+    for i in 1 2 3 4 5; do echo "file '$S/speech_en.mp4'"; done > /tmp/l.txt
+    ffmpeg -y -loglevel error -f concat -safe 0 -i /tmp/l.txt -c copy /tmp/long_en.mp4
+    for n in 1 2 3 4 1 4; do node tests/subsbench.cjs "http://localhost:4173/?backend=wasm&subsmodel=base&threads=$n" /tmp/long_en.mp4 $R/bench$n || true; done
     ;;
   *) echo "unknown shard: $1" >&2; exit 2 ;;
 esac
