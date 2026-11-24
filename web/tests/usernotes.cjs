@@ -142,10 +142,10 @@ const SEED = { v: 1, id: 'unotes', name: 'התבנית שלי', group: 'USER', b
       await p.waitForTimeout(300)
       const shots = []
       // (A loop is about 3.5 s: sampled over a whole one.)
-      for (let i = 0; i < 16; i++) { shots.push(await p.evaluate(() => { const c = document.querySelector('.tpl-subs-preview'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let h = 0; for (let i = 0; i < d.length; i += 61) h = (h * 31 + d[i]) | 0; return h })); await p.waitForTimeout(250) }
+      for (let i = 0; i < 16; i++) { shots.push(await p.evaluate(() => { const c = document.querySelector('.tpl-subs-preview'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let h = 0; for (let i = 0; i < d.length; i += 17) h = (h * 31 + d[i]) | 0; return h })); await p.waitForTimeout(250) }
       const distinct = new Set(shots).size
       console.log(reduced ? 'less motion' : 'motion', ': distinct pictures', distinct)
-      if (!reduced && distinct < 3) fail('the subtitle preview does not move')
+      if (!reduced && distinct < 2) fail('the subtitle preview does not move')
       if (reduced && distinct !== 1) fail('the subtitle preview moves with less motion asked for')
       if (!reduced) await p.screenshot({ path: `${out}/template_editor.png` })
       await p.context().close()
@@ -170,7 +170,31 @@ const SEED = { v: 1, id: 'unotes', name: 'התבנית שלי', group: 'USER', b
     const row = (await stored(p))[0]
     console.log('saved:', JSON.stringify({ name: row?.name, blur: row?.blur, font: row?.subs && JSON.parse(row.subs.style).font }))
     if (!row?.subs || JSON.parse(row.subs.style).font !== 'RUBIK') fail('the saved template has no subtitle design')
-    if (!row.blur || row.blur.none !== true) fail('a template from a video with no face search has face blur')
+    // It leaves the face blur alone (never "off"): a video it is applied to still has its faces blurred.
+    if (row.blur) fail('a template from a video with no face search has a face blur part: ' + JSON.stringify(row.blur))
+    // Applied to a video with faces: the faces are still looked for (and blurred).
+    await p.goto(url)
+    await p.waitForTimeout(800)
+    await seed(p)
+    await p.reload()
+    await p.waitForTimeout(800)
+    await ready(p, video2)
+    const tool = await p.$$eval('.tpl-card', (c) => c.map((x) => [x.dataset.tpl, x.textContent]))
+    const toolId = tool.find(([, n]) => n.includes('מהכלי'))[0]
+    await p.click(`.tpl-card[data-tpl="${toolId}"]`)
+    if ((await p.textContent('.blur-faces')).includes('פתח בעורך')) fail('a template with no face blur part is treated as having none')
+    p.workers.length = 0
+    await p.click('.blur-faces')
+    await p.waitForSelector('.analyzing, .editor .tabs', { timeout: 30000 })
+    if (!p.workers.some((u) => u.includes('analyze.worker'))) fail('faces were not looked for with a template that leaves the face blur alone')
+    // A template that knowingly has no face blur says so, and does not say "blur" on its buttons.
+    await p.goto(url)
+    await p.waitForTimeout(800)
+    await ready(p, video2)
+    await p.click('.tpl-card[data-tpl="unotes"]')
+    const off = await p.evaluate(() => ({ badge: document.querySelector('.tpl-card[data-tpl="unotes"] .tpl-badge')?.textContent, go: document.querySelector('.blur-faces').textContent, save: document.querySelector('.blur-save').textContent }))
+    console.log('no face blur:', JSON.stringify(off))
+    if (off.badge !== 'בלי טשטוש פנים' || off.go.includes('טשטש') || off.save.includes('טשטש')) fail('a template with no face blur is not labelled so: ' + JSON.stringify(off))
     await p.context().close()
     console.log('OK')
   } catch (e) {

@@ -135,7 +135,7 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
         <section class="ready-actions">
           <button class="btn primary blur-faces" onClick={() => onBlur(look, current())}><FaceIcon /> {tpl?.blurOff ? t('פתח בעורך') : t('טשטש פנים')}</button>
           <p class="small muted">{tpl?.blurOff ? t('בלי טשטוש פנים: ייפתח העורך, והתבנית תחול על הסרטון.') : t('הפנים יזוהו ויטושטשו, ואז ייפתח העורך לבדיקה ולתיקון לפני השמירה.')}</p>
-          <button class="btn ghost blur-save" disabled={!meta} onClick={() => setSheet(true)}>{t('או: טשטש ושמור ישר, בלי עורך')}</button>
+          <button class="btn ghost blur-save" disabled={!meta} onClick={() => setSheet(true)}>{tpl?.blurOff ? t('או: שמור ישר, בלי עורך') : t('או: טשטש ושמור ישר, בלי עורך')}</button>
         </section>
 
         <section class="card fold">
@@ -192,7 +192,7 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
           options={options}
           onChange={setOptions}
           onClose={() => setSheet(false)}
-          action={t('טשטש ושמור')}
+          action={tpl?.blurOff ? t('שמור ישר') : t('טשטש ושמור')}
           onGo={() => {
             setSheet(false)
             saveExportOptions(options)

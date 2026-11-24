@@ -152,7 +152,7 @@ export function BatchSetup({ onBack, onStarted, initial }: { onBack: () => void;
         {files.length > 0 && (
           <div class="row"><span class="grow">{t('זמן משוער')}</span><strong class="batch-estimate">{estimateText(estimate)}</strong></div>
         )}
-        {settings.blurOff && <p class="small muted batch-noblur" style="margin:0">{t('בלי טשטוש פנים: הפנים לא נחפשות בכלל, וזה חוסך זמן.')}</p>}
+        {settings.blurOff && <p class="small batch-noblur" role="alert" style="margin:0;color:#e5484d;font-weight:700">{t('הפנים לא יטושטשו בסרטונים האלה: בתבנית הזו אין טשטוש פנים.')}</p>}
         {files.length > 0 && <p class="small muted" style="margin:0">{t('ההערכה משתפרת אחרי שהמכשיר הזה מעבד כמה סרטונים.')}</p>}
         {settings.createSubs && cached === false && (
           <>

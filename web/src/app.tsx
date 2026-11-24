@@ -53,7 +53,7 @@ export function App() {
   // Re-render on a change of language, theme or palette.
   useEffect(() => { loadTemplates() }, [])
   // A new screen starts at its top (the home screen is long on a phone: a tap on a tool low down must not open the editor scrolled).
-  useEffect(() => { window.scrollTo(0, 0) }, [screen.name])
+  useEffect(() => { window.scrollTo(0, 0) }, [screen.name, job !== null])
   void batchVersion.value
   void lang.value
   void theme.value

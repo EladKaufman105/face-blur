@@ -1313,13 +1313,12 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     {saveTpl && (
       <SaveTemplate
         settings={{
-          // Faces never looked for (the video came from a tool): a template made from it has no face blur, so a batch doesn't look for faces either.
-          blurOff: !analyzed && tracks.length === 0, look, sensitive: false, createSubs: cues.length > 0, language: savedLanguage(lang.value === 'he'), translate: false, subStyle,
+          blurOff: false, look, sensitive: false, createSubs: cues.length > 0, language: savedLanguage(lang.value === 'he'), translate: false, subStyle,
           split: { words: 0, chars: 0 }, burn: exportOpts.burn === false ? 'NONE' : subStyle.show === 'tr' ? 'TRANSLATED' : subStyle.show === 'both' ? 'BOTH' : 'ORIGINAL', saveSrt: exportOpts.srt,
           voice, denoise, enhance, loud: loudOn, cutSilences: cuts.length > 0, minPauseMs: 800, cutFillers: cuts.length > 0 && cues.length > 0,
           background, stabilize: steadyLevel, aspect: exportOpts.aspect, shortSide: exportOpts.shortSide, fps: exportOpts.fps, quality: exportOpts.quality, codec: exportOpts.codec, watermark: mark,
         }}
-        initial={['blur', ...(cues.length || JSON.stringify(subStyle) !== JSON.stringify(DEFAULT_SUB_STYLE) ? ['subs' as const] : []), ...(voice !== 'none' || cleanupOn(clean) ? ['voice' as const] : []), ...(background.fill !== 'none' ? ['background' as const] : []), ...(steadyLevel > 0 ? ['stabilize' as const] : []), 'export']}
+        initial={[...(analyzed || tracks.length > 0 ? ['blur' as const] : []), ...(cues.length || JSON.stringify(subStyle) !== JSON.stringify(DEFAULT_SUB_STYLE) ? ['subs' as const] : []), ...(voice !== 'none' || cleanupOn(clean) ? ['voice' as const] : []), ...(background.fill !== 'none' ? ['background' as const] : []), ...(steadyLevel > 0 ? ['stabilize' as const] : []), 'export']}
         onClose={() => setSaveTpl(false)}
         onSaved={() => { setSaveTpl(false); setNotice(t('התבנית נשמרה')) }}
       />

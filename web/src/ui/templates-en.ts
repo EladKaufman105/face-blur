@@ -91,7 +91,9 @@ addEnglish({
   // Batch
   'כמה סרטונים': 'Several videos',
   'קורא את הסרטון': 'Reading the video',
-  'בלי טשטוש פנים: הפנים לא נחפשות בכלל, וזה חוסך זמן.': 'No face blur: faces aren’t looked for at all, which saves time.',
+  'הפנים לא יטושטשו בסרטונים האלה: בתבנית הזו אין טשטוש פנים.': 'Faces will NOT be blurred in these videos: this template has no face blur.',
+  'שמור ישר': 'Save straight',
+  'או: שמור ישר, בלי עורך': 'Or: save straight, with no editor',
   'כמה סרטונים עם תבנית אחת': 'Several videos, one template',
   'בוחרים כמה סרטונים ותבנית, והם מעובדים אחד אחרי השני, בלי לבדוק כל אחד בנפרד.': 'Pick several videos and a template; they are processed one after another, with no checking each one first.',
   'בחירת סרטונים ותבנית': 'Choose videos and template',

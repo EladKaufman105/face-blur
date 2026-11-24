@@ -155,6 +155,7 @@ export class CutMap {
 export function skipTarget(cm: CutMap, at: number, current: number, fps: number, duration: number, times?: ArrayLike<number> | null): { to: number; end: boolean } | null {
   if (cm.empty) return null
   const step = 1 / (fps > 0 ? Math.min(fps, 240) : 30)
+  // (The half-frame lookahead is for playback only; the cuts themselves, and the export, are exact.)
   let end = cm.cutEnd(at + step / 2)
   if (end < 0) return null
   for (let i = 0; i < 1000; i++) {
@@ -163,7 +164,8 @@ export function skipTarget(cm: CutMap, at: number, current: number, fps: number,
     else break
   }
   if (isFinite(duration) && end >= duration - step / 2) return { to: duration, end: true }
-  let to = end + step
+  // With no frame times, half a frame past the end: the next frame lies within a frame, and a kept frame is not skipped.
+  let to = end + step / 2
   if (times && times.length > 1) {
     // The first frame at or after the end of the cut.
     let lo = 0, hi = times.length - 1

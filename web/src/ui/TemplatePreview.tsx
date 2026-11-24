@@ -192,19 +192,26 @@ export function TemplatePreview({ s, frame, subs, height = 124, class: cls, anim
     c.width = Math.round(cssW * dpr)
     c.height = Math.round(cssH * dpr)
     let raf = 0
+    let io: IntersectionObserver | null = null
     drawPreview(c, s, { frame, subs, isLive: () => live }).then((p) => {
       if (!p || !live || !animate || !subs || s.subStyle.effect === 'none' || reducedMotion()) return
       // The effect plays from the start, then rests a moment before it plays again.
       const period = p.length + 0.5
       const t0 = performance.now()
+      // About 30 pictures a second, and none while the canvas is off screen.
+      let visible = true, last = 0
+      if (typeof IntersectionObserver !== 'undefined') {
+        io = new IntersectionObserver((es) => { visible = es.some((e) => e.isIntersecting) })
+        io.observe(c)
+      }
       const tick = (now: number) => {
         if (!live) return
-        p.at(((now - t0) / 1000) % period)
+        if (visible && now - last >= 33) { last = now; p.at(((now - t0) / 1000) % period) }
         raf = requestAnimationFrame(tick)
       }
       raf = requestAnimationFrame(tick)
     }).catch(() => {})
-    return () => { live = false; cancelAnimationFrame(raf) }
+    return () => { live = false; cancelAnimationFrame(raf); io?.disconnect() }
   }, [key, cssW, cssH, animate])
   return <canvas ref={canvas} class={'tpl-canvas ' + (cls ?? '')} style={{ width: cssW + 'px', height: cssH + 'px' }} aria-hidden="true" />
 }
