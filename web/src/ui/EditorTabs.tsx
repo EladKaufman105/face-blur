@@ -418,7 +418,8 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
   const [split, setSplit] = useState<{ words: number; chars: number }>({ words: 0, chars: 0 })
   const regroup = (rule: { words: number; chars: number }) => {
     setSplit(rule)
-    onReplace(wordsToCues(words, rule.words, rule.chars), words, new Set())
+    // The words stay the same, so the bleeped words stay bleeped.
+    onReplace(wordsToCues(words, rule.words, rule.chars), words, bleeped)
   }
   const [lang, setLang] = useState<string | null>(() => { try { return localStorage.getItem(storageKey('subs.lang')) } catch { return null } })
   const [run, setRun] = useState<SubsRun>(null)
@@ -565,7 +566,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
                     <button class="time-btn" onClick={() => onSeek(c.start + 0.01)} dir="ltr">{duration(c.start)}</button>
                     {speakers > 1 && <SpeakerDot speaker={c.speaker} color={style.color} chosen={style.speakerColors} max={Math.min(MAX_SPEAKERS, speakers + 1)} onChange={(sp) => onCues(cues.map((x) => (x.id === c.id ? { ...x, speaker: sp } : x)), true)} />}
                   </div>
-                  {bleepMode ? (
+                  {bleepMode && words.length > 0 ? (
                     <div class="word-chips" dir="auto">
                       {words.map((w, k) => (w.start >= c.start - 0.01 && w.start < c.end ? (
                         <button class={'word' + (bleeped.has(k) ? ' on' : '')} onClick={() => {
@@ -662,7 +663,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
               )}
               <TranslateCard cues={cues} onCues={onCues} show={style.show ?? 'src'} onShow={(v) => set({ show: v })} />
               <SpeakersCard file={file} cues={cues} onCues={onCues} color={style.color} chosen={style.speakerColors} />
-              <button class="btn ghost" onClick={() => { onReplace([], [], new Set()); setOpenId(null); setBleepMode(false); setPendingImport(null) }}>{t('מחק כתוביות')}</button>
+              <button class="btn ghost" onClick={() => { onReplace([], words, bleeped); setOpenId(null); setBleepMode(false); setPendingImport(null) }}>{t('מחק כתוביות')}</button>
             </>
           )}
         </div>
