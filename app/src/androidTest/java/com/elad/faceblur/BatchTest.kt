@@ -180,15 +180,28 @@ class BatchTest {
         val app = inst.targetContext.applicationContext as android.app.Application
         inst.runOnMainSync {
             val vm = MainViewModel(app)
-            val exportBefore = vm.prefs.export
-            val styleBefore = vm.prefs.subStyle
-            vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice(BuiltInTemplates.CLEAN.id))
-            assertEquals("the template's resolution is used for this video", 720, vm.exportOptions.shortSide)
-            assertEquals("the user's own export options are untouched", exportBefore, vm.prefs.export)
-            assertEquals("the user's own subtitle look is untouched", styleBefore, vm.prefs.subStyle)
-            vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice())
-            assertEquals(exportBefore, vm.exportOptions)
-            assertEquals(styleBefore, vm.subtitleStyle)
+            // The user's own template with a 720p export (the built-in looks leave the export alone).
+            val id = vm.templates.newId()
+            vm.templates.save(
+                com.elad.faceblur.template.Template(
+                    id = id, name = "test 720",
+                    subs = com.elad.faceblur.template.SubsPart(style = BuiltInTemplates.CLEAN.subs!!.style),
+                    export = com.elad.faceblur.template.ExportPart(shortSide = 720),
+                ),
+            )
+            try {
+                val exportBefore = vm.prefs.export
+                val styleBefore = vm.prefs.subStyle
+                vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice(id))
+                assertEquals("the template's resolution is used for this video", 720, vm.exportOptions.shortSide)
+                assertEquals("the user's own export options are untouched", exportBefore, vm.prefs.export)
+                assertEquals("the user's own subtitle look is untouched", styleBefore, vm.prefs.subStyle)
+                vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice())
+                assertEquals(exportBefore, vm.exportOptions)
+                assertEquals(styleBefore, vm.subtitleStyle)
+            } finally {
+                vm.templates.delete(id)
+            }
         }
     }
 }
