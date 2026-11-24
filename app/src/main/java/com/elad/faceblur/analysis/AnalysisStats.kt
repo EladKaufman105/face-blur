@@ -41,6 +41,17 @@ data class StatsSnapshot(
     val maxWorkers: Int,
 ) {
     val onGpu get() = accelerator != "cpu"
+
+    /** One line with where detection ran and how it went, to compare runs ("gpu fp16 · every 1 · 640 frames · 28 ms a detection"). */
+    fun summary(): String = buildString {
+        append(accelerator).append(' ').append(precision)
+        append(" · every ").append(every).append(if (lite) ", lite" else "")
+        append(" · ").append(side).append(" px · ").append(frames).append(" frames")
+        if (detections > 0) append(" · ").append(detectMs / detections).append(" ms a detection")
+        if (frameMs + waitMs > 0) append(" · waiting ").append(100 * waitMs / (frameMs + waitMs)).append("%")
+        append(" · ").append(workers).append('/').append(maxWorkers).append(" workers")
+        if (noGpu != null && noGpu.isNotEmpty() && !onGpu) append(" · no GPU: ").append(noGpu)
+    }
 }
 
 /** One metric's last samples (about a second apart, so about the last minute), oldest first. */
