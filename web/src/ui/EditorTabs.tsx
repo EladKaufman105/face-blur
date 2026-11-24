@@ -424,12 +424,18 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
   const [lang, setLang] = useState<string | null>(() => { try { return localStorage.getItem(storageKey('subs.lang')) } catch { return null } })
   const [run, setRun] = useState<SubsRun>(null)
   const ctl = useRef<AbortController | null>(null)
+  // The words and bleeps as they are now (undo or a tap may change them while the speech model runs).
+  const live = useRef({ words, bleeped })
+  live.current = { words, bleeped }
+  // Bleeped words that the new subtitles had no word for (shown until the next run or dismissed).
+  const [lostBleeps, setLostBleeps] = useState(0)
   // The speech worker goes when the tab is left (it must not go on heating the device unseen).
   useEffect(() => () => ctl.current?.abort(), [])
   const start = async () => {
     ctl.current?.abort()
     setImportErr(null)
     setPendingImport(null)
+    setLostBleeps(0)
     const c = new AbortController()
     ctl.current = c
     setRun({ stage: 'audio' })
@@ -440,13 +446,20 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
       grantSpeech(plan)
       const r = await transcribeFile(file, lang, { plan, onStatus: (s) => { if (ctl.current === c) setRun(s) }, signal: c.signal })
       if (ctl.current !== c) return
+      const now = live.current
+      const old = [...now.bleeped].map((i) => now.words[i]).filter((w): w is Word => !!w)
+      // Nothing recognized: the old words and their bleeps stay as they are (a bleep is for anonymity).
+      if (!r.words.length) { setRun(null); setLostBleeps(0); return }
       const made = wordsToCues(r.words)
-      // Bleeped words carry over to the new words that overlap them in time (a bleep is for anonymity:
-      // re-making the subtitles must not undo it).
-      const old = [...bleeped].map((i) => words[i]).filter((w): w is Word => !!w)
+      // Bleeped words carry over to the new words that overlap them in time. A word may have no length
+      // (start = end), so the spans are widened a little.
+      const eps = 0.05
+      const hits = (o: Word, w: Word) => w.start < o.end + eps && w.end > o.start - eps
       const kept = new Set<number>()
-      if (old.length) r.words.forEach((w, i) => { if (old.some((o) => w.start < o.end && w.end > o.start)) kept.add(i) })
+      r.words.forEach((w, i) => { if (old.some((o) => hits(o, w))) kept.add(i) })
       onReplace(made, r.words, kept)
+      // Old bleeps with no new word at their time are said out loud (undo brings them back).
+      setLostBleeps(old.filter((o) => !r.words.some((w) => hits(o, w))).length)
       if (made.length) onSeek(Math.min(...made.map((c) => c.start)) + 0.01)
       setRun(null)
     } catch (e) {
@@ -513,6 +526,12 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
   )
   return (
     <>
+      {lostBleeps > 0 && (
+        <div class="confirm lost-bleeps" role="alert">
+          <span class="small">{lostBleeps === 1 ? t('מילה מצופצפת אחת לא נמצאה בכתוביות החדשות, ולכן היא לא מצופצפת. בטל את הפעולה או צפצף אותה שוב.') : t('%d מילים מצופצפות לא נמצאו בכתוביות החדשות, ולכן הן לא מצופצפות. בטל את הפעולה או צפצף אותן שוב.', lostBleeps)}</span>
+          <div class="row"><button class="btn ghost small-btn" onClick={() => setLostBleeps(0)}>{t('הבנתי')}</button></div>
+        </div>
+      )}
       {cues.length === 0 && (
         <section class="card subs-start">
           <h3 class="section-title">{t('כתוביות')}</h3>
@@ -526,7 +545,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
               </div>
               {bleeped.size > 0 && (
                 <p class="small" style="margin:12px 0 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                  {t('%d מילים מצופצפות. הן יישארו מצופצפות גם בכתוביות החדשות.', bleeped.size)}
+                  {bleeped.size === 1 ? t('מילה אחת מצופצפת. בכתוביות חדשות יצופצפו המילים שבאותו זמן.') : t('%d מילים מצופצפות. בכתוביות חדשות יצופצפו המילים שבאותו זמן.', bleeped.size)}
                   <button class="btn ghost" onClick={() => onBleeped(new Set())}>{t('נקה')}</button>
                 </p>
               )}
