@@ -56,6 +56,7 @@ const layer = () => {
     await p.waitForSelector('.editor .tabs', { timeout: 30000 })
     await p.setInputFiles('.srt-import input', `${out}/in.srt`)
     await p.waitForSelector('.sub-style')
+    await p.evaluate(() => document.querySelectorAll('details.subs-more, details.sub-fine').forEach((d) => { d.open = true }))
 
     // Every style and font offered, each name in its own font, all loaded.
     const presets = await p.evaluate(() => document.querySelectorAll('.sub-style .presets .chip').length)
@@ -187,6 +188,7 @@ const layer = () => {
     await p.waitForSelector('.editor .tabs', { timeout: 30000 })
     await p.click('.tabs button[data-g=subs]')
     await p.waitForSelector('.sub-style')
+    await p.evaluate(() => document.querySelectorAll('details.subs-more, details.sub-fine').forEach((d) => { d.open = true }))
     const kept = { font: await on('.sub-style .custom-font.on'), effect: await on('.sub-style .effects .chip.on'), box: await p.isChecked('.sub-style .box-check') }
     await p.waitForFunction(() => document.fonts.check("20px 'ONIT custom Hebrew Sans'", 'שלום'), null, { timeout: 10000 })
     console.log('opened again:', JSON.stringify(kept))

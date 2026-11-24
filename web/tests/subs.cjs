@@ -43,6 +43,7 @@ const [, , url, video, out] = process.argv
     await p.waitForTimeout(1500)
     await p.screenshot({ path: `${out}/subs_editor.png` })
     // Cut by characters (as the app's): no subtitle past 15 characters unless it's one long word; then whole sentences again.
+    await p.evaluate(() => document.querySelectorAll('details.subs-more, details.sub-fine').forEach((d) => { d.open = true }))
     await p.click('.split-by button >> nth=1')
     await p.click('.split-cues .chip >> text=עד 15')
     const short = await p.evaluate(() => [...document.querySelectorAll('.cue-text')].map((e) => e.value))

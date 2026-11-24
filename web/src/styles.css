@@ -709,3 +709,50 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .folder-thumbs img, .folder-thumbs .ph { width: 100%; height: 100%; object-fit: cover; background: var(--surface-3); }
 .folder-items { display: grid; gap: var(--space-2); border-top: 1px solid var(--outline-soft); padding-top: var(--space-2); }
 .folder-items .project { background: var(--surface-2); box-shadow: none; }
+
+/* Subtitles: the looks as cards in one scrolling row (each a sample drawn by the real renderer), the
+   rest folded away; a subtitle's actions only on the one being edited. */
+.chips.presets.preset-row { flex-wrap: nowrap; max-height: none; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; padding: 4px 2px 8px; gap: 8px; -webkit-overflow-scrolling: touch; }
+.chip.preset { flex: none; display: grid; gap: 6px; justify-items: center; padding: 4px; border-radius: var(--radius-card); scroll-snap-align: start; font-size: 13px; }
+.chip.preset canvas { display: block; border-radius: calc(var(--radius-card) - 4px); background: var(--surface-3); }
+.chip.preset .preset-name { max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-bottom: 2px; }
+.chip.preset.on { border-width: 2px; padding: 3px; }
+.scroll-row { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+.scroll-row .chip { flex: none; }
+.sub-fine, .subs-more { display: block; }
+.sub-fine > summary, .subs-more > summary { cursor: pointer; font-weight: 700; min-height: 44px; display: flex; align-items: center; color: var(--primary); list-style-position: inside; }
+.sub-fine[open] > summary, .subs-more[open] > summary { margin-bottom: var(--space-2); }
+.sub-fine > :not(summary) { margin-top: var(--space-2); }
+.subs-more { padding-block: 0; }
+.subs-more-body { display: grid; gap: var(--space-3); }
+.subs-more-body .card { box-shadow: none; border: 1px solid var(--outline-soft); }
+.clip .cue-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.clip.open { outline: 2px solid var(--primary); }
+.cue-text { resize: none; }
+.srt-import { cursor: pointer; justify-content: center; }
+.subs-start .subs-create { min-height: 52px; font-size: 17px; }
+
+/* Fingers: every target at least 44 px, a tighter header, the export bar on one row. */
+@media (pointer: coarse), (max-width: 600px) {
+  .btn { min-height: 44px; }
+  .small-btn { min-height: 44px; padding-inline: 12px; }
+  .chip { min-height: 44px; display: inline-flex; align-items: center; }
+  .chip.preset { display: grid; min-height: 0; }
+  .icon-btn, .edit-tools .icon-btn, .step-group .icon-btn { width: 44px; height: 44px; }
+  .time-btn { min-height: 44px; min-width: 52px; }
+  .seg button { min-height: 44px; }
+  .swatch { min-width: 36px; min-height: 36px; }
+  .check { min-height: 44px; }
+  .check input { width: 22px; height: 22px; }
+  .footer a { display: inline-block; padding: 14px 4px; }
+  .cue-text { font-size: 16px; padding: 10px; min-height: 44px; box-sizing: border-box; }
+}
+@media (max-width: 600px) {
+  .top { padding-bottom: 8px; }
+  .top .tag { display: none; }
+  .editor .side { padding-bottom: 8px; }
+  .editor .export-bar { grid-template-columns: 1fr auto; align-items: center; }
+  .editor .export-bar .btn.primary { min-height: 52px; }
+  .editor .export-bar .save-template-btn { width: auto; padding-inline: 12px; }
+}
+.side > *, .subs-more-body > * { min-width: 0; }

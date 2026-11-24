@@ -525,6 +525,12 @@ const EN: Record<string, string> = {
   'רקע שחור': 'Black box',
   'תיבה על המילה': 'Word box',
   'תיבה צבעונית': 'Color box',
+  'כך נראות הכתוביות': 'Your subtitles look like this',
+  'כוונון ידני': 'Fine-tune',
+  'הקש על כתובית כדי לערוך אותה.': 'Tap a subtitle to edit it.',
+  'פצל כאן': 'Split here',
+  'עוד אפשרויות': 'More options',
+  'ייבוא קובץ SRT': 'Import an SRT file',
 }
 
 /** More English (the beta's own strings, see ui/Beta.tsx). */

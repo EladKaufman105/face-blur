@@ -3,7 +3,8 @@ import { t } from '../i18n'
 import { deleteFont, listFonts, saveFont } from '../lib/projects'
 import { FontAxes } from './FontAxes'
 import { MAX_SPEAKERS, speakerColor, withSpeakerColor } from '../lib/speakers'
-import { ACCENT_EFFECTS, DEFAULT_SUB_STYLE, fontFamily, loadSubFont, SUB_COLORS, SUB_EFFECTS, SUB_FONTS, SUB_PRESETS, type SubStyle } from '../lib/substyle'
+import { ACCENT_EFFECTS, DEFAULT_SUB_STYLE, fontFamily, loadSubFont, SUB_COLORS, SUB_EFFECTS, SUB_FONTS, type SubStyle } from '../lib/substyle'
+import { SubPresetRow } from './SubPresets'
 
 const BOX_COLORS = ['#000000b8', '#000000e6', '#fffffff2', '#ff2d55e6', '#4d8dffe6', '#34e07ae6']
 const POSITIONS: [number, string][] = [[0.14, 'למעלה'], [0.5, 'באמצע'], [0.7, 'שליש תחתון'], [0.86, 'למטה']]
@@ -22,7 +23,7 @@ function hasHebrew(family: string): boolean {
  * The subtitles' design, as the app's style panel: ready-made looks, the font (bundled or one
  * imported), its weight, the effect, colors, outline, shadow, glow, a box, size and place.
  */
-export function SubStyleCard({ style, onStyle }: { style: SubStyle; onStyle: (s: SubStyle) => void }) {
+export function SubStyleCard({ style, onStyle, file }: { style: SubStyle; onStyle: (s: SubStyle) => void; file?: File | null }) {
   const set = (patch: Partial<SubStyle>) => onStyle({ ...style, ...patch })
   const [custom, setCustom] = useState<string[]>([])
   const [note, setNote] = useState<string | null>(null)
@@ -42,12 +43,10 @@ export function SubStyleCard({ style, onStyle }: { style: SubStyle; onStyle: (s:
     <section class="card sub-style">
       <h3 class="section-title">{t('עיצוב כתוביות')}</h3>
 
-      <h4 class="caption">{t('סגנונות')}</h4>
-      <div class="chips presets">
-        {SUB_PRESETS.map(([name, p]) => (
-          <button class="chip preset" style={{ fontFamily: fontFamily(p) }} onClick={() => onStyle({ ...p, show: style.show, customFont: null })}>{t(name)}</button>
-        ))}
-      </div>
+      <SubPresetRow style={style} onStyle={onStyle} file={file ?? null} />
+
+      <details class="sub-fine">
+      <summary>{t('כוונון ידני')}</summary>
 
       <h4 class="caption">{t('גופן')}</h4>
       <div class="chips fonts">
@@ -146,6 +145,7 @@ export function SubStyleCard({ style, onStyle }: { style: SubStyle; onStyle: (s:
         <label>{t('גובה מדויק')}</label>
         <input type="range" min={0.05} max={0.95} step={0.01} value={style.position} onInput={(e) => set({ position: Number((e.currentTarget as HTMLInputElement).value) })} />
       </div>
+      </details>
     </section>
   )
 }

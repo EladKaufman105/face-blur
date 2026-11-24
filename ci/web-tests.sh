@@ -35,6 +35,8 @@ case "${1:?shard}" in
     t speakers.cjs "$U" $S/speech_two.mp4 $R/speakers   # 8
     # The speech model's flow with no download: faster / better quality kept, a stuck recognition ends with an error and a retry, Cancel ends the worker, a template asks before downloading.
     t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 40
+    # Subtitles on a phone (390 px): the one button on the first screen, the looks as drawn cards, one tap applies one, a subtitle edited where it is, 44 px targets. No model.
+    t subsmobile.cjs "$U" $S/speech_two.mp4 $R/subsmobile   # 8
     # Where it was filmed and on what phone don't go out with the export.
     t privacy.cjs "$U" $S/speech_two.mp4 $R/privacy   # 10
     # The keyboard: groups by number, play / pause, a frame step, undo and redo.

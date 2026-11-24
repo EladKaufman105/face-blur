@@ -47,6 +47,8 @@ const SRT = `1
     await p.waitForSelector('.editor .tabs', { timeout: 30000 })
     await p.setInputFiles('.srt-import input', `${out}/in.srt`)
     await p.waitForSelector('.cue-list .clip')
+    // The less used tools are folded under "more options" and "fine-tune" (a phone's short screen).
+    await p.evaluate(() => document.querySelectorAll('details.subs-more, details.sub-fine').forEach((d) => { d.open = true }))
     console.log('imported:', JSON.stringify(await cues()))
     if ((await cues()).length !== 3) throw new Error('SRT import')
 
@@ -72,7 +74,9 @@ const SRT = `1
     await seek(10.5)
     await p.click('.cue-add')
     const added = (await cues()).length
-    await p.click('.cue-delete >> nth=3')
+    // A subtitle's actions show on the one being edited: tap it first.
+    await p.click('.cue-list .cue-text >> nth=3')
+    await p.click('.cue-delete')
     console.log('added →', added, 'deleted →', (await cues()).length)
     if (added !== 4 || (await cues()).length !== 3) throw new Error('add / delete')
 
