@@ -148,8 +148,6 @@ async function run({ file, language, repo, device, dtype }: SubsRequest) {
     // The bar only moves forward (a restarted window would take it back a little).
     let shown = 0
     const progress = (v: number) => { shown = Math.max(shown, v); post({ type: 'transcribe', progress: shown }) }
-    // Restarts after a cut-off window, at most 2 per original window (a runaway on music can't multiply the work).
-    let restarts = 0
     for (let from = 0; from < x.length;) {
       const to = cutPoint(x, from)
       const winSec = (to - from) / RATE
@@ -190,25 +188,25 @@ async function run({ file, language, repo, device, dtype }: SubsRequest) {
         const capped = tokens >= MAX_NEW - 2 && chunks.length > 1
         const cutStart = capped ? (chunks[chunks.length - 1].timestamp[0] as number) : 0
         // Restart there only when real speech filled the budget (fast speech fills it in no less than
-        // about 15 s; a loop on music or noise fills it early) and not too often.
-        const restart = capped && restarts < 2 && cutStart >= Math.min(10, winSec / 3) && cutStart < winSec - 1
+        // about 15 s; a loop on music or noise fills it early). Each restart moves on by a third of a
+        // window at least, so the work is at most about 3 times, and no speech is skipped.
+        const restart = capped && cutStart >= Math.min(10, winSec / 3) && cutStart < winSec - 1
         for (const c of restart ? chunks.slice(0, -1) : chunks) {
           const [a, b] = c.timestamp as [number, number | null]
           const e = b ?? (a as number) + 0.3
           words.push({ start: offset + (a as number), end: offset + e, text: c.text })
         }
         if (restart) {
-          // The next window starts at the cut-off word, which is recognized again in full.
-          const next = from + Math.floor(cutStart * RATE)
+          // The next window starts at the cut-off word (a little before: these times can be late),
+          // which is recognized again in full.
+          const next = from + Math.floor(Math.max(cutStart - 0.15, 0.25) * RATE)
           if (next > from && next < to) {
-            restarts++
             from = next
             progress(Math.min(1, from / x.length))
             continue
           }
         }
       }
-      restarts = 0
       from = to
       progress(Math.min(1, from / x.length))
     }
