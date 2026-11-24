@@ -88,7 +88,7 @@ const [, , url, video, out] = process.argv
       const before = workers.filter((u) => u.includes('export.worker')).length
       await p.goto(url)
       await p.waitForTimeout(600)
-      await p.click('.hero .several')
+      await p.click('.several')
       await p.waitForSelector('.batch-setup')
       await p.setInputFiles('.batch-input', [video])
       await p.waitForFunction(() => document.querySelectorAll('.batch-file').length === 1)

@@ -659,6 +659,7 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .tpl-sheet { width: min(980px, 100%); }
 .tpl-back { z-index: 30; }
 .tpl-body { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); align-content: start; }
+.tpl-subs-live { display: grid; justify-items: center; }
 .tpl-side { display: grid; gap: var(--space-2); justify-items: center; align-content: start; }
 .tpl-live { display: grid; place-items: center; background: var(--surface-2); border-radius: var(--radius-card); padding: var(--space-3); width: 100%; box-sizing: border-box; }
 .tpl-side .text-in { margin-top: 0; }
@@ -700,7 +701,9 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .batch-head .actions, .batch-item-acts { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .batch-title { font: var(--text-title); }
 .batch-banner .row { align-items: center; }
-.hero .btn.several { width: 100%; max-width: 420px; margin-top: var(--space-3); background: rgb(255 255 255 / 0.16); color: #fff; }
+.batch-entry { display: grid; gap: var(--space-3); }
+.batch-entry .row { align-items: center; gap: var(--space-3); }
+.batch-entry .several { width: 100%; }
 
 /* A batch's folder in the projects list. */
 .batch-folder { display: grid; gap: var(--space-2); }

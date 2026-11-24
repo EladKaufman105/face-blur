@@ -73,7 +73,13 @@ export class CutMap {
   private before: Float64Array
 
   constructor(ranges: Range[]) {
-    const r = clean(ranges)
+    // Overlapping and touching cuts are one (a playhead never lands "between" two of them).
+    const r: Range[] = []
+    for (const [x, y] of clean(ranges)) {
+      const last = r[r.length - 1]
+      if (last && x <= last[1]) last[1] = Math.max(last[1], y)
+      else r.push([x, y])
+    }
     this.a = Float64Array.from(r.map((x) => x[0]))
     this.b = Float64Array.from(r.map((x) => x[1]))
     this.before = new Float64Array(r.length)
@@ -132,4 +138,45 @@ export class CutMap {
     if (from < e) out.push([from, e])
     return out
   }
+}
+
+/**
+ * Where playback has to jump to when it reaches a cut, or null when it needn't. [at]: the time
+ * of the frame on screen; [current]: the player's currentTime; [fps]: the frame rate; [duration]:
+ * the video's length; [times]: the frames' times, when they are known (sorted).
+ *
+ * A player shows the frame at or before the time it is sent to, so a seek to the end of a cut
+ * can show the last frame of the cut itself, which would be jumped over again, and again (a
+ * frozen clock and a flicker). The target is therefore the first frame at or after the cut's end
+ * (or, with no frame times, a frame's length past it). Cuts that follow within half a frame are
+ * one. [to] is never before [current] (no seek back into a cut). [end]: the cut runs to the end
+ * of the video, where playback stops.
+ */
+export function skipTarget(cm: CutMap, at: number, current: number, fps: number, duration: number, times?: ArrayLike<number> | null): { to: number; end: boolean } | null {
+  if (cm.empty) return null
+  const step = 1 / (fps > 0 ? Math.min(fps, 240) : 30)
+  // (The half-frame lookahead is for playback only; the cuts themselves, and the export, are exact.)
+  let end = cm.cutEnd(at + step / 2)
+  if (end < 0) return null
+  for (let i = 0; i < 1000; i++) {
+    const next = cm.cutEnd(end + step / 2)
+    if (next > end) end = next
+    else break
+  }
+  if (isFinite(duration) && end >= duration - step / 2) return { to: duration, end: true }
+  // With no frame times, half a frame past the end: the next frame lies within a frame, and a kept frame is not skipped.
+  let to = end + step / 2
+  if (times && times.length > 1) {
+    // The first frame at or after the end of the cut.
+    let lo = 0, hi = times.length - 1
+    while (lo < hi) {
+      const m = (lo + hi) >> 1
+      if (times[m] >= end - 1e-6) hi = m
+      else lo = m + 1
+    }
+    if (times[lo] >= end - 1e-6) to = times[lo] + 1e-3
+  }
+  if (isFinite(duration)) to = Math.min(to, duration)
+  if (to <= current) return null
+  return { to, end: false }
 }

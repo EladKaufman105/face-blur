@@ -112,7 +112,7 @@ export function TemplateEditor({ template, onClose }: Props) {
         <div class="sheet-body tpl-body">
           <div class="tpl-side">
             <div class="tpl-live">
-              <TemplatePreview s={s} frame={lastFrame.canvas} subs={subsShown} height={260} />
+              <TemplatePreview s={s} frame={lastFrame.canvas} subs={subsShown} height={260} animate />
             </div>
             {template.builtIn ? (
               <strong class="tpl-title"><bdi>{templateLabel(template)}</bdi></strong>
@@ -156,6 +156,7 @@ export function TemplateEditor({ template, onClose }: Props) {
                   {chip(subs.language === undefined, t('השפה שבחרתי'), () => setDraft((d) => ({ ...d, subs: { ...d.subs, language: undefined } })))}
                   {LANGUAGES.map(([code, label]) => chip(subs.language === languageCode(code), t(label), () => patch('subs', { language: languageCode(code) })))}
                 </div>
+                <div class="tpl-subs-live"><TemplatePreview class="tpl-subs-preview" s={s} frame={lastFrame.canvas} subs height={150} animate /></div>
                 <SubStyleCard style={subs.style ?? DEFAULT_SUB_STYLE} onStyle={(st) => patch('subs', { style: st })} />
                 <div class="row">
                   <span class="small grow">{t('חלוקת הכתוביות')}</span>

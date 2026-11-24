@@ -156,7 +156,8 @@ async function run(req: ExportRequest) {
   if (pic?.image) renderer.setBackgroundImage(pic.image, 'image')
   // Subtitles: the watermark and the current cue on one picture, redrawn when the cue changes (and
   // every frame while an effect moves it).
-  if (cues.length > 0) await loadSubFont(subStyle, (self as any).fonts, base, req.customFont ?? null)
+  // The subtitles' font is loaded before the first frame is drawn (the canvas would use the default one until it is); a failed load is tried once more.
+  if (cues.length > 0 && !(await loadSubFont(subStyle, (self as any).fonts, base, req.customFont ?? null))) await loadSubFont(subStyle, (self as any).fonts, base, req.customFont ?? null)
   const animated = subStyle.effect !== 'none'
   const layer = cues.length > 0 ? new OffscreenCanvas(w, h) : null
   let shownAt = -1e9

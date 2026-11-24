@@ -211,6 +211,8 @@ export function loadSubFont(c: FontChoice, fonts: FontFaceSet, base: string, cus
       }
     })()
     loaded.set(key, p)
+    // A font that failed to load (a dropped connection) is tried again next time, not remembered as lost.
+    p.then((ok) => { if (!ok && loaded.get(key) === p) loaded.delete(key) })
   }
   return p
 }

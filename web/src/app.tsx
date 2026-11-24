@@ -5,7 +5,7 @@ import type { Analysis, Look } from './lib/types'
 import { Editor, type EditorTab } from './ui/Editor'
 import { Analyzing } from './ui/Analyzing'
 import { Exporting, type ExportJob } from './ui/Exporting'
-import { LockIcon, AddIcon, SubtitlesIcon, SoundIcon, MarkIcon, MusicIcon, SettingsIcon, CloseIcon, CheckIcon } from './ui/icons'
+import { LockIcon, AddIcon, MergeIcon, SubtitlesIcon, SoundIcon, MarkIcon, MusicIcon, SettingsIcon, CloseIcon, CheckIcon } from './ui/icons'
 import { DEFAULT_LOOK } from './lib/types'
 import { NO_WATERMARK } from './lib/watermark'
 import { DEFAULT_SUB_STYLE } from './lib/subtitles'
@@ -52,6 +52,8 @@ export function App() {
   const saved = useRef<{ file: File; analysis: Analysis } | null>(null)
   // Re-render on a change of language, theme or palette.
   useEffect(() => { loadTemplates() }, [])
+  // A new screen starts at its top (the home screen is long on a phone: a tap on a tool low down must not open the editor scrolled).
+  useEffect(() => { window.scrollTo(0, 0) }, [screen.name, job !== null])
   void batchVersion.value
   void lang.value
   void theme.value
@@ -335,7 +337,6 @@ function Home({ onPick, onTool, onProject, onBatch, onQueue, error }: { onPick: 
           <AddIcon /> {t('בחר סרטון')}
         </button>
         <div class="drop-hint">{t('או גרור סרטון לכאן')}</div>
-        <button class="btn several" onClick={onBatch}>{t('כמה סרטונים')}</button>
         {installed() ? (
           <div class="drop-hint share-hint">{t('אפשר גם לשתף סרטון מהגלריה ישירות לאפליקציה')}</div>
         ) : matchMedia('(pointer: coarse)').matches ? (
@@ -365,6 +366,16 @@ function Home({ onPick, onTool, onProject, onBatch, onQueue, error }: { onPick: 
             </div>
           </section>
         )}
+        <section class="card batch-entry">
+          <div class="row">
+            <span class="tool-icon" style={{ color: 'var(--primary)', background: 'color-mix(in srgb, var(--primary) 16%, transparent)' }}><MergeIcon /></span>
+            <div class="grow">
+              <h3 class="section-title" style="margin:0">{t('כמה סרטונים עם תבנית אחת')}</h3>
+              <p class="small muted" style="margin:2px 0 0">{t('בוחרים כמה סרטונים ותבנית, והם מעובדים אחד אחרי השני, בלי לבדוק כל אחד בנפרד.')}</p>
+            </div>
+          </div>
+          <button class="btn tonal several" onClick={onBatch}>{t('בחירת סרטונים ותבנית')}</button>
+        </section>
         <ProjectsSection onOpen={onProject} />
         <section>
           <h3 class="section-title" style="margin:4px 0 4px">{t('כלים נוספים')}</h3>

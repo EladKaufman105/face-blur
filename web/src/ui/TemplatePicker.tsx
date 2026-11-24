@@ -1,6 +1,7 @@
 import { t } from '../i18n'
 import { LANGUAGES } from '../lib/subtitles'
-import { allTemplates, isEdited, templatesLoaded } from '../lib/templatestore'
+import { useState } from 'preact/hooks'
+import { allTemplates, findTemplate, isEdited, renameTemplate, storeFailed, templatesLoaded } from '../lib/templatestore'
 import { applyTemplate, type Template, type TemplateSettings } from '../lib/template'
 import { storageKey } from '../lib/channel'
 import { SwitchRow } from './EditorTabs'
@@ -30,13 +31,21 @@ export const templateLabel = (tp: Template) => (tp.builtIn ? t(tp.name) : tp.nam
 export function TemplatePicker({ frame, base, current, onPick, settings, onSettings }: Props) {
   void templatesLoaded.value
   const list = allTemplates.value
+  const [renaming, setRenaming] = useState<string | null>(null)
   const card = (id: string | null, name: string, s: TemplateSettings, subs: boolean, badge?: string) => (
-    <button class={'tpl-card' + (current === id ? ' on' : '')} role="radio" aria-checked={current === id} data-tpl={id ?? 'none'} onClick={() => onPick(id)}>
+    <button class={'tpl-card' + (current === id ? ' on' : '')} role="radio" aria-checked={current === id} data-tpl={id ?? 'none'} onClick={() => { setRenaming(null); onPick(id) }}>
       <TemplatePreview s={s} frame={frame} subs={subs} height={120} />
       <span class="tpl-name"><bdi>{name}</bdi></span>
       {badge && <span class="tpl-badge">{badge}</span>}
     </button>
   )
+  const own = current ? findTemplate(current) : null
+  const ownName = own && !own.builtIn ? own : null
+  const saveRename = async (id: string, old: string) => {
+    const n = (renaming ?? '').trim()
+    if (n && n !== old) await renameTemplate(id, n)
+    if (!storeFailed.value) setRenaming(null)
+  }
   const setLang = (name: string | null) => {
     onSettings({ ...settings, language: name })
     try { if (name) localStorage.setItem(storageKey('subs.lang'), name); else localStorage.removeItem(storageKey('subs.lang')) } catch {}
@@ -48,13 +57,28 @@ export function TemplatePicker({ frame, base, current, onPick, settings, onSetti
         {card(null, t('בלי תבנית'), base, false)}
         {list.map((tp) => {
           const s = applyTemplate(tp, base)
-          return card(tp.id, templateLabel(tp), s, s.createSubs && !!tp.subs, tp.builtIn && isEdited(tp.id) ? t('נערכה') : undefined)
+          return card(tp.id, templateLabel(tp), s, s.createSubs && !!tp.subs, s.blurOff ? t('בלי טשטוש פנים') : tp.builtIn && isEdited(tp.id) ? t('נערכה') : undefined)
         })}
       </div>
       {current === null ? (
         <p class="small muted" style="margin:0">{t('בלי תבנית: ההגדרות נשארות כמו שהן.')}</p>
       ) : (
         <>
+          {ownName && (
+            renaming === null ? (
+              <div class="row tpl-own">
+                <strong class="grow small tpl-own-name"><bdi>{ownName.name}</bdi></strong>
+                <button class="btn ghost small-btn tpl-rename" onClick={() => setRenaming(ownName.name)}>{t('שנה שם')}</button>
+              </div>
+            ) : (
+              <div class="row tpl-own">
+                <input class="text-in tpl-rename-in grow" style="margin:0;padding:8px 10px" dir="auto" autofocus maxLength={60} value={renaming} aria-label={t('שם התבנית')} onInput={(e) => setRenaming((e.currentTarget as HTMLInputElement).value)} onKeyDown={(e) => { if (e.key === 'Escape') setRenaming(null); else if (e.key === 'Enter' && renaming.trim()) { e.preventDefault(); void saveRename(ownName.id, ownName.name) } }} />
+                <button class="btn tonal small-btn tpl-rename-save" disabled={!renaming.trim()} onClick={() => void saveRename(ownName.id, ownName.name)}>{t('שמור')}</button>
+                <button class="btn ghost small-btn" onClick={() => setRenaming(null)}>{t('ביטול')}</button>
+              </div>
+            )
+          )}
+          {storeFailed.value && <p class="small tpl-store-error" role="alert" style="margin:0;color:#e5484d">{t('לא ניתן לשמור בדפדפן (אין מקום פנוי?). השינוי יישמר עד שהדף ייסגר.')}</p>}
           <p class="small muted" style="margin:0">{t('ההגדרות מתמלאות לפי התבנית. אפשר לשנות אותן אחר כך.')}</p>
           <SwitchRow cls="tpl-subs" title={t('ליצור כתוביות אוטומטית')} text={t('זיהוי הדיבור במכשיר, לכל סרטון')} on={settings.createSubs} onChange={(on) => onSettings({ ...settings, createSubs: on })} />
           {settings.createSubs && (

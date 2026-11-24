@@ -124,7 +124,11 @@ export async function restoreTemplate(id: string): Promise<void> {
 export async function renameTemplate(id: string, name: string): Promise<void> {
   const t = userTemplates.value.find((x) => x.id === id)
   const n = name.trim().slice(0, 60)
-  if (t && n) await saveTemplate({ ...t, name: n })
+  if (!t || !n || n === t.name) return
+  // The list keeps its order (a rename isn't a new template).
+  const own: Template = { ...t, name: n }
+  userTemplates.value = userTemplates.value.map((x) => (x.id === id ? own : x))
+  await stored(put('user', id, own))
 }
 
 /** A copy of [id] (a built-in too) as the user's own, named [name]. */
