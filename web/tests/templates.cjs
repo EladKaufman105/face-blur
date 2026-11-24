@@ -172,7 +172,7 @@ const [, , url, video1, video2, out] = process.argv
     // ---- two videos at once
     await p.goto(url)
     await p.waitForTimeout(600)
-    await p.click('.hero .several')
+    await p.click('.several')
     await p.waitForSelector('.batch-setup')
     await p.setInputFiles('.batch-input', [video1, video2])
     await p.waitForFunction(() => document.querySelectorAll('.batch-file').length === 2)

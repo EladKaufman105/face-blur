@@ -90,6 +90,11 @@ addEnglish({
   'הייצוב לא הופעל': 'Steadying wasn’t applied',
   // Batch
   'כמה סרטונים': 'Several videos',
+  'קורא את הסרטון': 'Reading the video',
+  'בלי טשטוש פנים: הפנים לא נחפשות בכלל, וזה חוסך זמן.': 'No face blur: faces aren’t looked for at all, which saves time.',
+  'כמה סרטונים עם תבנית אחת': 'Several videos, one template',
+  'בוחרים כמה סרטונים ותבנית, והם מעובדים אחד אחרי השני, בלי לבדוק כל אחד בנפרד.': 'Pick several videos and a template; they are processed one after another, with no checking each one first.',
+  'בחירת סרטונים ותבנית': 'Choose videos and template',
   'עד %d סרטונים בבת אחת.': 'Up to %d videos at once.',
   'עד %d סרטונים בבת אחת, עם תבנית אחת. העיבוד רץ בלשונית הזו.': 'Up to %d videos at once, with one template. Processing runs in this tab.',
   'הסר': 'Remove',
