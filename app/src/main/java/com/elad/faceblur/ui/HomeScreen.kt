@@ -51,7 +51,7 @@ import com.elad.faceblur.batch.BatchState
 import com.elad.faceblur.i18n.t
 
 /**
- * The home screen: a new video (blur faces) first, the other tools, then the saved projects.
+ * The home screen: a new video (blur faces) first, several videos with one template as a section of its own, the other tools, then the saved projects.
  * On a tablet, starting something new on one side and the projects on the other.
  */
 @Composable
@@ -174,23 +174,29 @@ private fun HeroCard(onPick: () -> Unit) {
     }
 }
 
-/** The ways to start: one video (the hero), and under it, closer than the sections, several at once. */
+/**
+ * The ways to start, kept apart: one video (the hero, the main entry), then its own section for
+ * several videos with one template (a batch), with its own heading, color and wording.
+ */
 @Composable
 private fun NewVideoGroup(batchRunning: Boolean, onPick: () -> Unit, onBatch: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
+    Column(verticalArrangement = Arrangement.spacedBy(Space.XL)) {
         HeroCard(onPick)
-        if (!batchRunning) BatchCard(onBatch)
+        if (!batchRunning) BatchSection(onBatch)
     }
 }
 
-/** Several videos at once, with one template (a batch): a wide tile in the tools' style, the face blur's color. */
+/** Several videos at once, with one template (a batch): a section of its own, not part of the single-video flow. */
 @Composable
-private fun BatchCard(onClick: () -> Unit) {
-    WideTile(
-        AppIcons.Videos, t("כמה סרטונים"),
-        t("עד %d סרטונים בבת אחת, עם תבנית אחת. ממשיך גם כשהמסך כבוי.").format(BatchMath.MAX_VIDEOS),
-        Feature.FACES, onClick, Modifier.testTag(Tags.BATCH),
-    )
+private fun BatchSection(onClick: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
+        SectionHeader(t("כמה סרטונים עם תבנית אחת"), t("אותה תבנית לכל הסרטונים, בלי לעבור על כל אחד"), MaterialTheme.colorScheme.onSurfaceVariant)
+        WideTile(
+            AppIcons.Videos, t("בחר כמה סרטונים"),
+            t("עד %d סרטונים בבת אחת, עם תבנית אחת. ממשיך גם כשהמסך כבוי.").format(BatchMath.MAX_VIDEOS),
+            Feature.SOUND, onClick, Modifier.testTag(Tags.BATCH),
+        )
+    }
 }
 
 /** Quick ways into the editor without face detection, one per tool. */
