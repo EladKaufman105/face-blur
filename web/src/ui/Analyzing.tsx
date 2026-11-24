@@ -3,6 +3,8 @@ import { t, duration } from '../i18n'
 import type { Analysis } from '../lib/types'
 import type { AnalyzeMessage, AnalyzeRequest } from '../workers/analyze.worker'
 import { FaceIcon } from './icons'
+import { AnalysisStatsPanel, type VideoFacts } from './AnalysisStatsPanel'
+import type { AnalysisStats } from '../lib/analysis-stats'
 import { canKeepAwake, useWakeLock } from '../lib/wakelock'
 
 type Props = {
@@ -20,8 +22,9 @@ export function Analyzing({ file, sensitive, twoSteps, onDone, onError, onCancel
   const [progress, setProgress] = useState({ done: 0, total: 1, faces: 0 })
   const [ready, setReady] = useState(false)
   const [backend, setBackend] = useState('')
-  const [stats, setStats] = useState('')
-  // Tap the percentage to show where the time goes (?debug shows it from the start).
+  const [stats, setStats] = useState<AnalysisStats | null>(null)
+  const [video, setVideo] = useState<VideoFacts | null>(null)
+  // Tap the percentage to open the stats panel (where the time goes) (?debug shows it from the start).
   const [debug, setDebug] = useState(() => new URLSearchParams(location.search).has('debug'))
   const [aspect, setAspect] = useState(16 / 9)
   const started = useRef(performance.now())
@@ -37,6 +40,7 @@ export function Analyzing({ file, sensitive, twoSteps, onDone, onError, onCancel
         setReady(true)
         setBackend(m.backend)
         setAspect(m.width / m.height)
+        setVideo({ width: m.width, height: m.height, fps: m.fps, duration: m.duration })
         started.current = performance.now()
       } else if (m.type === 'progress') {
         setProgress({ done: m.done, total: m.total, faces: m.faces })
@@ -105,11 +109,11 @@ export function Analyzing({ file, sensitive, twoSteps, onDone, onError, onCancel
             <strong>{ready ? (twoSteps ? t('שלב 1 מתוך 2 · מזהה פנים') : t('מזהה פנים')) : t('מכין את המודל…')}</strong>
             <div class="small muted">{[ready ? t('עברו %s', duration(elapsed)) : '', left !== null ? t('נותרו כ-%s', duration(left)) : '', backend ? (backend === 'webgpu' ? t('על המעבד הגרפי') : t('על המעבד')) : ''].filter(Boolean).join(' · ') || '\u00a0'}</div>
           </div>
-          <div class="big-num" onClick={() => setDebug((d) => !d)}>{ready ? pct : 0}%</div>
+          <button type="button" class="big-num stats-toggle" aria-expanded={debug} onClick={() => setDebug((d) => !d)}>{ready ? pct : 0}%</button>
         </div>
         <div class="progress" style="margin:14px 0 12px"><div style={{ width: `${ready ? pct : 2}%` }} /></div>
         {backend === 'wasm' && <p class="small" style="margin:0 0 10px;color:var(--primary)">{t('הדפדפן הזה לא נותן גישה למעבד הגרפי (WebGPU), אז הזיהוי איטי. ב-Chrome או Safari מעודכנים זה מהיר הרבה יותר.')}</p>}
-        {debug && stats && <p class="small muted" dir="ltr" style="margin:0 0 10px;font-family:monospace">{stats}</p>}
+        <AnalysisStatsPanel open={debug && !!stats} stats={stats} video={video} percent={pct} elapsed={() => (performance.now() - started.current) / 1000} />
         <div class="row">
           <div class="small muted grow">{canKeepAwake() ? t('השאר את הלשונית פתוחה עד הסוף. המסך יישאר דלוק.') : t('בטלפון: השאר את המסך פתוח עד הסיום.')}</div>
           <button class="btn tonal" onClick={onCancel}>{t('ביטול')}</button>

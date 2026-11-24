@@ -18,13 +18,15 @@ t() {
 }
 
 case "${1:?shard}" in
-  1) # 110 s
+  1) # 132 s
     # The picture: a green screen, a 9:16 frame, a steadied camera, the people's background.
     t picture.cjs "$U" $S/green_screen.mp4 $S/classroom.mp4 $S/walk.mp4 $S/speech_two.mp4 $R/picture   # 107
     # Settings: language, light / dark / the device's, the color palette; kept after a reload.
     t settings.cjs "$U" $R/settings   # 2
     # A video shared to the installed app (Web Share Target) or opened with it.
     t share.cjs "$U" $S/walk.mp4 $R/share   # 1
+    # The analysis stats panel: tiles and charts that update, more details, an (i), Copy (the report).
+    t stats.cjs "$U" $S/walk.mp4 $R/stats   # 22
     ;;
   2) # 146 s
     # A deep voice on a clip with speech.
