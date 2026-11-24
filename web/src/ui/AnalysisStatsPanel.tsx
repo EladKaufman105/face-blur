@@ -217,8 +217,8 @@ export function AnalysisStatsPanel({ open, stats, video, percent, elapsed }: { o
   }
 
   return (
-    <div class={`fold${open && a ? ' open' : ''}`} inert={!open}>
-      <div class="fold-in">
+    <div class={`sfold${open && a ? ' open' : ''}`} inert={!open}>
+      <div class="sfold-in">
         <div class="stats" ref={root} data-testid="stats-panel">
           {a && MAIN.map(([size, ids]) => (
             <div class={`stats-row ${size}`} key={ids[0]}>{ids.map((id) => <Tile key={id} id={id} size={size} a={a} onInfo={showInfo} />)}</div>
@@ -236,8 +236,8 @@ export function AnalysisStatsPanel({ open, stats, video, percent, elapsed }: { o
               {copied ? t('הנתונים הועתקו') : t('העתק')}
             </button>
           </div>
-          <div class={`fold${more ? ' open' : ''}`} inert={!more}>
-            <div class="fold-in">
+          <div class={`sfold${more ? ' open' : ''}`} inert={!more}>
+            <div class="sfold-in">
               <div class="stats-details">
                 {a && DETAILS.map(([size, ids]) => (
                   <div class={`stats-row ${size}`} key={ids[0]}>{ids.map((id) => <Tile key={id} id={id} size={size} a={a} onInfo={showInfo} />)}</div>

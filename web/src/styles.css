@@ -713,9 +713,9 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 /* The analysis stats panel (a tap on the percentage): tiles with a chart of the last minute. */
 .stats-toggle { border: 0; background: transparent; padding: 0 2px; cursor: pointer; border-radius: var(--radius-control); }
 .stats-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.fold { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows var(--motion-panel) ease, opacity var(--motion-content) ease, visibility 0s linear var(--motion-panel); }
-.fold.open { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows var(--motion-panel) ease, opacity var(--motion-content) ease, visibility 0s; }
-.fold-in { overflow: hidden; min-height: 0; }
+.sfold { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows var(--motion-panel) ease, opacity var(--motion-content) ease, visibility 0s linear var(--motion-panel); }
+.sfold.open { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows var(--motion-panel) ease, opacity var(--motion-content) ease, visibility 0s; }
+.sfold-in { overflow: hidden; min-height: 0; }
 .stats { position: relative; display: grid; gap: var(--space-2); margin: 0 0 var(--space-3); }
 .stats-row { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: var(--space-2); }
 .stats-row:has(> :nth-child(2):last-child) { --cols: 2; }
@@ -750,4 +750,4 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .stats-actions .chev.up { transform: rotate(180deg); }
 .stat-tip { position: absolute; z-index: 5; width: max-content; max-width: min(240px, calc(100% - 8px)); transform: translateY(-100%); background: var(--text); color: var(--bg); font: var(--text-body); font-size: 13px; line-height: 18px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-control); box-shadow: var(--shadow); pointer-events: auto; }
 .stat-tip.below { transform: none; }
-@media (prefers-reduced-motion: reduce) { .fold, .fold.open, .stats-actions .chev { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .sfold, .sfold.open, .stats-actions .chev { transition: none; } }

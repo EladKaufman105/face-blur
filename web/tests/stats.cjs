@@ -74,7 +74,7 @@ const [, , url, video, out] = process.argv
       if (!/detect_ms: now [\d.]+, avg [\d.]+, min [\d.]+, max [\d.]+/.test(text)) throw new Error(`${name}: detect_ms line:\n${text}`)
       // Close it again.
       await p.click('.stats-toggle')
-      await p.waitForFunction(() => !document.querySelector('.stat[data-cell=detect]') || getComputedStyle(document.querySelector('.stats')?.closest('.fold')).visibility === 'hidden', null, { timeout: 3000 })
+      await p.waitForFunction(() => !document.querySelector('.stat[data-cell=detect]') || getComputedStyle(document.querySelector('.stats')?.closest('.sfold')).visibility === 'hidden', null, { timeout: 3000 })
       console.log(`${name}: tiles ${cells.join(',')} · detect chart changed ${first !== second} · values ${JSON.stringify(vals)} · details ${JSON.stringify(detail)} · report ${text.split('\n').length} lines`)
       await ctx.close()
     }
