@@ -141,6 +141,15 @@ class FaceBlurProcessor(private val context: Context) {
         settings: Settings,
         onPreview: ((android.graphics.Bitmap, List<Det>, String, StatsSnapshot) -> Unit)? = null,
         onProgress: (Float) -> Unit,
+    ): AnalysisResult = analyze(info, settings, onPreview, null, onProgress)
+
+    /** As above; [onStats] gets the pass's final counters (also logged), for comparing runs. */
+    suspend fun analyze(
+        info: VideoInfo,
+        settings: Settings,
+        onPreview: ((android.graphics.Bitmap, List<Det>, String, StatsSnapshot) -> Unit)?,
+        onStats: ((StatsSnapshot) -> Unit)?,
+        onProgress: (Float) -> Unit,
     ): AnalysisResult {
         val analysisFile = temp("analysis")
         val analyzer = withContext(Dispatchers.IO) { FaceAnalyzer(context, settings.sensitive, info.fps) }
@@ -166,6 +175,10 @@ class FaceBlurProcessor(private val context: Context) {
             lastAccelerator = analyzer.accelerator
             lastPrecision = analyzer.precision
             lastPace = analyzer.pace
+            analyzer.snapshot().let { snap ->
+                android.util.Log.i("ONIT", "analysis stats: ${snap.summary()}")
+                onStats?.invoke(snap)
+            }
             return withContext(Dispatchers.Default) { analyzer.result() }
         } finally {
             analyzer.close()
@@ -285,7 +298,7 @@ class FaceBlurProcessor(private val context: Context) {
         }
         val overlays = ArrayList<TextureOverlay>()
         if (burn.isNotEmpty()) overlays += SubtitleOverlay(burn, subStyle, SubtitleRenderer.get(context))
-        if (export.watermark.enabled(context)) overlays += WatermarkOverlay(context, export.watermark, export.platform?.let { com.elad.faceblur.template.SafeZone.of(it) })
+        if (export.watermark.enabled(context)) overlays += WatermarkOverlay(context, export.watermark)
         val subsEffect = if (overlays.isEmpty()) emptyList() else listOf<Effect>(OverlayEffect(ImmutableList.copyOf(overlays)))
         // The voice: the pitch, then bleeps and robot sound (so the beep isn't shifted).
         val audioFx = ArrayList<AudioProcessor>()

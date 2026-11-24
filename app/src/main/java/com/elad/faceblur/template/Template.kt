@@ -17,8 +17,8 @@ import org.json.JSONObject
 /** The categories a template can include; each has its own switch. */
 enum class TemplateCategory { BLUR, SUBTITLES, VOICE, CUTS, BACKGROUND, STABILIZE, EXPORT }
 
-/** Where a template comes from and what it sets: the user's own (all parts), a built-in look or a built-in destination. */
-enum class TemplateGroup { USER, LOOK, DESTINATION }
+/** Where a template comes from: the user's own, or a built-in look (a design preset). */
+enum class TemplateGroup { USER, LOOK }
 
 /** Face blur. A null field is left as it is; [none]: no face blur at all. */
 data class BlurPart(
@@ -61,8 +61,6 @@ data class ExportPart(
     val quality: ExportQuality? = null,
     val codec: ExportCodec? = null,
     val watermark: Watermark? = null,
-    /** The platform whose safe zone the subtitles and watermark stay in (null: none; set with the other export fields). */
-    val platform: Platform? = null,
 )
 
 /**
@@ -142,7 +140,6 @@ data class Template(
                 e.quality?.let { put("quality", it.name) }
                 e.codec?.let { put("codec", it.name) }
                 e.watermark?.let { put("watermark", it.toJson()) }
-                e.platform?.let { put("platform", it.name) }
             })
         }
         return o
@@ -189,7 +186,6 @@ data class Template(
                         e.enumOrNull<ExportAspect>("aspect"), e.intOrNull("shortSide"), e.intOrNull("fps"),
                         e.enumOrNull<ExportQuality>("quality"), e.enumOrNull<ExportCodec>("codec"),
                         if (e.has("watermark")) Watermark.fromJson(e.optString("watermark")) else null,
-                        e.enumOrNull<Platform>("platform"),
                     )
                 },
             )
@@ -268,7 +264,6 @@ fun Template.applyTo(base: TemplateSettings): TemplateSettings {
                 quality = e.quality ?: s.export.quality,
                 codec = e.codec ?: s.export.codec,
                 watermark = e.watermark ?: s.export.watermark,
-                platform = e.platform,
             ),
         )
     }
@@ -276,16 +271,7 @@ fun Template.applyTo(base: TemplateSettings): TemplateSettings {
 }
 
 /** Lays several templates over [base], in order. */
-fun applyAll(base: TemplateSettings, templates: List<Template>): TemplateSettings = templates.fold(base) { s, t -> t.applyTo(s) }.inSafeZone()
-
-/**
- * With a platform chosen, the burned-in subtitles stand inside its safe zone. Done when templates
- * are applied, so a position the user sets by hand afterwards stays as set.
- */
-fun TemplateSettings.inSafeZone(): TemplateSettings {
-    val p = export.platform ?: return this
-    return copy(subStyle = SafeZone.of(p).fitSubtitles(subStyle, aspect = if (export.aspect.ratio > 0f) export.aspect.ratio else 9f / 16f))
-}
+fun applyAll(base: TemplateSettings, templates: List<Template>): TemplateSettings = templates.fold(base) { s, t -> t.applyTo(s) }
 
 /**
  * The template made of [s]'s values, with only the [keep] categories (the editor's "Save as
@@ -301,14 +287,13 @@ fun TemplateSettings.toTemplate(id: String, name: String, keep: Set<TemplateCate
     cuts = CutsPart(cutSilences, minPauseMs, cutFillers),
     background = background,
     stabilize = stabilize,
-    export = ExportPart(export.aspect, export.shortSide, export.fps, export.quality, export.codec, export.watermark, export.platform),
+    export = ExportPart(export.aspect, export.shortSide, export.fps, export.quality, export.codec, export.watermark),
 ).only(keep)
 
-/** What is chosen on the Ready screen: the user's own template, or a built-in look and/or destination (ids). */
-data class TemplateChoice(val user: String? = null, val look: String? = null, val dest: String? = null) {
-    val isEmpty get() = user == null && look == null && dest == null
+/** What is chosen on the Ready screen and the batch setup: one template, the user's or a built-in look (null: none). */
+data class TemplateChoice(val id: String? = null) {
+    val isEmpty get() = id == null
 }
 
-/** The ids of the templates a choice stands for, in the order they are laid over the settings: one user template, or the look and then the destination. */
-val TemplateChoice.ids: List<String>
-    get() = listOfNotNull(user) + (if (user == null) listOfNotNull(look, dest) else emptyList())
+/** The ids of the templates a choice stands for, in the order they are laid over the settings. */
+val TemplateChoice.ids: List<String> get() = listOfNotNull(id)

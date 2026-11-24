@@ -242,6 +242,8 @@ fun EditorScreen(
     LaunchedEffect(selecting) { if (!selecting) propsOpen = false }
     val zoom = rememberTimelineZoom(ctrl)
     val watermarkOn = export.watermark.enabled(LocalContext.current)
+    // The safe-zone view aid is for vertical frames only (the export's, or the video's own).
+    val safeZoneAvailable = SafeZone.appliesTo(export.aspect, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)
     // A group opens the tool used last in it (or its first).
     val lastInGroup = remember(ctrl) { mutableStateMapOf<ToolGroup, EditorPanel>() }
     LaunchedEffect(ctrl.panel) { ctrl.panel?.let { lastInGroup[groupOf(it)] = it } }
@@ -287,12 +289,14 @@ fun EditorScreen(
                 }
             }
             // Where a platform's own screens cover the picture (only drawn here, not in the export).
-            IconButton(onClick = { ctrl.safeZoneOn = !ctrl.safeZoneOn }, modifier = Modifier.testTag(Tags.SAFE_ZONE)) {
-                Icon(
-                    AppIcons.SafeArea,
-                    t("אזור בטוח"),
-                    tint = if (ctrl.safeZoneOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            if (safeZoneAvailable) {
+                IconButton(onClick = { ctrl.safeZoneOn = !ctrl.safeZoneOn }, modifier = Modifier.testTag(Tags.SAFE_ZONE)) {
+                    Icon(
+                        AppIcons.SafeArea,
+                        t("אזור בטוח"),
+                        tint = if (ctrl.safeZoneOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             IconButton(onClick = ctrl::undo, enabled = ctrl.model.canUndo && !busy, modifier = Modifier.testTag(Tags.UNDO)) { Icon(EditorIcons.Undo, t("בטל")) }
             IconButton(onClick = ctrl::redo, enabled = ctrl.model.canRedo && !busy, modifier = Modifier.testTag(Tags.REDO)) { Icon(EditorIcons.Redo, t("בצע שוב")) }
@@ -509,9 +513,9 @@ fun EditorScreen(
 @Composable
 private fun EditorVideoArea(ctrl: EditorController, export: ExportOptions, subStyle: SubtitleStyle, modifier: Modifier, messages: Boolean) {
     Box(modifier.fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
-        VideoWithOverlay(ctrl, export.subs, subStyle, export.aspect, export.watermark, export.platform)
-        // No destination picked: which platform's zone to draw.
-        if (ctrl.safeZoneOn && export.platform == null) {
+        VideoWithOverlay(ctrl, export.subs, subStyle, export.aspect, export.watermark)
+        // The view aid's platform chooser (only for a vertical frame).
+        if (ctrl.safeZoneOn && SafeZone.appliesTo(export.aspect, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)) {
             Row(Modifier.align(Alignment.TopCenter).padding(top = Space.S), horizontalArrangement = Arrangement.spacedBy(Space.S)) {
                 for (p in Platform.entries) {
                     FilterChip(
@@ -566,7 +570,6 @@ private fun VideoWithOverlay(
     style: SubtitleStyle,
     frameShape: ExportAspect = ExportAspect.ORIGINAL,
     watermark: Watermark = Watermark(),
-    platform: Platform? = null,
 ) {
     val context = LocalContext.current
     val analysis = ctrl.session.analysis
@@ -632,7 +635,7 @@ private fun VideoWithOverlay(
             update = { if (it.player !== player) it.player = player },
             modifier = Modifier.fillMaxSize(),
         )
-        Overlay(ctrl, subs, style, frameShape, watermark, platform, Modifier.fillMaxSize())
+        Overlay(ctrl, subs, style, frameShape, watermark, Modifier.fillMaxSize())
     }
 }
 
@@ -774,7 +777,7 @@ private class PlayerSync(
 }
 
 @Composable
-private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle, aspect: ExportAspect, watermark: Watermark, platform: Platform?, modifier: Modifier) {
+private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle, aspect: ExportAspect, watermark: Watermark, modifier: Modifier) {
     val context = LocalContext.current
     val renderer = SubtitleRenderer.get(context)
     // The watermark as it will be burned in, drawn once per size.
@@ -822,11 +825,11 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
             drawRect(Color.White.copy(alpha = 0.8f), Offset(fl, ft), Size(fw, fh), style = Stroke(1.5.dp.toPx()))
         }
         if (watermark.enabled(context) && fw >= 2f && fh >= 2f) {
-            val key = listOf(watermark, fw.toInt(), fh.toInt(), platform)
+            val key = listOf(watermark, fw.toInt(), fh.toInt())
             if (wmCache[0] != key) {
                 (wmCache[1] as? android.graphics.Bitmap)?.recycle()
                 wmCache[1] = android.graphics.Bitmap.createBitmap(fw.toInt(), fh.toInt(), android.graphics.Bitmap.Config.ARGB_8888).also {
-                    Watermark.draw(context, watermark, android.graphics.Canvas(it), it.width, it.height, platform?.let { p -> SafeZone.of(p) })
+                    Watermark.draw(context, watermark, android.graphics.Canvas(it), it.width, it.height)
                 }
                 wmCache[0] = key
             }
@@ -850,7 +853,9 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
             nc.restore()
             if (faded) nc.restore()
         }
-        if (ctrl.safeZoneOn && fw >= 2f && fh >= 2f) drawSafeZone(SafeZone.of(platform ?: ctrl.safePlatform), Offset(fl, ft), Size(fw, fh))
+        if (ctrl.safeZoneOn && fw >= 2f && fh >= 2f && SafeZone.appliesTo(aspect, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)) {
+            drawSafeZone(SafeZone.of(ctrl.safePlatform), Offset(fl, ft), Size(fw, fh))
+        }
         if (live && ctrl.playing) return@Canvas
         val shapes = ctrl.model.shapesAt(ctrl.shownFrame, ctrl.padding)
         label.textSize = 13.dp.toPx()

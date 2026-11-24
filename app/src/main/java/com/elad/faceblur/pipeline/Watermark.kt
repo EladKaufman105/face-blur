@@ -12,7 +12,6 @@ import androidx.media3.common.util.Size
 import androidx.media3.effect.BitmapOverlay
 import com.elad.faceblur.subs.SubFont
 import com.elad.faceblur.subs.SubtitleRenderer
-import com.elad.faceblur.template.SafeZone
 import org.json.JSONObject
 import java.io.File
 import kotlin.math.min
@@ -95,11 +94,17 @@ data class Watermark(
             return tmp.renameTo(f)
         }
 
-        /** Draws [w] on a [width] x [height] canvas; with a [zone], inside its safe area. */
-        fun draw(context: Context, w: Watermark, canvas: Canvas, width: Int, height: Int, zone: SafeZone? = null) {
+        /** Left (or top) edge of something [len] long along a side of [total], in grid cell [cell]. */
+        private fun place(cell: Int, len: Float, total: Float, margin: Float) = when (cell) {
+            0 -> margin
+            1 -> (total - len) / 2f
+            else -> total - margin - len
+        }
+
+        /** Draws [w] on a [width] x [height] canvas. */
+        fun draw(context: Context, w: Watermark, canvas: Canvas, width: Int, height: Int) {
             val short = min(width, height).toFloat()
             val margin = short * 0.035f
-            val m = zone?.watermarkMargins(width.toFloat(), height.toFloat(), margin) ?: SafeZone.Margins(margin, margin, margin, margin)
             val alpha = (w.opacity * 255).roundToInt().coerceIn(0, 255)
             val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { this.alpha = alpha }
             val pos = w.position
@@ -111,8 +116,8 @@ data class Watermark(
                     lw = width * 0.6f
                     lh = lw * logo.height / logo.width
                 }
-                val x = SafeZone.place(pos.col, lw, width.toFloat(), m.left, m.right)
-                val y = SafeZone.place(pos.row, lh, height.toFloat(), m.top, m.bottom)
+                val x = place(pos.col, lw, width.toFloat(), margin)
+                val y = place(pos.row, lh, height.toFloat(), margin)
                 canvas.drawBitmap(logo, null, RectF(x, y, x + lw, y + lh), paint)
                 logo.recycle()
                 return
@@ -125,8 +130,8 @@ data class Watermark(
             val th = fm.descent - fm.ascent
             // A box needs room around the text.
             val pad = if (w.look == WatermarkLook.BOX) paint.textSize * 0.35f else 0f
-            val x = SafeZone.place(pos.col, tw + 2 * pad, width.toFloat(), m.left, m.right) + pad
-            val top = SafeZone.place(pos.row, th + 2 * pad, height.toFloat(), m.top, m.bottom) + pad
+            val x = place(pos.col, tw + 2 * pad, width.toFloat(), margin) + pad
+            val top = place(pos.row, th + 2 * pad, height.toFloat(), margin) + pad
             val baseline = top - fm.ascent
             // Outline and box in black behind light text, white behind dark text.
             val contrast = if (Color.luminance(w.color) > 0.45f) Color.BLACK else Color.WHITE
@@ -160,7 +165,7 @@ data class Watermark(
 }
 
 /** The watermark burned in: one full-frame picture, drawn once for the video's size. */
-class WatermarkOverlay(private val context: Context, private val mark: Watermark, private val zone: SafeZone? = null) : BitmapOverlay() {
+class WatermarkOverlay(private val context: Context, private val mark: Watermark) : BitmapOverlay() {
     private var bitmap: Bitmap? = null
 
     override fun configure(videoSize: Size) {
@@ -168,7 +173,7 @@ class WatermarkOverlay(private val context: Context, private val mark: Watermark
         val b = bitmap
         if (b == null || b.width != videoSize.width || b.height != videoSize.height) {
             bitmap = Bitmap.createBitmap(videoSize.width, videoSize.height, Bitmap.Config.ARGB_8888).also {
-                Watermark.draw(context, mark, Canvas(it), it.width, it.height, zone)
+                Watermark.draw(context, mark, Canvas(it), it.width, it.height)
             }
         }
     }

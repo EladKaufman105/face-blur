@@ -239,7 +239,7 @@ class EditorScreenTest {
         // The platform's safe zone over a vertical frame (preview only).
         rule.runOnIdle {
             ctrl.safeZoneOn = true
-            export = ExportOptions(aspect = com.elad.faceblur.edit.ExportAspect.VERTICAL, platform = com.elad.faceblur.template.Platform.TIKTOK)
+            export = ExportOptions(aspect = com.elad.faceblur.edit.ExportAspect.VERTICAL)
         }
         Thread.sleep(1500)
         shot(outDir, "6b_safe_zone.png")
@@ -375,8 +375,8 @@ class EditorScreenTest {
         rule.waitForIdle()
         Thread.sleep(800)
         shot(outDir, "9_settings_he.png")
-        // A look and a destination chosen: the previews and the destination's summary.
-        rule.runOnIdle { vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice(look = BuiltInTemplates.BOLD.id, dest = BuiltInTemplates.TIKTOK.id)) }
+        // A look chosen: the picker's selected card and its summary.
+        rule.runOnIdle { vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice(BuiltInTemplates.BOLD.id)) }
         Thread.sleep(1500)
         shot(outDir, "9c_ready_template.png")
         rule.runOnIdle { vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice()) }

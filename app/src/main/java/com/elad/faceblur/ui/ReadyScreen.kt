@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -76,13 +77,20 @@ internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, on
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = { saveSheet = true }, modifier = Modifier.fillMaxWidth().testTag(Tags.BLUR_AND_SAVE)) {
+            TextButton(onClick = { saveSheet = true }, enabled = !vm.templateNeedsModel, modifier = Modifier.fillMaxWidth().testTag(Tags.BLUR_AND_SAVE)) {
                 Text(t("או: טשטש ושמור ישר, בלי עורך"))
             }
         }
     }
     val picker: @Composable () -> Unit = {
-        TemplatePickerCard(vm.templates, vm.templateChoice, vm::chooseTemplates, vm.previewBase(), s.info.thumbnail, s.info.aspect)
+        val chosen = vm.templateChoice.id?.let { vm.templates.find(it) }
+        TemplatePickerCard(
+            vm.templates, vm.templateChoice, vm::chooseTemplates, vm.previewBase(), s.info.thumbnail, s.info.aspect,
+            // The switch shows when the chosen template has subtitles in it.
+            createSubs = if (chosen?.subs != null) vm.templateSettings?.createSubs ?: false else null,
+            onCreateSubs = vm::setTemplateSubtitles,
+            footer = { SpeechModelRow(vm) },
+        )
     }
     if (wide) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.XL)) {
@@ -97,7 +105,7 @@ internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, on
         // The template first: it is what the rest of the screen fills in from.
         Column(verticalArrangement = Arrangement.spacedBy(Space.L)) {
             EnterUp(0) { picker() }
-            EnterUp(1) { VideoCard(s.info, onReplace = onReplace) }
+            EnterUp(1) { VideoCard(s.info, onReplace = onReplace, imageMaxHeight = 150.dp) }
             EnterUp(2) { actions() }
             EnterUp(3) { BlurSettings(vm) }
         }
@@ -109,6 +117,25 @@ internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, on
             onDismiss = { saveSheet = false },
             action = t("טשטש ושמור"),
         )
+    }
+}
+
+/** The template makes subtitles but the speech model isn't on the phone yet: say so, and download it from here. */
+@Composable
+private fun SpeechModelRow(vm: MainViewModel) {
+    val settings = vm.templateSettings ?: return
+    if (!settings.needsSpeechModel || vm.models.isReady(settings.speechModel)) return
+    val downloading = vm.models.downloading != null
+    Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
+        Text(
+            if (downloading) t("מוריד… %d%%").format((vm.models.progress * 100).roundToInt())
+            else t("כתוביות צריכות מודל זיהוי דיבור, שמורידים פעם אחת (%d MB).").format(settings.speechModel.approxBytes / 1_000_000L),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (downloading) LinearProgressIndicator(progress = { vm.models.progress }, modifier = Modifier.fillMaxWidth())
+        else AccentOutlinedButton(t("הורד את המודל עכשיו"), vm::downloadTemplateModel, Modifier.fillMaxWidth(), accent = Feature.SUBTITLES.tint, height = 44.dp)
+        vm.batchDownloadError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     }
 }
 
@@ -187,7 +214,7 @@ private fun BlurSettings(vm: MainViewModel) {
 /** The picked video: its first frame, name and details, and a way to pick another. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun VideoCard(info: VideoInfo, onReplace: (() -> Unit)?) {
+internal fun VideoCard(info: VideoInfo, onReplace: (() -> Unit)?, imageMaxHeight: androidx.compose.ui.unit.Dp = 300.dp) {
     ClipCard {
         Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
             info.thumbnail?.let { bmp ->
@@ -203,7 +230,7 @@ internal fun VideoCard(info: VideoInfo, onReplace: (() -> Unit)?) {
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
-                            .heightIn(max = 300.dp)
+                            .heightIn(max = imageMaxHeight)
                             .aspectRatio(info.aspect, matchHeightConstraintsFirst = true),
                     )
                 }
