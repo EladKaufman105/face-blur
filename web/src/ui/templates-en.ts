@@ -3,6 +3,7 @@
 import { addEnglish } from '../i18n'
 
 addEnglish({
+  'לא ניתן לשמור בדפדפן (אין מקום פנוי?). השינוי יישמר עד שהדף ייסגר.': "Couldn't save in the browser (no room left?). The change lasts until the page closes.",
   // Templates
   'תבנית': 'Template',
   'תבניות': 'Templates',

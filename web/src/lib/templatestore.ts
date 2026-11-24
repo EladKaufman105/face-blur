@@ -51,6 +51,10 @@ async function del(store: Store, id: string) {
 export const userTemplates = signal<Template[]>([])
 /** The built-in looks as changed by the user (by id). */
 export const builtInEdits = signal<Record<string, Template>>({})
+/** Saving to the browser's storage failed (no room, or no storage): the change lasts until the page closes. */
+export const storeFailed = signal(false)
+const stored = (p: Promise<void>) => p.then(() => { storeFailed.value = false }, () => { storeFailed.value = true })
+
 /** Loaded from the browser's storage (or failed to: the built-ins still work). */
 export const templatesLoaded = signal(false)
 
@@ -97,24 +101,24 @@ export const newTemplateId = () => 'u' + Math.random().toString(36).slice(2, 10)
 export async function saveTemplate(t: Template): Promise<void> {
   if (t.builtIn) {
     builtInEdits.value = { ...builtInEdits.value, [t.id]: t }
-    await put('builtin', t.id, t).catch(() => {})
+    await stored(put('builtin', t.id, t))
     return
   }
   const own: Template = { ...t, group: 'USER', builtIn: false, name: t.name.trim().slice(0, 60) || t.name }
   userTemplates.value = [own, ...userTemplates.value.filter((x) => x.id !== own.id)]
-  await put('user', own.id, own).catch(() => {})
+  await stored(put('user', own.id, own))
 }
 
 export async function deleteTemplate(id: string): Promise<void> {
   userTemplates.value = userTemplates.value.filter((x) => x.id !== id)
-  await del('user', id).catch(() => {})
+  await stored(del('user', id))
 }
 
 /** A built-in look back to how it shipped. */
 export async function restoreTemplate(id: string): Promise<void> {
   const { [id]: _gone, ...rest } = builtInEdits.value
   builtInEdits.value = rest
-  await del('builtin', id).catch(() => {})
+  await stored(del('builtin', id))
 }
 
 export async function renameTemplate(id: string, name: string): Promise<void> {

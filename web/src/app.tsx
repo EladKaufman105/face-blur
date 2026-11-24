@@ -20,7 +20,7 @@ import { BETA } from './lib/channel'
 import { BetaLogo, BetaName, BetaNote } from './ui/Beta'
 import { BatchQueue, BatchSetup } from './ui/Batch'
 import { TemplatesManager } from './ui/TemplateEditor'
-import { hasProcessing, type TemplateSettings } from './lib/template'
+import { type TemplateSettings } from './lib/template'
 import { loadTemplates } from './lib/templatestore'
 import { current as batchNow, running as batchRunning, startBatch, version as batchVersion, doneCount } from './lib/batch'
 import { videoSize as sizeOf } from './lib/templaterun'
@@ -132,13 +132,14 @@ export function App() {
             setScreen({ name: 'analyzing', file: screen.file, template })
           }}
           onBlurAndSave={(look, options, template, templateName) => {
-            // A template that does more than blur (subtitles, voice, ...): processed as a batch of one, with no editor on the way.
-            if (template && (hasProcessing(template) || template.blurOff)) {
+            // Any template (its processing, watermark and export settings): processed as a batch of one, with no editor on the way.
+            // An audio export (MP3) has no video to apply them to: it goes the plain way.
+            if (template && options.format !== 'mp3') {
               startBatch([screen.file], template, templateName, { folder: false, autoDownload: true })
               setScreen({ name: 'batch' })
               return
             }
-            setScreen({ name: 'analyzing', file: screen.file, save: { look, options } })
+            setScreen({ name: 'analyzing', file: screen.file, save: { look, options }, template: template ?? undefined })
           }}
           onReplace={pick}
           onBack={() => setScreen({ name: 'home' })}
@@ -170,7 +171,7 @@ export function App() {
             const path = save.options.aspect !== 'original' && times.length ? reframePath(times.length, tracks, analysis.cuts ?? [], fps, cw, ch) : null
             setScreen({ name: 'ready', file: screen.file })
             saved.current = { file: screen.file, analysis }
-            setJob({ file: screen.file, times, tracks, look: save.look, width: w, height: h, sfx: [], watermark: loadWatermark(), cues: [], subStyle: DEFAULT_SUB_STYLE, voice: null, cuts: [], options: save.options, standalone: true, twoSteps: true, picture: { background: null, masks: null, steady: null, path } })
+            setJob({ file: screen.file, times, tracks, look: save.look, width: w, height: h, sfx: [], watermark: template?.watermark ?? loadWatermark(), cues: [], subStyle: DEFAULT_SUB_STYLE, voice: null, cuts: [], options: save.options, standalone: true, twoSteps: true, picture: { background: null, masks: null, steady: null, path } })
           }}
         />
       )}

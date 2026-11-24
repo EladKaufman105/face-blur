@@ -7,7 +7,7 @@ import { storageKey } from './channel'
 import { t } from '../i18n'
 import { Aborted, exportVideo, jobOf, processVideo, type Phase, type Processed } from './templaterun'
 import { hasProcessing, styleOf, type TemplateSettings } from './template'
-import { createProject, saveProject, deleteProject, summarize, type ProjectPicture, type ProjectState } from './projects'
+import { batchName, createProject, saveProject, deleteProject, summarize, type ProjectPicture, type ProjectState } from './projects'
 import { keepAwake } from './wakelock'
 import { cutCues, toSrt } from './subtitles'
 import { CutMap } from './cutmap'
@@ -160,8 +160,11 @@ export function videoDuration(file: File): Promise<number> {
     const url = URL.createObjectURL(file)
     const done = (d: number) => { URL.revokeObjectURL(url); resolve(isFinite(d) ? d : 0) }
     v.preload = 'metadata'
-    v.onloadedmetadata = () => done(v.duration)
-    v.onerror = () => done(0)
+    // A file the player never answers for must not hold a batch up: 0 (unknown) after a while.
+    const timer = setTimeout(() => done(0), 8000)
+    const end = (d: number) => { clearTimeout(timer); done(d) }
+    v.onloadedmetadata = () => end(v.duration)
+    v.onerror = () => end(0)
     v.src = url
   })
 }
@@ -206,6 +209,8 @@ function worthSaving(s: TemplateSettings): boolean {
 /** Starts processing [files] with [settings] ([templateName]: what it's called in the queue). Returns at once; the work goes on. */
 export function startBatch(files: File[], settings: TemplateSettings, templateName: string, opts: { folder: boolean; autoDownload: boolean }): Batch {
   const at = Date.now()
+  // A finished batch being replaced: its saved videos' links go.
+  if (current.value?.finished) releaseOutputs(current.value)
   const b: Batch = {
     id: `${at.toString(36)}-${Math.random().toString(36).slice(2, 8)}`, at, settings, templateName, folder: opts.folder, autoDownload: opts.autoDownload, finished: false, cancelled: false,
     items: files.slice(0, MAX_VIDEOS).map((file, index) => ({
@@ -221,18 +226,22 @@ export function startBatch(files: File[], settings: TemplateSettings, templateNa
 }
 
 async function runBatch(b: Batch) {
-  // Lengths first: the time left needs them.
-  await Promise.all(b.items.map(async (i) => { i.duration = await videoDuration(i.file) })).catch(() => {})
-  bump()
-  for (const item of b.items) {
-    if (b.cancelled) { if (item.status === 'waiting') item.status = 'skipped'; continue }
-    if (item.status === 'skipped') continue
-    await processOne(b, item)
+  try {
+    // Lengths first: the time left needs them.
+    await Promise.all(b.items.map(async (i) => { i.duration = await videoDuration(i.file) })).catch(() => {})
+    bump()
+    for (const item of b.items) {
+      if (b.cancelled) { if (item.status === 'waiting') item.status = 'skipped'; continue }
+      if (item.status === 'skipped') continue
+      await processOne(b, item)
+      bump()
+    }
+  } finally {
+    for (const i of b.items) if (!isDone(i)) i.status = 'failed'
+    b.finished = true
+    stopHolding()
     bump()
   }
-  b.finished = true
-  stopHolding()
-  bump()
 }
 
 /** A small picture of a frame, for the project's thumbnail. */
@@ -286,7 +295,9 @@ async function processOne(b: Batch, item: BatchItem) {
     const meta = (thumb: string | null) => ({ duration: p.analysis.times.length ? p.analysis.times[p.analysis.times.length - 1] : item.duration, thumb, ...summarize(state) })
     // The project exists from here on, so a failure later can still be opened in the editor.
     try {
-      id = await createProject(item.file, { name: item.name.replace(/\.[^.]+$/, ''), ...meta(null), ...(b.folder ? { batch: { id: b.id, at: b.at } } : {}) })
+      // The folder's name, if it has been renamed while the batch runs.
+      const folderName = b.folder ? await batchName(b.id).catch(() => undefined) : undefined
+      id = await createProject(item.file, { name: item.name.replace(/\.[^.]+$/, ''), ...meta(null), ...(b.folder ? { batch: { id: b.id, at: b.at, ...(folderName ? { name: folderName } : {}) } } : {}) })
       await saveProject(id, {}, state, picture ?? undefined)
       item.projectId = id
     } catch {
@@ -384,11 +395,16 @@ export function cancelAll(b: Batch) {
   bump()
 }
 
+/** Frees a batch's saved outputs (their links hold the whole videos in memory). */
+function releaseOutputs(b: Batch) {
+  for (const i of b.items) if (i.output) { URL.revokeObjectURL(i.output.url); if (i.output.srt) URL.revokeObjectURL(i.output.srt.url) }
+}
+
 /** Forgets a finished batch (frees its saved outputs). */
 export function dismiss() {
   const b = current.value
   if (!b || !b.finished) return
-  for (const i of b.items) if (i.output) { URL.revokeObjectURL(i.output.url); if (i.output.srt) URL.revokeObjectURL(i.output.srt.url) }
+  releaseOutputs(b)
   current.value = null
   bump()
 }

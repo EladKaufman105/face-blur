@@ -239,6 +239,11 @@ export async function renameBatch(id: string, name: string) {
   if (all.length) await tx(['meta'], 'readwrite', (s) => { for (const m of all) s.meta.put({ ...m, batch: { ...m.batch!, name } }, m.id) })
 }
 
+/** The name given to the folder of batch [id] (undefined: none). */
+export async function batchName(id: string): Promise<string | undefined> {
+  return (await listProjects()).find((m) => m.batch?.id === id && m.batch.name)?.batch?.name
+}
+
 /** Deletes every project of batch [id] (not the videos saved to the device). */
 export async function deleteBatch(id: string) {
   const all = (await listProjects()).filter((m) => m.batch?.id === id)

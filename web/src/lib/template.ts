@@ -132,7 +132,8 @@ export const hasProcessing = (s: TemplateSettings) =>
 
 /** The export options [s] stands for (over [base]'s format). */
 export function exportOptionsOf(s: TemplateSettings, base: ExportOptions = DEFAULT_EXPORT): ExportOptions {
-  return { ...base, format: 'mp4', shortSide: s.shortSide, fps: s.fps, quality: s.quality, codec: s.codec, srt: s.saveSrt, burn: s.burn === 'NONE' ? false : undefined, aspect: s.aspect }
+  // The template's settings are the video's: an audio export (MP3) chosen on the ready screen stays.
+  return { ...base, format: base.format === 'mp3' ? 'mp3' : 'mp4', shortSide: s.shortSide, fps: s.fps, quality: s.quality, codec: s.codec, srt: s.saveSrt, burn: s.burn === 'NONE' ? false : undefined, aspect: s.aspect }
 }
 
 /** The subtitle style as burned in: its "show" follows the burned-in language. */
@@ -225,8 +226,8 @@ export const builtIn = (id: string): Template | undefined => BUILT_IN.find((b) =
 
 // ------------------------------------------------------------------ the JSON, in the app's shape
 
-const MODE_OUT: Record<BlurMode, string> = { blur: 'BLUR', pixelate: 'PIXELATE', solid: 'COVER' }
-const MODE_IN: Record<string, BlurMode> = { BLUR: 'blur', PIXELATE: 'pixelate', COVER: 'solid' }
+const MODE_OUT: Record<BlurMode, string> = { blur: 'BLUR', pixelate: 'PIXELATE', solid: 'SOLID' }
+const MODE_IN: Record<string, BlurMode> = { BLUR: 'blur', PIXELATE: 'pixelate', SOLID: 'solid', COVER: 'solid' }
 const ASPECT_OUT: Record<Aspect, string> = { original: 'ORIGINAL', '9:16': 'VERTICAL', '1:1': 'SQUARE', '4:5': 'PORTRAIT' }
 const ASPECT_IN: Record<string, Aspect> = { ORIGINAL: 'original', VERTICAL: '9:16', SQUARE: '1:1', PORTRAIT: '4:5' }
 const QUALITY_OUT: Record<ExportQuality, string> = { original: 'ORIGINAL', high: 'HIGH', saver: 'SAVER' }

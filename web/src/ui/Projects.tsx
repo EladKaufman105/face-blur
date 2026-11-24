@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { t, duration } from '../i18n'
 import { deleteBatch, deleteProject, listProjects, renameBatch, renameProject, type ProjectMeta } from '../lib/projects'
 import { BETA } from '../lib/channel'
+import { current as batchNow, version as batchVersion } from '../lib/batch'
 import { ImportFromRelease } from './Beta'
 import { CutIcon, DeleteIcon, EditIcon, FaceIcon, MicIcon, MusicIcon, PictureIcon, SubtitlesIcon, WaveformIcon } from './icons'
 import './templates-en'
@@ -65,6 +66,9 @@ export function ProjectsSection({ onOpen }: { onOpen: (id: string) => void }) {
   const [folderRename, setFolderRename] = useState<{ id: string; name: string } | null>(null)
   const [folderDelete, setFolderDelete] = useState<string | null>(null)
   const reload = () => listProjects().then(setList)
+  // The folder of the batch working now can't be renamed or deleted from under it.
+  void batchVersion.value
+  const working = batchNow.value && !batchNow.value.finished ? batchNow.value.id : null
   useEffect(() => { reload() }, [])
   // Renaming and the delete confirm, one open at a time; focus goes into what opens and back to
   // its button when it closes (a second tap or Escape).
@@ -123,7 +127,7 @@ export function ProjectsSection({ onOpen }: { onOpen: (id: string) => void }) {
               <button class="project-name folder-name" onClick={() => setOpenFolders((s) => { const n = new Set(s); if (n.has(f.id)) n.delete(f.id); else n.add(f.id); return n })}><bdi>{folderName(f)}</bdi></button>
             )}
             <div class="small muted">{t('%d סרטונים', f.items.length)} · <bdi>{when(f.updated)}</bdi></div>
-            {folderDelete === f.id && (
+            {folderDelete === f.id && working !== f.id && (
               <div class="confirm folder-confirm">
                 <strong class="small">{t('למחוק את התיקייה?')}</strong>
                 <span class="small">{t('%d פרויקטים יימחקו (יפונו %s). הסרטונים ששמורים במכשיר, והסרטונים המקוריים, לא יימחקו.', f.items.length, size(bytes))}</span>
@@ -135,8 +139,10 @@ export function ProjectsSection({ onOpen }: { onOpen: (id: string) => void }) {
             )}
           </div>
           <div class="project-acts">
+            {working !== f.id && <>
             <button class="icon-btn folder-rename" aria-label={`${t('שנה שם')}: ${folderName(f)}`} title={t('שנה שם')} aria-pressed={folderRename?.id === f.id} onClick={() => { setFolderDelete(null); setFolderRename(folderRename?.id === f.id ? null : { id: f.id, name: folderName(f) }) }}><EditIcon size={20} /></button>
             <button class="icon-btn danger folder-delete" aria-label={`${t('מחק')}: ${folderName(f)}`} title={t('מחק')} aria-expanded={folderDelete === f.id} onClick={() => { setFolderRename(null); setFolderDelete(folderDelete === f.id ? null : f.id) }}><DeleteIcon size={20} /></button>
+            </>}
           </div>
         </div>
         {isOpen && <div class="folder-items">{f.items.sort((a, b) => a.created - b.created).map(card)}</div>}

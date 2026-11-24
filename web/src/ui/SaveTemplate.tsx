@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks'
 import { t } from '../i18n'
 import { CATEGORIES, templateOf, type Template, type TemplateCategory, type TemplateSettings } from '../lib/template'
-import { newTemplateId, saveTemplate } from '../lib/templatestore'
+import { newTemplateId, saveTemplate, storeFailed } from '../lib/templatestore'
 import { CloseIcon } from './icons'
 import { SwitchRow } from './EditorTabs'
 import './templates-en'
@@ -40,6 +40,8 @@ export function SaveTemplate({ settings, initial, onClose, onSaved }: { settings
     const logo = await dataUrl(settings.watermark.image)
     const tpl = templateOf({ ...settings, watermark: { ...settings.watermark, image: logo } }, newTemplateId(), name.trim(), keep)
     await saveTemplate(tpl)
+    // Kept for now only (no room in the browser): the sheet stays, with its notice.
+    if (storeFailed.value) { setBusy(false); return }
     onSaved(tpl)
   }
   return (
@@ -56,6 +58,7 @@ export function SaveTemplate({ settings, initial, onClose, onSaved }: { settings
             <SwitchRow cls={'tpl-keep tpl-keep-' + c} title={t(TITLES[c])} text="" on={keep.has(c)} onChange={(on) => setKeep((k) => { const n = new Set(k); if (on) n.add(c); else n.delete(c); return n })} />
           ))}
         </div>
+        {storeFailed.value && <p class="small tpl-store-error" role="alert" style="margin:0;color:#e5484d">{t('לא ניתן לשמור בדפדפן (אין מקום פנוי?). השינוי יישמר עד שהדף ייסגר.')}</p>}
         <button class="btn primary save-template-go" disabled={busy || !name.trim() || keep.size === 0} onClick={save}>{t('שמור כתבנית')}</button>
       </div>
     </div>

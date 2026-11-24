@@ -9,7 +9,7 @@ import { DEFAULT_SUB_STYLE } from '../lib/substyle'
 import {
   applyTemplate, blankTemplate, builtIn, categoriesOf, CATEGORIES, copyOf, currentSettings, languageCode, only, templateToJson, type Template, type TemplateCategory,
 } from '../lib/template'
-import { deleteTemplate, duplicateTemplate, isEdited, newTemplateId, restoreTemplate, saveTemplate, userTemplates, lookTemplates } from '../lib/templatestore'
+import { deleteTemplate, duplicateTemplate, isEdited, newTemplateId, restoreTemplate, saveTemplate, storeFailed, userTemplates, lookTemplates } from '../lib/templatestore'
 import { CloseIcon, DeleteIcon, EditIcon } from './icons'
 import { SubStyleCard } from './SubStyleCard'
 import { BackgroundCard, FrameCard, StabilizeCard } from './PictureTab'
@@ -52,9 +52,10 @@ export function TemplateEditor({ template, onClose }: Props) {
   const stash = useRef<Partial<Template>>({})
   const base = useMemo(() => currentSettings({ sensitive: false, hebrewUi: lang.value === 'he', watermark: NO_WATERMARK, options: { ...DEFAULT_EXPORT } }), [])
   useEffect(() => {
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    addEventListener('keydown', key)
-    return () => removeEventListener('keydown', key)
+    // In the capture phase: this sheet closes alone (the settings under it stay).
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
+    addEventListener('keydown', key, true)
+    return () => removeEventListener('keydown', key, true)
   }, [])
 
   const toggle = (c: TemplateCategory, on: boolean) => {
@@ -232,6 +233,7 @@ export function TemplateEditor({ template, onClose }: Props) {
             ))}
           </div>
         </div>
+        {storeFailed.value && <p class="small tpl-store-error" role="alert" style="margin:0;color:#e5484d">{t('לא ניתן לשמור בדפדפן (אין מקום פנוי?). השינוי יישמר עד שהדף ייסגר.')}</p>}
         <div class="tpl-foot">
           {edited && <button class="btn tonal tpl-restore" onClick={async () => { await restoreTemplate(template.id); onClose() }}>{t('שחזר מקור')}</button>}
           <span class="grow" />
@@ -296,6 +298,7 @@ export function TemplatesManager() {
         <button class="btn tonal small-btn tpl-new" onClick={() => setEditing({ ...copyOf(blankTemplateWithout(), newTemplateId(), t('תבנית חדשה')) })}>{t('תבנית חדשה')}</button>
       </div>
       <p class="small muted" style="margin:0">{t('מראה ועיבוד לסרטונים: כתוביות, טשטוש, קול, חיתוכים וייצוא. אפשר לבחור תבנית במסך הסרטון ובעיבוד כמה סרטונים.')}</p>
+      {storeFailed.value && <p class="small tpl-store-error" role="alert" style="margin:0;color:#e5484d">{t('לא ניתן לשמור בדפדפן (אין מקום פנוי?). השינוי יישמר עד שהדף ייסגר.')}</p>}
       <h4 class="caption">{t('התבניות שלי')}</h4>
       {users.length === 0 ? <p class="small muted" style="margin:0">{t('עדיין אין תבניות. בעורך: ייצוא, ואז "שמור כתבנית".')}</p> : <div class="tpl-list">{users.map(row)}</div>}
       <h4 class="caption">{t('מובנות')}</h4>

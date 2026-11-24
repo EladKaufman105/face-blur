@@ -15,11 +15,60 @@ import { loadWatermark } from './EditorTabs'
 import { SwitchRow } from './EditorTabs'
 import './templates-en'
 
-/** A video's first frame (the browser's own player). */
+const thumbs = new WeakMap<File, Promise<string | null>>()
+let thumbQueue: Promise<unknown> = Promise.resolve()
+
+/** A small picture of a video's first frame, taken with one player at a time that's let go of after (not a player per video on the page). */
+function frameOf(file: File): Promise<string | null> {
+  let p = thumbs.get(file)
+  if (!p) {
+    const grab = () => new Promise<string | null>((resolve) => {
+      const v = document.createElement('video')
+      const url = URL.createObjectURL(file)
+      let over = false
+      const end = (r: string | null) => {
+        if (over) return
+        over = true
+        clearTimeout(timer)
+        v.removeAttribute('src')
+        v.load()
+        URL.revokeObjectURL(url)
+        resolve(r)
+      }
+      const timer = setTimeout(() => end(null), 8000)
+      v.muted = true
+      v.preload = 'auto'
+      v.onerror = () => end(null)
+      v.onloadedmetadata = () => { v.currentTime = Math.min(0.1, (v.duration || 0.1) / 2) }
+      v.onseeked = () => {
+        try {
+          const c = document.createElement('canvas')
+          c.width = 144
+          c.height = Math.max(1, Math.round((144 * v.videoHeight) / Math.max(1, v.videoWidth)))
+          c.getContext('2d')!.drawImage(v, 0, 0, c.width, c.height)
+          end(c.toDataURL('image/jpeg', 0.7))
+        } catch {
+          end(null)
+        }
+      }
+      v.src = url
+    })
+    p = thumbQueue.then(grab, grab)
+    thumbQueue = p
+    thumbs.set(file, p)
+  }
+  return p
+}
+
+/** A video's first frame, as a picture. */
 function Thumb({ file }: { file: File }) {
-  const url = useMemo(() => URL.createObjectURL(file), [file])
-  useEffect(() => () => URL.revokeObjectURL(url), [url])
-  return <video class="batch-thumb" src={url + '#t=0.1'} muted playsInline preload="metadata" />
+  const [src, setSrc] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    frameOf(file).then((s) => { if (live) setSrc(s) })
+    return () => { live = false }
+  }, [file])
+  return src ? <img class="batch-thumb" src={src} alt="" /> : <div class="batch-thumb" />
 }
 
 const mb = (bytes: number) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1e6))} MB`)
