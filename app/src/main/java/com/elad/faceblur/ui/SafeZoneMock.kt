@@ -198,7 +198,7 @@ internal fun DrawScope.drawSafeZone(platform: Platform, zone: SafeZone, origin: 
             dot(ux + ar, userY - textSize * 0.55f, ar * 0.32f)
             ux += ar * 2f + textSize * 0.5f
         }
-        val user = "@username"
+        val user = "\u2066@username\u2069"
         label(user, ux, userY, textSize, true, 0.96f)
         val pillW0 = measure(user, textSize, true)
         when (platform) {
@@ -227,7 +227,7 @@ internal fun DrawScope.drawSafeZone(platform: Platform, zone: SafeZone, origin: 
         bar(x0, cap1 - barH, capW * 0.9f, barH, Color.White.copy(alpha = 0.7f))
         bar(x0, cap2 - barH, capW * 0.55f, barH, Color.White.copy(alpha = 0.7f))
         glyph(MockGlyphs.NOTE, x0 + textSize * 0.55f, soundY - textSize * 0.3f, textSize * 1.1f)
-        label(t("סאונד מקורי") + " · @username", x0 + textSize * 1.4f, soundY, textSize * 0.85f, false, 0.9f)
+        label(t("סאונד מקורי") + " · \u2066@username\u2069", x0 + textSize * 1.4f, soundY, textSize * 0.85f, false, 0.9f)
         drawRect(Color.White.copy(alpha = 0.3f), Offset(0f, h - progH), Size(w, progH))
         drawRect(Color.White.copy(alpha = 0.9f), Offset(0f, h - progH), Size(w * 0.35f, progH))
 
