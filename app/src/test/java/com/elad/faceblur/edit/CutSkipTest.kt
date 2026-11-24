@@ -71,12 +71,11 @@ class CutSkipTest {
     }
 
     @Test
-    fun aCutToTheEndStopsOnce() {
+    fun aCutToTheEndStopsAndLeavesNothingPending() {
         val g = CutSkipGuard()
         assertEquals(CutSkipStep.Finish, g.onCutFrame(100, 100, 0))
         assertFalse(g.pending)
-        assertEquals(CutSkipStep.None, g.onCutFrame(100, 100, 16))
-        // Playing again from the start clears it, so a later end stops again.
+        // Playing again from the start into the same end stops again.
         g.cleared()
         assertEquals(CutSkipStep.Finish, g.onCutFrame(100, 100, 5000))
     }

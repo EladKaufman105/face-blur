@@ -714,12 +714,19 @@ private class PlayerSync(
     private var target = -1
     private var retries = 0
     @Volatile var lastFrameReportMs = 0L
+    /** Counts seeks; frame reports made before the latest one are stale and dropped. */
+    @Volatile private var seekGen = 0
 
     fun attach() {
         player.addListener(this)
         player.setVideoFrameMetadataListener(this)
         ctrl.seeker = { seekTo(it) }
         ctrl.pauser = { ctrl.cancelSkip(); player.pause() }
+        ctrl.starter = {
+            if (player.playbackState == Player.STATE_ENDED) seekTo(ctrl.firstKeptFrame())
+            else ctrl.resumeFrame().let { if (it != ctrl.frame) seekTo(it) }
+            player.play()
+        }
         ctrl.playToggler = {
             if (player.playWhenReady && player.playbackState != Player.STATE_ENDED) {
                 ctrl.cancelSkip()
@@ -743,6 +750,7 @@ private class PlayerSync(
         ctrl.seeker = {}
         ctrl.pauser = {}
         ctrl.playToggler = {}
+        ctrl.starter = {}
         ctrl.refresher = {}
         ctrl.playing = false
     }
@@ -751,6 +759,7 @@ private class PlayerSync(
 
     private fun seekTo(f: Int) {
         if (times.isEmpty()) return
+        seekGen++
         target = f
         retries = 0
         doSeek(f)
@@ -768,7 +777,8 @@ private class PlayerSync(
         mediaFormat: MediaFormat?,
     ) {
         lastFrameReportMs = SystemClock.uptimeMillis()
-        main.post { onRendered(presentationTimeUs) }
+        val gen = seekGen
+        main.post { if (gen == seekGen) onRendered(presentationTimeUs) }
     }
 
     private fun onRendered(pts: Long) {
@@ -783,6 +793,7 @@ private class PlayerSync(
         // A jump over a cut buffers for a moment: that is still playing.
         if (player.isPlaying || (ctrl.skipPending && player.playWhenReady)) {
             ctrl.onFrameShown(f)
+            syncPlaying()
             return
         }
         // Only a near miss is an offset to correct; a far frame is a stale, superseded seek.
@@ -805,15 +816,17 @@ private class PlayerSync(
         return if (abs(times[hi] - t) < abs(times[lo] - t)) hi else lo
     }
 
-    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-        // Pausing during a jump over a cut: isPlaying was already false, so only this tells.
-        ctrl.playing = player.isPlaying || (ctrl.skipPending && playWhenReady)
+    /** The play state the editor shows: playing, or buffering on a jump over a cut that was asked for. */
+    private fun syncPlaying() {
+        ctrl.playing = player.isPlaying ||
+            (ctrl.skipPending && player.playWhenReady && player.playbackState == Player.STATE_BUFFERING)
     }
 
-    override fun onIsPlayingChanged(isPlaying: Boolean) {
-        // Jumping over a cut buffers for a moment: the play button and the frame logic stay as they are.
-        ctrl.playing = isPlaying || (ctrl.skipPending && player.playWhenReady)
-    }
+    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = syncPlaying()
+
+    override fun onPlaybackStateChanged(playbackState: Int) = syncPlaying()
+
+    override fun onIsPlayingChanged(isPlaying: Boolean) = syncPlaying()
 
     override fun onPlayerError(error: PlaybackException) {
         android.util.Log.e("ONIT", "editor player error", error)

@@ -52,7 +52,6 @@ sealed interface CutSkipStep {
 class CutSkipGuard(private val retryMs: Long = RETRY_MS) {
     private var pendingTo = -1
     private var pendingAt = 0L
-    private var finished = false
 
     /** A seek over a cut was made and hasn't been seen to land. */
     val pending: Boolean get() = pendingTo >= 0
@@ -60,18 +59,14 @@ class CutSkipGuard(private val retryMs: Long = RETRY_MS) {
     /** A frame outside any cut is shown (the seek landed, or there was none): nothing is pending. */
     fun cleared() {
         pendingTo = -1
-        finished = false
     }
 
     /** A frame inside a cut is shown; playback should go on at [to] (>= [frameCount]: the cut runs to the end). */
     fun onCutFrame(to: Int, frameCount: Int, nowMs: Long): CutSkipStep {
         if (to >= frameCount) {
-            if (finished) return CutSkipStep.None
-            finished = true
             pendingTo = -1
             return CutSkipStep.Finish
         }
-        finished = false
         if (pendingTo == to && nowMs - pendingAt < retryMs) return CutSkipStep.None
         pendingTo = to
         pendingAt = nowMs
