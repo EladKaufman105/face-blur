@@ -28,7 +28,7 @@ export type SubsMessage =
   | { type: 'load' }
   | { type: 'download'; progress: number; loaded: number; total: number }
   | { type: 'transcribe'; progress: number }
-  | { type: 'done'; words: Word[]; device: string }
+  | { type: 'done'; words: Word[]; device: string; /** Milliseconds: loading the model (or finding it kept), and recognizing. */ ms: { load: number; recognize: number } }
   | { type: 'error'; code: string; message: string }
 
 const RATE = 16000
@@ -136,6 +136,7 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
   // Phase: loading (or starting to download). The files' bytes come as 'download'; when they are all
   // here the sessions are created, which has no percent: 'load' says so.
   post({ type: 'load' })
+  const t0 = performance.now()
   let loading = true
   let news = 0
   let lastPost = 0
@@ -166,6 +167,7 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
 
   try {
     const words: Word[] = []
+    const t1 = performance.now()
     // Timestamp tokens say how far into the window the speech has got: the progress between windows.
     const gc = asr.model?.generation_config
     const tsBegin: number = (typeof gc?.no_timestamps_token_id === 'number' ? gc.no_timestamps_token_id : 50363) + 1
@@ -237,7 +239,7 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
     }
     // The page keeps this worker (and so the model) for a few minutes, or ends it: either way it frees the memory.
     loaded = { key, asr }
-    post({ type: 'done', words, device: `${device}/${encDtype}+${dtype}/${wasm?.numThreads ?? 1}t` })
+    post({ type: 'done', words, device: `${device}/${encDtype}+${dtype}/${wasm?.numThreads ?? 1}t`, ms: { load: Math.round(t1 - t0), recognize: Math.round(performance.now() - t1) } })
   } catch (e) {
     loaded = null
     await Promise.race([asr.dispose?.(), sleep(1000)]).catch(() => {})

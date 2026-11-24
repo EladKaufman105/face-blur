@@ -75,6 +75,9 @@ case "${1:?shard}" in
     ;;
   subs) # Whisper's model downloads from Hugging Face: its own job, only when subtitle code changes. The small one (whisper-base, 77 MB on the CPU) is forced: the phone path, and quick. The page is isolated here (threads), as on the site.
     t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base" $S/speech_en.mp4 $R/subs   # 60
+    # The same clip on one thread (as before the page was isolated) and again with threads, the model now in the browser's cache: the times are in the log.
+    t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base&threads=1" $S/speech_en.mp4 $R/subs1
+    t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base" $S/speech_en.mp4 $R/subsN
     ;;
   *) echo "unknown shard: $1" >&2; exit 2 ;;
 esac
