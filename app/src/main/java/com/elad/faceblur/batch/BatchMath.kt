@@ -60,10 +60,10 @@ object BatchMath {
         for (i in items) when (i.phase) {
             Phase.WAITING -> total += videoMs(i.durationMs, s, speeds) * scale
             Phase.RUNNING -> {
-                val p = i.progress.coerceIn(0f, 1f)
+                val p = i.progress.coerceIn(0f, 1f).toDouble()
                 val byEstimate = videoMs(i.durationMs, s, speeds) * scale * (1 - p)
-                val byPace = if (p > 0.02f) i.elapsedMs * (1 - p) / p else byEstimate
-                val w = (p / 0.3f).coerceIn(0f, 1f)
+                val byPace: Double = if (p > 0.02) i.elapsedMs * (1 - p) / p else byEstimate
+                val w = (p / 0.3).coerceIn(0.0, 1.0)
                 total += w * byPace + (1 - w) * byEstimate
             }
             Phase.DONE -> {}

@@ -180,7 +180,7 @@ object BatchRunner {
                 else -> "background"
             }
         }.getOrDefault("?")
-        val thermal = if (android.os.Build.SDK_INT >= 29) {
+        val thermal = if (android.os.Build.VERSION.SDK_INT >= 29) {
             runCatching { (ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).currentThermalStatus }.getOrDefault(-1)
         } else -1
         return importance + ", thermal " + thermal
