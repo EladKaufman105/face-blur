@@ -19,7 +19,7 @@ t() {
 }
 
 case "${1:?shard}" in
-  1) # 132 s
+  1) # 157 s
     # The picture: a green screen, a 9:16 frame, a steadied camera, the people's background.
     t picture.cjs "$U" $S/green_screen.mp4 $S/classroom.mp4 $S/walk.mp4 $S/speech_two.mp4 $R/picture   # 107
     # Settings: language, light / dark / the device's, the color palette; kept after a reload.
@@ -30,6 +30,8 @@ case "${1:?shard}" in
     t stats.cjs "$U" $S/walk.mp4 $R/stats   # 22
     # The page is cross-origin isolated by the service worker (threads for WebAssembly): one reload on the first visit, none after.
     t coi.cjs "http://localhost:4173/?backend=wasm" $R/coi   # 8
+    # Playback over cuts close together (one a frame apart, one to the end of the video): the clock keeps moving, no jumping again and again.
+    t cutskip.cjs "$U" $S/speech_two.mp4 $R/cutskip   # 25
     ;;
   2) # 146 s
     # A deep voice on a clip with speech.
@@ -61,7 +63,7 @@ case "${1:?shard}" in
     # at once as a batch kept in a folder of projects. The speech model is blocked, not downloaded.
     t templates.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/templates   # 95
     ;;
-  4) # 105 s
+  4) # 165 s
     # The sound's cleanup, MP3 (from the editor and the home screen), a lower size and frame rate.
     t sound.cjs "$U" $S/speech_two.mp4 $S/speech_en.mp4 $S/classroom60.mp4 $R/sound   # 19
     # A sound step that fails never exports the original voice: the editor's export stays blocked, a batch item fails.
@@ -76,6 +78,8 @@ case "${1:?shard}" in
     t project.cjs "$U" $S/speech_two.mp4 $R/project   # 12
     # The landing page (/home/): it loads whole, its parts work, its links lead to the editor.
     t home.cjs "http://localhost:4173/" $R/home   # 24
+    # A template renamed where it is picked; no face detection with no face blur (one video, a batch); the home screen's several videos apart; the template editor's subtitle preview moving; a template's font; a template saved from a tool's video.
+    t usernotes.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/usernotes   # 60
     ;;
   subs) # Whisper's model downloads from Hugging Face: its own job, only when subtitle code changes. The small one (whisper-base, 77 MB on the CPU) is forced: the phone path, and quick. The page is isolated here (threads), as on the site.
     t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base" $S/speech_en.mp4 $R/subs   # 60
