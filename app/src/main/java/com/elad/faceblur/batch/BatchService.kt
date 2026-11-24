@@ -13,7 +13,6 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
-import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.elad.faceblur.MainActivity
 import com.elad.faceblur.i18n.t
@@ -81,9 +80,27 @@ class BatchService : Service() {
         super.onDestroy()
     }
 
-    private fun startAsForeground(n: Notification) {
-        val type = if (Build.VERSION.SDK_INT >= 35) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING else ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, n, type)
+    /**
+     * Becomes a foreground service: media processing where the system has it (Android 15+), data
+     * sync before, each one tried in turn. Some systems refuse a type anyway (an Android 17 phone
+     * reported "type none ... prohibited"); then the batch still runs while the app is open, and
+     * this returns false instead of crashing the app.
+     */
+    private fun startAsForeground(n: Notification): Boolean {
+        val types = buildList {
+            if (Build.VERSION.SDK_INT >= 35) add(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING)
+            if (Build.VERSION.SDK_INT >= 29) add(ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        }
+        if (types.isEmpty()) return runCatching { startForeground(NOTIFICATION_ID, n) }.isSuccess
+        for (type in types) {
+            try {
+                startForeground(NOTIFICATION_ID, n, type)
+                return true
+            } catch (e: RuntimeException) {
+                android.util.Log.w("ONIT", "foreground service type $type refused", e)
+            }
+        }
+        return false
     }
 
     private fun update(batch: Batch, force: Boolean) {
