@@ -135,16 +135,10 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
   // here the sessions are created, which has no percent: 'load' says so.
   post({ type: 'load' })
   if (wasm && loaded?.key !== key) {
-    // A phone that can't start the threads says so early (the page then tries again with one). The
-    // runtime's own wasm file is fetched first so the timeout measures only the threads' start, not a
-    // slow download; with one thread there is no timeout at all.
-    if (wasm.numThreads > 1) {
-      try {
-        const r = await fetch(wasm.wasmPaths.wasm)
-        if (r.ok) wasm.wasmBinary = await r.arrayBuffer()
-      } catch {}
-      wasm.initTimeout = 20000
-    } else wasm.initTimeout = 0
+    // A phone that can't start the threads says so early (the page then tries again with one).
+    // Transformers.js loads the runtime's wasm (from its cache) before the runtime starts this timer,
+    // so the timeout measures only the threads' start, not a download. One thread: no timeout.
+    wasm.initTimeout = wasm.numThreads > 1 ? 20000 : 0
   }
   const t0 = performance.now()
   let loading = true
