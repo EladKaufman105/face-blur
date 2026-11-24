@@ -29,7 +29,8 @@ self.onmessage = async (e: MessageEvent<AudioRequest>) => {
   const post = (m: AudioMessage) => (self as unknown as Worker).postMessage(m)
   // Heartbeats, so the page can tell a long job from a dead worker (at most one a second).
   let last = 0
-  const beat = () => { const n = Date.now(); if (n - last >= 1000) { last = n; post({ type: 'progress', id }) } }
+  // (Not for a pause search: its caller takes the first message for the answer.)
+  const beat = r.type === 'silences' ? () => {} : () => { const n = Date.now(); if (n - last >= 1000) { last = n; post({ type: 'progress', id }) } }
   if (r.type !== 'silences') post({ type: 'started', id })
   try {
     if (cache?.file !== r.file) cache = await decode(r.file, beat)

@@ -590,14 +590,16 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     audioWorker.onmessageerror = () => failed()
     // A worker that is dead or stuck (its script did not load, or it hung) is a failure, with a retry. A long job is not:
     // the worker sends a message at least every few seconds while it works, and each one restarts this clock.
-    const silentMs = Number(new URLSearchParams(location.search).get('audiowd')) || 20000
+    const silentMs = Math.min(600000, Math.max(500, Number(new URLSearchParams(location.search).get('audiowd')) || 20000))
     let watchdog: ReturnType<typeof setTimeout> | undefined
     const timer = setTimeout(() => {
       audioWorker.onmessage = (e: MessageEvent<AudioMessage>) => {
         const m = e.data
-        if (audioSeq.current !== seq || (m as { id?: number }).id !== seq) return
+        if (audioSeq.current !== seq) return
+        // Any heartbeat shows the worker is alive, an older job's too: this request waits behind it.
+        if (m.type === 'started' || m.type === 'progress') { clearTimeout(watchdog); watchdog = setTimeout(() => failed(false), silentMs); return }
+        if ((m as { id?: number }).id !== seq) return
         clearTimeout(watchdog)
-        if (m.type === 'started' || m.type === 'progress') { watchdog = setTimeout(() => failed(false), silentMs); return }
         setSoundInflight(false)
         if (m.type === 'done') {
           // A late answer, after the watchdog gave up, is a success all the same.
@@ -893,9 +895,10 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     setCutBusy(true)
     const w = new Worker(new URL('../workers/audio.worker.ts', import.meta.url), { type: 'module' })
     w.onmessage = (e: MessageEvent<AudioMessage>) => {
+      const m = e.data
+      if (m.type === 'started' || m.type === 'progress') return
       w.terminate()
       setCutBusy(false)
-      const m = e.data
       if (m.type !== 'silences') { setNotice(t('אין סאונד בסרטון')); return }
       const before = cutTotal(state.current.cuts)
       const { ranges, added } = addCuts(state.current.cuts, m.ranges)
