@@ -115,9 +115,11 @@ const SRT = `1
     await p.click('.editor .btn.ghost >> nth=0')
     await p.waitForSelector('.project', { timeout: 10000 })
     const listed = await p.evaluate(() => [...document.querySelectorAll('.project')].map((e) => e.textContent))
-    console.log('projects:', JSON.stringify(listed))
+    // What it has, as pills: opened from a tool (no face search), so "subtitles only"; and the cut.
+    const pills = await p.evaluate(() => [...document.querySelectorAll('.project .ppill')].map((e) => e.textContent))
+    console.log('projects:', JSON.stringify(listed), '· pills:', JSON.stringify(pills))
     await p.screenshot({ path: `${out}/2_home.png` })
-    if (listed.length !== 1 || !listed[0].includes('speech_two') || !listed[0].includes('3 כתוביות')) throw new Error('project list')
+    if (listed.length !== 1 || !listed[0].includes('speech_two') || JSON.stringify(pills) !== JSON.stringify(['כתוביות בלבד · 3', 'חיתוך אחד'])) throw new Error('project list')
     await p.click('.project-open')
     await p.waitForSelector('.editor .tabs', { timeout: 30000 })
     await p.click('.tabs button[data-g=subs]')
@@ -132,7 +134,7 @@ const SRT = `1
     // Renamed, then deleted.
     await p.click('.editor .btn.ghost >> nth=0')
     await p.waitForSelector('.project')
-    await p.click('text=שנה שם')
+    await p.click('.project-rename')
     await p.fill('.rename-in', 'הסרטון שלי')
     await p.click('.project .btn.tonal')
     await p.waitForFunction(() => document.querySelector('.project-name')?.textContent === 'הסרטון שלי')

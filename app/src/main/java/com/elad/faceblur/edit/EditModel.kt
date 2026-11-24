@@ -503,12 +503,7 @@ class EditModel(
     }
 
     /** Whether most of [a, b) is bleeped. */
-    private fun bleepCovers(a: Long, b: Long): Boolean {
-        if (b <= a) return false
-        var covered = 0L
-        for ((s, e) in bleeps.subMap(bleeps.floorKey(a) ?: a, true, b, false)) covered += max(0L, min(e, b) - max(s, a))
-        return covered * 2 >= b - a
-    }
+    private fun bleepCovers(a: Long, b: Long): Boolean = Subtitles.bleepCovers(bleeps, a, b)
 
     /** Bleeps spoken word [i] of subtitle [id] out of the sound, or puts it back. Returns whether it's bleeped now. */
     fun toggleBleep(id: Int, i: Int): Boolean {

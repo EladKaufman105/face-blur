@@ -9,10 +9,14 @@ import com.elad.faceblur.analysis.AnalysisResult
 import com.elad.faceblur.analysis.Box
 import com.elad.faceblur.analysis.Det
 import com.elad.faceblur.analysis.FrameStore
+import com.elad.faceblur.audio.AudioEdit
+import com.elad.faceblur.audio.VoiceFx
+import com.elad.faceblur.effects.Background
 import com.elad.faceblur.edit.Cue
 import com.elad.faceblur.edit.EditState
 import com.elad.faceblur.edit.EditTrack
 import com.elad.faceblur.edit.SfxClip
+import com.elad.faceblur.edit.Subtitles
 import com.elad.faceblur.edit.TimedWord
 import org.json.JSONObject
 import java.io.BufferedInputStream
@@ -24,6 +28,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.TreeMap
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 
@@ -40,6 +45,21 @@ class ProjectMeta(
     val cues: Int,
     /** Space it takes on the phone. */
     val bytes: Long,
+    /** Words bleeped (see [Subtitles.bleepedWordCount]). */
+    val bleeped: Int = 0,
+    /** The voice is changed (or muted). */
+    val voice: Boolean = false,
+    /** Sound effects placed. */
+    val sounds: Int = 0,
+    /** The background is replaced (behind the people or a green / blue screen). */
+    val background: Boolean = false,
+    /** Stretches cut out of the video. */
+    val removed: Int = 0,
+    /**
+     * Saved before project.json kept [bleeped], [sounds] and [removed]: they were read from the
+     * edits (see [ProjectStore.keepCounts]).
+     */
+    val countsFromEdits: Boolean = false,
 )
 
 /** A project read back: its settings (JSON), the analysis, and the edits. */
@@ -64,25 +84,88 @@ object ProjectStore {
     fun newId(): String = System.currentTimeMillis().toString(36) + "-" + UUID.randomUUID().toString().take(6)
 
     /** Saved projects, last edited first. */
-    fun list(context: Context): List<ProjectMeta> =
-        (root(context).listFiles { f -> f.isDirectory } ?: emptyArray())
+    fun list(context: Context): List<ProjectMeta> {
+        val all = (root(context).listFiles { f -> f.isDirectory } ?: emptyArray())
             .mapNotNull { d -> runCatching { meta(d.name, readJson(d), d) }.getOrNull() }
             .sortedByDescending { it.updated }
+        countsRead.keys.retainAll(all.mapTo(HashSet()) { it.id })
+        return all
+    }
+
+    /**
+     * Read-modify-write of project.json (saves, renames, relinks, [keepCounts]) one at a time, so
+     * none of them loses another's change.
+     */
+    private val jsonLock = Any()
 
     private fun readJson(d: File) = JSONObject(File(d, "project.json").readText())
 
-    private fun meta(id: String, o: JSONObject, d: File) = ProjectMeta(
-        id = id,
-        name = o.optString("name"),
-        uri = Uri.parse(o.getString("uri")),
-        created = o.optLong("created"),
-        updated = o.optLong("updated"),
-        durationMs = o.optLong("durationMs"),
-        subtitlesOnly = o.optBoolean("subtitlesOnly"),
-        blurs = o.optInt("blurs"),
-        cues = o.optInt("cues"),
-        bytes = d.listFiles()?.sumOf { it.length() } ?: 0L,
-    )
+    /** [edits], when they're read anyway, spare reading them again for a project saved before its counts were kept. */
+    private fun meta(id: String, o: JSONObject, d: File, edits: EditState? = null): ProjectMeta {
+        val old = if (o.has("sounds")) null else edits?.let { countsOf(it) } ?: oldCounts(id, d)
+        return ProjectMeta(
+            id = id,
+            name = o.optString("name"),
+            uri = Uri.parse(o.getString("uri")),
+            created = o.optLong("created"),
+            updated = o.optLong("updated"),
+            durationMs = o.optLong("durationMs"),
+            subtitlesOnly = o.optBoolean("subtitlesOnly"),
+            blurs = o.optInt("blurs"),
+            cues = o.optInt("cues"),
+            bytes = d.listFiles()?.sumOf { it.length() } ?: 0L,
+            bleeped = if (o.has("bleeped")) o.optInt("bleeped") else old?.bleeped ?: 0,
+            voice = AudioEdit.fromJson(o.optJSONObject("audio")).voice != VoiceFx.NONE,
+            sounds = if (o.has("sounds")) o.optInt("sounds") else old?.sounds ?: 0,
+            background = Background.fromJson(o.optJSONObject("background")).active,
+            removed = if (o.has("removed")) o.optInt("removed") else old?.removed ?: 0,
+            countsFromEdits = old != null,
+        )
+    }
+
+    /** What the list shows of a project's edits besides blurs and subtitles (kept in project.json). */
+    private class Counts(val bleeped: Int, val sounds: Int, val removed: Int) {
+        fun putIn(o: JSONObject) {
+            o.put("bleeped", bleeped)
+            o.put("sounds", sounds)
+            o.put("removed", removed)
+        }
+    }
+
+    private fun countsOf(e: EditState) = Counts(Subtitles.bleepedWordCount(e.cues, e.bleeps), e.sfx.size, e.removed.size)
+
+    /** [Counts] read from a project's edits.bin, by its id, with the time the file was written. */
+    private val countsRead = ConcurrentHashMap<String, Pair<Long, Counts>>()
+
+    /**
+     * The counts of a project saved before project.json kept them, from its edits.bin (read once,
+     * until the file changes). Null without edits.
+     */
+    private fun oldCounts(id: String, d: File): Counts? {
+        val f = File(d, "edits.bin")
+        if (!f.exists()) return null
+        val stamp = f.lastModified()
+        countsRead[id]?.let { (at, c) -> if (at == stamp) return c }
+        val e = runCatching { readEdits(f) }.getOrNull() ?: return null
+        return countsOf(e).also { countsRead[id] = stamp to it }
+    }
+
+    /**
+     * Keeps in project.json the counts of a project saved before it had them (read from its
+     * edits), so listing it no longer reads them. Only adds what's missing; nothing else changes.
+     * Not for the open project (its own saves keep them).
+     */
+    fun keepCounts(context: Context, id: String) {
+        val d = dir(context, id)
+        synchronized(jsonLock) {
+            if (!d.exists()) return
+            val json = readJson(d)
+            if (json.has("sounds")) return
+            val c = oldCounts(id, d) ?: return
+            c.putIn(json)
+            atomic(File(d, "project.json")) { it.writeText(json.toString()) }
+        }
+    }
 
     /**
      * Starts a project for a new editing session: keeps read access to the video, writes the
@@ -111,12 +194,17 @@ object ProjectStore {
         val d = dir(context, id)
         if (!d.exists()) return // deleted meanwhile
         atomic(File(d, "edits.bin")) { writeEdits(it, edits) }
-        val json = runCatching { readJson(d) }.getOrElse { JSONObject() }
-        for (k in fields.keys()) json.put(k, fields.get(k))
-        json.put("updated", System.currentTimeMillis())
-        json.put("blurs", edits.tracks.size)
-        json.put("cues", edits.cues.size)
-        atomic(File(d, "project.json")) { it.writeText(json.toString()) }
+        // What the list shows, so listing reads project.json only.
+        val counts = countsOf(edits)
+        synchronized(jsonLock) {
+            val json = runCatching { readJson(d) }.getOrElse { JSONObject() }
+            for (k in fields.keys()) json.put(k, fields.get(k))
+            json.put("updated", System.currentTimeMillis())
+            json.put("blurs", edits.tracks.size)
+            json.put("cues", edits.cues.size)
+            counts.putIn(json)
+            atomic(File(d, "project.json")) { it.writeText(json.toString()) }
+        }
     }
 
     fun load(context: Context, id: String): LoadedProject {
@@ -124,31 +212,38 @@ object ProjectStore {
         val json = readJson(d)
         val analysis = readAnalysis(File(d, "analysis.bin"), File(d, "frames.bin"))
         val edits = File(d, "edits.bin").takeIf { it.exists() }?.let { runCatching { readEdits(it) }.getOrNull() }
-        return LoadedProject(meta(id, json, d), json, analysis, edits)
+        return LoadedProject(meta(id, json, d, edits), json, analysis, edits)
     }
 
     /** Points the project at another copy of its video (the old one can't be read any more). */
     fun relink(context: Context, id: String, uri: Uri) {
         val d = dir(context, id)
-        val json = readJson(d)
-        val old = Uri.parse(json.getString("uri"))
+        // Outside the lock, so the lock never waits on a system call.
         keepAccess(context, uri)
-        json.put("uri", uri.toString())
-        atomic(File(d, "project.json")) { it.writeText(json.toString()) }
+        val old = synchronized(jsonLock) {
+            val json = readJson(d)
+            val prev = Uri.parse(json.getString("uri"))
+            json.put("uri", uri.toString())
+            atomic(File(d, "project.json")) { it.writeText(json.toString()) }
+            prev
+        }
         releaseIfUnused(context, old)
     }
 
     fun rename(context: Context, id: String, name: String) {
         val d = dir(context, id)
-        val json = readJson(d)
-        json.put("name", name)
-        atomic(File(d, "project.json")) { it.writeText(json.toString()) }
+        synchronized(jsonLock) {
+            val json = readJson(d)
+            json.put("name", name)
+            atomic(File(d, "project.json")) { it.writeText(json.toString()) }
+        }
     }
 
     fun delete(context: Context, id: String) {
         val d = dir(context, id)
         val uri = runCatching { Uri.parse(readJson(d).getString("uri")) }.getOrNull()
         d.deleteRecursively()
+        countsRead.remove(id)
         uri?.let { releaseIfUnused(context, it) }
     }
 

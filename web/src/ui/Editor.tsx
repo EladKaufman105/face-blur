@@ -20,7 +20,7 @@ import { BackgroundCard, FrameCard, StabilizeCard, type PictureBusy } from './Pi
 import { maskAt, maskIndex, NO_BACKGROUND, type Background, type PeopleMasks } from '../lib/background'
 import { ASPECT_RATIO, cropFraction, reframePath, steady, viewRect } from '../lib/camera'
 import type { PictureMessage, PictureRequest } from '../workers/picture.worker'
-import { createProject, saveProject, type ProjectPicture, type ProjectState } from '../lib/projects'
+import { createProject, saveProject, summarize, type ProjectPicture, type ProjectState } from '../lib/projects'
 import { reserveCueIds } from '../lib/subtitles'
 import { speakerColor } from '../lib/speakers'
 import { reserveClipIds } from './EditorTabs'
@@ -409,7 +409,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const storageFull = useRef(false)
   useEffect(() => {
     if (projectId.current) return
-    createProject(file, { name: file.name.replace(/\.[^.]+$/, ''), duration: 0, blurs: tracks.length, cues: cues.length, thumb: null, detected: analyzed })
+    createProject(file, { name: file.name.replace(/\.[^.]+$/, ''), duration: 0, thumb: null, ...summarize({ analyzed, tracks, cues, bleeped: [...bleeped], voice, sfx, background, cuts }) })
       .then((id) => { projectId.current = id; setProjectTick((n) => n + 1) })
       .catch(() => { storageFull.current = true; setNotice(t('אין מקום לשמור את הפרויקט בדפדפן. אפשר להמשיך לערוך ולייצא.')) })
   }, [])
@@ -438,7 +438,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       }
       const pic = savedPicture.current !== picture ? picture : undefined
       savedPicture.current = picture
-      saveProject(id, { duration: dur, blurs: tracks.length, cues: cues.length, thumb: snapshot(), detected: analyzed }, state, pic).catch(() => {
+      saveProject(id, { duration: dur, thumb: snapshot(), ...summarize(state) }, state, pic).catch(() => {
         storageFull.current = true
         setNotice(t('אין מקום לשמור את הפרויקט בדפדפן. אפשר להמשיך לערוך ולייצא.'))
       })

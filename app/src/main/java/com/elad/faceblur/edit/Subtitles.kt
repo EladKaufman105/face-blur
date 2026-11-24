@@ -1,5 +1,6 @@
 package com.elad.faceblur.edit
 
+import java.util.TreeMap
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -11,6 +12,37 @@ object Subtitles {
     private const val HOLD_MS = 600L
 
     fun words(s: String): List<String> = s.trim().split(Regex("""\s+""")).filter { it.isNotEmpty() }
+
+    /** Whether most of [a, b) is in [bleeps] (start ms -> end ms). */
+    fun bleepCovers(bleeps: TreeMap<Long, Long>, a: Long, b: Long): Boolean {
+        if (b <= a) return false
+        var covered = 0L
+        for ((s, e) in bleeps.subMap(bleeps.floorKey(a) ?: a, true, b, false)) covered += max(0L, min(e, b) - max(s, a))
+        return covered * 2 >= b - a
+    }
+
+    /**
+     * Words bleeped, for the projects' list: the spoken words of [cues] mostly under [bleeps]
+     * (start, end ms), as the editor counts them, plus one for each stretch that's under none of
+     * them (its subtitle edited or deleted since).
+     */
+    fun bleepedWordCount(cues: List<Cue>, bleeps: List<LongArray>): Int {
+        if (bleeps.isEmpty()) return 0
+        val map = TreeMap<Long, Long>()
+        for (b in bleeps) if (b.size == 2 && b[1] > b[0]) map[b[0]] = maxOf(b[1], map[b[0]] ?: b[1])
+        if (map.isEmpty()) return 0
+        val heard = HashSet<Long>()
+        var n = 0
+        for (c in cues) {
+            for (i in words(c.srcText).indices) {
+                val (a, b) = wordSpanMs(c, i)
+                if (!bleepCovers(map, a, b)) continue
+                n++
+                for ((s, e) in map.subMap(map.floorKey(a) ?: a, true, b, false)) if (e > a) heard += s
+            }
+        }
+        return n + map.keys.count { it !in heard }
+    }
 
     /** One subtitle from several (texts joined; word times kept if every part has them). */
     fun merge(cs: List<Cue>): Cue {

@@ -399,7 +399,9 @@ class ProjectsVoiceTest {
         inst.runOnMainSync { vm.closeEditor() }
         waitFor(20_000, "project listed") { vm.projects.any { it.cues == 2 } }
         val p = inst.onMain { vm.projects.first { it.cues == 2 } }
-        note("project ${p.id}: '${p.name}' blurs=${p.blurs} cues=${p.cues} bytes=${p.bytes}")
+        note("project ${p.id}: '${p.name}' blurs=${p.blurs} cues=${p.cues} bleeped=${p.bleeped} voice=${p.voice} sounds=${p.sounds} bytes=${p.bytes}")
+        // The list's pills: the bleeped word and the robot voice were saved with the subtitles.
+        if (p.bleeped < 1 || !p.voice) fail("project summary: bleeped=${p.bleeped} voice=${p.voice}")
         if (!File(ProjectStore.dir(ctx, p.id), "frames.bin").exists()) fail("analysis frames not kept")
         rule.waitForIdle()
         Thread.sleep(1200)
