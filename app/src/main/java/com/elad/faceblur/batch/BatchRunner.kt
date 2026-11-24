@@ -17,6 +17,7 @@ import com.elad.faceblur.template.TemplateRunner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -33,16 +34,21 @@ object BatchRunner {
         val ctx = context.applicationContext
         val models = ModelManager(ctx)
         val prefs = AppPrefs(ctx)
-        for (item in batch.items) {
-            if (batch.cancelled) {
-                if (item.status == ItemStatus.WAITING) item.status = ItemStatus.SKIPPED
-                continue
+        try {
+            for (item in batch.items) {
+                if (batch.cancelled) {
+                    if (item.status == ItemStatus.WAITING) item.status = ItemStatus.SKIPPED
+                    continue
+                }
+                if (item.status == ItemStatus.SKIPPED) continue
+                val job = scope.launch { processOne(ctx, batch, item, models, prefs, scope, onChange) }
+                item.job = job
+                job.join()
+                onChange()
             }
-            if (item.status == ItemStatus.SKIPPED) continue
-            val job = scope.launch { processOne(ctx, batch, item, models, prefs, scope, onChange) }
-            item.job = job
-            job.join()
-            onChange()
+        } finally {
+            // Every video copied what it needs into its project: the batch's own copies can go.
+            withContext(NonCancellable + Dispatchers.IO) { BatchOwnFiles.delete(BatchOwnFiles.dir(ctx.filesDir), batch.id) }
         }
         batch.finished = true
         onChange()

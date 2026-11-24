@@ -81,9 +81,11 @@ fun itemNeedsCheck(status: ItemStatus, lowConfidence: Boolean, failures: List<St
     status == ItemStatus.FAILED || status == ItemStatus.NO_FACES || lowConfidence || isStepFailed(status, failures)
 
 /** A batch being processed (or finished): its videos and the settings every one gets. */
-class Batch(val items: List<BatchItem>, val settings: TemplateSettings, val templateName: String) {
-    /** Its projects carry this id: the Projects list shows them as one folder. */
-    val id: String = com.elad.faceblur.project.ProjectStore.newId()
+class Batch(
+    val items: List<BatchItem>, val settings: TemplateSettings, val templateName: String,
+    val id: String = com.elad.faceblur.project.ProjectStore.newId(),
+) {
+    // [id]: its projects carry it, the Projects list shows them as one folder.
     val startedAt: Long = System.currentTimeMillis()
 
     /** The learned speeds of this phone, for the time left (null: no estimate). */
