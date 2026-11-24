@@ -17,7 +17,7 @@ import type { SubsMessage, SubsRequest } from '../workers/subs.worker'
 import type { Cleanup } from '../lib/cleanup'
 
 /** A row with a title, a line under it and a switch. */
-function SwitchRow({ title, text, on, disabled, onChange, cls }: { title: string; text: string; on: boolean; disabled?: boolean; onChange: (on: boolean) => void; cls?: string }) {
+export function SwitchRow({ title, text, on, disabled, onChange, cls }: { title: string; text: string; on: boolean; disabled?: boolean; onChange: (on: boolean) => void; cls?: string }) {
   return (
     <label class={'row switch-row ' + (cls ?? '')} style={disabled ? 'opacity:0.6' : 'cursor:pointer'}>
       <div class="grow">
@@ -251,12 +251,12 @@ const LOOKS: [WatermarkLook, string][] = [['plain', 'רגיל'], ['shadow', 'צ�
 const ARROWS: Record<string, string> = { tl: '↖', tc: '↑', tr: '↗', cl: '←', c: '•', cr: '→', bl: '↙', bc: '↓', br: '↘' }
 
 /** A line of text or a logo, where and how it shows. */
-export function WatermarkTab({ mark, onChange }: { mark: Watermark; onChange: (w: Watermark) => void }) {
+export function WatermarkTab({ mark, onChange, template }: { mark: Watermark; onChange: (w: Watermark) => void; /** In a template: not kept as the last used one, and a logo kept whole (a data URL). */ template?: boolean }) {
   const file = useRef<HTMLInputElement>(null)
   const set = (patch: Partial<Watermark>) => {
     const w = { ...mark, ...patch }
     onChange(w)
-    try { localStorage.setItem(storageKey('watermark'), JSON.stringify({ ...w, image: null })) } catch {}
+    if (!template) try { localStorage.setItem(storageKey('watermark'), JSON.stringify({ ...w, image: null })) } catch {}
   }
   return (
     <section class="card">
@@ -272,7 +272,11 @@ export function WatermarkTab({ mark, onChange }: { mark: Watermark; onChange: (w
         hidden
         onChange={(e) => {
           const f = (e.currentTarget as HTMLInputElement).files?.[0]
-          if (f) set({ image: URL.createObjectURL(f) })
+          if (f && template) {
+            const r = new FileReader()
+            r.onload = () => set({ image: String(r.result) })
+            r.readAsDataURL(f)
+          } else if (f) set({ image: URL.createObjectURL(f) })
           ;(e.currentTarget as HTMLInputElement).value = ''
         }}
       />

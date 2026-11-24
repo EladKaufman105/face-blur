@@ -22,7 +22,7 @@ function Progress({ label, progress, onCancel }: { label: string; progress: numb
  * Background removal, as in the app: keep the people (found on the device) or everything but a
  * green or blue screen, and put a blur, a color or a picture behind. Seen in the player.
  */
-export function BackgroundCard(p: { bg: Background; onChange: (b: Background) => void; masksReady: boolean; busy: PictureBusy; onFindPeople: () => void; onCancel: () => void }) {
+export function BackgroundCard(p: { bg: Background; onChange: (b: Background) => void; masksReady: boolean; busy: PictureBusy; onFindPeople: () => void; onCancel: () => void; /** In a template: the people are found when it's applied to a video. */ template?: boolean }) {
   const b = p.bg
   const set = (patch: Partial<Background>) => p.onChange({ ...b, ...patch })
   const input = useRef<HTMLInputElement>(null)
@@ -38,7 +38,9 @@ export function BackgroundCard(p: { bg: Background; onChange: (b: Background) =>
         ))}
       </div>
       {b.key === 'person' ? (
-        people ? (
+        p.template ? (
+          <p class="small muted" style="margin:0">{t('הרקע מוחלף אחרי שהאנשים בסרטון מזוהים (שלב נוסף בעיבוד).')}</p>
+        ) : people ? (
           <Progress label={t('מזהה אנשים… %d%', Math.round(people.progress * 100))} progress={people.progress} onCancel={p.onCancel} />
         ) : !p.masksReady ? (
           <>
@@ -79,7 +81,7 @@ export function BackgroundCard(p: { bg: Background; onChange: (b: Background) =>
           <button class="btn ghost small-btn" onClick={pick}>{t('החלף תמונה')}</button>
         </div>
       )}
-      {b.key === 'person' && b.fill !== 'none' && !p.masksReady && !people && (
+      {b.key === 'person' && b.fill !== 'none' && !p.masksReady && !people && !p.template && (
         <p class="small" style="margin:0;color:#e5484d">{t('הרקע יוחלף אחרי שהאנשים יזוהו.')}</p>
       )}
       <input

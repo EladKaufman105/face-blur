@@ -74,6 +74,18 @@ The single-video automatic flow (`MainViewModel.start()` with review off) is the
 
 ## Out of scope (v1)
 
-- The web app.
+- The web app in v1 of the Android feature; it follows in the section below.
 - Arabic/Farsi subtitles.
 - Pausing for heat or battery.
+
+## Web app
+
+The web app (`web/`) has the same model, with these differences.
+
+- **Storage:** templates are rows of Android-shaped JSON in their own IndexedDB database (`onit-templates` / `onit-beta-templates`, stores `user` and `builtin`; the built-in store holds only edited looks, restore deletes the row). Web-only extra keys (`imageData` for a logo or picture, `maskBleeped`) are ignored by Android.
+- **Built-in looks:** Clean, Bold, News, Minimal. They carry no speech language, so the language the user chose is used. The web has one multilingual Whisper model.
+- **Ready screen:** one row of cards drawn by the web's own subtitle, blur and watermark renderer on the video's frame. "No template" is first and restores the settings as they were.
+- **Editor and manager:** in Settings. Edit, duplicate, rename, delete, restore original. "Save as template" in the editor.
+- **Batch:** up to 10 videos, one template, run one after the other while the tab is open (notice, Wake Lock, `beforeunload` guard). Each result is a Blob in memory with a download link, a download-all list at the end, and a project in a batch folder in Projects (rename, delete with confirmation). Failed or skipped steps are reported on the video.
+- **Not in the web version:** translation of subtitles in a template or batch run, saving to a gallery folder, background running, flagging low-confidence faces.
+- **Tests:** `web/tests/templates.cjs` (in `ci/web-tests.sh` shard 3). The speech model is blocked; the test checks that the subtitle step was requested and reported.

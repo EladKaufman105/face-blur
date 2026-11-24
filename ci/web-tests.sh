@@ -38,7 +38,7 @@ case "${1:?shard}" in
     # The keyboard: groups by number, play / pause, a frame step, undo and redo.
     t keys.cjs "$U" $S/walk.mp4 $R/keys.png   # 6
     ;;
-  3) # 82 s
+  3) # 177 s
     # Subtitle design: styles, fonts (one imported with Hebrew, one without), effects, burned into the export.
     t style.cjs "$U" $S/speech_two.mp4 ../app/src/main/assets/fonts/heebo.ttf /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf $R/style   # 33
     # Face detection on the CPU path, the editor, the export: desktop and a phone.
@@ -46,6 +46,9 @@ case "${1:?shard}" in
     t e2e.cjs "$U" $S/walk.mp4 $R/phone phone   # 22
     # Sounds imported from the device: kept, placed, mixed into the export, deleted.
     t mysounds.cjs "$U" $S/walk.mp4 $R/mysounds   # 7
+    # Templates (a built-in look applied, edited and restored, copied and deleted) and two videos
+    # at once as a batch kept in a folder of projects. The speech model is blocked, not downloaded.
+    t templates.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/templates   # 95
     ;;
   4) # 105 s
     # The sound's cleanup, MP3 (from the editor and the home screen), a lower size and frame rate.

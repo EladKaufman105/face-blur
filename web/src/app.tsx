@@ -18,6 +18,13 @@ import { ProjectsSection } from './ui/Projects'
 import { installed, takeShared } from './lib/share'
 import { BETA } from './lib/channel'
 import { BetaLogo, BetaName, BetaNote } from './ui/Beta'
+import { BatchQueue, BatchSetup } from './ui/Batch'
+import { TemplatesManager } from './ui/TemplateEditor'
+import { hasProcessing, type TemplateSettings } from './lib/template'
+import { loadTemplates } from './lib/templatestore'
+import { current as batchNow, running as batchRunning, startBatch, version as batchVersion, doneCount } from './lib/batch'
+import { videoSize as sizeOf } from './lib/templaterun'
+import './ui/templates-en'
 
 /** A tool from the home screen: a group of the editor, or straight to an MP3. */
 type Tool = EditorTab | 'mp3'
@@ -25,9 +32,11 @@ type Tool = EditorTab | 'mp3'
 type Screen =
   | { name: 'home'; error?: string }
   | { name: 'ready'; file: File }
-  | { name: 'analyzing'; file: File; save?: { look: Look; options: ExportOptions } }
-  | { name: 'noFaces'; file: File; analysis: Analysis; save?: { look: Look; options: ExportOptions } }
-  | { name: 'editor'; file: File; analysis: Analysis; thumbs: (string | null)[]; info: string; tab?: EditorTab; project?: { id: string; state: ProjectState | null; picture: ProjectPicture | null } }
+  | { name: 'analyzing'; file: File; save?: { look: Look; options: ExportOptions }; template?: TemplateSettings | null }
+  | { name: 'noFaces'; file: File; analysis: Analysis; save?: { look: Look; options: ExportOptions }; template?: TemplateSettings | null }
+  | { name: 'editor'; file: File; analysis: Analysis; thumbs: (string | null)[]; info: string; tab?: EditorTab; project?: { id: string; state: ProjectState | null; picture: ProjectPicture | null }; template?: TemplateSettings | null }
+  | { name: 'batchSetup' }
+  | { name: 'batch' }
 
 declare const __BUILD__: string
 
@@ -41,11 +50,18 @@ export function App() {
   // What was found in a video saved straight away (to open the editor on it afterwards).
   const saved = useRef<{ file: File; analysis: Analysis } | null>(null)
   // Re-render on a change of language, theme or palette.
+  useEffect(() => { loadTemplates() }, [])
+  void batchVersion.value
   void lang.value
   void theme.value
   void palette.value
 
   const supported = () => {
+    // A batch is working in the workers: another video waits for it (as in the app).
+    if (batchRunning()) {
+      setScreen({ name: 'home', error: t('אצווה רצה כרגע. אפשר להמשיך כשהיא תסתיים.') })
+      return false
+    }
     if ('VideoDecoder' in window && 'VideoEncoder' in window) return true
     setScreen({ name: 'home', error: t('הדפדפן הזה לא תומך בעיבוד וידאו (WebCodecs). נסה Chrome, Edge או Safari מעודכנים.') })
     return false
@@ -96,15 +112,34 @@ export function App() {
   return (
     <div class="app">
       <Header />
-      {screen.name === 'home' && !job && <Home onPick={pick} onTool={pickTool} onProject={openProject} error={screen.error} />}
+      {screen.name === 'home' && !job && <Home onPick={pick} onTool={pickTool} onProject={openProject} onBatch={() => { if (supported()) setScreen({ name: 'batchSetup' }) }} onQueue={() => setScreen({ name: 'batch' })} error={screen.error} />}
+      {screen.name === 'batchSetup' && !job && <BatchSetup onBack={() => setScreen({ name: 'home' })} onStarted={() => setScreen({ name: 'batch' })} />}
+      {screen.name === 'batch' && !job && <BatchQueue onHome={() => setScreen({ name: 'home' })} onCheck={(id) => { void openProject(id) }} />}
       {screen.name === 'ready' && !job && (
         <Ready
           key={screen.file.name + screen.file.size + screen.file.lastModified}
           file={screen.file}
           sensitive={sensitive}
           onSensitive={setSensitive}
-          onBlur={() => setScreen({ name: 'analyzing', file: screen.file })}
-          onBlurAndSave={(look, options) => setScreen({ name: 'analyzing', file: screen.file, save: { look, options } })}
+          onBlur={async (_look, template) => {
+            // With no face blur in the template: the editor opens straight away (as a tool does), and the template applies there.
+            if (template?.blurOff) {
+              const size = await sizeOf(screen.file)
+              if (!size) { setScreen({ name: 'home', error: t('לא ניתן לפתוח את הסרטון') }); return }
+              setScreen({ name: 'editor', file: screen.file, analysis: { times: new Float64Array(0), width: size[0], height: size[1], fps: 30, tracks: [] }, thumbs: [], info: '', template })
+              return
+            }
+            setScreen({ name: 'analyzing', file: screen.file, template })
+          }}
+          onBlurAndSave={(look, options, template, templateName) => {
+            // A template that does more than blur (subtitles, voice, ...): processed as a batch of one, with no editor on the way.
+            if (template && (hasProcessing(template) || template.blurOff)) {
+              startBatch([screen.file], template, templateName, { folder: false, autoDownload: true })
+              setScreen({ name: 'batch' })
+              return
+            }
+            setScreen({ name: 'analyzing', file: screen.file, save: { look, options } })
+          }}
           onReplace={pick}
           onBack={() => setScreen({ name: 'home' })}
         />
@@ -118,13 +153,14 @@ export function App() {
           onError={(error) => setScreen({ name: 'home', error })}
           onDone={(analysis, thumbs, ms, backend) => {
             const save = screen.save
+            const template = screen.template
             // No faces found: say so, with what can be done (as the app).
             if (analysis.tracks.length === 0) {
-              setScreen({ name: 'noFaces', file: screen.file, analysis, save })
+              setScreen({ name: 'noFaces', file: screen.file, analysis, save, template })
               return
             }
             if (!save) {
-              setScreen({ name: 'editor', file: screen.file, analysis, thumbs, info: t('זמן עיבוד: %s', duration(ms / 1000)) + ' · ' + t('הזיהוי רץ על %s', backend === 'webgpu' ? t('המעבד הגרפי') : t('המעבד')) })
+              setScreen({ name: 'editor', file: screen.file, analysis, thumbs, template, info: t('זמן עיבוד: %s', duration(ms / 1000)) + ' · ' + t('הזיהוי רץ על %s', backend === 'webgpu' ? t('המעבד הגרפי') : t('המעבד')) })
               return
             }
             // Saved straight away, as found: every face blurred, the watermark last used, and for
@@ -143,8 +179,8 @@ export function App() {
           file={screen.file}
           canEdit={!screen.save}
           sensitive={sensitive}
-          onEdit={() => setScreen({ name: 'editor', file: screen.file, analysis: screen.analysis, thumbs: [], info: '', tab: 'faces' })}
-          onRetry={() => { setSensitive(true); setScreen({ name: 'analyzing', file: screen.file, save: screen.save }) }}
+          onEdit={() => setScreen({ name: 'editor', file: screen.file, analysis: screen.analysis, thumbs: [], info: '', tab: 'faces', template: screen.template })}
+          onRetry={() => { setSensitive(true); setScreen({ name: 'analyzing', file: screen.file, save: screen.save, template: screen.template }) }}
           onBack={() => setScreen({ name: 'ready', file: screen.file })}
         />
       )}
@@ -160,6 +196,7 @@ export function App() {
           onExport={setJob}
           onClose={() => setScreen({ name: 'home' })}
           project={screen.project}
+          template={screen.template}
         />
       )}
       {job && (
@@ -237,13 +274,14 @@ function Settings({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
+          <TemplatesManager />
         </div>
       </div>
     </div>
   )
 }
 
-function Home({ onPick, onTool, onProject, error }: { onPick: (f: File) => void; onTool: (f: File, tab: Tool) => void; onProject: (id: string) => void; error?: string }) {
+function Home({ onPick, onTool, onProject, onBatch, onQueue, error }: { onPick: (f: File) => void; onTool: (f: File, tab: Tool) => void; onProject: (id: string) => void; onBatch: () => void; onQueue: () => void; error?: string }) {
   const input = useRef<HTMLInputElement>(null)
   const toolInput = useRef<HTMLInputElement>(null)
   const toolTab = useRef<Tool>('subs')
@@ -281,6 +319,7 @@ function Home({ onPick, onTool, onProject, error }: { onPick: (f: File) => void;
           <AddIcon /> {t('בחר סרטון')}
         </button>
         <div class="drop-hint">{t('או גרור סרטון לכאן')}</div>
+        <button class="btn several" onClick={onBatch}>{t('כמה סרטונים')}</button>
         {installed() ? (
           <div class="drop-hint share-hint">{t('אפשר גם לשתף סרטון מהגלריה ישירות לאפליקציה')}</div>
         ) : matchMedia('(pointer: coarse)').matches ? (
@@ -299,6 +338,17 @@ function Home({ onPick, onTool, onProject, error }: { onPick: (f: File) => void;
         />
       </section>
       <div class="side">
+        {batchNow.value && (
+          <section class="card batch-banner">
+            <div class="row">
+              <div class="grow">
+                <strong>{batchNow.value.finished ? t('תוצאות העיבוד האחרון') : t('עיבוד סרטונים')}</strong>
+                <div class="small muted">{batchNow.value.finished ? t('נשמרו %d מתוך %d', batchNow.value.items.filter((i) => !!i.output).length, batchNow.value.items.length) : t('מעבד סרטונים · %d מתוך %d', Math.min(batchNow.value.items.length, doneCount(batchNow.value) + 1), batchNow.value.items.length)}</div>
+              </div>
+              <button class="btn tonal small-btn batch-open" onClick={onQueue}>{batchNow.value.finished ? t('הצג') : t('הצג את התור')}</button>
+            </div>
+          </section>
+        )}
         <ProjectsSection onOpen={onProject} />
         <section>
           <h3 class="section-title" style="margin:4px 0 4px">{t('כלים נוספים')}</h3>
