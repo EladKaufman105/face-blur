@@ -7,7 +7,8 @@
 # [18 s], variants of flows that run on desktop (and, for e2e, on a phone) in this list.
 set -euo pipefail
 cd "$(dirname "$0")/../web"
-U="http://localhost:4173/?backend=wasm"
+# ?coi=0: the service worker doesn't isolate the page (no reload on the first visit): the same pages as before it was added. coi.cjs and the subs job test the isolated page.
+U="http://localhost:4173/?backend=wasm&coi=0"
 S=/tmp/samples
 R=/tmp/web-results
 # A script that fails is run once more (a timing flake shows as a warning); two failures fail the shard.
@@ -27,6 +28,8 @@ case "${1:?shard}" in
     t share.cjs "$U" $S/walk.mp4 $R/share   # 1
     # The analysis stats panel: tiles and charts that update, more details, an (i), Copy (the report).
     t stats.cjs "$U" $S/walk.mp4 $R/stats   # 22
+    # The page is cross-origin isolated by the service worker (threads for WebAssembly): one reload on the first visit, none after.
+    t coi.cjs "http://localhost:4173/?backend=wasm" $R/coi   # 8
     ;;
   2) # 146 s
     # A deep voice on a clip with speech.
@@ -74,8 +77,10 @@ case "${1:?shard}" in
     # The landing page (/home/): it loads whole, its parts work, its links lead to the editor.
     t home.cjs "http://localhost:4173/" $R/home   # 24
     ;;
-  subs) # Whisper's model downloads from Hugging Face: its own job, only when subtitle code changes. The small one (whisper-base, 77 MB on the CPU) is forced: the phone path, and quick.
-    t subs.cjs "$U&subsmodel=base" $S/speech_en.mp4 $R/subs   # 60
+  subs) # Whisper's model downloads from Hugging Face: its own job, only when subtitle code changes. The small one (whisper-base, 77 MB on the CPU) is forced: the phone path, and quick. The page is isolated here (threads), as on the site.
+    t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base" $S/speech_en.mp4 $R/subs   # 60
+    # The same clip on one thread (as before the page was isolated): the two recognition times are in the log.
+    t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base&threads=1" $S/speech_en.mp4 $R/subs1
     ;;
   *) echo "unknown shard: $1" >&2; exit 2 ;;
 esac

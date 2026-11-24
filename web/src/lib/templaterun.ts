@@ -7,7 +7,7 @@ import type { AnalyzeMessage, AnalyzeRequest } from '../workers/analyze.worker'
 import type { AudioMessage, AudioRequest } from '../workers/audio.worker'
 import type { FollowMessage, FollowRequest } from '../workers/follow.worker'
 import type { PictureMessage, PictureRequest } from '../workers/picture.worker'
-import { confirmSpeech, SpeechAborted, SpeechError, transcribeFile, type SpeechStatus } from './speech'
+import { confirmSpeech, releaseSpeechForExport, SpeechAborted, SpeechError, transcribeFile, type SpeechStatus } from './speech'
 import type { ExportMessage } from '../workers/export.worker'
 import { exportRequest, type ExportJob } from './exportjob'
 import { wordsToCues, type Cue, type Word } from './subtitles'
@@ -77,7 +77,7 @@ export function videoSize(file: File): Promise<[number, number] | null> {
 /** Faces found in [file]: what the analyzing screen does, with no screen. [onProgress]: 0..1. */
 export function findFaces(file: File, sensitive: boolean, onProgress: (p: number) => void, signal?: AbortSignal) {
   return run<{ analysis: Analysis; thumbs: (string | null)[]; ms: number; backend: string }, AnalyzeMessage>(
-    () => new Worker(new URL('../workers/analyze.worker.ts', import.meta.url), { type: 'module' }),
+    () => { releaseSpeechForExport(); return new Worker(new URL('../workers/analyze.worker.ts', import.meta.url), { type: 'module' }) },
     (w) => {
       const req: AnalyzeRequest = { file, sensitive, base: new URL('.', document.baseURI).href, backend: forcedBackend(), workers: Number(new URLSearchParams(location.search).get('workers')) || undefined }
       w.postMessage(req)
@@ -142,7 +142,7 @@ export function processSound(file: File, voice: VoiceFx, clean: Cleanup, signal?
 /** One pass over the video: the camera's motion and cuts, and ([people]) where the people are. */
 export function picturePass(file: File, times: Float64Array, people: boolean, onProgress: (p: number) => void, signal?: AbortSignal) {
   return run<{ times: Float64Array; fps: number; motion: Float32Array; cuts: number[]; masks: PeopleMasks | null }, PictureMessage>(
-    () => new Worker(new URL('../workers/picture.worker.ts', import.meta.url), { type: 'module' }),
+    () => { releaseSpeechForExport(); return new Worker(new URL('../workers/picture.worker.ts', import.meta.url), { type: 'module' }) },
     (w) => {
       const req: PictureRequest = { file, times, people, model: new URL('models/people.onnx', document.baseURI).href, backend: forcedBackend() }
       w.postMessage(req)
@@ -159,7 +159,7 @@ export function picturePass(file: File, times: Float64Array, people: boolean, on
 /** The export of [job]. [onFrame]: a small picture of a frame just made, now and then (the caller closes it). */
 export function exportVideo(job: ExportJob, onProgress: (p: number) => void, onFrame?: (b: ImageBitmap) => void, signal?: AbortSignal) {
   return run<{ blob: Blob; ms: number }, ExportMessage>(
-    () => new Worker(new URL('../workers/export.worker.ts', import.meta.url), { type: 'module' }),
+    () => { releaseSpeechForExport(); return new Worker(new URL('../workers/export.worker.ts', import.meta.url), { type: 'module' }) },
     (w) => {
       exportRequest(job).then(({ req, transfer }) => { if (!signal?.aborted) w.postMessage(req, transfer) }).catch((e) => w.onerror?.(new ErrorEvent('error', { message: String(e?.message ?? e) })))
     },

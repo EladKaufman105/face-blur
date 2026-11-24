@@ -3,6 +3,7 @@ import { t } from '../i18n'
 import { MAX_SPEAKERS, speakerColor } from '../lib/speakers'
 import type { Cue } from '../lib/subtitles'
 import type { SpeakersMessage, SpeakersRequest } from '../workers/speakers.worker'
+import { releaseSpeechForExport } from '../lib/speech'
 
 /**
  * Who speaks, as in the app: found on the device (each subtitle's voice), each speaker in a color
@@ -16,6 +17,7 @@ export function SpeakersCard({ file, cues, onCues, color, chosen }: { file: File
   const found = new Set(cues.map((c) => c.speaker ?? 0).filter((s) => s > 0))
   const start = () => {
     worker.current?.terminate()
+    releaseSpeechForExport() // a phone gives the speech model's memory back first
     const w = new Worker(new URL('../workers/speakers.worker.ts', import.meta.url), { type: 'module' })
     worker.current = w
     setError(null)

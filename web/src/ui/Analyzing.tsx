@@ -5,6 +5,7 @@ import type { AnalyzeMessage, AnalyzeRequest } from '../workers/analyze.worker'
 import { FaceIcon } from './icons'
 import { AnalysisStatsPanel, type VideoFacts } from './AnalysisStatsPanel'
 import type { AnalysisStats } from '../lib/analysis-stats'
+import { releaseSpeechForExport } from '../lib/speech'
 import { canKeepAwake, useWakeLock } from '../lib/wakelock'
 
 type Props = {
@@ -30,6 +31,7 @@ export function Analyzing({ file, sensitive, twoSteps, onDone, onError, onCancel
   const started = useRef(performance.now())
 
   useEffect(() => {
+    releaseSpeechForExport() // a phone gives the speech model's memory back first
     const worker = new Worker(new URL('../workers/analyze.worker.ts', import.meta.url), { type: 'module' })
     started.current = performance.now()
     worker.onmessage = (e: MessageEvent<AnalyzeMessage>) => {

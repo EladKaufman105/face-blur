@@ -7,6 +7,7 @@ import { BackIcon, CheckIcon, SaveIcon, ShareIcon, SubtitlesIcon } from './icons
 import { CutMap } from '../lib/cutmap'
 import { DEFAULT_EXPORT } from '../lib/exportopts'
 import { cutCues, toSrt } from '../lib/subtitles'
+import { releaseSpeechForExport } from '../lib/speech'
 
 export type { ExportJob }
 
@@ -21,6 +22,7 @@ export function Exporting({ job, onBack, onNew, onEdit }: { job: ExportJob; onBa
   useWakeLock(!result && !error)
 
   useEffect(() => {
+    releaseSpeechForExport()
     const worker = new Worker(new URL('../workers/export.worker.ts', import.meta.url), { type: 'module' })
     worker.onmessage = (e: MessageEvent<ExportMessage>) => {
       const m = e.data

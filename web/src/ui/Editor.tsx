@@ -37,6 +37,7 @@ import type { VoiceFx } from '../lib/voice'
 import type { AudioMessage, AudioRequest } from '../workers/audio.worker'
 import { exportOptionsOf, hasProcessing, savedLanguage, styleOf, type TemplateSettings } from '../lib/template'
 import { Aborted, findPauses, transcribe } from '../lib/templaterun'
+import { releaseSpeechForExport } from '../lib/speech'
 import { SaveTemplate } from './SaveTemplate'
 
 type Props = {
@@ -393,6 +394,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const runPicture = (people: boolean) => {
     pictureWorker.current?.terminate()
     video.current?.pause()
+    releaseSpeechForExport() // a phone gives the speech model's memory back first
     const w = new Worker(new URL('../workers/picture.worker.ts', import.meta.url), { type: 'module' })
     pictureWorker.current = w
     setPicBusy({ what: people ? 'people' : 'motion', progress: 0 })

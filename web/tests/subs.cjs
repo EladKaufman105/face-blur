@@ -30,11 +30,15 @@ const [, , url, video, out] = process.argv
       const err = await p.evaluate(() => document.querySelector('.card p[style*="primary"]')?.textContent)
       if (err) throw new Error(err)
       const s = await p.evaluate(() => [...document.querySelectorAll('.card strong, .card .small')].map((e) => e.textContent).join(' | ').slice(0, 160))
-      if (s !== last) { console.log(((Date.now() - t0) / 1000).toFixed(0), 's', s); last = s }
-      await p.waitForTimeout(5000)
+      if (s !== last) { console.log(((Date.now() - t0) / 1000).toFixed(1), 's', s); last = s }
+      await p.waitForTimeout(500)
     }
     const cues = await p.evaluate(() => [...document.querySelectorAll('.cue-text')].map((e) => e.value))
-    console.log('subtitles', ((Date.now() - t0) / 1000).toFixed(0), 's:', cues.length, 'cues')
+    for (const l of logs) if (l.includes('ONIT subs:')) console.log(l)
+    const iso = await p.evaluate(() => ({ isolated: self.crossOriginIsolated, cores: navigator.hardwareConcurrency }))
+    console.log('subtitles', ((Date.now() - t0) / 1000).toFixed(1), 's:', cues.length, 'cues; isolated:', JSON.stringify(iso))
+    // The models come from Hugging Face (cross-origin): they must load with the page isolated, as on the site.
+    if (!/coi=0/.test(url) && !iso.isolated) throw new Error('the page is not cross-origin isolated')
     for (const c of cues) console.log('  ' + c)
     if (cues.length === 0) throw new Error('no subtitles')
     // Nothing cut off at the end: the clip's last word ("... do for your country") is there.
