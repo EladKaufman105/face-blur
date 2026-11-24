@@ -680,7 +680,6 @@ internal val English: Map<String, String> = mapOf(
     "בולט" to "Bold",
     "חדשות" to "News",
     "מינימלי" to "Minimal",
-    "טיקטוק / ריילס" to "TikTok / Reels",
     "שורטס" to "Shorts",
     "וואטסאפ" to "WhatsApp",
     // The progress screen's stats panel.
@@ -716,4 +715,15 @@ internal val English: Map<String, String> = mapOf(
     "כמה בדיקות חוזרות על פנים לא ודאיות בכל זיהוי, וזמן כל אחת." to "Re-checks of uncertain faces per detection, and the time of each.",
     "אצווה רצה כרגע. אפשר להמשיך כשהיא תסתיים." to "A batch is running. You can continue when it's done.",
     "אחד משלבי העיבוד לא הסתיים בזמן ונעצר. נסה שוב." to "One of the processing steps didn't finish in time and was stopped. Try again.",
+    "אזור בטוח" to "Safe zone",
+    "ריילס" to "Reels",
+    "מסמן איפה ממשק האפליקציה (כיתוב, כפתורים, שם המשתמש) מכסה את הסרטון. רק בתצוגה, לא נשמר בסרטון." to "Shows where the app's own screens (caption, buttons, username) cover the video. Preview only, never saved in the video.",
+    "מראה ויעד מוכנים לסרטון: כתוביות, טשטוש וגודל. ההגדרות מתמלאות לפי הבחירה, ואפשר לשנות אותן אחר כך." to "A ready look and destination: subtitles, blur and size. The settings fill in from your choice, and you can change them later.",
+    "צורה מקורית" to "Original shape",
+    "רזולוציה מקורית" to "Original resolution",
+    "קצב מקורי" to "Original frame rate",
+    "איכות גבוהה" to "High quality",
+    "קובץ קטן" to "Small file",
+    "איכות מקורית" to "Original quality",
+    "בלי שינוי בגודל ובאיכות" to "No change to size or quality",
 )
