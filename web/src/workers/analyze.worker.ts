@@ -1,7 +1,8 @@
 // The analysis pass, off the main thread: decodes every frame (small), finds cuts, detects faces
 // on a regular subset of frames, then builds the face tracks and a thumbnail of each face.
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny'
-import { CPU_SIDE, FaceDetector, type DetectStats } from '../lib/detector'
+import { CPU_SIDE, FaceDetector } from '../lib/detector'
+import { StatsHistory, summary, type AnalysisStats, type StatsSnapshot } from '../lib/analysis-stats'
 import { DetectorPool } from '../lib/detector-pool'
 import { CutDetector } from '../lib/cuts'
 import { track } from '../lib/tracker'
@@ -9,8 +10,8 @@ import type { Det, Track } from '../lib/types'
 
 export type AnalyzeRequest = { file: File; sensitive: boolean; base: string; backend?: 'webgpu' | 'wasm'; /** How many CPU detectors to run side by side (default: by core count). */ workers?: number }
 export type AnalyzeMessage =
-  | { type: 'ready'; backend: string; width: number; height: number; duration: number }
-  | { type: 'progress'; done: number; total: number; preview?: ImageBitmap; dets?: Det[]; faces: number; backend: string; stats: string }
+  | { type: 'ready'; backend: string; width: number; height: number; duration: number; fps: number }
+  | { type: 'progress'; done: number; total: number; preview?: ImageBitmap; dets?: Det[]; faces: number; backend: string; stats: AnalysisStats }
   | { type: 'done'; times: Float64Array; width: number; height: number; fps: number; tracks: Track[]; cuts: number[]; thumbs: (ImageBitmap | null)[]; backend: string; ms: number }
   | { type: 'error'; code: string; message: string }
   | { type: 'log'; message: string }
@@ -24,17 +25,6 @@ self.onmessage = async (e: MessageEvent<AnalyzeRequest>) => {
   } catch (err) {
     post({ type: 'error', code: 'failed', message: String((err as Error)?.message ?? err) })
   }
-}
-
-/** One line on where the time goes, per detection (ms) unless said otherwise. */
-function statsLine(head: string, s: DetectStats, rate: number, detectMs: number, decodeWait: number, poolWait: number, cutMs: number, frames: number, fellBack: string | null): string {
-  const n = Math.max(1, s.detections), f = (v: number, k = n) => (v / k).toFixed(0)
-  return [
-    `${head} · ${rate.toFixed(1)}/s`,
-    `detect ${f(detectMs)} = prep ${f(s.pre)} + fine ${f(s.inf)} + decode ${f(s.dec)} + coarse ${f(s.coarse)} (${s.coarseRuns}/${s.detections}) + check ${f(s.check)} + verify ${f(s.verify)} + merge ${f(s.nms)}`,
-    `per frame: frame wait ${f(decodeWait, Math.max(1, frames))} · detector wait ${f(poolWait, Math.max(1, frames))} · cuts ${f(cutMs, Math.max(1, frames))}`,
-    fellBack ? `fell back: ${fellBack}` : '',
-  ].filter(Boolean).join(' · ')
 }
 
 async function analyze({ file, sensitive, base, backend, workers }: AnalyzeRequest) {
@@ -76,9 +66,11 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
   }
   const detector = pool ? null : await FaceDetector.create(base + 'models/', backend)
   const backendNow = () => detector?.backend ?? 'wasm'
+  // Why detection isn't on the GPU, for the stats panel.
+  const noGpu = () => detector?.fellBack ?? (backend === 'wasm' ? 'forced with ?backend=wasm' : !gpu ? 'no WebGPU in this browser' : 'no WebGPU adapter')
   const precision = pool?.precision ?? detector!.precision
   log(`detector ${backendNow()} ${precision}${pool ? ' x' + pool.size : ''} ${(performance.now() - t0).toFixed(0)} ms`)
-  post({ type: 'ready', backend: backendNow(), width, height, duration })
+  post({ type: 'ready', backend: backendNow(), width, height, duration, fps: nominalFps })
 
   // Frames are decoded at the detector's starting size (it may lower it later).
   const startSide = detector?.side ?? CPU_SIDE
@@ -119,9 +111,20 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
       rate = Math.min(maxRate, Math.max(4, Math.min(backendNow() === 'webgpu' ? 15 : 10, 600 * (pool?.size ?? 1) / recent)))
     }
   }
-  const statsText = () => statsLine(
-    `${backendNow()}/${precision}${pool ? ' x' + pool.size : ''} ${detector?.side ?? CPU_SIDE}px`,
-    pool?.stats() ?? detector!.stats, rate, detectMs, decodeWait, poolWait, cutMs, times.length, detector?.fellBack ?? null)
+  // The counters for the stats panel; the history makes the per-second values of them.
+  const history = new StatsHistory()
+  const loopStart = performance.now()
+  const snapshot = (): StatsSnapshot => {
+    const d = pool?.stats() ?? detector!.stats
+    const now = performance.now()
+    return {
+      atMs: now, frames: times.length, frameMs: Math.max(0, now - loopStart - decodeWait - poolWait), waitMs: poolWait, decodeWaitMs: decodeWait, cutMs,
+      detections: spent.length, detectMs, partDetections: d.detections, pre: d.pre, inf: d.inf, dec: d.dec, coarse: d.coarse, coarseRuns: d.coarseRuns, check: d.check, verify: d.verify, merge: d.nms,
+      backend: backendNow(), precision, noGpu: backendNow() === 'wasm' ? noGpu() : null,
+      side: detector?.side ?? CPU_SIDE, rate, workers: pool?.size ?? 1, cores,
+    }
+  }
+  const statsNow = () => history.add(snapshot())
   // The next frame decodes while this one is in detection.
   const frames = sink.canvases()
   let next = frames.next()
@@ -158,7 +161,7 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
       lastPost = now
       const ps = Math.min(1, 480 / Math.max(iw, ih))
       const preview = await createImageBitmap(canvas, { resizeWidth: Math.round(iw * ps), resizeHeight: Math.round(ih * ps) })
-      post({ type: 'progress', done: i + 1, total: Math.max(total, i + 1), preview, dets: lastDets, faces: found, backend: backendNow(), stats: statsText() }, [preview])
+      post({ type: 'progress', done: i + 1, total: Math.max(total, i + 1), preview, dets: lastDets, faces: found, backend: backendNow(), stats: statsNow() }, [preview])
     }
   }
   try {
@@ -167,7 +170,7 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
     pool?.close()
   }
   log(`frames ${times.length}, detections ${spent.length}, detect avg ${(detectMs / Math.max(1, spent.length)).toFixed(0)} ms, decode wait ${decodeWait.toFixed(0)} ms, side ${detector?.side ?? CPU_SIDE}, rate ${rate.toFixed(1)}`)
-  log(`stats ${statsText()}`)
+  log(`stats ${summary(statsNow())}`)
   const n = times.length
   const diffs: number[] = []
   for (let i = 1; i < n; i++) if (times[i] > times[i - 1]) diffs.push(times[i] - times[i - 1])
