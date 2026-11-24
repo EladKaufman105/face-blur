@@ -441,7 +441,12 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
       const r = await transcribeFile(file, lang, { plan, onStatus: (s) => { if (ctl.current === c) setRun(s) }, signal: c.signal })
       if (ctl.current !== c) return
       const made = wordsToCues(r.words)
-      onReplace(made, r.words, new Set())
+      // Bleeped words carry over to the new words that overlap them in time (a bleep is for anonymity:
+      // re-making the subtitles must not undo it).
+      const old = [...bleeped].map((i) => words[i]).filter((w): w is Word => !!w)
+      const kept = new Set<number>()
+      if (old.length) r.words.forEach((w, i) => { if (old.some((o) => w.start < o.end && w.end > o.start)) kept.add(i) })
+      onReplace(made, r.words, kept)
       if (made.length) onSeek(Math.min(...made.map((c) => c.start)) + 0.01)
       setRun(null)
     } catch (e) {
@@ -519,6 +524,12 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
                   <button class={'chip' + (lang === code ? ' on' : '')} onClick={() => { setLang(code); try { if (code) localStorage.setItem(storageKey('subs.lang'), code); else localStorage.removeItem(storageKey('subs.lang')) } catch {} }}>{t(label)}</button>
                 ))}
               </div>
+              {bleeped.size > 0 && (
+                <p class="small" style="margin:12px 0 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  {t('%d מילים מצופצפות. הן יישארו מצופצפות גם בכתוביות החדשות.', bleeped.size)}
+                  <button class="btn ghost" onClick={() => onBleeped(new Set())}>{t('נקה')}</button>
+                </p>
+              )}
               <button class="btn primary subs-create" style="width:100%;margin-top:14px" onClick={start}>{t('צור כתוביות')}</button>
               <SpeechNote />
             </>

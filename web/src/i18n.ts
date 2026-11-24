@@ -436,6 +436,7 @@ const EN: Record<string, string> = {
   'להחליף את הכתוביות?': 'Replace the subtitles?',
   'הכתוביות הקיימות יוחלפו בקובץ, והצפצופים (%d) יוסרו. אפשר לבטל את הפעולה.': 'The current subtitles will be replaced by the file, and the bleeps (%d) will be removed. Undo brings them back.',
   'הכתוביות הקיימות יוחלפו בקובץ. אפשר לבטל את הפעולה.': 'The current subtitles will be replaced by the file. Undo brings them back.',
+  '%d מילים מצופצפות. הן יישארו מצופצפות גם בכתוביות החדשות.': '%d bleeped words. They stay bleeped in the new subtitles too.',
   'השאר את הקיימות': 'Keep the current ones',
   'זיהוי דוברים': 'Find speakers',
   'נמצאו %d דוברים. הקש על הנקודה ליד כתובית כדי להחליף דובר.': '%d speakers found. Tap the dot next to a subtitle to change its speaker.',
