@@ -131,12 +131,19 @@ export function App() {
             }
             setScreen({ name: 'analyzing', file: screen.file, template })
           }}
-          onBlurAndSave={(look, options, template, templateName) => {
+          onBlurAndSave={async (look, options, template, templateName) => {
             // Any template (its processing, watermark and export settings): processed as a batch of one, with no editor on the way.
             // An audio export (MP3) has no video to apply them to: it goes the plain way, unless the
             // template changes the sound (voice, cleanup, loudness, cuts): then the editor opens with
             // it applied, so the sound is never saved without them (a voice change is for anonymity).
             if (template && options.format === 'mp3' && (template.voice !== 'none' || template.denoise > 0 || template.enhance || template.loud || template.cutSilences || template.cutFillers)) {
+              // With no face blur the editor opens straight away (as onBlur does), with no face detection.
+              if (template.blurOff) {
+                const size = await sizeOf(screen.file)
+                if (!size) { setScreen({ name: 'home', error: t('לא ניתן לפתוח את הסרטון') }); return }
+                setScreen({ name: 'editor', file: screen.file, analysis: { times: new Float64Array(0), width: size[0], height: size[1], fps: 30, tracks: [] }, thumbs: [], info: '', template })
+                return
+              }
               setScreen({ name: 'analyzing', file: screen.file, template })
               return
             }
