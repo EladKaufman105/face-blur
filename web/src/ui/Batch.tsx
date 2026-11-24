@@ -14,7 +14,7 @@ import { useFrame } from './TemplatePreview'
 import { loadWatermark } from './EditorTabs'
 import { SwitchRow } from './EditorTabs'
 import { QualityChoice, useSpeechPlan } from './SpeechUi'
-import { mbOf } from '../lib/speech'
+import { grantSpeech, mbOf } from '../lib/speech'
 import './templates-en'
 
 const thumbs = new WeakMap<File, Promise<string | null>>()
@@ -115,6 +115,8 @@ export function BatchSetup({ onBack, onStarted, initial }: { onBack: () => void;
   const estimate = totalMs(durations, settings, loadSpeeds())
   const tight = space && space.free !== null && space.free < space.need
   const start = () => {
+    // Start is the go-ahead for the download whose size was shown above: no dialog at the first video.
+    if (settings.createSubs) grantSpeech(speechPlan)
     startBatch(files, settings, tplId ? templateLabel(findTemplate(tplId)!) : t('בלי תבנית'), { folder: true, autoDownload: auto })
     onStarted()
   }
