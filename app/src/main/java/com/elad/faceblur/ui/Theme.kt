@@ -172,7 +172,8 @@ object Radius {
 
 /**
  * Motion, in ms: swapping content (a fade only), changing state (a toggle, a selection) and
- * opening a panel. Nothing slides the layout around.
+ * opening a panel. Nothing slides the layout around, with one deliberate exception: the editor's
+ * safe-zone strip grows open and shrinks closed (the owner's choice; see SafeZoneStrip).
  */
 object Motion {
     const val CONTENT = 120

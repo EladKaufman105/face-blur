@@ -1804,8 +1804,9 @@ private fun PropActions(content: @Composable () -> Unit) {
 }
 
 
-/** Height of the safe zone's strip: the chooser's pill (a 30 dp segment, 2 dp padding) and a margin above and below. */
-private val SafeZoneStripHeight: Dp = 44.dp
+/** Height of the safe zone's strip: the chooser's slim pill (a 30 dp segment, 2 dp padding) with room above and below,
+ *  48 dp so each segment's 48 dp touch height fits inside the strip (which clips while it opens and closes). */
+private val SafeZoneStripHeight: Dp = 48.dp
 
 /** The chooser's visible segments and the gap between them. */
 private val SegmentHeight: Dp = 30.dp
@@ -1878,7 +1879,7 @@ private fun PlatformChooser(selected: Platform, onSelect: (Platform) -> Unit, mo
         // row: right to left in Hebrew.
         Box(
             Modifier
-                .offset { IntOffset((at.value * step).roundToInt(), 0) }
+                .offset { IntOffset((at.value.coerceIn(0f, 2f) * step).roundToInt(), 0) }
                 .size(with(density) { segPx.toDp() }, SegmentHeight)
                 .background(colors.onSurface, stadium),
         )
