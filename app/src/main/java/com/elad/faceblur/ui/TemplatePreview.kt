@@ -14,7 +14,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
-import androidx.compose.foundation.Canvas as ComposeCanvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -50,7 +49,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-/** What a preview frame shows: the frame's shape, the blur over a face, the subtitle look, the watermark and the platform's safe zone. */
+/** What a preview frame shows: the frame's shape, the blur over a face, the subtitle look, and the watermark. */
 internal data class PreviewSpec(
     /** Width over height of the frame. */
     val aspect: Float,
@@ -60,7 +59,6 @@ internal data class PreviewSpec(
     val padding: Float,
     val subStyle: SubtitleStyle,
     val watermark: Watermark,
-    val platform: Platform?,
     /** The subtitle text is drawn this much larger than it would be on a phone, so it reads on a small card. */
     val textBoost: Float = 2f,
 )
@@ -72,12 +70,12 @@ internal const val SAMPLE_ASPECT = 16f / 9f
 internal fun TemplateSettings.preview(sourceAspect: Float? = null, textBoost: Float = 2f) = PreviewSpec(
     aspect = export.aspect.ratio.takeIf { it > 0f } ?: sourceAspect ?: SAMPLE_ASPECT,
     blurOff = blurOff, mode = mode, strength = strength, padding = padding,
-    subStyle = subStyle, watermark = export.watermark, platform = export.platform, textBoost = textBoost,
+    subStyle = subStyle, watermark = export.watermark, textBoost = textBoost,
 )
 
-/** A rendered sample frame with the look applied, and (with a [zone]) the platform's safe zone over it. [modifier] sets one side of its size; the shape follows [PreviewSpec.aspect]. */
+/** A rendered sample frame with the look applied. [modifier] sets one side of its size; the shape follows [PreviewSpec.aspect]. */
 @Composable
-internal fun TemplatePreview(spec: PreviewSpec, frame: Bitmap?, modifier: Modifier = Modifier, zone: SafeZone? = null) {
+internal fun TemplatePreview(spec: PreviewSpec, frame: Bitmap?, modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
     val key = PreviewKey(spec, frame?.let { PreviewRenderer.frameId(it) } ?: 0)
     val bmp by produceState(PreviewRenderer.cached(key), key) {
@@ -92,7 +90,6 @@ internal fun TemplatePreview(spec: PreviewSpec, frame: Bitmap?, modifier: Modifi
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
     ) {
         bmp?.let { Image(it.asImageBitmap(), null, Modifier.matchParentSize(), contentScale = ContentScale.FillBounds) }
-        if (zone != null) ComposeCanvas(Modifier.matchParentSize()) { drawSafeZone(zone, Offset.Zero, size) }
     }
 }
 
@@ -161,8 +158,7 @@ internal object PreviewRenderer {
             if (!spec.blurOff) obscure(out, face, spec)
         }
         if (frame != null && !spec.blurOff) drawBadge(c, w, h, spec)
-        val zone = spec.platform?.let { SafeZone.of(it) }
-        if (spec.watermark.enabled(context)) Watermark.draw(context, spec.watermark, c, w, h, zone)
+        if (spec.watermark.enabled(context)) Watermark.draw(context, spec.watermark, c, w, h)
         SubtitleRenderer.get(context).draw(
             c, SampleBlocks.take(1), 200_000L, 2_200_000L, 1_100_000L,
             spec.subStyle.copy(size = spec.subStyle.size * spec.textBoost), w, h,
@@ -283,9 +279,9 @@ internal fun platformName(p: Platform): String = when (p) {
 
 /** A fixed [width]x[height] stage with the preview fitted inside it (so cards line up whatever the frame's shape). */
 @Composable
-internal fun PreviewStage(spec: PreviewSpec, frame: Bitmap?, width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier, zone: SafeZone? = null) {
+internal fun PreviewStage(spec: PreviewSpec, frame: Bitmap?, width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
     Box(modifier.size(width, height), contentAlignment = androidx.compose.ui.Alignment.Center) {
         val wide = spec.aspect > width / height
-        TemplatePreview(spec, frame, if (wide) Modifier.fillMaxWidth() else Modifier.fillMaxHeight(), zone)
+        TemplatePreview(spec, frame, if (wide) Modifier.fillMaxWidth() else Modifier.fillMaxHeight())
     }
 }

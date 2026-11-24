@@ -1,6 +1,6 @@
 # Platform safe zones (Android)
 
-A destination with a platform (TikTok, Reels, Shorts) puts the burned-in subtitles and the watermark inside that platform's safe zone, and the editor and the template previews can draw the zone over the picture (preview only, never in the export).
+The safe zone is **a view aid in the editor only**: a switch (with a small TikTok / Reels / Shorts chooser) draws the platform's covered areas over the preview. It shows only when the frame being edited is vertical 9:16 (a vertical export, or a vertical video as shot) and is hidden for landscape and square frames. It is never burned into the export, and it is not part of templates, template previews, batch or export placement: subtitles and the watermark are not moved by platform.
 
 Values are fractions of a 1080x1920 frame: the part the platform's own screens cover at the top, bottom, left and right. `SafeZone.of(platform)` in `template/SafeZone.kt` holds them.
 
@@ -10,7 +10,7 @@ Values are fractions of a 1080x1920 frame: the part the platform's own screens c
 | Instagram Reels | 14% | 35% | 6% | 6% |
 | YouTube Shorts | 288 px (15%) | 672 px (35%) | 48 px (4.4%) | 192 px (17.8%) |
 
-TikTok and Reels are separate destinations because their zones differ at the sides (11% / 17% against 6%) and at the top.
+TikTok and Reels are separate choices in the chooser because their zones differ at the sides (11% / 17% against 6%) and at the top.
 
 ## Sources and how sure they are
 
@@ -20,8 +20,7 @@ None of the three platforms publishes one official table of numbers for organic 
 - Instagram Reels: Meta's Reels ads guide (https://www.facebook.com/business/ads-guide/update/video/facebook-facebook-reels) and its safe-zone guardrail: 14% top, 35% bottom, 6% at the sides, as quoted in https://billo.app/blog/meta-ads-safe-zones and https://www.hopperhq.com/blog/instagram-reel-size/ . Meta's page itself could not be fetched here (robots).
 - YouTube Shorts: Google's "Universal video ad safe zones" (https://services.google.com/fh/files/misc/universalsafezones-youtube.pdf), whose vertical template gives the safe rectangle; the pixel values are read from it in https://adkit.so/tools/safe-zones/youtube and https://www.tella.com/help/editing/social-safe-zones.md . See also Google Ads, "YouTube Shorts ad specs" (https://support.google.com/google-ads/answer/13547298).
 
-## How the placement works
+## How the overlay works
 
-- Subtitles: when a destination with a platform is applied (Ready screen, batch, template), the subtitle position is moved so that a two-line block stays inside the safe area (`SafeZone.fitSubtitlePosition`). It is done once, when the template is applied: a position the user sets by hand afterwards stays.
-- Watermark: its margins are at least the safe area's (`SafeZone.watermarkMargins`), on the preview and in the export (`ExportOptions.platform`).
-- Overlay: shaded where the platform covers, dashed outline around what stays clear.
+- Overlay: shaded where the platform covers, dashed outline around what stays clear (`drawSafeZone`), over the editor's video, inside the export frame's window.
+- `SafeZone.appliesTo(exportAspect, sourceWidth, sourceHeight)` decides whether the aid is offered.

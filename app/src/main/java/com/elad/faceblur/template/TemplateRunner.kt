@@ -33,8 +33,9 @@ object TemplateRunner {
                 ctrl.awaitIdle()
                 if (ctrl.model.cues.isEmpty()) {
                     notes += ctrl.notice ?: t("לא נמצא דיבור בסרטון")
-                } else if (!s.split.isSentence) {
-                    ctrl.changeSplit(SplitRule(s.split.words, s.split.chars))
+                } else {
+                    if (!s.split.isSentence) ctrl.changeSplit(SplitRule(s.split.words, s.split.chars))
+                    if (s.export.subs == com.elad.faceblur.edit.SubLang.NONE) notes += t("הכתוביות נוצרו, אבל לא ייצרבו בסרטון (ההגדרה: בלי כתוביות בסרטון)")
                 }
             }
         }

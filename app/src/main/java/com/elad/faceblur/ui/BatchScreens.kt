@@ -55,6 +55,7 @@ import com.elad.faceblur.batch.BatchItem
 import com.elad.faceblur.batch.BatchMath
 import com.elad.faceblur.batch.BatchService
 import com.elad.faceblur.batch.ItemStatus
+import com.elad.faceblur.batch.progressLine
 import com.elad.faceblur.i18n.t
 import com.elad.faceblur.pipeline.VideoInfo
 import kotlin.math.ceil
@@ -117,7 +118,14 @@ internal fun BatchSetupContent(vm: MainViewModel, s: UiState.BatchSetup, onAddMo
                 }
             }
         }
-        EnterUp(2) { TemplatePickerCard(vm.templates, vm.batchChoice, vm::chooseBatchTemplates, vm.previewBase()) }
+        EnterUp(2) {
+            val chosen = vm.batchChoice.id?.let { vm.templates.find(it) }
+            TemplatePickerCard(
+                vm.templates, vm.batchChoice, vm::chooseBatchTemplates, vm.previewBase(),
+                createSubs = if (chosen?.subs != null) settings.createSubs else null,
+                onCreateSubs = vm::setBatchSubtitles,
+            )
+        }
         EnterUp(3) {
             ClipCard {
                 Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
@@ -236,6 +244,11 @@ internal fun BatchRunContent(vm: MainViewModel, batch: Batch) {
                         )
                         TimelineProgress(batch.progress)
                         Text(
+                            batch.progressLine(),
+                            style = MaterialTheme.typography.titleSmall.tnum(),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
                             t("העיבוד ממשיך גם כשהמסך כבוי או האפליקציה ברקע. התבנית: %s").format(batch.templateName),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -314,6 +327,7 @@ private fun BatchRow(vm: MainViewModel, batch: Batch, item: BatchItem) {
                             else -> InfoChip(BatchService.statusText(status, batch))
                         }
                         if (item.lowConfidence) InfoChip(t("זיהוי לא בטוח"), flag, onFlag)
+                        if (item.stepFailed) InfoChip(t("שלב בתבנית לא הושלם"), flag, onFlag)
                     }
                 }
                 when {
@@ -328,9 +342,18 @@ private fun BatchRow(vm: MainViewModel, batch: Batch, item: BatchItem) {
                     }
                 }
             }
-            if (active) LinearProgressIndicator(progress = { item.progress }, modifier = Modifier.fillMaxWidth())
+            if (active) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    LinearProgressIndicator(progress = { item.progress }, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(Space.S))
+                    Text(ltr((item.progress * 100).roundToInt().coerceIn(0, 100).toString() + "%"), style = MaterialTheme.typography.labelMedium.tnum(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             item.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-            for (n in item.notes) Text(n, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            for (n in item.notes) Text(n, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            item.analysisInfo?.takeIf { status.done }?.let {
+                Text(ltr(t("זיהוי פנים") + ": " + it), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (status == ItemStatus.NO_FACES && item.output == null) {
                 Text(t("לא נמצאו פנים, ולא היה מה לשנות, אז לא נשמר עותק. אפשר לסמן ידנית בעורך."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

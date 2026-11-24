@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -35,7 +36,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,7 +59,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.elad.faceblur.i18n.t
+import com.elad.faceblur.project.ProjectEntry
 import com.elad.faceblur.project.ProjectMeta
+import com.elad.faceblur.project.groupByBatch
 import com.elad.faceblur.project.ProjectStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -65,13 +70,18 @@ import java.util.Locale
 
 private const val FOLDED = 4
 
-/** Saved projects on the home screen: tap to keep editing; rename or delete from the menu. */
+/**
+ * Saved projects on the home screen: tap to keep editing; rename or delete from the menu. The
+ * projects of one batch are a single folder (tap to open it and see its videos).
+ */
 @Composable
 fun ProjectsSection(
     projects: List<ProjectMeta>,
     onOpen: (String) -> Unit,
     onRename: (String, String) -> Unit,
     onDelete: (String) -> Unit,
+    onRenameFolder: (String, String) -> Unit = { _, _ -> },
+    onDeleteFolder: (String) -> Unit = {},
 ) {
     if (projects.isEmpty()) {
         NoProjects()
@@ -80,16 +90,37 @@ fun ProjectsSection(
     var all by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<ProjectMeta?>(null) }
     var deleting by remember { mutableStateOf<ProjectMeta?>(null) }
+    var renamingFolder by remember { mutableStateOf<ProjectEntry.Folder<ProjectMeta>?>(null) }
+    var deletingFolder by remember { mutableStateOf<ProjectEntry.Folder<ProjectMeta>?>(null) }
+    var openFolders by rememberSaveable { mutableStateOf(setOf<String>()) }
+    val entries = remember(projects) { groupByBatch(projects, { it.batchId }, { it.updated }, { it.created }) }
     Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
         SectionHeader(t("הפרויקטים שלי"), t("נשמרים תוך כדי עריכה"), MaterialTheme.colorScheme.primary) {
-            if (projects.size > FOLDED) {
+            if (entries.size > FOLDED) {
                 TextButton(onClick = { all = !all }) {
-                    Text(if (all) t("הצג פחות") else t("הצג הכל (%d)").format(projects.size))
+                    Text(if (all) t("הצג פחות") else t("הצג הכל (%d)").format(entries.size))
                 }
             }
         }
-        for (p in if (all) projects else projects.take(FOLDED)) {
-            ProjectRow(p, onOpen = { onOpen(p.id) }, onRename = { renaming = p }, onDelete = { deleting = p })
+        for (e in if (all) entries else entries.take(FOLDED)) {
+            when (e) {
+                is ProjectEntry.Single -> ProjectRow(e.item, onOpen = { onOpen(e.item.id) }, onRename = { renaming = e.item }, onDelete = { deleting = e.item })
+                is ProjectEntry.Folder -> {
+                    val open = e.batchId in openFolders
+                    FolderRow(
+                        e, open,
+                        onToggle = { openFolders = if (open) openFolders - e.batchId else openFolders + e.batchId },
+                        onRename = { renamingFolder = e }, onDelete = { deletingFolder = e },
+                    )
+                    if (open) {
+                        Column(Modifier.padding(start = Space.L), verticalArrangement = Arrangement.spacedBy(Space.S)) {
+                            for (p in e.items) {
+                                ProjectRow(p, onOpen = { onOpen(p.id) }, onRename = { renaming = p }, onDelete = { deleting = p })
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     renaming?.let { p ->
@@ -116,6 +147,88 @@ fun ProjectsSection(
             },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text(t("ביטול")) } },
         )
+    }
+    renamingFolder?.let { f ->
+        var name by remember(f.batchId) { mutableStateOf(folderName(f)) }
+        AlertDialog(
+            onDismissRequest = { renamingFolder = null },
+            title = { Text(t("שם התיקייה")) },
+            text = { OutlinedTextField(name, { name = it }, singleLine = true) },
+            confirmButton = {
+                TextButton(onClick = { onRenameFolder(f.batchId, name); renamingFolder = null }, enabled = name.isNotBlank()) { Text(t("שמור")) }
+            },
+            dismissButton = { TextButton(onClick = { renamingFolder = null }) { Text(t("ביטול")) } },
+        )
+    }
+    deletingFolder?.let { f ->
+        AlertDialog(
+            onDismissRequest = { deletingFolder = null },
+            title = { Text(t("למחוק את התיקייה?")) },
+            text = {
+                Text(t("%d פרויקטים יימחקו (יפונו %s). הסרטונים ששמורים בגלריה, והסרטונים המקוריים, לא יימחקו.").format(f.items.size, sizeText(f.items.sumOf { it.bytes })))
+            },
+            confirmButton = {
+                TextButton(onClick = { onDeleteFolder(f.batchId); deletingFolder = null }) {
+                    Text(t("מחק"), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { deletingFolder = null }) { Text(t("ביטול")) } },
+        )
+    }
+}
+
+/** The folder's name: the one it was given, or the batch's date and time. */
+private fun folderName(f: ProjectEntry.Folder<ProjectMeta>): String {
+    f.items.firstNotNullOfOrNull { it.batchName }?.let { return it }
+    val at = f.items.firstOrNull { it.batchAt > 0 }?.batchAt ?: f.items.minOf { it.created }
+    val c = Calendar.getInstance().apply { timeInMillis = at }
+    return t("עיבוד") + " " + String.format(Locale.US, "%d.%d.%02d %02d:%02d", c.get(Calendar.DAY_OF_MONTH), c.get(Calendar.MONTH) + 1, c.get(Calendar.YEAR) % 100, c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE))
+}
+
+/** A batch's folder: its name, how many videos, and a chevron that opens it. */
+@Composable
+private fun FolderRow(f: ProjectEntry.Folder<ProjectMeta>, open: Boolean, onToggle: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    val source = remember { MutableInteractionSource() }
+    val shape = MaterialTheme.shapes.medium
+    val name = folderName(f)
+    Surface(
+        onClick = onToggle,
+        modifier = Modifier
+            .fillMaxWidth()
+            .pressScale(source)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+            .semantics { contentDescription = name },
+        shape = shape,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        interactionSource = source,
+    ) {
+        Row(Modifier.fillMaxWidth().padding(Space.S), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(64.dp).clip(RoundedCornerShape(Radius.Control)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                Alignment.Center,
+            ) { Icon(AppIcons.Folder, null, tint = Feature.FACES.tint) }
+            Spacer(Modifier.width(Space.M))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    t("%d סרטונים").format(f.items.size),
+                    style = MaterialTheme.typography.bodySmall.tnum(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                Icons.Filled.KeyboardArrowDown, null, Modifier.rotate(if (open) 180f else 0f),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, t("אפשרויות")) }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text(t("שנה שם")) }, onClick = { menu = false; onRename() })
+                    DropdownMenuItem(text = { Text(t("מחק"), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() })
+                }
+            }
+        }
     }
 }
 

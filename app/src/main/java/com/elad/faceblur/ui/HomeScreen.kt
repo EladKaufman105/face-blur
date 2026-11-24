@@ -57,7 +57,7 @@ import com.elad.faceblur.i18n.t
 @Composable
 internal fun HomeContent(vm: MainViewModel, wide: Boolean, onPick: () -> Unit, onTool: (QuickTool) -> Unit, onBatch: () -> Unit) {
     val projects: @Composable () -> Unit = {
-        ProjectsSection(vm.projects, vm::openProject, vm::renameProject, vm::deleteProject)
+        ProjectsSection(vm.projects, vm::openProject, vm::renameProject, vm::deleteProject, vm::renameBatchFolder, vm::deleteBatchFolder)
     }
     if (wide) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.XL)) {
@@ -65,9 +65,11 @@ internal fun HomeContent(vm: MainViewModel, wide: Boolean, onPick: () -> Unit, o
                 BatchState.current?.let { b -> BatchBanner(b, vm::showBatch) }
                 EnterUp(0) { NewVideoGroup(vm.batchRunning, onPick, onBatch) }
                 EnterUp(1) { ToolsSection(onTool) }
-                EnterUp(3) { ShareHint() }
             }
-            Column(Modifier.weight(1f)) { EnterUp(2) { projects() } }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.L)) {
+                EnterUp(2) { projects() }
+                if (vm.projects.isEmpty()) EnterUp(3) { ShareHint() }
+            }
         }
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(Space.XL)) {
@@ -75,7 +77,7 @@ internal fun HomeContent(vm: MainViewModel, wide: Boolean, onPick: () -> Unit, o
             EnterUp(0) { NewVideoGroup(vm.batchRunning, onPick, onBatch) }
             EnterUp(1) { ToolsSection(onTool) }
             EnterUp(2) { projects() }
-            EnterUp(3) { ShareHint() }
+            if (vm.projects.isEmpty()) EnterUp(3) { ShareHint() }
         }
     }
 }
@@ -147,18 +149,18 @@ private fun HeroCard(onPick: () -> Unit) {
         Column(
             Modifier
                 .background(Brush.linearGradient(listOf(Color(0xFF33237A), Brand.Night, Brand.Ink)))
-                .padding(Space.XL),
+                .padding(Space.L),
         ) {
             // Lanes of blurs, as in the editor: found automatically (coral), marked by hand (peach).
             MiniTimeline(
-                Modifier.fillMaxWidth().height(56.dp),
+                Modifier.fillMaxWidth().height(44.dp),
                 lanes = listOf(
                     Brand.Coral to listOf(0.03f..0.34f, 0.42f..0.74f, 0.80f..0.97f),
                     Color(0xFFFF8A65) to listOf(0.12f..0.30f, 0.52f..0.88f),
                     Brand.Coral.copy(alpha = 0.55f) to listOf(0.06f..0.22f, 0.62f..0.79f),
                 ),
             )
-            Spacer(Modifier.height(Space.XL))
+            Spacer(Modifier.height(Space.L))
             Text(t("טשטוש פנים בסרטון"), style = AppType.Display, color = Color.White)
             Spacer(Modifier.height(Space.S))
             Text(
@@ -166,7 +168,7 @@ private fun HeroCard(onPick: () -> Unit) {
                 style = AppType.Body,
                 color = Color.White.copy(alpha = 0.72f),
             )
-            Spacer(Modifier.height(Space.XL))
+            Spacer(Modifier.height(Space.L))
             GradientButton(t("בחר סרטון"), onPick, Modifier.fillMaxWidth().testTag(Tags.PICK_VIDEO), icon = Icons.Filled.Add)
         }
     }

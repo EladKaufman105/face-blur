@@ -117,10 +117,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** On-device speech models for subtitles. */
     val models = ModelManager(app)
 
-    /** The user's templates (and the built-in looks and destinations, in [BuiltInTemplates]). */
+    /** The user's templates (and the built-in looks, in [BuiltInTemplates]). */
     val templates = TemplateStore(app)
 
-    /** What is chosen for the next video: the user's template, or a look and a destination (null: none). */
+    /** What is chosen for the next video: the user's template or a built-in look (none: nothing). */
     var templateChoice by mutableStateOf(TemplateChoice())
         private set
 
@@ -171,6 +171,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         templateBase = null
         templateChoice = TemplateChoice()
         templateSettings = null
+        subsOverride = null
         sessionExport = null
         sessionSubStyle = null
     }
@@ -264,8 +265,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var batchDownloadError by mutableStateOf<String?>(null)
         private set
 
-    private fun idsOf(choice: TemplateChoice): List<String> =
-        listOfNotNull(choice.user) + (if (choice.user == null) listOfNotNull(choice.look, choice.dest) else emptyList())
+    private fun idsOf(choice: TemplateChoice): List<String> = listOfNotNull(choice.id)
+
+    /** The user's own say on creating subtitles for the template chosen (null: as the template says). Reset when another is chosen. */
+    private var batchSubsOverride: Boolean? = null
+    private var subsOverride: Boolean? = null
+
+    private fun TemplateSettings.withSubs(o: Boolean?) = if (o == null) this else copy(createSubs = o)
+
+    /** Turns subtitle creation on or off for the batch being set up (the template had it the other way). */
+    fun setBatchSubtitles(on: Boolean) {
+        batchSubsOverride = on
+        recomputeBatch()
+    }
+
+    /** Turns subtitle creation on or off for the next video (the template had it the other way). */
+    fun setTemplateSubtitles(on: Boolean) {
+        subsOverride = on
+        templateSettings = templateSettings?.copy(createSubs = on)
+    }
 
     /** The settings a template is laid over (for the previews): before any template was chosen. */
     fun previewBase(): TemplateSettings = templateBase ?: currentSettings()
@@ -274,11 +292,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val base = previewBase()
         val notes = ArrayList<String>()
         val chosen = idsOf(batchChoice).mapNotNull { templates.find(it) }.map { templates.usable(it, notes) }
-        batchSettings = applyAll(base, chosen)
+        batchSettings = applyAll(base, chosen).withSubs(batchSubsOverride)
         batchNotes = notes
     }
 
     fun chooseBatchTemplates(choice: TemplateChoice) {
+        if (choice != batchChoice) batchSubsOverride = null
         batchChoice = choice
         recomputeBatch()
     }
@@ -291,6 +310,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             closeSession()
             resetTemplate()
             batchChoice = TemplateChoice()
+            batchSubsOverride = null
             recomputeBatch()
         }
         state = UiState.Loading
@@ -318,8 +338,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Downloads the speech model the batch's template needs (before anything starts). */
-    fun downloadBatchModel() {
-        val m = batchSettings.speechModel
+    fun downloadBatchModel() = downloadModel(batchSettings.speechModel)
+
+    /** Downloads the speech model the template chosen for the next video needs. */
+    fun downloadTemplateModel() = downloadModel(templateSettings?.speechModel ?: SpeechModel.HEBREW)
+
+    /** The next video's template creates subtitles and the model for them isn't on the phone. */
+    val templateNeedsModel: Boolean get() = templateSettings?.let { it.needsSpeechModel && !models.isReady(it.speechModel) } == true
+
+    private fun downloadModel(m: SpeechModel) {
         if (models.downloading != null || models.isReady(m)) return
         batchDownloadError = null
         viewModelScope.launch {
@@ -347,7 +374,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             BatchItem(i, v.uri, v.name, v.durationMs, thumb)
         }
         val name = idsOf(batchChoice).mapNotNull { templates.find(it) }.joinToString(" + ") { if (it.builtIn) t(it.name) else it.name }
-        BatchState.current = Batch(items, s, name.ifEmpty { t("בלי תבנית") })
+        BatchState.current = Batch(items, s, name.ifEmpty { t("בלי תבנית") }).also { it.speeds = batchSpeeds() }
         BatchService.start(getApplication())
         state = UiState.BatchRun
     }
@@ -389,6 +416,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * the subtitle look, the export), and their processing runs after the analysis.
      */
     fun chooseTemplates(choice: TemplateChoice) {
+        val templateChoiceBefore = templateChoice
         templateChoice = choice
         val ids = idsOf(choice)
         if (ids.isEmpty()) {
@@ -399,7 +427,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val base = templateBase ?: currentSettings().also { templateBase = it }
         val notes = ArrayList<String>()
         val chosen = ids.mapNotNull { templates.find(it) }.map { templates.usable(it, notes) }
-        val s = applyAll(base, chosen)
+        if (choice != templateChoiceBefore) subsOverride = null
+        val s = applyAll(base, chosen).withSubs(subsOverride)
         applyToScreen(s)
         templateSettings = s
     }
@@ -623,6 +652,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         projects = projects.filter { it.id != id }
         saver.execute {
             ProjectStore.delete(app, id)
+            main.post { refreshProjects() }
+        }
+    }
+
+    /** Deletes a batch's folder: its projects (not the videos saved in the gallery). */
+    fun deleteBatchFolder(batchId: String) {
+        val app = getApplication<Application>()
+        projects = projects.filter { it.batchId != batchId }
+        saver.execute {
+            runCatching { ProjectStore.deleteBatch(app, batchId) }
+            main.post { refreshProjects() }
+        }
+    }
+
+    fun renameBatchFolder(batchId: String, name: String) {
+        val n = name.trim().take(80)
+        val app = getApplication<Application>()
+        saver.execute {
+            runCatching { ProjectStore.renameBatch(app, batchId, n) }
             main.post { refreshProjects() }
         }
     }

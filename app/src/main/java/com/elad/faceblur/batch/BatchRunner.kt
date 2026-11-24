@@ -56,6 +56,7 @@ object BatchRunner {
         var session: EditSession? = null
         var ctrl: EditorController? = null
         var projectId: String? = null
+        item.startedAt = SystemClock.elapsedRealtime()
         try {
             item.status = ItemStatus.ANALYZING
             item.progress = 0f
@@ -68,9 +69,18 @@ object BatchRunner {
             val analysis = if (s.blurOff) {
                 withContext(Dispatchers.IO) { FaceBlurProcessor.framesOnly(ctx, info) }
             } else {
-                FaceBlurProcessor(ctx).analyze(info, settings) { p -> item.progress = p * ANALYSIS_SHARE; onChange() }
+                FaceBlurProcessor(ctx).analyze(
+                    info, settings, null,
+                    { snap -> item.analysisInfo = snap.summary() },
+                ) { p -> item.progress = p * ANALYSIS_SHARE; onChange() }
             }
             val analysisMs = if (s.blurOff) 0L else SystemClock.elapsedRealtime() - t0
+            if (!s.blurOff) {
+                // The same facts the single video's stats panel shows, plus how the system treats this process.
+                val speed = if (analysisMs > 0) "%.1fx".format(info.durationMs.toFloat() / analysisMs) else "-"
+                item.analysisInfo = (item.analysisInfo ?: "") + " · " + speed + " realtime · " + environment(ctx)
+                android.util.Log.i("ONIT", "batch analysis of ${item.index + 1}: ${item.analysisInfo}")
+            }
             if (!s.blurOff && info.durationMs > 0) prefs.analysisRatio = analysisMs.toFloat() / info.durationMs
             val sess = EditSession(info, settings, analysis, analysisMs, subtitlesOnly = s.blurOff)
             session = sess
@@ -92,6 +102,8 @@ object BatchRunner {
                 .put("durationMs", info.durationMs)
                 .put("subtitlesOnly", s.blurOff)
                 .put("analysisMs", analysisMs)
+                .put("batchId", batch.id)
+                .put("batchAt", batch.startedAt)
             val edits0 = c.model.exportState()
             withContext(Dispatchers.IO) { ProjectStore.create(ctx, id, analysis, info.thumbnail, first, edits0) }
             item.projectId = id
@@ -149,11 +161,29 @@ object BatchRunner {
                 }
             } else item.projectId = null
         } finally {
+            item.endedAt = SystemClock.elapsedRealtime()
             ctrl?.cancelSubtitles()
             ctrl?.cancelMotion()
             session?.close()
             onChange()
         }
+    }
+
+    /** Whether the system treats the app as on screen, and how hot the phone is: both can slow a long batch. */
+    private fun environment(ctx: Context): String {
+        val importance = runCatching {
+            val i = android.app.ActivityManager.RunningAppProcessInfo()
+            android.app.ActivityManager.getMyMemoryState(i)
+            when {
+                i.importance <= android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND -> "app on screen"
+                i.importance <= android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE -> "foreground service"
+                else -> "background"
+            }
+        }.getOrDefault("?")
+        val thermal = if (android.os.Build.VERSION.SDK_INT >= 29) {
+            runCatching { (ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).currentThermalStatus }.getOrDefault(-1)
+        } else -1
+        return importance + ", thermal " + thermal
     }
 
     /** What's in the editor now, into the project (on the IO thread; the state is copied first). */

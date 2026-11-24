@@ -9,6 +9,8 @@ import com.elad.faceblur.batch.BatchService
 import com.elad.faceblur.batch.BatchState
 import com.elad.faceblur.batch.ItemStatus
 import com.elad.faceblur.project.ProjectStore
+import com.elad.faceblur.subs.ModelManager
+import com.elad.faceblur.subs.SpeechModel
 import com.elad.faceblur.template.BuiltInTemplates
 import com.elad.faceblur.template.TemplateSettings
 import com.elad.faceblur.template.applyAll
@@ -20,9 +22,10 @@ import org.junit.runner.RunWith
 import java.io.File
 
 /**
- * A batch of two public test clips (and one file that isn't a video, which fails without
- * stopping the others), run by the foreground service with a template: the Clean look and the
- * WhatsApp destination. Every good video must be saved to Movies/ONIT and as a project.
+ * Batch processing end to end (see also SubtitlesTest, which puts whisper's tiny model in the
+ * test assets). A batch of two public test clips (and one file that isn't a video, which fails without
+ * stopping the others), run by the foreground service with a template: the Clean look.
+ * Every good video must be saved to Movies/ONIT and as a project.
  */
 @RunWith(AndroidJUnit4::class)
 class BatchTest {
@@ -37,8 +40,9 @@ class BatchTest {
         val clips = listOf("headpose.mp4", "portrait_rot90.mp4").map { copy(it) }
         val files = listOf(clips[0], bogus, clips[1])
         val items = files.mapIndexed { i, f -> BatchItem(i, Uri.fromFile(f), f.nameWithoutExtension, 5_000, null) }
-        val settings = applyAll(TemplateSettings(), listOf(BuiltInTemplates.CLEAN, BuiltInTemplates.WHATSAPP))
-        val batch = Batch(items, settings, "Clean + WhatsApp")
+        // The look creates subtitles, which needs the speech model: this test is about the rest.
+        val settings = applyAll(TemplateSettings(), listOf(BuiltInTemplates.CLEAN)).copy(createSubs = false)
+        val batch = Batch(items, settings, "Clean")
         val made = ArrayList<String>()
         try {
             inst.runOnMainSync { BatchState.current = batch }
@@ -62,11 +66,92 @@ class BatchTest {
                 made += id!!
                 assertTrue("the project is listed", ProjectStore.list(ctx).any { p -> p.id == id })
             }
-            // 720p, as the WhatsApp destination says.
-            val info = com.elad.faceblur.pipeline.VideoInfo.probe(ctx, items[0].output!!)
-            assertTrue("short side at most 720 (was ${minOf(info.displayWidth, info.displayHeight)})", minOf(info.displayWidth, info.displayHeight) <= 720)
+            // The batch's projects are one folder: they share the batch's id.
+            val metas = ProjectStore.list(ctx).filter { it.id in made }
+            assertEquals("both projects carry the batch id", setOf(batch.id), metas.mapNotNull { it.batchId }.toSet())
+            assertEquals(2, metas.size)
         } finally {
             for (id in made) ProjectStore.delete(ctx, id)
+            inst.runOnMainSync { BatchState.current = null }
+        }
+    }
+
+    /** The speech model of a test: whisper's tiny one from the test assets, put where the app looks for [SpeechModel.MULTILINGUAL]. */
+    private fun installTinyModel(): File {
+        val inst = InstrumentationRegistry.getInstrumentation()
+        val file = ModelManager(inst.targetContext).file(SpeechModel.MULTILINGUAL)
+        file.parentFile?.mkdirs()
+        inst.context.assets.open("models/ggml-tiny.bin").use { i -> file.outputStream().use { i.copyTo(it) } }
+        return file
+    }
+
+    private fun runBatch(items: List<BatchItem>, settings: TemplateSettings): Batch {
+        val inst = InstrumentationRegistry.getInstrumentation()
+        val batch = Batch(items, settings, "test")
+        inst.runOnMainSync { BatchState.current = batch }
+        BatchService.start(inst.targetContext)
+        val t0 = System.currentTimeMillis()
+        while (!batch.finished && System.currentTimeMillis() - t0 < 900_000) Thread.sleep(500)
+        assertTrue("the batch finished", batch.finished)
+        return batch
+    }
+
+    /**
+     * A template that creates subtitles (a built-in look, which turns it on) must give a video with
+     * speech its subtitles in a batch: they are in the project and nothing is flagged.
+     */
+    @Test
+    fun aLookCreatesSubtitlesInABatch() {
+        val inst = InstrumentationRegistry.getInstrumentation()
+        val ctx = inst.targetContext
+        val clip = File(ctx.cacheDir, "speech_en_batch.mp4")
+        inst.context.assets.open("samples/speech_en.mp4").use { i -> clip.outputStream().use { i.copyTo(it) } }
+        val look = applyAll(TemplateSettings(), listOf(BuiltInTemplates.BOLD))
+        assertTrue("the look asks for subtitles", look.createSubs)
+        // Whisper's tiny model stands in for the big ones, which CI doesn't download (the code path is the same).
+        val settings = look.copy(speechModel = SpeechModel.MULTILINGUAL, language = "en", translate = false)
+        val model = ModelManager(ctx).file(SpeechModel.MULTILINGUAL)
+        val hadModel = model.exists()
+        val backup = if (hadModel) File(ctx.cacheDir, "model_backup").also { model.copyTo(it, overwrite = true) } else null
+        val item = BatchItem(0, Uri.fromFile(clip), "speech", 10_000, null)
+        var projectId: String? = null
+        try {
+            installTinyModel()
+            val batch = runBatch(listOf(item), settings)
+            projectId = item.projectId
+            assertTrue("saved, not ${item.status} (${item.error}; ${item.notes})", item.status == ItemStatus.SAVED || item.status == ItemStatus.NO_FACES)
+            assertTrue("no template step failed: ${item.notes}", item.notes.isEmpty() && !item.stepFailed)
+            assertNotNull("a project", projectId)
+            val meta = ProjectStore.list(ctx).first { it.id == projectId }
+            assertTrue("the project has subtitles (${meta.cues})", meta.cues > 0)
+            assertNotNull("its output", item.output)
+            assertEquals(batch.id, meta.batchId)
+        } finally {
+            projectId?.let { ProjectStore.delete(ctx, it) }
+            if (backup != null) backup.copyTo(model, overwrite = true) else model.delete()
+            inst.runOnMainSync { BatchState.current = null }
+        }
+    }
+
+    /** A step that can't run (no speech model) flags the video with the reason; it is not skipped silently. */
+    @Test
+    fun aMissingSpeechModelIsFlaggedOnTheVideo() {
+        val inst = InstrumentationRegistry.getInstrumentation()
+        val ctx = inst.targetContext
+        val model = ModelManager(ctx).file(SpeechModel.HEBREW)
+        org.junit.Assume.assumeFalse("the Hebrew model is on this device", model.exists())
+        val clip = File(ctx.cacheDir, "speech_en_batch2.mp4")
+        inst.context.assets.open("samples/speech_en.mp4").use { i -> clip.outputStream().use { i.copyTo(it) } }
+        val settings = applyAll(TemplateSettings(), listOf(BuiltInTemplates.CLEAN)).copy(blurOff = true)
+        val item = BatchItem(0, Uri.fromFile(clip), "speech", 10_000, null)
+        var projectId: String? = null
+        try {
+            runBatch(listOf(item), settings)
+            projectId = item.projectId
+            assertTrue("it has a reason", item.notes.isNotEmpty())
+            assertTrue("flagged for a look", item.stepFailed && item.needsCheck)
+        } finally {
+            projectId?.let { ProjectStore.delete(ctx, it) }
             inst.runOnMainSync { BatchState.current = null }
         }
     }
@@ -95,15 +180,28 @@ class BatchTest {
         val app = inst.targetContext.applicationContext as android.app.Application
         inst.runOnMainSync {
             val vm = MainViewModel(app)
-            val exportBefore = vm.prefs.export
-            val styleBefore = vm.prefs.subStyle
-            vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice(look = BuiltInTemplates.CLEAN.id, dest = BuiltInTemplates.WHATSAPP.id))
-            assertEquals("the template's resolution is used for this video", 720, vm.exportOptions.shortSide)
-            assertEquals("the user's own export options are untouched", exportBefore, vm.prefs.export)
-            assertEquals("the user's own subtitle look is untouched", styleBefore, vm.prefs.subStyle)
-            vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice())
-            assertEquals(exportBefore, vm.exportOptions)
-            assertEquals(styleBefore, vm.subtitleStyle)
+            // The user's own template with a 720p export (the built-in looks leave the export alone).
+            val id = vm.templates.newId()
+            vm.templates.save(
+                com.elad.faceblur.template.Template(
+                    id = id, name = "test 720",
+                    subs = com.elad.faceblur.template.SubsPart(style = BuiltInTemplates.CLEAN.subs!!.style),
+                    export = com.elad.faceblur.template.ExportPart(shortSide = 720),
+                ),
+            )
+            try {
+                val exportBefore = vm.prefs.export
+                val styleBefore = vm.prefs.subStyle
+                vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice(id))
+                assertEquals("the template's resolution is used for this video", 720, vm.exportOptions.shortSide)
+                assertEquals("the user's own export options are untouched", exportBefore, vm.prefs.export)
+                assertEquals("the user's own subtitle look is untouched", styleBefore, vm.prefs.subStyle)
+                vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice())
+                assertEquals(exportBefore, vm.exportOptions)
+                assertEquals(styleBefore, vm.subtitleStyle)
+            } finally {
+                vm.templates.delete(id)
+            }
         }
     }
 }

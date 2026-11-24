@@ -151,7 +151,9 @@ class BatchService : Service() {
         val n = batch.items.size
         val pos = (batch.doneCount + 1).coerceAtMost(n)
         b.setContentTitle(t("מעבד סרטונים · %d מתוך %d").format(pos, n))
-        b.setContentText(cur?.let { it.name + " · " + statusText(it.status, batch) } ?: t("מתחיל…"))
+        b.setContentText(cur?.let { it.name + " · " + statusText(it.status, batch) + " " + (it.progress * 100).roundToInt().coerceIn(0, 100) + "%" } ?: t("מתחיל…"))
+        // The whole batch: percent and the time left.
+        b.setSubText(batch.progressLine())
         b.setProgress(100, (batch.progress * 100).roundToInt().coerceIn(0, 100), false)
         val cancel = PendingIntent.getService(
             this, 1, Intent(this, BatchService::class.java).setAction(ACTION_CANCEL),

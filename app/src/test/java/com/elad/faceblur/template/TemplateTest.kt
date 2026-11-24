@@ -158,32 +158,73 @@ class TemplateTest {
     }
 
     @Test
-    fun aDestinationChangesOnlyTheExportShape() {
-        val base = TemplateSettings(mode = BlurMode.SOLID, export = ExportOptions(subs = SubLang.NONE, saveSrt = false, watermark = Watermark(text = "me")))
-        val tiktok = BuiltInTemplates.TIKTOK.applyTo(base)
-        assertEquals(ExportAspect.VERTICAL, tiktok.export.aspect)
-        assertEquals(1080, tiktok.export.shortSide)
-        assertEquals(30, tiktok.export.fps)
-        assertEquals(BlurMode.SOLID, tiktok.mode)
-        assertEquals(SubLang.NONE, tiktok.export.subs)
-        assertEquals("me", tiktok.export.watermark.text)
-        val shorts = BuiltInTemplates.SHORTS.applyTo(base)
-        assertEquals(ExportAspect.VERTICAL, shorts.export.aspect)
-        assertEquals(0, shorts.export.fps)
-        val wa = BuiltInTemplates.WHATSAPP.applyTo(base)
-        assertEquals(720, wa.export.shortSide)
-        assertEquals(ExportQuality.SAVER, wa.export.quality)
-        // "As the source" undoes an earlier destination.
-        val back = BuiltInTemplates.SOURCE.applyTo(tiktok)
-        assertEquals(ExportOptions(subs = SubLang.NONE, saveSrt = false, watermark = Watermark(text = "me")), back.export)
+    fun everyBuiltInLookCreatesSubtitlesInTheHebrewModel() {
+        // The batch added no subtitles because a look only styled them: now applying one turns creation on.
+        for (look in BuiltInTemplates.LOOKS) {
+            val s = look.applyTo(TemplateSettings())
+            assertTrue(look.id, s.createSubs)
+            assertTrue(look.id, s.needsSpeechModel && s.hasProcessing)
+            assertEquals(look.id, SpeechModel.HEBREW, s.speechModel)
+            assertEquals(look.id, SpeechModel.HEBREW.language, s.language)
+            assertEquals(look.id, SubLang.ORIGINAL, s.export.subs)
+        }
     }
 
     @Test
-    fun aLookAndADestinationCombine() {
-        val s = applyAll(TemplateSettings(), listOf(BuiltInTemplates.BOLD, BuiltInTemplates.TIKTOK))
-        assertEquals(SubEffect.HIGHLIGHT, s.subStyle.effect)
-        assertEquals(ExportAspect.VERTICAL, s.export.aspect)
+    fun aLookBurnsSubtitlesEvenIfTheUsersExportHadThemOff() {
+        val base = TemplateSettings(export = ExportOptions(subs = SubLang.NONE))
+        assertEquals(SubLang.ORIGINAL, BuiltInTemplates.BOLD.applyTo(base).export.subs)
+    }
+
+    @Test
+    fun aLookChangesNeitherTheFrameShapeNorTheSize() {
+        val base = TemplateSettings(export = ExportOptions(shortSide = 720, fps = 24, aspect = ExportAspect.SQUARE, quality = ExportQuality.SAVER))
+        for (look in BuiltInTemplates.LOOKS) assertEquals(base.export, look.applyTo(base).export.copy(subs = base.export.subs))
+    }
+
+    @Test
+    fun noBuiltInIsAPlatform() {
+        assertEquals(setOf("look.clean", "look.bold", "look.news", "look.minimal"), BuiltInTemplates.all.map { it.id }.toSet())
+        for (t in BuiltInTemplates.all) {
+            assertEquals(TemplateGroup.LOOK, t.group)
+            assertNull(t.export)
+        }
+    }
+
+    @Test
+    fun subtitleCreationCanBeTurnedOffAfterwards() {
+        val s = BuiltInTemplates.CLEAN.applyTo(TemplateSettings()).copy(createSubs = false)
         assertFalse(s.hasProcessing)
+        assertFalse(s.needsSpeechModel)
+    }
+
+    @Test
+    fun anOldTemplateWithAPlatformStillLoadsAndKeepsItsExportSettings() {
+        val old = JSONObject(
+            """{"v":1,"id":"u9","name":"Old TikTok","group":"DESTINATION",
+               "export":{"aspect":"VERTICAL","shortSide":1080,"fps":30,"quality":"HIGH","codec":"SAME","platform":"TIKTOK"}}""",
+        )
+        val t = Template.fromJson(old)!!
+        assertEquals(TemplateGroup.USER, t.group)
+        assertEquals(ExportPart(ExportAspect.VERTICAL, 1080, 30, ExportQuality.HIGH, ExportCodec.SAME), t.export)
+        // Saved again, the platform is gone.
+        assertFalse(t.toJson().getJSONObject("export").has("platform"))
+        val s = t.applyTo(TemplateSettings())
+        assertEquals(ExportAspect.VERTICAL, s.export.aspect)
+        assertEquals(1080, s.export.shortSide)
+    }
+
+    @Test
+    fun anOldProjectExportWithAPlatformStillReads() {
+        val o = JSONObject(ExportOptions(shortSide = 720).toJson().toString()).put("platform", "REELS")
+        assertEquals(720, ExportOptions.fromJson(o).shortSide)
+    }
+
+    @Test
+    fun aChoiceIsOneTemplate() {
+        assertTrue(TemplateChoice().isEmpty)
+        assertEquals(emptyList<String>(), TemplateChoice().ids)
+        assertEquals(listOf("look.bold"), TemplateChoice("look.bold").ids)
     }
 
     @Test

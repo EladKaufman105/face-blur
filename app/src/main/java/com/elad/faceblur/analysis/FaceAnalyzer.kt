@@ -172,7 +172,7 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
      * totals so far (per frame on the video's thread, waits for a free worker, detections and
      * their parts) and how detection is set up now. Cheap: read with each preview.
      */
-    private fun snapshot(): StatsSnapshot {
+    fun snapshot(): StatsSnapshot {
         val g = gpu?.takeIf { it.active }
         return StatsSnapshot(
             atMs = SystemClock.elapsedRealtime(),

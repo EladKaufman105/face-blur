@@ -104,9 +104,9 @@ class EditorController(
     var previewOn by mutableStateOf(true)
         private set
     var previewAvailable by mutableStateOf(true)
-    /** Draw the platform's safe zone over the preview (never in the export). */
+    /** Draw the platform's safe zone over the preview (a view aid for vertical frames; never in the export). */
     var safeZoneOn by mutableStateOf(false)
-    /** The platform whose zone is drawn when the export has none of its own. */
+    /** The platform whose zone is drawn. */
     var safePlatform by mutableStateOf(com.elad.faceblur.template.Platform.TIKTOK)
 
     /**

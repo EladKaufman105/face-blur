@@ -21,6 +21,7 @@ object Tags {
     const val PLAY = "editor.play"
     const val UNDO = "editor.undo"
     const val SAFE_ZONE = "editor.safeZone"
+    const val NO_TEMPLATE = "template.none"
     const val ADD_BLUR = "tool.addBlur"
     const val PANEL_CLOSE = "panel.close"
     const val PANEL_DONE = "panel.done"

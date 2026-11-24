@@ -37,6 +37,40 @@ object BatchMath {
         return (first + render + extra).toLong() + OVERHEAD_MS
     }
 
+    enum class Phase { WAITING, RUNNING, DONE }
+
+    /** One video's state for the time left: its length, how far it is (0..1), and how long it has worked (or worked in all, when done). */
+    class ItemTiming(val durationMs: Long, val progress: Float, val phase: Phase, val elapsedMs: Long)
+
+    /**
+     * Time left for the whole batch, in ms. A video not started takes its estimate from the
+     * learned speeds, scaled by how far off those estimates were on the videos already done. The
+     * one running mixes its own pace so far (elapsed over progress) with that estimate, trusting
+     * the pace more the further along it is.
+     */
+    fun remainingMs(items: List<ItemTiming>, s: TemplateSettings, speeds: Speeds): Long {
+        var est = 0.0
+        var actual = 0.0
+        for (i in items) if (i.phase == Phase.DONE && i.elapsedMs > 0) {
+            est += videoMs(i.durationMs, s, speeds)
+            actual += i.elapsedMs
+        }
+        val scale = if (est > 0) (actual / est).coerceIn(0.4, 2.5) else 1.0
+        var total = 0.0
+        for (i in items) when (i.phase) {
+            Phase.WAITING -> total += videoMs(i.durationMs, s, speeds) * scale
+            Phase.RUNNING -> {
+                val p = i.progress.coerceIn(0f, 1f).toDouble()
+                val byEstimate = videoMs(i.durationMs, s, speeds) * scale * (1 - p)
+                val byPace: Double = if (p > 0.02) i.elapsedMs * (1 - p) / p else byEstimate
+                val w = (p / 0.3).coerceIn(0.0, 1.0)
+                total += w * byPace + (1 - w) * byEstimate
+            }
+            Phase.DONE -> {}
+        }
+        return total.toLong()
+    }
+
     fun totalMs(durationsMs: List<Long>, s: TemplateSettings, speeds: Speeds): Long = durationsMs.sumOf { videoMs(it, s, speeds) }
 
     /**
