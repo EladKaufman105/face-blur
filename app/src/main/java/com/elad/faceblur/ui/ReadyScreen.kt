@@ -81,20 +81,24 @@ internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, on
             }
         }
     }
+    val picker: @Composable () -> Unit = {
+        TemplatePickerCard(vm.templates, vm.templateChoice, vm::chooseTemplates, vm.previewBase(), s.info.thumbnail, s.info.aspect)
+    }
     if (wide) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.XL)) {
             Column(Modifier.weight(1.3f)) { EnterUp(0) { VideoCard(s.info, onReplace = onReplace) } }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.L)) {
-                EnterUp(1) { actions() }
-                EnterUp(2) { TemplatePickerCard(vm.templates, vm.templateChoice, vm::chooseTemplates) }
+                EnterUp(1) { picker() }
+                EnterUp(2) { actions() }
                 EnterUp(3) { BlurSettings(vm) }
             }
         }
     } else {
+        // The template first: it is what the rest of the screen fills in from.
         Column(verticalArrangement = Arrangement.spacedBy(Space.L)) {
-            EnterUp(0) { VideoCard(s.info, onReplace = onReplace) }
-            EnterUp(1) { actions() }
-            EnterUp(2) { TemplatePickerCard(vm.templates, vm.templateChoice, vm::chooseTemplates) }
+            EnterUp(0) { picker() }
+            EnterUp(1) { VideoCard(s.info, onReplace = onReplace) }
+            EnterUp(2) { actions() }
             EnterUp(3) { BlurSettings(vm) }
         }
     }
