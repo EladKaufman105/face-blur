@@ -86,7 +86,7 @@ private fun hasLogo(context: android.content.Context, w: Watermark, ownLogo: jav
  * path: the app's own logo is not touched. Without it, the pick is the app's logo.
  */
 @Composable
-fun WatermarkControls(w: Watermark, onChange: (Watermark) -> Unit, ownLogo: java.io.File? = null) {
+fun WatermarkControls(w: Watermark, ownLogo: java.io.File? = null, onChange: (Watermark) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // 0 none, 1 text, 2 logo.

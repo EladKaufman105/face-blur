@@ -506,6 +506,6 @@ private fun ExportEdit(e: ExportPart, logoStage: java.io.File, onChange: (Export
         // The watermark's own controls (the editor's): off leaves the watermark as it is.
         val wm = e.watermark
         SwitchRow(t("סימן מים"), wm != null, t("כבוי: סימן המים נשאר כמו שהוא")) { onChange(e.copy(watermark = if (it) Watermark() else null)) }
-        if (wm != null) WatermarkControls(wm, { onChange(e.copy(watermark = it)) }, ownLogo = logoStage)
+        if (wm != null) WatermarkControls(wm, ownLogo = logoStage) { onChange(e.copy(watermark = it)) }
     }
 }
