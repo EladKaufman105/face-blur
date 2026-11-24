@@ -66,6 +66,8 @@ object BatchRunner {
         var export = batch.settings.export
         item.startedAt = SystemClock.elapsedRealtime()
         try {
+            // Without face blur the analysis is a quick read of the frame times: it gets a sliver of the bar.
+            val analysisShare = BatchMath.analysisShare(s)
             item.begin(ItemStatus.ANALYZING)
             item.progress = 0f
             onChange()
@@ -80,7 +82,7 @@ object BatchRunner {
                 FaceBlurProcessor(ctx).analyze(
                     info, settings, null,
                     { snap -> item.analysisInfo = snap.summary() },
-                ) { p -> item.progress = p * ANALYSIS_SHARE; onChange() }
+                ) { p -> item.progress = p * analysisShare; onChange() }
             }
             val analysisMs = if (s.blurOff) 0L else SystemClock.elapsedRealtime() - t0
             if (!s.blurOff) {
@@ -123,7 +125,7 @@ object BatchRunner {
             // The template's processing.
             if (s.hasProcessing) {
                 item.begin(ItemStatus.PROCESSING)
-                item.progress = ANALYSIS_SHARE
+                item.progress = analysisShare
                 onChange()
                 val notes = TemplateRunner.applyProcessing(c, s)
                 item.failures = notes.failures
@@ -140,12 +142,12 @@ object BatchRunner {
             }
 
             item.begin(ItemStatus.EXPORTING)
-            item.progress = ANALYSIS_SHARE + PROCESSING_SHARE
+            item.progress = analysisShare + PROCESSING_SHARE
             onChange()
             val saved = FaceBlurProcessor(ctx).render(
                 info, sess.settings, analysis, sess.model, analysisMs, export, s.subStyle, c.audio, c.background, sess.masks,
                 stabilizer = c.stabilizer,
-            ) { p -> item.progress = ANALYSIS_SHARE + PROCESSING_SHARE + p * (1f - ANALYSIS_SHARE - PROCESSING_SHARE); onChange() }
+            ) { p -> item.progress = analysisShare + PROCESSING_SHARE + p * (1f - analysisShare - PROCESSING_SHARE); onChange() }
             if (analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / analysisMs
             item.output = saved.uri
             saveProject(ctx, id, c, batch, export)
@@ -214,6 +216,5 @@ object BatchRunner {
     private fun worthSaving(ctx: Context, batch: Batch, c: EditorController): Boolean =
         TemplateRunner.changesVideo(c, batch.settings) || TemplateRunner.exportChangesVideo(ctx, batch.settings.export)
 
-    private const val ANALYSIS_SHARE = BatchMath.ANALYSIS_SHARE
     private const val PROCESSING_SHARE = BatchMath.PROCESSING_SHARE
 }

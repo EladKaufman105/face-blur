@@ -24,6 +24,12 @@ object BatchMath {
     const val ANALYSIS_SHARE = 0.4f
     const val PROCESSING_SHARE = 0.15f
 
+    /** The analysis share when face blur is off: only the frame times are read, so the bar doesn't wait 40% for a pass that doesn't run. */
+    const val FRAMES_ONLY_SHARE = 0.03f
+
+    /** The share of the bar the analysis step takes with the settings [s]. */
+    fun analysisShare(s: TemplateSettings): Float = if (s.blurOff) FRAMES_ONLY_SHARE else ANALYSIS_SHARE
+
     /** Estimated time of each stage of one video, in ms. */
     class Stages(val analysis: Double, val processing: Double, val render: Double) {
         val total: Double get() = analysis + processing + render
@@ -88,7 +94,7 @@ object BatchMath {
         var total = 0.0
         for (i in items) when (i.phase) {
             Phase.WAITING -> total += videoMs(i.durationMs, s, speeds) * scale
-            Phase.RUNNING -> total += runningMs(i, stages(i.durationMs, s, speeds), scale)
+            Phase.RUNNING -> total += runningMs(i, stages(i.durationMs, s, speeds), scale, analysisShare(s))
             Phase.DONE -> {}
         }
         return total.toLong().coerceAtLeast(0L)
@@ -102,17 +108,17 @@ object BatchMath {
         return w * byPace + (1 - w) * byEstimate
     }
 
-    private fun runningMs(i: ItemTiming, st: Stages, scale: Double): Double {
+    private fun runningMs(i: ItemTiming, st: Stages, scale: Double, analysisShare: Float): Double {
         val a = st.analysis * scale
         val pr = st.processing * scale
         val r = st.render * scale
         val p = i.progress.coerceIn(0f, 1f).toDouble()
         return when (i.stage) {
-            Stage.ANALYZING -> stageLeft(a, (p / ANALYSIS_SHARE).coerceIn(0.0, 1.0), i.stageElapsedMs) + pr + r
+            Stage.ANALYZING -> stageLeft(a, (p / analysisShare).coerceIn(0.0, 1.0), i.stageElapsedMs) + pr + r
             // No progress inside this stage: count down its estimate, keeping a little for what may still be going on.
             Stage.PROCESSING -> max(pr - i.stageElapsedMs, pr * 0.15) + r
             Stage.EXPORTING -> {
-                val start = ANALYSIS_SHARE + PROCESSING_SHARE
+                val start = analysisShare + PROCESSING_SHARE
                 stageLeft(r, ((p - start) / (1 - start)).coerceIn(0.0, 1.0), i.stageElapsedMs)
             }
         }

@@ -99,4 +99,24 @@ class BatchEtaTest {
         val left = BatchMath.remainingMs(items, s, speeds).toDouble()
         assertEquals(30_000.0 + st.processing + st.render, left, 8_000.0)
     }
+
+    @Test
+    fun withoutFaceBlurTheAnalysisGetsOnlyASliverOfTheBar() {
+        val off = TemplateSettings(blurOff = true)
+        assertEquals(BatchMath.FRAMES_ONLY_SHARE, BatchMath.analysisShare(off), 0f)
+        assertEquals(BatchMath.ANALYSIS_SHARE, BatchMath.analysisShare(s), 0f)
+        assertTrue(BatchMath.analysisShare(off) < BatchMath.ANALYSIS_SHARE / 4)
+    }
+
+    @Test
+    fun withoutFaceBlurAVideoPastItsFrameReadIsNotCountedAsStillAnalyzing() {
+        val off = TemplateSettings(blurOff = true)
+        val st = BatchMath.stages(60_000, off, speeds)
+        // The analysis stage is the quick frame read, not a face pass.
+        assertTrue(st.analysis < 10_000)
+        // Frame read done (the whole of its share) after 1 s: what is left is the render, not 40% of a bar's worth of analysis.
+        val items = listOf(ItemTiming(60_000, BatchMath.FRAMES_ONLY_SHARE, Phase.RUNNING, 1_000, stage = Stage.ANALYZING, stageElapsedMs = 1_000))
+        val left = BatchMath.remainingMs(items, off, speeds).toDouble()
+        assertEquals(st.processing + st.render, left, 3_000.0)
+    }
 }
