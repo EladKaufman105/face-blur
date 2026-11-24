@@ -2,6 +2,10 @@ package com.elad.faceblur.ui
 
 import android.graphics.Paint
 import android.graphics.Typeface
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -93,6 +97,23 @@ private fun measure(s: String, size: Float, bold: Boolean): Float {
     p.textSize = size
     p.typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
     return p.measureText(s)
+}
+
+/**
+ * [platform]'s margins, gliding from the previous platform's to the new one's (260 ms, easing out)
+ * when it changes, so the shade, the dashed frame and the mock's elements move instead of jumping
+ * (which elements are drawn follows the platform at once). Read the result while drawing: only the
+ * drawing is redone. Follows the system's animation speed.
+ */
+@Composable
+internal fun glidingSafeZone(platform: Platform): () -> SafeZone {
+    val target = SafeZone.of(platform)
+    val spec = tween<Float>(260, easing = LinearOutSlowInEasing)
+    val top = animateFloatAsState(target.top, spec, label = "zone top")
+    val bottom = animateFloatAsState(target.bottom, spec, label = "zone bottom")
+    val left = animateFloatAsState(target.left, spec, label = "zone left")
+    val right = animateFloatAsState(target.right, spec, label = "zone right")
+    return { SafeZone(top.value, bottom.value, left.value, right.value) }
 }
 
 /**
