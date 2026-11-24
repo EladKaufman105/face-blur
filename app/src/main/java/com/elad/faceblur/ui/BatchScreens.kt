@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
@@ -116,7 +117,7 @@ internal fun BatchSetupContent(vm: MainViewModel, s: UiState.BatchSetup, onAddMo
                 }
             }
         }
-        EnterUp(2) { TemplatePickerCard(vm.templates, vm.batchChoice, vm::chooseBatchTemplates) }
+        EnterUp(2) { TemplatePickerCard(vm.templates, vm.batchChoice, vm::chooseBatchTemplates, vm.previewBase()) }
         EnterUp(3) {
             ClipCard {
                 Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
@@ -340,21 +341,16 @@ private fun BatchRow(vm: MainViewModel, batch: Batch, item: BatchItem) {
 /** On the home screen: the batch of this run, to go back to its queue or results. */
 @Composable
 internal fun BatchBanner(batch: Batch, onOpen: () -> Unit) {
-    ClipCard(onClick = onOpen, accent = Feature.FACES.color) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    if (batch.finished) t("תוצאות העיבוד האחרון") else t("מעבד סרטונים · %d מתוך %d").format((batch.doneCount + 1).coerceAtMost(batch.items.size), batch.items.size),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(
-                    if (batch.finished) t("%d נשמרו").format(batch.savedCount) + (if (batch.checkCount > 0) " · " + t("%d לבדיקה").format(batch.checkCount) else "")
-                    else t("הקש לראות את התור"),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (!batch.finished) LinearProgressIndicator(progress = { batch.progress }, modifier = Modifier.width(72.dp))
-        }
-    }
+    // The same tile as the home screen's other entries; while it runs, its progress at the end.
+    WideTile(
+        AppIcons.Videos,
+        if (batch.finished) t("תוצאות העיבוד האחרון") else t("מעבד סרטונים · %d מתוך %d").format((batch.doneCount + 1).coerceAtMost(batch.items.size), batch.items.size),
+        if (batch.finished) t("%d נשמרו").format(batch.savedCount) + (if (batch.checkCount > 0) " · " + t("%d לבדיקה").format(batch.checkCount) else "")
+        else t("הקש לראות את התור"),
+        Feature.FACES, onOpen,
+        trailing = {
+            if (!batch.finished) LinearProgressIndicator(progress = { batch.progress }, modifier = Modifier.width(56.dp))
+            else Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        },
+    )
 }
