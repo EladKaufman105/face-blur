@@ -38,6 +38,8 @@ export type ProjectMeta = {
   background?: boolean
   /** Stretches cut out. */
   cuts?: number
+  /** Made by a batch: the projects of one batch are shown as one folder (named by [name], else by the time it started). */
+  batch?: { id: string; at: number; name?: string }
 }
 
 /** What the projects' list shows of the edits, kept in the meta on every save. */
@@ -229,6 +231,23 @@ export async function addProjectCopy(p: ProjectRecords, name: string, fonts: [st
 export async function renameProject(id: string, name: string) {
   const m = await get<ProjectMeta>('meta', id)
   if (m) await tx(['meta'], 'readwrite', (s) => s.meta.put({ ...m, name }, id))
+}
+
+/** Renames the folder of batch [id] (its projects carry the name). */
+export async function renameBatch(id: string, name: string) {
+  const all = (await listProjects()).filter((m) => m.batch?.id === id)
+  if (all.length) await tx(['meta'], 'readwrite', (s) => { for (const m of all) s.meta.put({ ...m, batch: { ...m.batch!, name } }, m.id) })
+}
+
+/** The name given to the folder of batch [id] (undefined: none). */
+export async function batchName(id: string): Promise<string | undefined> {
+  return (await listProjects()).find((m) => m.batch?.id === id && m.batch.name)?.batch?.name
+}
+
+/** Deletes every project of batch [id] (not the videos saved to the device). */
+export async function deleteBatch(id: string) {
+  const all = (await listProjects()).filter((m) => m.batch?.id === id)
+  if (all.length) await tx([...STORES], 'readwrite', (s) => { for (const m of all) for (const k of STORES) s[k].delete(m.id) })
 }
 
 export async function deleteProject(id: string) {

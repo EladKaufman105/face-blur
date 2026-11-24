@@ -100,7 +100,10 @@ const PHONE = { viewport: { width: 393, height: 852 }, deviceScaleFactor: 2, isM
     await p.waitForFunction(() => !document.querySelector('.cut .spinner'), null, { timeout: 120000 })
     await p.waitForTimeout(300)
     const total = Number(await p.getAttribute('.cut', 'data-total'))
-    console.log('silences:', await toast(), '· cut in all', total.toFixed(2), 's')
+    const silencesToast = await toast()
+    console.log('silences:', silencesToast, '· cut in all', total.toFixed(2), 's')
+    // The pause search found the sound (a video with speech), whatever it cut.
+    if (String(silencesToast).includes('אין סאונד')) throw new Error('the pause search said there is no sound')
     await p.screenshot({ path: `${out}/3_cuts.png` })
 
     // Playing from 1.8 s jumps over the cut.

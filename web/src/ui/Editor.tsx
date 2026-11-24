@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { storageKey } from '../lib/channel'
-import { t, duration } from '../i18n'
+import { t, duration, lang } from '../i18n'
 import { BlurRenderer, ellipseFor, type Ellipse } from '../lib/renderer'
 import { frameAt, loadLook, saveLook, trackBox, type Analysis, type BlurMode, type Look, type Track } from '../lib/types'
 import type { ExportJob } from './Exporting'
@@ -21,7 +21,7 @@ import { maskAt, maskIndex, NO_BACKGROUND, type Background, type PeopleMasks } f
 import { ASPECT_RATIO, cropFraction, reframePath, steady, viewRect } from '../lib/camera'
 import type { PictureMessage, PictureRequest } from '../workers/picture.worker'
 import { createProject, saveProject, summarize, type ProjectPicture, type ProjectState } from '../lib/projects'
-import { reserveCueIds } from '../lib/subtitles'
+import { reserveCueIds, wordsToCues } from '../lib/subtitles'
 import { speakerColor } from '../lib/speakers'
 import { reserveClipIds } from './EditorTabs'
 import { cleanupOn, type Cleanup } from '../lib/cleanup'
@@ -34,6 +34,9 @@ import { getFont } from '../lib/projects'
 import { loadSfx, makeBuffer, sfxName } from '../lib/sfx'
 import type { VoiceFx } from '../lib/voice'
 import type { AudioMessage, AudioRequest } from '../workers/audio.worker'
+import { exportOptionsOf, hasProcessing, savedLanguage, styleOf, type TemplateSettings } from '../lib/template'
+import { Aborted, findPauses, transcribe } from '../lib/templaterun'
+import { SaveTemplate } from './SaveTemplate'
 
 type Props = {
   file: File
@@ -46,6 +49,8 @@ type Props = {
   hidden?: boolean
   /** A project opened again (its id and what was saved), or none: a new one is made. */
   project?: { id: string; state: ProjectState | null; picture: ProjectPicture | null }
+  /** A template chosen for this new video: its settings fill in the editor and its processing runs (subtitles, voice, cuts, background, steadying). */
+  template?: TemplateSettings | null
 }
 
 export type EditorTab = 'faces' | 'edit' | 'picture' | 'subs' | 'sound' | 'mark'
@@ -75,9 +80,11 @@ function maskKey(m: PeopleMasks, k: number): string {
 /** Width of a new blur when there's no face under the tap, in frame widths (as in the app). */
 const NEW_BLUR = 0.12
 
-export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClose, initialTab = 'faces', hidden = false, project }: Props) {
+export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClose, initialTab = 'faces', hidden = false, project, template: tpl0 }: Props) {
   // A project opened again starts as it was left.
   const saved = project?.state ?? null
+  // A template applies to a new video only (a project opened again is as it was left).
+  const tpl = !project ? tpl0 ?? null : null
   useMemo(() => {
     if (saved) { reserveCueIds(saved.cues); reserveClipIds(saved.sfx) }
   }, [])
@@ -98,20 +105,20 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [cutBusy, setCutBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   // The sound's cleanup: noise, a clearer voice, the networks' loudness (measured once).
-  const [denoise, setDenoise] = useState(saved?.denoise ?? 0)
-  const [enhance, setEnhance] = useState(saved?.enhance ?? false)
-  const [loudOn, setLoudOn] = useState(saved?.loud ?? false)
+  const [denoise, setDenoise] = useState(saved?.denoise ?? tpl?.denoise ?? 0)
+  const [enhance, setEnhance] = useState(saved?.enhance ?? tpl?.enhance ?? false)
+  const [loudOn, setLoudOn] = useState(saved?.loud ?? tpl?.loud ?? false)
   /** The gain to the networks' loudness, as measured on the cleaned sound (null until it is). */
   const [loudGain, setLoudGain] = useState<number | null>(null)
   const clean: Cleanup = useMemo(() => ({ denoise, enhance, loud: loudOn }), [denoise, enhance, loudOn])
   const [exportOpen, setExportOpen] = useState(false)
-  const [exportOpts, setExportOpts] = useState(() => ({ ...loadExportOptions(), aspect: saved?.aspect ?? 'original' }))
+  const [exportOpts, setExportOpts] = useState(() => (tpl ? exportOptionsOf(tpl, loadExportOptions()) : { ...loadExportOptions(), aspect: saved?.aspect ?? 'original' }))
   const [srcInfo, setSrcInfo] = useState<{ codec: string; fps: number } | null>(null)
   // The picture tools: the camera's motion, the cuts and the people (from one pass over the video).
   const [picture, setPicture] = useState<ProjectPicture | null>(project?.picture ?? null)
   const [picBusy, setPicBusy] = useState<PictureBusy>(null)
-  const [background, setBackground] = useState<Background>(saved?.background ?? NO_BACKGROUND)
-  const [steadyLevel, setSteadyLevel] = useState(saved?.steady ?? 0)
+  const [background, setBackground] = useState<Background>(saved?.background ?? tpl?.background ?? NO_BACKGROUND)
+  const [steadyLevel, setSteadyLevel] = useState(saved?.steady ?? tpl?.stabilize ?? 0)
   const bgImage = useRef<HTMLImageElement | null>(null)
   const steadied = useMemo(() => (picture && steadyLevel > 0 ? steady(picture.motion, picture.cuts, H / W, an.fps, steadyLevel) : null), [picture, steadyLevel, an.fps])
   const crop = useMemo(() => cropFraction(W, H, ASPECT_RATIO[exportOpts.aspect]), [exportOpts.aspect])
@@ -129,7 +136,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const rings = useRef<HTMLCanvasElement>(null)
   const renderer = useRef<BlurRenderer | null>(null)
   const [off, setOff] = useState<Set<number>>(() => new Set(saved?.off ?? []))
-  const [look, setLook] = useState<Look>(() => saved?.look ?? loadLook())
+  const [look, setLook] = useState<Look>(() => saved?.look ?? tpl?.look ?? loadLook())
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
   const [dur, setDur] = useState(times.length ? times[times.length - 1] : 0)
@@ -138,17 +145,27 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [words, setWords] = useState<Word[]>(saved?.words ?? [])
   const [bleeped, setBleeped] = useState<Set<number>>(() => new Set(saved?.bleeped ?? []))
   const [tone, setTone] = useState(saved?.tone ?? true)
-  const [voice, setVoice] = useState<VoiceFx>(saved?.voice ?? 'none')
+  const [voice, setVoice] = useState<VoiceFx>(saved?.voice ?? tpl?.voice ?? 'none')
   const [voiceAudio, setVoiceAudio] = useState<{ rate: number; data: Float32Array; buffer: AudioBuffer } | null>(null)
-  const [voiceBusy, setVoiceBusy] = useState(false)
+  // True from the moment the wanted sound (voice change, bleeps, cleanup) differs from the
+  // processed one until the matching result arrives: it starts true, and the effect below clears it.
+  const [voiceBusy, setVoiceBusy] = useState(true)
+  /** The sound step failed: [hard] when a voice change or bleeps are asked for (then nothing can be exported). */
+  const [soundFail, setSoundFail] = useState<{ hard: boolean } | null>(null)
+  /** The worker has the current settings' request and has not answered or failed (so a late answer can still come). */
+  const [soundInflight, setSoundInflight] = useState(false)
+  /** The video has no sound: nothing to change or anonymise. */
+  const [noAudio, setNoAudio] = useState(false)
+  const [audioTry, setAudioTry] = useState(0)
   const [selectedSfx, setSelectedSfx] = useState<number | null>(null)
   const [sfxLength, setSfxLength] = useState<Map<string, number>>(new Map())
   const [subStyle, setSubStyle] = useState<SubStyle>(() => {
     if (saved) return normalizeStyle(saved.subStyle)
+    if (tpl) return styleOf(tpl)
     try { return normalizeStyle(JSON.parse(localStorage.getItem(storageKey('substyle')) ?? 'null')) } catch { return normalizeStyle(null) }
   })
   const [sfx, setSfx] = useState<SfxClip[]>(saved?.sfx ?? [])
-  const [mark, setMark] = useState<Watermark>(() => (saved?.mark ? normalizeWatermark(saved.mark) : loadWatermark()))
+  const [mark, setMark] = useState<Watermark>(() => (saved?.mark ? normalizeWatermark(saved.mark) : tpl ? normalizeWatermark(tpl.watermark) : loadWatermark()))
   const logo = useRef<HTMLImageElement | null>(null)
   const scheduler = useMemo(() => new SfxScheduler(), [])
   const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, voiceBuf: null as AudioBuffer | null, tracks, selected, cuts, cutMap, fps: an.fps, times, steadied, crop, framePath, masks: null as PeopleMasks | null, background })
@@ -402,6 +419,57 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     if (level > 0 && !picture && !picBusy) runPicture(false)
   }
 
+  // ---------------------------------------------------------------- a template's processing
+
+  /** What the template is doing now (its step and how far), and what couldn't be done. */
+  const [tplRun, setTplRun] = useState<{ step: string | null; progress: number; notes: string[] } | null>(() => (tpl && hasProcessing(tpl) ? { step: null, progress: 0, notes: [] } : null))
+  const [saveTpl, setSaveTpl] = useState(false)
+  useEffect(() => {
+    if (!tpl || !hasProcessing(tpl)) return
+    const ctl = new AbortController()
+    ;(async () => {
+      const notes: string[] = []
+      const run = (step: string | null, progress = 0) => setTplRun({ step, progress, notes: [...notes] })
+      let ws: Word[] = []
+      if (tpl.createSubs) {
+        run(t('יוצר כתוביות'))
+        try {
+          ws = await transcribe(file, tpl.language, (stage, p) => setTplRun({ step: stage === 'download' ? t('מוריד את המודל…') : t('מזהה דיבור…'), progress: p, notes: [...notes] }), ctl.signal)
+          const cs = wordsToCues(ws, tpl.split.words, tpl.split.chars)
+          reserveCueIds(cs)
+          setWords(ws)
+          setBleeped(new Set())
+          setCues(cs)
+          if (cs.length === 0) notes.push(t('לא נמצא דיבור בסרטון'))
+        } catch (e) {
+          if (e instanceof Aborted) return
+          notes.push((e as any)?.code === 'no-audio' ? t('לסרטון אין פס קול.') : t('הכתוביות לא נוצרו: %s', String((e as Error)?.message ?? e).slice(0, 160)))
+        }
+        if (tpl.translate) notes.push(t('התרגום לא נתמך בעיבוד אוטומטי, והכתוביות נשארו בשפת הדיבור'))
+      }
+      if (tpl.cutSilences || tpl.cutFillers) {
+        run(t('חותך'))
+        let ranges = state.current.cuts
+        if (tpl.cutSilences) {
+          try { ranges = addCuts(ranges, await findPauses(file, tpl.minPauseMs / 1000, ws.map(wordSpan), ctl.signal)).ranges } catch (e) { if (e instanceof Aborted) return; notes.push(t('אין סאונד בסרטון')) }
+        }
+        if (tpl.cutFillers) {
+          if (ws.length === 0) notes.push(t('אין כתוביות, אז לא נחתכו מילות מילוי'))
+          else ranges = addCuts(ranges, ws.filter((w) => isFiller(w.text)).map(wordSpan)).ranges
+        }
+        setCuts(ranges)
+      }
+      if (tpl.voice !== 'none' || tpl.denoise > 0 || tpl.enhance || tpl.loud) run(t('מעבד את הסאונד'))
+      // The people (for the background) and the camera's motion: one pass, shown with its own bar.
+      const people = tpl.background.fill !== 'none' && tpl.background.key === 'person'
+      if (people || tpl.stabilize > 0) runPicture(people)
+      setTplRun({ step: null, progress: 1, notes })
+    })()
+    return () => ctl.abort()
+  }, [])
+  // The sound's (voice change, cleanup, loudness) processing and the picture pass go on in their own places: said here too.
+  const tplBusy = tplRun !== null && (tplRun.step !== null || voiceBusy || picBusy !== null)
+
   // ---------------------------------------------------------------- the project, kept as it's edited
 
   const projectId = useRef<string | null>(project?.id ?? null)
@@ -491,37 +559,81 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     if (!v.paused) scheduler.start(sfx, v.currentTime, voiceAudio?.buffer ?? null)
   }, [sfx, voiceAudio])
 
-  // The voice change and the bleeps, processed in a worker (the sound is decoded once).
-  const audioWorker = useMemo(() => new Worker(new URL('../workers/audio.worker.ts', import.meta.url), { type: 'module' }), [file])
+  // The voice change and the bleeps, processed in a worker (the sound is decoded once). Each
+  // request has a number, and only the latest one's answer counts.
+  const audioSeq = useRef(0)
+  const audioWorker = useMemo(() => new Worker(new URL('../workers/audio.worker.ts', import.meta.url), { type: 'module' }), [file, audioTry])
   useEffect(() => () => audioWorker.terminate(), [audioWorker])
-  useEffect(() => {
+  // A layout effect, so the sound counts as busy before the changed settings are ever painted.
+  useLayoutEffect(() => {
+    const seq = ++audioSeq.current
+    setSoundFail(null)
+    setNoAudio(false)
+    setSoundInflight(false)
     if (voice === 'none' && bleeped.size === 0 && !cleanupOn(clean)) {
       setVoiceAudio(null)
       setVoiceBusy(false)
       return
     }
     setVoiceBusy(true)
+    const hard = voice !== 'none' || bleeped.size > 0
+    const failed = (over = true) => {
+      if (audioSeq.current !== seq) return
+      // Never silently the original voice: a voice change that did not happen blocks the export.
+      setVoiceAudio(null)
+      setVoiceBusy(false)
+      // The worker died or answered with an error: nothing is coming. A silent one (the watchdog) may still answer, and until it does a request is in flight.
+      if (over) setSoundInflight(false)
+      setSoundFail({ hard })
+    }
+    audioWorker.onerror = () => failed()
+    audioWorker.onmessageerror = () => failed()
+    // A worker that is dead or stuck (its script did not load, or it hung) is a failure, with a retry. A long job is not:
+    // the worker sends a message at least every few seconds while it works, and each one restarts this clock.
+    const silentMs = Math.min(600000, Math.max(500, Number(new URLSearchParams(location.search).get('audiowd')) || 20000))
+    let watchdog: ReturnType<typeof setTimeout> | undefined
     const timer = setTimeout(() => {
       audioWorker.onmessage = (e: MessageEvent<AudioMessage>) => {
         const m = e.data
-        setVoiceBusy(false)
+        if (audioSeq.current !== seq) return
+        // Any heartbeat shows the worker is alive, an older job's too: this request waits behind it.
+        if (m.type === 'started' || m.type === 'progress') { clearTimeout(watchdog); watchdog = setTimeout(() => failed(false), silentMs); return }
+        if ((m as { id?: number }).id !== seq) return
+        clearTimeout(watchdog)
+        setSoundInflight(false)
         if (m.type === 'done') {
+          // A late answer, after the watchdog gave up, is a success all the same.
+          setSoundFail(null)
+          setVoiceBusy(false)
           setVoiceAudio({ rate: m.rate, data: m.data, buffer: makeBuffer(m.data, m.rate) })
           if (clean.loud) {
             setLoudGain(m.lufs === null ? null : m.gainDb)
             if (m.lufs === null) { setLoudOn(false); setNotice(t('לא נמצא דיבור למדידה')) }
             else if (loudGain === null) setNotice(t('העוצמה: %s ← %s', `\u2066${m.lufs.toFixed(1)} LUFS\u2069`, `\u2066${(m.lufs + m.gainDb).toFixed(1)} LUFS\u2069`))
           }
-        } else {
+        } else if (m.type === 'error' && m.code === 'no-audio') {
+          // Nothing to anonymise or clean: the video has no sound.
           setVoiceAudio(null)
-          if (m.type === 'error' && cleanupOn(clean)) setNotice(t('אין סאונד בסרטון'))
-        }
+          setVoiceBusy(false)
+          setNoAudio(true)
+          if (cleanupOn(clean)) setNotice(t('אין סאונד בסרטון'))
+        } else failed()
       }
-      const req: AudioRequest = { file, voice, bleeps: bleepRanges(words, bleeped), tone, clean }
+      const req: AudioRequest = { id: seq, file, voice, bleeps: bleepRanges(words, bleeped), tone, clean }
+      setSoundInflight(true)
       audioWorker.postMessage(req)
+      watchdog = setTimeout(() => failed(false), silentMs)
     }, 250)
-    return () => clearTimeout(timer)
-  }, [voice, bleeped, tone, words, clean])
+    return () => { clearTimeout(timer); clearTimeout(watchdog) }
+  }, [voice, bleeped, tone, words, clean, audioWorker])
+
+  const needsAudio = voice !== 'none' || bleeped.size > 0
+  /** The sound isn't ready to be exported: still processing, or a voice change (or bleeps) without its processed sound. */
+  const soundBlocked = voiceBusy || (needsAudio && !voiceAudio && !noAudio) || !!soundFail?.hard || soundInflight
+  const retrySound = () => setAudioTry((n) => n + 1)
+  // Only the voice change goes; the bleeps stay (and are made, or block the export again). They go only by their own action.
+  const dropVoice = () => setVoice('none')
+  const dropBleeps = () => setBleeped(new Set())
 
 
   // Undo and redo. Quick changes in a row (typing, dragging a sound) are one step.
@@ -783,9 +895,10 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     setCutBusy(true)
     const w = new Worker(new URL('../workers/audio.worker.ts', import.meta.url), { type: 'module' })
     w.onmessage = (e: MessageEvent<AudioMessage>) => {
+      const m = e.data
+      if (m.type === 'started' || m.type === 'progress') return
       w.terminate()
       setCutBusy(false)
-      const m = e.data
       if (m.type !== 'silences') { setNotice(t('אין סאונד בסרטון')); return }
       const before = cutTotal(state.current.cuts)
       const { ranges, added } = addCuts(state.current.cuts, m.ranges)
@@ -978,6 +1091,21 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       </div>
 
       <aside class="side">
+        {tplRun && (tplBusy || tplRun.notes.length > 0) && (
+          <section class="card tpl-run" role="status">
+            <div class="row">
+              <strong class="grow">{tplBusy ? t('מחיל את התבנית…') : t('שלב בתבנית לא הושלם')}</strong>
+              {!tplBusy && <button class="icon-btn" aria-label={t('סגור')} onClick={() => setTplRun(null)}><CloseIcon size={18} /></button>}
+            </div>
+            {tplBusy && (
+              <>
+                <div class="small muted tpl-step">{tplRun.step ?? (voiceBusy ? t('מעבד את הסאונד') : picBusy ? (picBusy.what === 'people' ? t('מזהה אנשים… %d%', Math.round(picBusy.progress * 100)) : t('מודד את תנועת המצלמה… %d%', Math.round(picBusy.progress * 100))) : '')}</div>
+                <div class="progress"><div style={{ width: `${Math.max(3, Math.round((tplRun.step !== null ? tplRun.progress : picBusy ? picBusy.progress : 0.5) * 100))}%` }} /></div>
+              </>
+            )}
+            {tplRun.notes.map((n) => <p class="small tpl-note" style="margin:0;color:var(--primary)">{n}</p>)}
+          </section>
+        )}
         <div class="tabs" role="tablist">
           {GROUPS.map(([id, label, Icon, color], k) => (
             <button role="tab" data-g={id} class={tab === id ? 'on' : ''} aria-selected={tab === id} style={{ '--g': color } as any} title={`${t(label)} (${k + 1})`} onClick={() => setTab(id)}>
@@ -1127,10 +1255,22 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             <dt><kbd>Esc</kbd></dt><dd>{t('ביטול הבחירה')}</dd>
           </dl>
         </details>
+        {soundFail && (
+          <div class="sound-error card" role="alert" data-hard={soundFail.hard ? '1' : '0'}>
+            <p class="small" style="margin:0">{soundFail.hard ? t('שינוי הקול נכשל, ולכן אי אפשר לייצא (כדי שהקול המקורי לא יישמר בטעות)') : t('עיבוד הסאונד נכשל. הסרטון ייוצא עם הסאונד המקורי')}</p>
+            <div class="row" style="gap:8px;flex-wrap:wrap">
+              <button class="btn tonal sound-retry" onClick={retrySound}>{t('נסה שוב')}</button>
+              {soundFail.hard && <button class="btn ghost sound-drop" onClick={voice !== 'none' ? dropVoice : dropBleeps}>{voice !== 'none' ? t('הסר את שינוי הקול') : t('הסר את הצפצופים')}</button>}
+              {!soundFail.hard && <button class="btn ghost" onClick={() => setSoundFail(null)}>{t('הבנתי')}</button>}
+            </div>
+          </div>
+        )}
         <div class="export-bar">
           <button
             class="btn primary"
-            disabled={!!following}
+            // Not while a template is still being applied or the sound is being processed: the
+            // export would go out without the voice change (anonymity), the cleanup or the cuts.
+            disabled={!!following || tplBusy || soundBlocked}
             onClick={() => {
               video.current?.pause()
               setExportOpen(true)
@@ -1139,9 +1279,23 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           >
             <SaveIcon /> {t('ייצוא')}
           </button>
+          <button class="btn ghost save-template-btn" onClick={() => setSaveTpl(true)}>{t('שמור כתבנית')}</button>
         </div>
       </aside>
     </main>
+    {saveTpl && (
+      <SaveTemplate
+        settings={{
+          blurOff: false, look, sensitive: false, createSubs: cues.length > 0, language: savedLanguage(lang.value === 'he'), translate: false, subStyle,
+          split: { words: 0, chars: 0 }, burn: exportOpts.burn === false ? 'NONE' : subStyle.show === 'tr' ? 'TRANSLATED' : subStyle.show === 'both' ? 'BOTH' : 'ORIGINAL', saveSrt: exportOpts.srt,
+          voice, denoise, enhance, loud: loudOn, cutSilences: cuts.length > 0, minPauseMs: 800, cutFillers: cuts.length > 0 && cues.length > 0,
+          background, stabilize: steadyLevel, aspect: exportOpts.aspect, shortSide: exportOpts.shortSide, fps: exportOpts.fps, quality: exportOpts.quality, codec: exportOpts.codec, watermark: mark,
+        }}
+        initial={['blur', ...(cues.length ? ['subs' as const] : []), ...(voice !== 'none' || cleanupOn(clean) ? ['voice' as const] : []), ...(background.fill !== 'none' ? ['background' as const] : []), ...(steadyLevel > 0 ? ['stabilize' as const] : []), 'export']}
+        onClose={() => setSaveTpl(false)}
+        onSaved={() => { setSaveTpl(false); setNotice(t('התבנית נשמרה')) }}
+      />
+    )}
     {exportOpen && (
       <ExportSheet
         width={W}
@@ -1153,9 +1307,11 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         onChange={setExportOpts}
         onClose={() => setExportOpen(false)}
         onGo={() => {
+          // A template or the sound still working, or a voice change that isn't in the processed sound: not exported.
+          if (tplBusy || soundBlocked) { setExportOpen(false); return }
           setExportOpen(false)
           saveExportOptions(exportOpts)
-          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: shownText(c, masked(c), subStyle.show) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, cuts, words, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
+          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: shownText(c, masked(c), subStyle.show) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, anonymize: voice !== 'none' || bleeped.size > 0, cuts, words, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
         }}
       />
     )}

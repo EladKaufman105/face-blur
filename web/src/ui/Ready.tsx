@@ -5,15 +5,21 @@ import { loadExportOptions, saveExportOptions, type ExportOptions } from '../lib
 import type { FollowMessage, FollowRequest } from '../workers/follow.worker'
 import { ExportSheet } from './ExportSheet'
 import { BackIcon, FaceIcon } from './icons'
+import { TemplatePicker, templateLabel } from './TemplatePicker'
+import { useFrame } from './TemplatePreview'
+import { loadWatermark } from './EditorTabs'
+import { lang } from '../i18n'
+import { applyTemplate, currentSettings, exportOptionsOf, withExportOptions, type TemplateSettings } from '../lib/template'
+import { findTemplate, loadTemplates } from '../lib/templatestore'
 
 type Props = {
   file: File
   sensitive: boolean
   onSensitive: (v: boolean) => void
-  /** Find the faces, then open the editor to check them. */
-  onBlur: (look: Look) => void
-  /** Find the faces and save straight away, with these export choices. */
-  onBlurAndSave: (look: Look, options: ExportOptions) => void
+  /** Find the faces, then open the editor to check them ([template]: the settings of the template chosen, to apply there). */
+  onBlur: (look: Look, template: TemplateSettings | null) => void
+  /** Find the faces and save straight away, with these export choices ([template]: the template chosen). */
+  onBlurAndSave: (look: Look, options: ExportOptions, template: TemplateSettings | null, templateName: string) => void
   onReplace: (f: File) => void
   onBack: () => void
 }
@@ -34,6 +40,35 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
   const [options, setOptions] = useState<ExportOptions>(() => ({ ...loadExportOptions(), aspect: 'original' }))
   const replace = useRef<HTMLInputElement>(null)
   useEffect(() => saveLook(look), [look])
+
+  // Templates: one chosen fills in the settings (and brings its processing: subtitles, voice, ...).
+  const frame = useFrame(file)
+  useEffect(() => { loadTemplates() }, [])
+  const baseline = useMemo(() => currentSettings({ sensitive, hebrewUi: lang.value === 'he', watermark: loadWatermark(), options }), [])
+  const [tplId, setTplId] = useState<string | null>(null)
+  const [tpl, setTpl] = useState<TemplateSettings | null>(null)
+  /** The look, wider detection and export choices as they were before a template was chosen. */
+  const before = useRef<{ look: Look; sensitive: boolean; options: ExportOptions } | null>(null)
+  const pick = (id: string | null) => {
+    setTplId(id)
+    const t0 = findTemplate(id)
+    if (!t0) {
+      // No template: the settings go back to what they were.
+      if (before.current) { setLook(before.current.look); onSensitive(before.current.sensitive); setOptions(before.current.options) }
+      before.current = null
+      setTpl(null)
+      return
+    }
+    before.current ??= { look, sensitive, options }
+    const b = before.current
+    const s = applyTemplate(t0, withExportOptions({ ...baseline, look: b.look, sensitive: b.sensitive }, b.options))
+    setLook(s.look)
+    onSensitive(s.sensitive)
+    setOptions(exportOptionsOf(s, options))
+    setTpl(s)
+  }
+  /** The template's settings with the changes made here since. */
+  const current = (): TemplateSettings | null => (tpl ? withExportOptions({ ...tpl, look, sensitive }, options) : null)
 
   // The frame rate and codec (from the packets, no decoding), for the details and the export's choices.
   useEffect(() => {
@@ -89,9 +124,17 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
       </section>
 
       <div class="ready-side">
+        <TemplatePicker
+          frame={frame}
+          base={baseline}
+          current={tplId}
+          onPick={pick}
+          settings={tpl ?? baseline}
+          onSettings={(s) => setTpl(s)}
+        />
         <section class="ready-actions">
-          <button class="btn primary blur-faces" onClick={() => onBlur(look)}><FaceIcon /> {t('טשטש פנים')}</button>
-          <p class="small muted">{t('הפנים יזוהו ויטושטשו, ואז ייפתח העורך לבדיקה ולתיקון לפני השמירה.')}</p>
+          <button class="btn primary blur-faces" onClick={() => onBlur(look, current())}><FaceIcon /> {tpl?.blurOff ? t('פתח בעורך') : t('טשטש פנים')}</button>
+          <p class="small muted">{tpl?.blurOff ? t('בלי טשטוש פנים: ייפתח העורך, והתבנית תחול על הסרטון.') : t('הפנים יזוהו ויטושטשו, ואז ייפתח העורך לבדיקה ולתיקון לפני השמירה.')}</p>
           <button class="btn ghost blur-save" disabled={!meta} onClick={() => setSheet(true)}>{t('או: טשטש ושמור ישר, בלי עורך')}</button>
         </section>
 
@@ -153,7 +196,7 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
           onGo={() => {
             setSheet(false)
             saveExportOptions(options)
-            onBlurAndSave(look, options)
+            onBlurAndSave(look, options, current(), tplId ? templateLabel(findTemplate(tplId)!) : '')
           }}
         />
       )}

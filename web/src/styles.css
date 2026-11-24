@@ -315,6 +315,7 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .slider-row label { font-size: 14px; font-weight: 600; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .actions .btn { flex: 1; }
+.sound-error { display: grid; gap: 8px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid #e5484d; }
 .export-bar { position: sticky; bottom: 0; padding: 12px 0 calc(4px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--bg) 30%); }
 .export-bar .btn { width: 100%; }
 
@@ -642,3 +643,65 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .split-by { width: 180px; }
 .banner { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: var(--space-2); background: rgb(20 22 40 / 0.92); color: #fff; border-radius: 999px; padding: 4px 6px 4px 14px; font: var(--text-label); box-shadow: var(--shadow); white-space: nowrap; z-index: 2; }
 .banner .btn { color: var(--amber); padding: 4px 10px; }
+
+/* Templates: the picker's cards, the editor, the list in the settings. */
+.templates { display: grid; gap: var(--space-2); }
+.tpl-row { display: flex; gap: var(--space-3); overflow-x: auto; padding: var(--space-1) var(--space-1) var(--space-2); margin-inline: calc(-1 * var(--space-1)); scroll-snap-type: x proximity; }
+.tpl-card { flex: none; display: grid; justify-items: center; gap: 6px; border: 2px solid transparent; background: var(--surface-2); border-radius: var(--radius-card); padding: var(--space-2); color: var(--text); font: inherit; cursor: pointer; scroll-snap-align: start; position: relative; transition: border-color var(--motion-state), background-color var(--motion-state); }
+.tpl-card.on { border-color: var(--primary); background: var(--primary-soft); color: var(--on-primary-soft); }
+.tpl-canvas { display: block; border-radius: var(--radius-control); background: var(--surface-3); }
+.tpl-name { font-weight: 700; font-size: 14px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tpl-badge { position: absolute; top: 6px; inset-inline-start: 6px; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--amber); color: #3a2a00; }
+.tpl-sheet { width: min(980px, 100%); }
+.tpl-back { z-index: 30; }
+.tpl-body { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); align-content: start; }
+.tpl-side { display: grid; gap: var(--space-2); justify-items: center; align-content: start; }
+.tpl-live { display: grid; place-items: center; background: var(--surface-2); border-radius: var(--radius-card); padding: var(--space-3); width: 100%; box-sizing: border-box; }
+.tpl-side .text-in { margin-top: 0; }
+.tpl-title { font: var(--text-heading); }
+.tpl-cats { display: grid; gap: var(--space-2); align-content: start; min-width: 0; }
+@media (min-width: 760px) {
+  .tpl-body { grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); align-items: start; }
+  .tpl-side { position: sticky; top: 0; }
+}
+.tpl-cat { padding: var(--space-3) var(--space-4); display: grid; gap: var(--space-2); }
+.tpl-cat-head { cursor: pointer; }
+.tpl-cat-body { display: grid; gap: var(--space-2); border-top: 1px solid var(--outline-soft); padding-top: var(--space-3); }
+.tpl-cat-body .card { box-shadow: none; border: 0; padding: 0; background: transparent; }
+.tpl-cat-body .card > .section-title { display: none; }
+.tpl-cat-body .switch-row:first-child { margin-top: 0; }
+.tpl-foot { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.tpl-list { display: grid; gap: var(--space-2); }
+.tpl-item { background: var(--surface-2); border-radius: var(--radius-card); padding: var(--space-2); display: grid; gap: var(--space-1); }
+.tpl-item .tpl-canvas { flex: none; }
+.tpl-item-info { display: grid; gap: 2px; }
+.tpl-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tpl-acts { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+.tpl-run { display: grid; gap: var(--space-2); }
+.save-template .sheet-body { gap: 0; }
+.export-bar { display: grid; gap: var(--space-1); }
+
+/* Several videos: setup and queue. */
+.batch-setup, .batch { display: grid; gap: var(--space-4); max-width: 760px; margin-inline: auto; width: 100%; align-content: start; }
+.batch-setup .ready-top { margin-bottom: calc(-1 * var(--space-2)); }
+.batch-files { display: grid; gap: var(--space-2); margin-bottom: var(--space-2); }
+.batch-file { display: flex; align-items: center; gap: var(--space-3); background: var(--surface-2); border-radius: var(--radius-card); padding: var(--space-2); }
+.batch-thumb { width: 72px; height: 44px; object-fit: cover; border-radius: var(--radius-control); background: var(--surface-3); flex: none; }
+.batch-add { width: 100%; }
+.batch-before { display: grid; gap: var(--space-2); }
+.batch-start { width: 100%; }
+.batch-items { display: grid; gap: var(--space-2); }
+.batch-item.failed { border-color: #e5484d; }
+.batch-status .ok { color: var(--primary); }
+.batch-head .actions, .batch-item-acts { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.batch-title { font: var(--text-title); }
+.batch-banner .row { align-items: center; }
+.hero .btn.several { width: 100%; max-width: 420px; margin-top: var(--space-3); background: rgb(255 255 255 / 0.16); color: #fff; }
+
+/* A batch's folder in the projects list. */
+.batch-folder { display: grid; gap: var(--space-2); }
+.folder-open { border: 0; padding: 0; background: none; flex: none; cursor: pointer; }
+.folder-thumbs { width: 96px; height: 54px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2px; border-radius: var(--radius-control); overflow: hidden; background: var(--surface-3); }
+.folder-thumbs img, .folder-thumbs .ph { width: 100%; height: 100%; object-fit: cover; background: var(--surface-3); }
+.folder-items { display: grid; gap: var(--space-2); border-top: 1px solid var(--outline-soft); padding-top: var(--space-2); }
+.folder-items .project { background: var(--surface-2); box-shadow: none; }

@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { t, duration } from '../i18n'
-import { deleteProject, listProjects, renameProject, type ProjectMeta } from '../lib/projects'
+import { deleteBatch, deleteProject, listProjects, renameBatch, renameProject, type ProjectMeta } from '../lib/projects'
 import { BETA } from '../lib/channel'
+import { current as batchNow, version as batchVersion } from '../lib/batch'
 import { ImportFromRelease } from './Beta'
 import { CutIcon, DeleteIcon, EditIcon, FaceIcon, MicIcon, MusicIcon, PictureIcon, SubtitlesIcon, WaveformIcon } from './icons'
+import './templates-en'
 
 /** "Today 14:05", "Yesterday 09:12" or a date. */
 function when(ms: number): string {
@@ -59,7 +61,14 @@ export function ProjectsSection({ onOpen }: { onOpen: (id: string) => void }) {
   const [all, setAll] = useState(false)
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  // A batch's folder: which are open, its rename and its delete confirmation.
+  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
+  const [folderRename, setFolderRename] = useState<{ id: string; name: string } | null>(null)
+  const [folderDelete, setFolderDelete] = useState<string | null>(null)
   const reload = () => listProjects().then(setList)
+  // The folder of the batch working now can't be renamed or deleted from under it.
+  void batchVersion.value
+  const working = batchNow.value && !batchNow.value.finished ? batchNow.value.id : null
   useEffect(() => { reload() }, [])
   // Renaming and the delete confirm, one open at a time; focus goes into what opens and back to
   // its button when it closes (a second tap or Escape).
@@ -83,12 +92,68 @@ export function ProjectsSection({ onOpen }: { onOpen: (id: string) => void }) {
     focusNext.current = open ? ids(p.id).yes : ids(p.id).trash
   }
   if (!list) return null
-  const shown = all ? list : list.slice(0, 4)
+  // The projects of a batch are one folder (by the batch's id), among the projects, by when it was last changed.
+  type Folder = { kind: 'folder'; id: string; at: number; name?: string; items: ProjectMeta[]; updated: number }
+  const folders = new Map<string, Folder>()
+  const entries: ({ kind: 'project'; p: ProjectMeta; updated: number } | Folder)[] = []
+  for (const p of list) {
+    if (!p.batch) { entries.push({ kind: 'project', p, updated: p.updated }); continue }
+    let f = folders.get(p.batch.id)
+    if (!f) { f = { kind: 'folder', id: p.batch.id, at: p.batch.at, name: p.batch.name, items: [], updated: 0 }; folders.set(f.id, f); entries.push(f) }
+    f.items.push(p)
+    f.updated = Math.max(f.updated, p.updated)
+  }
+  entries.sort((a, b) => b.updated - a.updated)
+  const shown = all ? entries : entries.slice(0, 4)
+  const folderName = (f: Folder) => f.name ?? new Date(f.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+  const folder = (f: Folder) => {
+    const isOpen = openFolders.has(f.id)
+    const bytes = f.items.reduce((n, p) => n + p.bytes, 0)
+    return (
+      <div class="project card batch-folder" data-batch={f.id}>
+        <div class="project-top">
+          <button class="folder-open" aria-expanded={isOpen} aria-label={folderName(f)} onClick={() => setOpenFolders((s) => { const n = new Set(s); if (n.has(f.id)) n.delete(f.id); else n.add(f.id); return n })}>
+            <div class="folder-thumbs">
+              {f.items.slice(0, 4).map((p) => (p.thumb ? <img src={p.thumb} alt="" /> : <div class="ph" />))}
+            </div>
+          </button>
+          <div class="grow project-info">
+            {folderRename?.id === f.id ? (
+              <div class="row">
+                <input class="text-in folder-rename-in" style="margin:0;padding:8px 10px" dir="auto" value={folderRename.name} aria-label={t('שם התיקייה')} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); setFolderRename(null) } }} onInput={(e) => setFolderRename({ id: f.id, name: (e.currentTarget as HTMLInputElement).value })} />
+                <button class="btn tonal small-btn folder-rename-ok" disabled={!folderRename.name.trim()} onClick={async () => { await renameBatch(f.id, folderRename.name.trim()); setFolderRename(null); reload() }}>{t('שמור')}</button>
+              </div>
+            ) : (
+              <button class="project-name folder-name" onClick={() => setOpenFolders((s) => { const n = new Set(s); if (n.has(f.id)) n.delete(f.id); else n.add(f.id); return n })}><bdi>{folderName(f)}</bdi></button>
+            )}
+            <div class="small muted">{t('%d סרטונים', f.items.length)} · <bdi>{when(f.updated)}</bdi></div>
+            {folderDelete === f.id && working !== f.id && (
+              <div class="confirm folder-confirm">
+                <strong class="small">{t('למחוק את התיקייה?')}</strong>
+                <span class="small">{t('%d פרויקטים יימחקו (יפונו %s). הסרטונים ששמורים במכשיר, והסרטונים המקוריים, לא יימחקו.', f.items.length, size(bytes))}</span>
+                <div class="row">
+                  <button class="btn small-btn danger-btn folder-delete-yes" onClick={async () => { await deleteBatch(f.id); setFolderDelete(null); reload() }}>{t('מחק')}</button>
+                  <button class="btn ghost small-btn" onClick={() => setFolderDelete(null)}>{t('ביטול')}</button>
+                </div>
+              </div>
+            )}
+          </div>
+          <div class="project-acts">
+            {working !== f.id && <>
+            <button class="icon-btn folder-rename" aria-label={`${t('שנה שם')}: ${folderName(f)}`} title={t('שנה שם')} aria-pressed={folderRename?.id === f.id} onClick={() => { setFolderDelete(null); setFolderRename(folderRename?.id === f.id ? null : { id: f.id, name: folderName(f) }) }}><EditIcon size={20} /></button>
+            <button class="icon-btn danger folder-delete" aria-label={`${t('מחק')}: ${folderName(f)}`} title={t('מחק')} aria-expanded={folderDelete === f.id} onClick={() => { setFolderRename(null); setFolderDelete(folderDelete === f.id ? null : f.id) }}><DeleteIcon size={20} /></button>
+            </>}
+          </div>
+        </div>
+        {isOpen && <div class="folder-items">{f.items.sort((a, b) => a.created - b.created).map(card)}</div>}
+      </div>
+    )
+  }
   return (
     <section class="projects">
       <div class="row">
         <h3 class="section-title grow" style="margin:4px 0">{t('הפרויקטים שלי')}</h3>
-        {list.length > 4 && <button class="btn ghost small-btn" onClick={() => setAll(!all)}>{all ? t('הצג פחות') : t('הצג הכל (%d)', list.length)}</button>}
+        {entries.length > 4 && <button class="btn ghost small-btn" onClick={() => setAll(!all)}>{all ? t('הצג פחות') : t('הצג הכל (%d)', entries.length)}</button>}
         {BETA && <ImportFromRelease onDone={reload} />}
       </div>
       {list.length === 0 ? (
@@ -97,7 +162,16 @@ export function ProjectsSection({ onOpen }: { onOpen: (id: string) => void }) {
         <>
           <p class="small muted" style="margin:0 0 10px">{t('נשמרים תוך כדי עריכה, בדפדפן הזה בלבד')}</p>
           <div class="project-list">
-            {shown.map((p) => (
+            {shown.map((e) => (e.kind === 'folder' ? folder(e) : card(e.p)))}
+          </div>
+        </>
+      )}
+    </section>
+  )
+
+  /** One project's card. */
+  function card(p: ProjectMeta) {
+    return (
               <div class="project card with-pills">
                 <div class="project-top">
                   <button class="project-open" onClick={() => onOpen(p.id)} aria-label={p.name}>
@@ -136,10 +210,6 @@ export function ProjectsSection({ onOpen }: { onOpen: (id: string) => void }) {
                   ))}
                 </div>
               </div>
-            ))}
-          </div>
-        </>
-      )}
-    </section>
-  )
+    )
+  }
 }

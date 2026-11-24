@@ -21,7 +21,7 @@ const BEEP_HZ = 1000
 const BEEP_LEVEL = 0.32
 
 /** [x] stretched to [factor] times its length without changing its pitch (WSOLA). */
-function stretch(x: Float32Array, rate: number, factor: number): Float32Array {
+function stretch(x: Float32Array, rate: number, factor: number, beat?: () => void): Float32Array {
   const N = Math.round(rate * 0.04) & ~1
   const Hs = N / 2
   const Ha = Hs / factor
@@ -33,6 +33,7 @@ function stretch(x: Float32Array, rate: number, factor: number): Float32Array {
   const at = (i: number) => (i >= 0 && i < x.length ? x[i] : 0)
   let prev = 0
   for (let k = 0; k * Hs < outLen; k++) {
+    if (beat && (k & 255) === 0) beat()
     const nominal = Math.round(k * Ha)
     let best = nominal
     if (k > 0) {
@@ -63,11 +64,12 @@ function stretch(x: Float32Array, rate: number, factor: number): Float32Array {
 }
 
 /** Higher or lower by [pitch], same length. */
-export function pitchShift(x: Float32Array, rate: number, pitch: number): Float32Array {
+export function pitchShift(x: Float32Array, rate: number, pitch: number, beat?: () => void): Float32Array {
   if (Math.abs(pitch - 1) < 1e-3) return x
-  const s = stretch(x, rate, pitch)
+  const s = stretch(x, rate, pitch, beat)
   const y = new Float32Array(x.length)
   for (let i = 0; i < y.length; i++) {
+    if (beat && (i & 0x3ffff) === 0) beat()
     const p = i * pitch
     const k = Math.floor(p)
     const a = k < s.length ? s[k] : 0
@@ -78,10 +80,10 @@ export function pitchShift(x: Float32Array, rate: number, pitch: number): Float3
 }
 
 /** The voice change and the bleeps on mono audio [x] (a new array). */
-export function processVoice(x: Float32Array, rate: number, fx: VoiceFx, bleeps: Bleep[], tone: boolean): Float32Array {
+export function processVoice(x: Float32Array, rate: number, fx: VoiceFx, bleeps: Bleep[], tone: boolean, beat?: () => void): Float32Array {
   const v = VOICES.find((d) => d.id === fx) ?? VOICES[0]
   if (fx === 'mute') return new Float32Array(x.length)
-  const y = v.pitch !== 1 ? pitchShift(x, rate, v.pitch) : Float32Array.from(x)
+  const y = v.pitch !== 1 ? pitchShift(x, rate, v.pitch, beat) : Float32Array.from(x)
   if (v.ringMix > 0) {
     const w = (2 * Math.PI * v.ringHz) / rate
     for (let i = 0; i < y.length; i++) y[i] *= 1 - v.ringMix + v.ringMix * Math.sin(w * i)
