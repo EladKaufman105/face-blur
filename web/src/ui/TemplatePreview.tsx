@@ -98,26 +98,38 @@ function scene(c: HTMLCanvasElement, w: number, h: number, frame: HTMLCanvasElem
   g.fill()
 }
 
-/** Draws what a video would look like with [s]: the blur look on a face, the subtitles, the watermark, in the frame's shape. */
-export async function drawPreview(canvas: HTMLCanvasElement, s: TemplateSettings, opts: { frame: HTMLCanvasElement | null; subs: boolean; isLive: () => boolean }) {
+/** How long a sample subtitle is up, from its first word's start: the words come 0.6 s apart. */
+const wordGap = 0.6
+const cueLength = (words: number) => words * wordGap + 1.2
+
+/**
+ * Draws what a video would look like with [s]: the blur look on a face, the subtitles, the watermark, in the
+ * frame's shape. Returns a function that draws the same picture with the subtitle [t] seconds into its
+ * showing (the effect moving), or null when nothing was drawn (a newer drawing took over).
+ */
+export async function drawPreview(canvas: HTMLCanvasElement, s: TemplateSettings, opts: { frame: HTMLCanvasElement | null; subs: boolean; isLive: () => boolean }): Promise<{ at: (t: number) => void; length: number } | null> {
   const w = canvas.width, h = canvas.height
   const g = canvas.getContext('2d')!
   const base = document.createElement('canvas')
   base.width = w
   base.height = h
   scene(base, w, h, opts.frame)
-  g.clearRect(0, 0, w, h)
-  g.drawImage(base, 0, 0)
+  // The picture with the blur, kept: each moment of an animation is this plus the subtitle.
+  const still = document.createElement('canvas')
+  still.width = w
+  still.height = h
+  const sg = still.getContext('2d')!
+  sg.drawImage(base, 0, 0)
   // The blur's look, on the middle (where a face would be; a real frame has its own).
   if (!s.blurOff) {
     const cx = w * 0.5, cy = h * (opts.frame ? 0.4 : 0.36), rx = w * 0.13 * (s.look.padding / 1.6) * 1.35, ry = rx * 1.2
-    g.save()
-    g.beginPath()
-    g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
-    g.clip()
+    sg.save()
+    sg.beginPath()
+    sg.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+    sg.clip()
     if (s.look.mode === 'solid') {
-      g.fillStyle = '#16181f'
-      g.fillRect(0, 0, w, h)
+      sg.fillStyle = '#16181f'
+      sg.fillRect(0, 0, w, h)
     } else {
       // Smaller and back up: smooth for the blur, in blocks for the pixels.
       const k = s.look.mode === 'pixelate' ? 4 + s.look.strength * 10 : 3 + s.look.strength * 12
@@ -125,36 +137,47 @@ export async function drawPreview(canvas: HTMLCanvasElement, s: TemplateSettings
       small.width = Math.max(2, Math.round(w / k))
       small.height = Math.max(2, Math.round(h / k))
       small.getContext('2d')!.drawImage(base, 0, 0, small.width, small.height)
-      g.imageSmoothingEnabled = s.look.mode !== 'pixelate'
-      g.drawImage(small, 0, 0, w, h)
+      sg.imageSmoothingEnabled = s.look.mode !== 'pixelate'
+      sg.drawImage(small, 0, 0, w, h)
     }
-    g.restore()
+    sg.restore()
   }
-  // The subtitles, in their font (loaded first).
+  // The subtitles, in their font (loaded first: the canvas would draw the default font until it is).
   const style = styleOf(s)
+  const text = t('כך ייראו הכתוביות')
+  const words = text.split(' ')
+  const times = words.map((_, i) => i * wordGap)
+  const length = cueLength(words.length)
   if (opts.subs) {
     const bytes = style.customFont ? await getFont(style.customFont).catch(() => null) : null
     await loadSubFont(style, document.fonts, document.baseURI, bytes)
-    if (!opts.isLive()) return
-    const text = t('כך ייראו הכתוביות')
-    const words = text.split(' ')
-    const times = words.map((_, i) => i * 0.6)
-    drawCue(g, [text], 0, 4, 0.9, style, w, h, [times])
+    if (!opts.isLive()) return null
   }
-  if (watermarkOn(s.watermark)) {
-    const wm = s.watermark
-    if (!wm.image) await loadSubFont(wm, document.fonts, document.baseURI)
-    const img = wm.image ? await logo(wm.image) : null
-    if (!opts.isLive()) return
-    drawWatermark(g, wm, w, h, img)
+  let wm: HTMLImageElement | null = null
+  const wmark = s.watermark
+  if (watermarkOn(wmark)) {
+    if (!wmark.image) await loadSubFont(wmark, document.fonts, document.baseURI)
+    wm = wmark.image ? await logo(wmark.image) : null
+    if (!opts.isLive()) return null
   }
+  const at = (tm: number) => {
+    g.clearRect(0, 0, w, h)
+    g.drawImage(still, 0, 0)
+    if (opts.subs && tm < length) drawCue(g, [text], 0, length, tm, style, w, h, [times])
+    if (watermarkOn(wmark)) drawWatermark(g, wmark, w, h, wm)
+  }
+  // At rest: the subtitle as it stands once every word is said.
+  at(words.length * wordGap)
+  return { at, length }
 }
+
+const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false } }
 
 /**
  * A template's look as a picture: [s] (the settings it makes) on [frame] (or a made-up scene),
  * drawn with the same subtitle, blur and watermark drawing as the export.
  */
-export function TemplatePreview({ s, frame, subs, height = 124, class: cls }: { s: TemplateSettings; frame: HTMLCanvasElement | null; subs: boolean; height?: number; class?: string }) {
+export function TemplatePreview({ s, frame, subs, height = 124, class: cls, animate = false }: { s: TemplateSettings; frame: HTMLCanvasElement | null; subs: boolean; height?: number; class?: string; /** The subtitle's effect plays, over and over (not with less motion asked for). */ animate?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const ratio = previewRatio(s, frame)
   const cssH = height
@@ -168,8 +191,20 @@ export function TemplatePreview({ s, frame, subs, height = 124, class: cls }: { 
     const dpr = 2.5
     c.width = Math.round(cssW * dpr)
     c.height = Math.round(cssH * dpr)
-    drawPreview(c, s, { frame, subs, isLive: () => live }).catch(() => {})
-    return () => { live = false }
-  }, [key, cssW, cssH])
+    let raf = 0
+    drawPreview(c, s, { frame, subs, isLive: () => live }).then((p) => {
+      if (!p || !live || !animate || !subs || s.subStyle.effect === 'none' || reducedMotion()) return
+      // The effect plays from the start, then rests a moment before it plays again.
+      const period = p.length + 0.5
+      const t0 = performance.now()
+      const tick = (now: number) => {
+        if (!live) return
+        p.at(((now - t0) / 1000) % period)
+        raf = requestAnimationFrame(tick)
+      }
+      raf = requestAnimationFrame(tick)
+    }).catch(() => {})
+    return () => { live = false; cancelAnimationFrame(raf) }
+  }, [key, cssW, cssH, animate])
   return <canvas ref={canvas} class={'tpl-canvas ' + (cls ?? '')} style={{ width: cssW + 'px', height: cssH + 'px' }} aria-hidden="true" />
 }
