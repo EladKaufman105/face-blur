@@ -7,7 +7,7 @@ import { fontFamily, SUB_COLORS, SUB_FONTS } from '../lib/substyle'
 import { FontAxes } from './FontAxes'
 import { AddIcon, CloseIcon, CutIcon, DeleteIcon, MergeIcon, PlayIcon } from './icons'
 import { deleteSound, listSounds, saveSound } from '../lib/projects'
-import { LANGUAGES, newCueId, parseSrt, splitCue, toSrt, wordsToCues, type Cue, type SubShow, type SubStyle, type Word } from '../lib/subtitles'
+import { LANGUAGES, isNoise, newCueId, parseSrt, splitCue, toSrt, wordsToCues, type Cue, type SubShow, type SubStyle, type Word } from '../lib/subtitles'
 import { SubStyleCard } from './SubStyleCard'
 import { canTranslate, guessLang, LANG_NAMES, translateAll } from '../lib/translate'
 import { MAX_SPEAKERS } from '../lib/speakers'
@@ -427,15 +427,17 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
   // The words and bleeps as they are now (undo or a tap may change them while the speech model runs).
   const live = useRef({ words, bleeped })
   live.current = { words, bleeped }
-  // Bleeped words that the new subtitles had no word for (shown until the next run or dismissed).
-  const [lostBleeps, setLostBleeps] = useState(0)
+  // Bleeped words that the new subtitles had no word for. Shown while those subtitles and bleeps are
+  // the current ones (undo or a new bleep hides it), until the next run or dismissed.
+  const [lost, setLost] = useState<{ n: number; words: Word[]; bleeped: Set<number> } | null>(null)
+  const lostBleeps = lost && lost.words === words && lost.bleeped === bleeped ? lost.n : 0
   // The speech worker goes when the tab is left (it must not go on heating the device unseen).
   useEffect(() => () => ctl.current?.abort(), [])
   const start = async () => {
     ctl.current?.abort()
     setImportErr(null)
     setPendingImport(null)
-    setLostBleeps(0)
+    setLost(null)
     const c = new AbortController()
     ctl.current = c
     setRun({ stage: 'audio' })
@@ -448,18 +450,32 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
       if (ctl.current !== c) return
       const now = live.current
       const old = [...now.bleeped].map((i) => now.words[i]).filter((w): w is Word => !!w)
-      // Nothing recognized: the old words and their bleeps stay as they are (a bleep is for anonymity).
-      if (!r.words.length) { setRun(null); setLostBleeps(0); return }
       const made = wordsToCues(r.words)
-      // Bleeped words carry over to the new words that overlap them in time. A word may have no length
-      // (start = end), so the spans are widened a little.
+      // Nothing recognized (or only noise): the old words and their bleeps stay as they are.
+      if (!made.length) { setRun(null); return }
+      // Bleeped words carry over to the new words at the same time: they must share at least half of the
+      // shorter word (words touching at an edge do not count). A word with no length (start = end)
+      // counts when it sits inside the other word, give or take a little.
       const eps = 0.05
-      const hits = (o: Word, w: Word) => w.start < o.end + eps && w.end > o.start - eps
+      const shared = (a: Word, b: Word) => Math.max(0, Math.min(a.end, b.end) - Math.max(a.start, b.start))
+      const hits = (o: Word, w: Word) => {
+        const lo = Math.min(o.end - o.start, w.end - w.start)
+        if (lo <= 0.001) return w.start <= o.end + eps && w.end >= o.start - eps
+        return shared(o, w) >= lo / 2
+      }
       const kept = new Set<number>()
-      r.words.forEach((w, i) => { if (old.some((o) => hits(o, w))) kept.add(i) })
+      r.words.forEach((w, i) => { if (!isNoise(w.text) && old.some((o) => hits(o, w))) kept.add(i) })
+      // An old bleep is lost when the new bleeped words cover less than half of its time (it would be
+      // heard). Undo brings the old ones back, and the notice says so.
+      const covered = (o: Word) => {
+        const len = o.end - o.start
+        const words = [...kept].map((i) => r.words[i])
+        if (len <= 0.001) return words.some((w) => hits(o, w))
+        return words.reduce((sum, w) => sum + shared(o, w), 0) >= len / 2
+      }
+      const n = old.filter((o) => !covered(o)).length
       onReplace(made, r.words, kept)
-      // Old bleeps with no new word at their time are said out loud (undo brings them back).
-      setLostBleeps(old.filter((o) => !r.words.some((w) => hits(o, w))).length)
+      setLost(n ? { n, words: r.words, bleeped: kept } : null)
       if (made.length) onSeek(Math.min(...made.map((c) => c.start)) + 0.01)
       setRun(null)
     } catch (e) {
@@ -527,9 +543,9 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
   return (
     <>
       {lostBleeps > 0 && (
-        <div class="confirm lost-bleeps" role="alert">
+        <div class="card confirm lost-bleeps" role="alert">
           <span class="small">{lostBleeps === 1 ? t('מילה מצופצפת אחת לא נמצאה בכתוביות החדשות, ולכן היא לא מצופצפת. בטל את הפעולה או צפצף אותה שוב.') : t('%d מילים מצופצפות לא נמצאו בכתוביות החדשות, ולכן הן לא מצופצפות. בטל את הפעולה או צפצף אותן שוב.', lostBleeps)}</span>
-          <div class="row"><button class="btn ghost small-btn" onClick={() => setLostBleeps(0)}>{t('הבנתי')}</button></div>
+          <div class="row"><button class="btn ghost small-btn" onClick={() => setLost(null)}>{t('הבנתי')}</button></div>
         </div>
       )}
       {cues.length === 0 && (
