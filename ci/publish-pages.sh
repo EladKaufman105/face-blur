@@ -29,13 +29,16 @@ part=$(GIT_INDEX_FILE=$index git write-tree)
 nojekyll=$(git hash-object -w --stdin < /dev/null)
 
 # CI's checkout is a partial clone (sparse, no file contents): the other app's files aren't here,
-# only their names, so the tree is made without checking they're present (--missing); the push
-# doesn't send them, gh-pages has them already.
+# only their names, so the tree is made without checking they're present (--missing). The push
+# doesn't send them (gh-pages has them); it may fetch a few old files from origin to compress against.
 for attempt in 1 2 3 4 5; do
   # gh-pages as it is now (none yet: only this part goes up).
   old=$(git ls-remote origin refs/heads/gh-pages | cut -f1)
   if [ -n "$old" ]; then git fetch -q --depth 1 origin "+refs/heads/gh-pages:refs/remotes/origin/gh-pages"; fi
-  entries() { [ -n "$old" ] && git ls-tree "$old^{tree}" || true; }
+  # Read first, outside the pipelines below (whose `|| true` would hide a failure): a failing
+  # ls-tree stops the deploy, which must never push a tree without the other app.
+  old_entries=$([ -z "$old" ] || git ls-tree "$old^{tree}")
+  entries() { [ -z "$old_entries" ] || printf '%s\n' "$old_entries"; }
   if [ "$channel" = release ]; then
     # The new root, with the beta's beta/ as it was.
     tree=$({ git ls-tree "$part" | grep -v -P '\t\.nojekyll$' || true
