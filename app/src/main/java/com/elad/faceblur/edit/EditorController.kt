@@ -209,6 +209,8 @@ class EditorController(
     var pauser: () -> Unit = {}
     /** Set by the player UI. */
     var playToggler: () -> Unit = {}
+    /** Set by the player UI: starts playing (never pauses), from where it is. */
+    var starter: () -> Unit = {}
     /** Set by the player UI: re-renders the paused frame (after an edit, for the live blur). */
     var refresher: () -> Unit = {}
 
@@ -277,26 +279,92 @@ class EditorController(
 
     // ------------------------------------------------------------------ playback
 
-    /** From the player while it plays (or after a seek lands). */
+    /**
+     * From the player while it plays (or after a seek over a cut lands). A frame inside a cut starts
+     * one seek past it (to the first kept frame, over cuts that touch, or a stop when the cut runs
+     * to the end); until it lands, the frames still arriving from the cut start nothing and the
+     * time shown is where playback is going, not the cut.
+     */
     fun onFrameShown(f: Int) {
-        if (!playing) return
-        frame = f.coerceIn(0, frameCount - 1)
-        // Cut stretches are jumped over.
-        if (model.removed.isNotEmpty()) {
-            val r = model.cutAt(msAtRelUs(timeOf(frame)))
-            if (r != null) {
-                val to = firstFrameFrom(cueRelUs(r[1]))
-                if (to != skipTo) {
-                    skipTo = to
-                    if (to >= frameCount) pauser() else seeker(to)
-                }
-            } else {
-                skipTo = -1
-            }
-        }
+        if (!playing && !skips.pending) return
+        val shown = f.coerceIn(0, frameCount - 1)
+        if (handleCut(shown)) return
+        skips.cleared()
+        frame = shown
     }
-    private var skipTo = -1
 
+    /**
+     * From the playback clock: only meets a cut (seeks past it, or stops at the end). It never sets the
+     * frame shown and never clears the guard, so it can't fight the frames the player reports.
+     */
+    fun checkCutAt(f: Int) {
+        if (!playing && !skips.pending) return
+        handleCut(f.coerceIn(0, frameCount - 1))
+    }
+
+    /** If frame [shown] is inside a cut, deals with it and returns true. */
+    private fun handleCut(shown: Int): Boolean {
+        if (model.removed.isEmpty()) return false
+        val endMs = CutSkip.skipEndMs(model.removed, msAtRelUs(timeOf(shown)))
+        if (endMs < 0) return false
+        val to = keptFrameAfter(endMs)
+        when (val step = skips.onCutFrame(to, frameCount, android.os.SystemClock.uptimeMillis())) {
+            is CutSkipStep.Seek -> { frame = step.frame; seeker(step.frame) }
+            CutSkipStep.Finish -> {
+                frame = lastKeptFrame()
+                pauser()
+                seeker(frame)
+            }
+            CutSkipStep.None -> Unit
+        }
+        return true
+    }
+
+    /**
+     * The first kept frame at or after [endMs]. A gap too short to hold a frame doesn't count: a cut that
+     * starts at the frame found is jumped whole, one cut at a time. frameCount if the cut runs to the end.
+     */
+    private fun keptFrameAfter(endMs: Long): Int {
+        var to = firstFrameFrom(cueRelUs(endMs))
+        while (to < frameCount) {
+            val e = CutSkip.skipEndMs(model.removed, msAtRelUs(timeOf(to)))
+            if (e < 0) break
+            to = firstFrameFrom(cueRelUs(e))
+        }
+        return to
+    }
+
+    /** Ends a jump over a cut (the player was paused or sought by the user). */
+    fun cancelSkip() = skips.cleared()
+
+    /** The frame to play from: the current one, or the first kept one after the cut it is paused in. */
+    fun resumeFrame(): Int {
+        if (!frameCut(frame)) return frame
+        val endMs = CutSkip.skipEndMs(model.removed, msAtRelUs(timeOf(frame)))
+        val to = keptFrameAfter(endMs)
+        return if (to >= frameCount) firstKeptFrame() else to
+    }
+    private val skips = CutSkipGuard()
+
+    /** A jump over a cut is under way (the player may report "not playing" for a moment while it buffers). */
+    val skipPending: Boolean get() = skips.pending
+
+    /** Whether the frame [f] is inside a cut. */
+    private fun frameCut(f: Int): Boolean = model.removed.isNotEmpty() && model.cutAt(msAtRelUs(timeOf(f))) != null
+
+    /** The last frame that isn't cut (the last one when nothing at the end is cut). */
+    fun lastKeptFrame(): Int {
+        var f = frameCount - 1
+        while (f > 0 && frameCut(f)) f--
+        return f.coerceAtLeast(0)
+    }
+
+    /** The first frame that isn't cut (where playing from the start begins). */
+    fun firstKeptFrame(): Int {
+        var f = 0
+        while (f < frameCount - 1 && frameCut(f)) f++
+        return f
+    }
     /** The first frame at or after [us] (from the first frame); frameCount if none. */
     fun firstFrameFrom(us: Long): Int {
         val t = model.times
@@ -312,6 +380,8 @@ class EditorController(
     }
 
     fun seek(f: Int) {
+        // A seek of the user's own ends any jump over a cut.
+        skips.cleared()
         val c = f.coerceIn(0, frameCount - 1)
         if (c == frame && peekFrame == null) return
         frame = c
@@ -1023,7 +1093,7 @@ class EditorController(
     fun playSelectedSfx() {
         val c = selectedSfx ?: return
         seek(frameAt(cueRelUs(max(0L, c.startMs - 300))))
-        playToggler()
+        starter()
     }
 
     fun beginSfxDrag() = model.beginGesture()

@@ -676,9 +676,13 @@ private fun VideoWithOverlay(
         if (!ctrl.playing) return@LaunchedEffect
         while (true) {
             withFrameNanos { }
-            if (player.isPlaying && SystemClock.uptimeMillis() - sync.lastFrameReportMs > 300) {
-                ctrl.onFrameShown(sync.frameAtPosition(player.currentPosition))
-            }
+            if (!player.isPlaying) continue
+            // With cuts, on every frame of the screen: the clock meets a cut without waiting for its frames to be shown.
+            // Without, only when the player stops reporting frames.
+            val at = sync.frameAtPosition(player.currentPosition)
+            // The clock only meets cuts; the frame shown comes from the player's frames (or from the clock when they stop).
+            if (ctrl.model.removed.isNotEmpty()) ctrl.checkCutAt(at)
+            if (SystemClock.uptimeMillis() - sync.lastFrameReportMs > 300) ctrl.onFrameShown(at)
         }
     }
     Box(Modifier.aspectRatio(aspect, matchHeightConstraintsFirst = true).onSizeChanged { onBoxWidth(it.width) }) {
@@ -710,17 +714,28 @@ private class PlayerSync(
     private var target = -1
     private var retries = 0
     @Volatile var lastFrameReportMs = 0L
+    /** Counts seeks; frame reports made before the latest one are stale and dropped. */
+    @Volatile private var seekGen = 0
 
     fun attach() {
         player.addListener(this)
         player.setVideoFrameMetadataListener(this)
         ctrl.seeker = { seekTo(it) }
-        ctrl.pauser = { player.pause() }
+        ctrl.pauser = { ctrl.cancelSkip(); player.pause() }
+        ctrl.starter = {
+            if (player.playbackState == Player.STATE_ENDED) seekTo(ctrl.firstKeptFrame())
+            else ctrl.resumeFrame().let { if (it != ctrl.frame) seekTo(it) }
+            player.play()
+        }
         ctrl.playToggler = {
-            if (player.isPlaying) {
+            if (player.playWhenReady && player.playbackState != Player.STATE_ENDED) {
+                ctrl.cancelSkip()
                 player.pause()
             } else {
-                if (player.playbackState == Player.STATE_ENDED || ctrl.frame >= times.size - 1) seekTo(0)
+                // From the start (the first frame that isn't cut) when at the end, or after a stop at a cut that runs to the end;
+                // from the end of the cut when paused inside one.
+                if (player.playbackState == Player.STATE_ENDED || ctrl.frame >= ctrl.lastKeptFrame()) seekTo(ctrl.firstKeptFrame())
+                else ctrl.resumeFrame().let { if (it != ctrl.frame) seekTo(it) }
                 player.play()
             }
         }
@@ -735,6 +750,7 @@ private class PlayerSync(
         ctrl.seeker = {}
         ctrl.pauser = {}
         ctrl.playToggler = {}
+        ctrl.starter = {}
         ctrl.refresher = {}
         ctrl.playing = false
     }
@@ -743,6 +759,7 @@ private class PlayerSync(
 
     private fun seekTo(f: Int) {
         if (times.isEmpty()) return
+        seekGen++
         target = f
         retries = 0
         doSeek(f)
@@ -760,7 +777,8 @@ private class PlayerSync(
         mediaFormat: MediaFormat?,
     ) {
         lastFrameReportMs = SystemClock.uptimeMillis()
-        main.post { onRendered(presentationTimeUs) }
+        val gen = seekGen
+        main.post { if (gen == seekGen) onRendered(presentationTimeUs) }
     }
 
     private fun onRendered(pts: Long) {
@@ -772,8 +790,10 @@ private class PlayerSync(
             return
         }
         val f = nearest(pts - off)
-        if (player.isPlaying) {
+        // A jump over a cut buffers for a moment: that is still playing.
+        if (player.isPlaying || (ctrl.skipPending && player.playWhenReady)) {
             ctrl.onFrameShown(f)
+            syncPlaying()
             return
         }
         // Only a near miss is an offset to correct; a far frame is a stale, superseded seek.
@@ -796,9 +816,20 @@ private class PlayerSync(
         return if (abs(times[hi] - t) < abs(times[lo] - t)) hi else lo
     }
 
-    override fun onIsPlayingChanged(isPlaying: Boolean) {
-        ctrl.playing = isPlaying
+    /**
+     * The play state the editor shows: playing, or buffering after a seek while it was playing (a jump
+     * over a cut, a sound effect's play): the state holds through the buffering, so nothing flickers.
+     */
+    private fun syncPlaying() {
+        ctrl.playing = player.isPlaying ||
+            (player.playWhenReady && player.playbackState == Player.STATE_BUFFERING && (ctrl.skipPending || ctrl.playing))
     }
+
+    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = syncPlaying()
+
+    override fun onPlaybackStateChanged(playbackState: Int) = syncPlaying()
+
+    override fun onIsPlayingChanged(isPlaying: Boolean) = syncPlaying()
 
     override fun onPlayerError(error: PlaybackException) {
         android.util.Log.e("ONIT", "editor player error", error)
