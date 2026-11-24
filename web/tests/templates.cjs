@@ -33,6 +33,9 @@ const [, , url, video1, video2, out] = process.argv
     await p.setInputFiles('.hero input[type=file]', file)
     await p.waitForSelector('.ready .tpl-card')
   }
+  // The keys in one of the template database's stores (the screen changes before the storage does).
+  const keys = (store) => p.evaluate((st) => new Promise((resolve) => indexedDB.databases().then((dbs) => { const r = indexedDB.open(dbs.find((x) => x.name.endsWith('-templates')).name); r.onsuccess = () => { const g = r.result.transaction(st).objectStore(st).getAllKeys(); g.onsuccess = () => { r.result.close(); resolve(g.result) } } })), store)
+  const stored0 = async (store, n) => { for (let i = 0; i < 100 && (await keys(store)).length !== n; i++) await p.waitForTimeout(100) }
   const summary = () => p.textContent('.fold-summary')
   const openFold = async () => { if ((await p.getAttribute('.blur-settings', 'aria-expanded')) !== 'true') await p.click('.blur-settings') }
   try {
@@ -104,6 +107,7 @@ const [, , url, video1, video2, out] = process.argv
     await p.screenshot({ path: `${out}/3_template_editor.png` })
     await p.click('.tpl-save')
     await p.waitForSelector('.tpl-sheet', { state: 'detached' })
+    await stored0('builtin', 1)
     const row = await p.textContent('.tpl-item[data-tpl="look.clean"] .small')
     console.log('clean after edit:', row)
     if (!row.includes('נערכה') || !(await p.$('.tpl-item[data-tpl="look.clean"] .tpl-restore-row'))) fail('edited look not marked')
@@ -134,6 +138,7 @@ const [, , url, video1, video2, out] = process.argv
     await p.click('.settings-btn')
     await p.click('.tpl-item[data-tpl="look.clean"] .tpl-restore-row')
     await p.waitForFunction(() => !document.querySelector('.tpl-item[data-tpl="look.clean"] .tpl-restore-row'))
+    await stored0('builtin', 0)
     if ((await p.textContent('.tpl-item[data-tpl="look.clean"] .small')).includes('נערכה')) fail('restore left it edited')
     // A copy of a built-in: renamed, then deleted (with a question first).
     await p.click('.tpl-item[data-tpl="look.bold"] .tpl-dup')
@@ -147,6 +152,7 @@ const [, , url, video1, video2, out] = process.argv
     await p.click('.tpl-item:not([data-tpl^="look."]) .tpl-del')
     await p.click('.tpl-del-yes')
     await p.waitForFunction(() => !document.querySelector('.tpl-item:not([data-tpl^="look."])'))
+    await stored0('user', 0)
     await p.reload()
     await p.waitForTimeout(500)
     await p.click('.settings-btn')
