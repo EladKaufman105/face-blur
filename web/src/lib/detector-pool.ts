@@ -1,7 +1,6 @@
 import type { DetectReply } from '../workers/detect.worker'
 import type { DetectStats } from './detector'
 import type { Det } from './types'
-import { releaseSpeechForExport } from './speech'
 
 /**
  * CPU detection spread over a few workers. A WebAssembly inference runs on one thread and takes
@@ -22,7 +21,6 @@ export class DetectorPool {
 
   /** [model]: the fp32 model's bytes, fetched once by the caller (the workers each build a session from them). */
   static async create(model: Uint8Array, n: number): Promise<DetectorPool> {
-    releaseSpeechForExport() // a phone gives the speech model's memory back first
     const workers = Array.from({ length: n }, () => new Worker(new URL('../workers/detect.worker.ts', import.meta.url), { type: 'module' }))
     const pool = new DetectorPool(workers)
     try {

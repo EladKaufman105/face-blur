@@ -77,7 +77,7 @@ export function videoSize(file: File): Promise<[number, number] | null> {
 /** Faces found in [file]: what the analyzing screen does, with no screen. [onProgress]: 0..1. */
 export function findFaces(file: File, sensitive: boolean, onProgress: (p: number) => void, signal?: AbortSignal) {
   return run<{ analysis: Analysis; thumbs: (string | null)[]; ms: number; backend: string }, AnalyzeMessage>(
-    () => new Worker(new URL('../workers/analyze.worker.ts', import.meta.url), { type: 'module' }),
+    () => { releaseSpeechForExport(); return new Worker(new URL('../workers/analyze.worker.ts', import.meta.url), { type: 'module' }) },
     (w) => {
       const req: AnalyzeRequest = { file, sensitive, base: new URL('.', document.baseURI).href, backend: forcedBackend(), workers: Number(new URLSearchParams(location.search).get('workers')) || undefined }
       w.postMessage(req)
