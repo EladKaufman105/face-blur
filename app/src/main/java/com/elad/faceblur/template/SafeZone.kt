@@ -23,7 +23,8 @@ data class SafeZone(val top: Float, val bottom: Float, val left: Float, val righ
          */
         fun appliesTo(export: com.elad.faceblur.edit.ExportAspect, sourceWidth: Int, sourceHeight: Int): Boolean = when (export) {
             com.elad.faceblur.edit.ExportAspect.VERTICAL -> true
-            com.elad.faceblur.edit.ExportAspect.ORIGINAL -> sourceHeight > 0 && sourceWidth.toFloat() / sourceHeight <= 0.62f
+            // The video as it is: only a 9:16 portrait one (give or take a little), as the platforms show it.
+            com.elad.faceblur.edit.ExportAspect.ORIGINAL -> sourceHeight > 0 && sourceWidth.toFloat() / sourceHeight in 0.53f..0.60f
             else -> false
         }
 

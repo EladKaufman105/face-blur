@@ -50,9 +50,6 @@ import androidx.compose.animation.core.animateDecay
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -98,6 +95,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -315,13 +314,42 @@ fun EditorScreen(
                 }
             }
             // Where a platform's own screens cover the picture (only drawn here, not in the export).
+            // One button: it opens a short menu (off, or which platform), so nothing sits over the video.
             if (safeZoneAvailable) {
-                IconButton(onClick = { ctrl.safeZoneOn = !ctrl.safeZoneOn }, modifier = Modifier.testTag(Tags.SAFE_ZONE)) {
-                    Icon(
-                        AppIcons.SafeArea,
-                        t("אזור בטוח"),
-                        tint = if (ctrl.safeZoneOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                Box {
+                    var menu by remember { mutableStateOf(false) }
+                    IconButton(onClick = { menu = true }, modifier = Modifier.testTag(Tags.SAFE_ZONE)) {
+                        Icon(
+                            if (ctrl.safeZoneOn) platformIcon(ctrl.safePlatform) else AppIcons.SafeArea,
+                            t("אזור בטוח"),
+                            tint = if (ctrl.safeZoneOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        Text(
+                            t("אזור בטוח"),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = Space.L, vertical = Space.S),
+                        )
+                        DropdownMenuItem(
+                            text = { Text(t("כבוי")) },
+                            onClick = { ctrl.safeZoneOn = false; menu = false },
+                            leadingIcon = { Icon(AppIcons.SafeArea, null) },
+                            trailingIcon = if (!ctrl.safeZoneOn) ({ Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary) }) else null,
+                            modifier = Modifier.testTag(Tags.SAFE_ZONE + ".OFF"),
+                        )
+                        for (p in Platform.entries) {
+                            val on = ctrl.safeZoneOn && ctrl.safePlatform == p
+                            DropdownMenuItem(
+                                text = { Text(platformName(p)) },
+                                onClick = { ctrl.safePlatform = p; ctrl.safeZoneOn = true; menu = false },
+                                leadingIcon = { Icon(platformIcon(p), null) },
+                                trailingIcon = if (on) ({ Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary) }) else null,
+                                modifier = Modifier.testTag(Tags.SAFE_ZONE + "." + p.name),
+                            )
+                        }
+                    }
                 }
             }
             IconButton(onClick = ctrl::undo, enabled = ctrl.model.canUndo && !busy, modifier = Modifier.testTag(Tags.UNDO)) { Icon(EditorIcons.Undo, t("בטל")) }
@@ -543,10 +571,6 @@ fun EditorScreen(
 private fun EditorVideoArea(ctrl: EditorController, export: ExportOptions, subStyle: SubtitleStyle, modifier: Modifier, messages: Boolean) {
     Box(modifier.fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
         VideoWithOverlay(ctrl, export.subs, subStyle, export.aspect, export.watermark)
-        // The view aid's platform chooser (only for a vertical frame).
-        if (ctrl.safeZoneOn && SafeZone.appliesTo(export.aspect, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)) {
-            PlatformChooser(ctrl.safePlatform, { ctrl.safePlatform = it }, Modifier.align(Alignment.TopCenter).padding(top = Space.S))
-        }
         // With a panel in the timeline's place (a phone), the messages go at the video's foot.
         if (messages) EditorMessages(ctrl, Modifier.align(Alignment.BottomCenter))
     }
@@ -1767,37 +1791,9 @@ private fun PropActions(content: @Composable () -> Unit) {
 }
 
 
-/** The safe-zone aid's platform chooser: a pill of segments, each a neutral glyph and the short name (no brand marks). */
-@Composable
-private fun PlatformChooser(selected: Platform, onSelect: (Platform) -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier
-            .clip(RoundedCornerShape(50))
-            .background(Color.Black.copy(alpha = 0.6f))
-            .padding(3.dp)
-            .selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        for (p in Platform.entries) {
-            val on = p == selected
-            val icon = when (p) {
-                Platform.TIKTOK -> AppIcons.MusicNote
-                Platform.REELS -> AppIcons.Movie
-                Platform.SHORTS -> AppIcons.PlayBox
-            }
-            val ink = if (on) Color(0xFF111111) else Color.White
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(if (on) Color.White else Color.Transparent)
-                    .selectable(selected = on, role = Role.RadioButton, onClick = { onSelect(p) })
-                    .padding(horizontal = 12.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                Icon(icon, null, Modifier.size(16.dp), tint = ink)
-                Text(platformName(p), color = ink, style = MaterialTheme.typography.labelMedium, maxLines = 1)
-            }
-        }
-    }
+/** The safe-zone aid's neutral glyph for each platform (no brand marks). */
+private fun platformIcon(p: Platform) = when (p) {
+    Platform.TIKTOK -> AppIcons.MusicNote
+    Platform.REELS -> AppIcons.Movie
+    Platform.SHORTS -> AppIcons.PlayBox
 }
