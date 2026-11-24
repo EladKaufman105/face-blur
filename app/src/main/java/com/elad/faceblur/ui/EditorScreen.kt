@@ -676,7 +676,10 @@ private fun VideoWithOverlay(
         if (!ctrl.playing) return@LaunchedEffect
         while (true) {
             withFrameNanos { }
-            if (player.isPlaying && SystemClock.uptimeMillis() - sync.lastFrameReportMs > 300) {
+            if (!player.isPlaying) continue
+            // With cuts, on every frame of the screen: the clock meets a cut without waiting for its frames to be shown.
+            // Without, only when the player stops reporting frames.
+            if (ctrl.model.removed.isNotEmpty() || SystemClock.uptimeMillis() - sync.lastFrameReportMs > 300) {
                 ctrl.onFrameShown(sync.frameAtPosition(player.currentPosition))
             }
         }
@@ -720,7 +723,8 @@ private class PlayerSync(
             if (player.isPlaying) {
                 player.pause()
             } else {
-                if (player.playbackState == Player.STATE_ENDED || ctrl.frame >= times.size - 1) seekTo(0)
+                // From the start (the first frame that isn't cut) when at the end, or after a stop at a cut that runs to the end.
+                if (player.playbackState == Player.STATE_ENDED || ctrl.frame >= ctrl.lastKeptFrame()) seekTo(ctrl.firstKeptFrame())
                 player.play()
             }
         }
@@ -772,7 +776,8 @@ private class PlayerSync(
             return
         }
         val f = nearest(pts - off)
-        if (player.isPlaying) {
+        // A jump over a cut buffers for a moment: that is still playing.
+        if (player.isPlaying || (ctrl.skipPending && player.playWhenReady)) {
             ctrl.onFrameShown(f)
             return
         }
@@ -797,7 +802,8 @@ private class PlayerSync(
     }
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
-        ctrl.playing = isPlaying
+        // Jumping over a cut buffers for a moment: the play button and the frame logic stay as they are.
+        ctrl.playing = isPlaying || (ctrl.skipPending && player.playWhenReady)
     }
 
     override fun onPlayerError(error: PlaybackException) {
