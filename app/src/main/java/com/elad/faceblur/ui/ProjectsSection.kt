@@ -8,12 +8,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -38,10 +41,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -49,6 +54,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.elad.faceblur.i18n.t
 import com.elad.faceblur.project.ProjectMeta
 import com.elad.faceblur.project.ProjectStore
@@ -134,64 +140,114 @@ private fun ProjectRow(p: ProjectMeta, onOpen: () -> Unit, onRename: () -> Unit,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         interactionSource = source,
     ) {
-        Row(Modifier.padding(Space.S), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(64.dp)
-                    .clip(RoundedCornerShape(Radius.Control))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                Alignment.Center,
-            ) {
-                thumb?.let { Image(it, null, contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp)) }
-                    ?: Icon(if (p.subtitlesOnly) AppIcons.Subtitles else AppIcons.Face, null, tint = feature.tint)
-                // A clip bar in the project's color along the bottom of the thumbnail.
+        // The row, then what the project has on a line of its own across the card.
+        Column(Modifier.padding(Space.S), verticalArrangement = Arrangement.spacedBy(Space.S)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(horizontal = 6.dp, vertical = 5.dp)
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(feature.color),
-                )
-            }
-            Spacer(Modifier.width(Space.M))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(p.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    whenText(p.updated) + " · " + ltr(durationText(p.durationMs)),
-                    style = MaterialTheme.typography.bodySmall.tnum(),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    contentText(p),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = feature.tint,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, t("אפשרויות")) }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text(t("שנה שם")) }, onClick = { menu = false; onRename() })
-                    DropdownMenuItem(text = { Text(t("מחק"), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() })
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(Radius.Control))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    Alignment.Center,
+                ) {
+                    thumb?.let { Image(it, null, contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp)) }
+                        ?: Icon(if (p.subtitlesOnly) AppIcons.Subtitles else AppIcons.Face, null, tint = feature.tint)
+                    // A clip bar in the project's color along the bottom of the thumbnail.
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 6.dp, vertical = 5.dp)
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(feature.color),
+                    )
+                }
+                Spacer(Modifier.width(Space.M))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(p.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        whenText(p.updated) + " · " + ltr(durationText(p.durationMs)),
+                        style = MaterialTheme.typography.bodySmall.tnum(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Box {
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, t("אפשרויות")) }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text(t("שנה שם")) }, onClick = { menu = false; onRename() })
+                        DropdownMenuItem(text = { Text(t("מחק"), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() })
+                    }
                 }
             }
+            ProjectPills(p)
         }
     }
 }
 
-private fun contentText(p: ProjectMeta): String {
-    val parts = ArrayList<String>()
-    if (p.subtitlesOnly) parts += t("בלי זיהוי פנים")
-    else parts += when (p.blurs) {
-        0 -> t("בלי טשטושים")
-        1 -> t("טשטוש אחד")
-        else -> t("%d טשטושים").format(p.blurs)
+/** One thing a project has, as a pill on its card: [icon] (or none) and [text] in [color]. */
+private class Pill(val icon: ImageVector?, val text: String, val color: Color)
+
+/**
+ * What a project has, in pills of the tools' colors, on one line if they fit: blurs, subtitles
+ * (or "subtitles only"), bleeped words, a changed voice, sound effects, a background, cuts; "no
+ * edits yet" if none.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ProjectPills(p: ProjectMeta) {
+    val subs = Feature.SUBTITLES.tint
+    val sound = Feature.SOUND.tint
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val pills = ArrayList<Pill>()
+    fun count(n: Int, one: String, many: String) = if (n == 1) one else many.format(n)
+    // Without face detection (a tool from the home screen) and no blur added by hand: "subtitles
+    // only" when it has subtitles, else just what else it has.
+    if (p.subtitlesOnly && p.blurs == 0) {
+        if (p.cues > 0) pills += Pill(AppIcons.Subtitles, t("כתוביות בלבד · %d").format(p.cues), subs)
+    } else {
+        if (p.blurs > 0) pills += Pill(AppIcons.Face, count(p.blurs, t("טשטוש אחד"), t("%d טשטושים")), Feature.FACES.tint)
+        if (p.cues > 0) pills += Pill(AppIcons.Subtitles, count(p.cues, t("כתובית אחת"), t("%d כתוביות")), subs)
     }
-    if (p.cues > 0) parts += if (p.cues == 1) t("כתובית אחת") else t("%d כתוביות").format(p.cues)
-    return parts.joinToString(" · ")
+    if (p.bleeped > 0) pills += Pill(AppIcons.Waveform, count(p.bleeped, t("מילה מצופצפת"), t("%d מצופצפות")), subs)
+    // "\u200F" (invisible) keeps these apart from "רקע" and "שינוי קול" elsewhere, which read differently in English.
+    if (p.voice) pills += Pill(AppIcons.Mic, t("שינוי קול\u200F"), sound)
+    if (p.sounds > 0) pills += Pill(AppIcons.Music, count(p.sounds, t("צליל אחד"), t("%d צלילים")), sound)
+    if (p.background) pills += Pill(AppIcons.Background, t("רקע\u200F"), Feature.BACKGROUND.tint)
+    if (p.removed > 0) pills += Pill(AppIcons.Cut, count(p.removed, t("חיתוך אחד"), t("%d חיתוכים")), muted)
+    if (pills.isEmpty()) pills += Pill(null, t("עדיין בלי עריכות"), muted)
+    FlowRow(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        for (pill in pills) ProjectPill(pill)
+    }
+}
+
+@Composable
+private fun ProjectPill(pill: Pill) {
+    val bg = if (MaterialTheme.colorScheme.isLight) 0.11f else 0.16f
+    Row(
+        Modifier
+            .clip(CircleShape)
+            .background(pill.color.copy(alpha = bg))
+            .border(1.dp, pill.color.copy(alpha = 0.28f), CircleShape)
+            .padding(start = if (pill.icon != null) 6.dp else 8.dp, end = 8.dp, top = 3.dp, bottom = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        pill.icon?.let { Icon(it, null, Modifier.size(13.dp), tint = pill.color) }
+        Text(
+            pill.text,
+            color = pill.color,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.labelMedium.tnum(),
+            maxLines = 1,
+        )
+    }
 }
 
 private fun whenText(ms: Long): String {

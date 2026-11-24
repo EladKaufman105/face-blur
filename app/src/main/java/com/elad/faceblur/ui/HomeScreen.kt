@@ -84,13 +84,15 @@ internal fun HomeContent(vm: MainViewModel, wide: Boolean, onPick: () -> Unit, o
 /** The logo, the name, the promise (nothing leaves the phone) and the app's settings. */
 @Composable
 internal fun Header(onSettings: () -> Unit) {
-    // Left to right in every language (the logo on the left), in both builds. The beta build adds
-    // a BETA tag on the logo and "Beta" after the name.
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { HeaderRow(isBetaBuild, onSettings) }
+    // Left to right in every language (the logo on the left), in both builds; the promise line in
+    // the app's own direction. The beta build adds a BETA tag on the logo and "Beta" after the name.
+    val appDirection = LocalLayoutDirection.current
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { HeaderRow(isBetaBuild, appDirection, onSettings) }
 }
 
+/** [appDirection]: the app's language direction, for the promise line (the row itself is left to right). */
 @Composable
-private fun HeaderRow(beta: Boolean, onSettings: () -> Unit) {
+private fun HeaderRow(beta: Boolean, appDirection: LayoutDirection, onSettings: () -> Unit) {
     Row(Modifier.padding(top = Space.S, bottom = Space.XS), verticalAlignment = Alignment.CenterVertically) {
         if (beta) {
             // Fixed to the logo's size: a large system font grows the tag, not the row.
@@ -112,16 +114,20 @@ private fun HeaderRow(beta: Boolean, onSettings: () -> Unit) {
             } else {
                 Text("ONIT", style = AppType.Display, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(AppIcons.Lock, null, Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.width(Space.XS))
-                // One line: a narrow screen gets it a little smaller rather than broken.
-                androidx.compose.foundation.text.BasicText(
-                    t("הכל מעובד על המכשיר. שום דבר לא עולה לרשת."),
-                    style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
-                    maxLines = 1,
-                    autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = 12.sp, stepSize = 0.5.sp),
-                )
+            // In the app's direction: in Hebrew it reads right to left, at the column's right edge
+            // (the lock on its right); in English at the left, as the title.
+            CompositionLocalProvider(LocalLayoutDirection provides appDirection) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(AppIcons.Lock, null, Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(Space.XS))
+                    // One line: a narrow screen gets it a little smaller rather than broken.
+                    androidx.compose.foundation.text.BasicText(
+                        t("הכל מעובד על המכשיר. שום דבר לא עולה לרשת."),
+                        style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                        maxLines = 1,
+                        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = 12.sp, stepSize = 0.5.sp),
+                    )
+                }
             }
         }
         IconButton(onClick = onSettings, modifier = Modifier.testTag(Tags.SETTINGS)) { Icon(Icons.Filled.Settings, t("הגדרות")) }

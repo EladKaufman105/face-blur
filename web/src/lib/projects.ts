@@ -26,6 +26,35 @@ export type ProjectMeta = {
   thumb: string | null
   /** Faces were searched for. */
   detected: boolean
+  // What else the list shows (from [summarize]). Missing in projects saved before it was kept
+  // (and in the release's ones the beta copies): [listProjects] fills it in from their edits.
+  /** Words bleeped. */
+  bleeped?: number
+  /** The voice is changed (or muted). */
+  voice?: boolean
+  /** Sound effects placed. */
+  sounds?: number
+  /** The background is replaced. */
+  background?: boolean
+  /** Stretches cut out. */
+  cuts?: number
+}
+
+/** What the projects' list shows of the edits, kept in the meta on every save. */
+export type ProjectSummary = Required<Pick<ProjectMeta, 'blurs' | 'cues' | 'detected' | 'bleeped' | 'voice' | 'sounds' | 'background' | 'cuts'>>
+
+/** [ProjectSummary] of a project's edits (fields an older project lacks count as none). */
+export function summarize(s: Partial<Pick<ProjectState, 'analyzed' | 'tracks' | 'cues' | 'bleeped' | 'voice' | 'sfx' | 'background' | 'cuts'>>): ProjectSummary {
+  return {
+    blurs: s.tracks?.length ?? 0,
+    cues: s.cues?.length ?? 0,
+    detected: !!s.analyzed,
+    bleeped: s.bleeped?.length ?? 0,
+    voice: !!s.voice && s.voice !== 'none',
+    sounds: s.sfx?.length ?? 0,
+    background: !!s.background && s.background.fill !== 'none',
+    cuts: s.cuts?.length ?? 0,
+  }
 }
 
 /** Everything edited (structured-cloneable). */
@@ -99,10 +128,34 @@ export async function listProjects(): Promise<ProjectMeta[]> {
   try {
     const d = await open()
     const all = (await req(d.transaction('meta').objectStore('meta').getAll())) as ProjectMeta[]
+    const old = all.filter((m) => m.sounds === undefined)
+    if (old.length) await fillSummaries(d, old).catch(() => {})
     return all.sort((a, b) => b.updated - a.updated)
   } catch {
     return []
   }
+}
+
+/**
+ * Projects saved before their meta kept a [ProjectSummary] (or copied from such a release
+ * project): filled in [old] from their edits, and kept, once (a meta changed meanwhile is left as
+ * it is). Blurs, subtitles and the face search stay as the meta has them.
+ */
+async function fillSummaries(d: IDBDatabase, old: ProjectMeta[]) {
+  const t = d.transaction(['meta', 'state'], 'readwrite')
+  const metas = t.objectStore('meta')
+  const states = t.objectStore('state')
+  for (const m of old) {
+    const r = states.get(m.id)
+    r.onsuccess = () => {
+      const state = r.result as ProjectState | undefined
+      const { bleeped, voice, sounds, background, cuts } = summarize(state ?? {})
+      Object.assign(m, { bleeped, voice, sounds, background, cuts })
+      const cur = metas.get(m.id)
+      cur.onsuccess = () => { if (cur.result && cur.result.sounds === undefined) metas.put({ ...cur.result, bleeped, voice, sounds, background, cuts }, m.id) }
+    }
+  }
+  await new Promise<void>((resolve, reject) => { t.oncomplete = () => resolve(); t.onerror = () => reject(t.error); t.onabort = () => reject(t.error ?? new Error('aborted')) })
 }
 
 /** A new project for [file]; its id. Asks the browser to keep the site's data. */

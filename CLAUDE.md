@@ -16,11 +16,13 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 - Humans name branches `feature/<short-name>` or `fix/<short-name>`.
 - Cloud sessions keep the branch name the session assigns (for example `ccr-...`). The branch must still be based on `origin/develop`.
 - Before the first commit run `git fetch origin develop`. If the branch is not based on it, rebase or recreate the branch on `origin/develop`.
+- A cloud session whose branch was deleted after its PR merged recreates the branch from `origin/develop` before new work (pushing recreates it on GitHub).
 - Commit messages: one short plain sentence about the user-visible effect. Optional area prefix, like `Editor: ...` or `Web: ...`.
 
 ## Pull requests
 
 - Every change reaches `develop` or `main` through a PR. No human approval is required.
+- Merging a PR deletes its branch automatically (GitHub can restore it from the PR page). `main`, `develop`, `gh-pages` and the data and CI branches (see "Other branches") are never deleted: rulesets block it.
 - Required checks (`.github/workflows/pr-guard.yml` runs `source-branch`; `.github/workflows/pr.yml` runs the builds):
   - `source-branch`: PRs into `main` must come from `develop` or `hotfix/*`.
   - `android-build`: i18n check and debug APK build.

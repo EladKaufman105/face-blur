@@ -8,7 +8,8 @@ import org.json.JSONObject
 /**
  * What the editor changes, for project.json: the subtitle look [style], how subtitles are cut,
  * the sound, frame, background, steadying and the blur's settings. [export] is kept too when
- * the project was made from a template (so reopening it exports the same way).
+ * the project was made from a template (so reopening it exports the same way). "bleeped" (words
+ * bleeped, or bleeped stretches where more) is only for the projects' list.
  */
 fun EditorController.projectFields(style: SubtitleStyle, export: ExportOptions? = null): JSONObject = JSONObject()
     .put("style", style.toJson())
@@ -18,4 +19,5 @@ fun EditorController.projectFields(style: SubtitleStyle, export: ExportOptions? 
     .put("background", background.toJson())
     .put("stabilize", stabilizeLevel)
     .put("settings", session.settings.let { st -> JSONObject().put("mode", st.mode.name).put("strength", st.strength.toDouble()).put("padding", st.padding.toDouble()).put("sensitive", st.sensitive) })
+    .put("bleeped", maxOf(bleepedCount, model.bleeps.size))
     .also { o -> if (export != null) o.put("export", export.toJson()) }

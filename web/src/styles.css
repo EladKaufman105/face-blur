@@ -7,6 +7,13 @@
   --cyan: #3ddcff;
   --violet: #8b6cff;
   --night: #2b1e66;
+  /* The tools' colors for text and icons on the background (Theme.kt's Feature.tint): bright on
+     dark, deep on light; and how strong a pill's fill of one is. */
+  --coral-tint: var(--coral);
+  --amber-tint: var(--amber);
+  --cyan-tint: var(--cyan);
+  --violet-tint: var(--violet);
+  --pill-fill: 16%;
 
   /* Spacing: a 4 px grid. */
   --space-1: 4px;
@@ -72,6 +79,11 @@
   --hero-1: #2b1e66;
   --hero-2: #4a2b8c;
   --shadow: 0 1px 2px rgb(19 21 43 / 0.06), 0 8px 24px rgb(19 21 43 / 0.08);
+  --coral-tint: #d62650;
+  --amber-tint: #b07400;
+  --cyan-tint: #0086a6;
+  --violet-tint: #6346e0;
+  --pill-fill: 11%;
   color-scheme: light;
 }
 
@@ -92,6 +104,11 @@
     --hero-1: #2b1e66;
     --hero-2: #4a2b8c;
     --shadow: 0 1px 2px rgb(19 21 43 / 0.06), 0 8px 24px rgb(19 21 43 / 0.08);
+    --coral-tint: #d62650;
+    --amber-tint: #b07400;
+    --cyan-tint: #0086a6;
+    --violet-tint: #6346e0;
+    --pill-fill: 11%;
     color-scheme: light;
   }
 }
@@ -514,12 +531,30 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .projects { display: grid; gap: var(--space-1); }
 .project-list { display: grid; gap: var(--space-2); }
 .project { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-2); }
+/* A project of the list: its row (thumbnail, name, actions), then what it has across the card. */
+.project.with-pills { flex-direction: column; align-items: stretch; gap: var(--space-2); }
+.project-top { display: flex; gap: var(--space-3); align-items: flex-start; min-width: 0; }
 .project-open { border: 0; padding: 0; background: none; flex: none; }
 .project-open img, .project-open .ph { width: 96px; height: 54px; object-fit: cover; border-radius: var(--radius-control); background: var(--surface-3); display: block; }
 .project-info { display: grid; gap: 2px; }
 .project-name { border: 0; background: none; padding: 0; text-align: start; font: var(--text-heading); font-size: 14px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-.project-acts { display: grid; flex: none; }
-.project-acts .btn { padding: 4px 8px; font-size: 12px; }
+/* The project's actions: round icon buttons (not pills, which only tell what it has). */
+.project-acts { display: flex; align-items: center; flex: none; gap: 4px; margin-block-start: -6px; margin-inline-end: -6px; }
+/* What a project has: a pill for each, in its tool's color, on one line if they fit. */
+.project-pills { display: flex; flex-wrap: wrap; gap: 5px; }
+.ppill { --c: var(--muted); display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--c) 28%, transparent); background: color-mix(in srgb, var(--c) var(--pill-fill), transparent); color: var(--c); font-size: 12px; line-height: 16px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; cursor: default; }
+.ppill.ic { padding-inline-start: 6px; }
+.ppill svg { flex: none; }
+.project-acts .icon-btn { width: 40px; height: 40px; color: var(--muted); cursor: pointer; transition: background-color var(--motion-state), color var(--motion-state); }
+@media (hover: hover) {
+  .project-acts .icon-btn:hover { background: var(--surface-2); color: var(--text); }
+  .project-acts .icon-btn.danger:hover { background: color-mix(in srgb, #e5484d 12%, transparent); color: #e5484d; }
+}
+.project-acts .icon-btn:active { background: var(--surface-3); }
+.project-acts .icon-btn.danger:active, .project-acts .icon-btn.danger[aria-expanded='true'] { background: color-mix(in srgb, #e5484d 16%, transparent); color: #e5484d; }
+.project-acts .icon-btn[aria-pressed='true'] { background: var(--surface-3); color: var(--text); }
+.project-acts .icon-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.project-acts .icon-btn.danger:focus-visible { outline-color: #e5484d; color: #e5484d; }
 .confirm { display: grid; gap: var(--space-1); margin-top: var(--space-1); }
 .danger-btn { background: #e5484d; color: #fff; }
 
