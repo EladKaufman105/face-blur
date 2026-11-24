@@ -332,6 +332,13 @@ fun EditorScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = Space.L, vertical = Space.S),
                         )
+                        DropdownMenuItem(
+                            text = { Text(t("כבוי")) },
+                            onClick = { ctrl.safeZoneOn = false; menu = false },
+                            leadingIcon = { Icon(AppIcons.SafeArea, null) },
+                            trailingIcon = if (!ctrl.safeZoneOn) ({ Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary) }) else null,
+                            modifier = Modifier.testTag(Tags.SAFE_ZONE + ".OFF"),
+                        )
                         for (p in Platform.entries) {
                             val on = ctrl.safeZoneOn && ctrl.safePlatform == p
                             DropdownMenuItem(
@@ -342,12 +349,6 @@ fun EditorScreen(
                                 modifier = Modifier.testTag(Tags.SAFE_ZONE + "." + p.name),
                             )
                         }
-                        DropdownMenuItem(
-                            text = { Text(t("כבוי")) },
-                            onClick = { ctrl.safeZoneOn = false; menu = false },
-                            leadingIcon = { Icon(AppIcons.SafeArea, null) },
-                            trailingIcon = if (!ctrl.safeZoneOn) ({ Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary) }) else null,
-                        )
                     }
                 }
             }
