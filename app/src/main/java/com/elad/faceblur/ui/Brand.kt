@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
@@ -214,6 +215,8 @@ fun GradientButton(
     enabled: Boolean = true,
     /** The room on each side of the label (a crowded bar gives less). */
     sidePadding: Dp = Space.XL,
+    /** Only the icon (the label becomes its description), for a bar with no room for the word. */
+    iconOnly: Boolean = false,
 ) {
     val source = remember { MutableInteractionSource() }
     Surface(
@@ -230,12 +233,16 @@ fun GradientButton(
             contentAlignment = Alignment.Center,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(horizontal = sidePadding)) {
-                if (icon != null) {
-                    Icon(icon, null, tint = Brand.Ink, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(Space.S))
+                if (icon != null && iconOnly) {
+                    Icon(icon, text, tint = Brand.Ink, modifier = Modifier.size(20.dp))
+                } else {
+                    if (icon != null) {
+                        Icon(icon, null, tint = Brand.Ink, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(Space.S))
+                    }
+                    // One line always: a label with no room ends in "…" instead of breaking in two.
+                    Text(text, style = MaterialTheme.typography.titleMedium, color = Brand.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                // One line always: a narrow bar must not break the label in two.
-                Text(text, style = MaterialTheme.typography.titleMedium, color = Brand.Ink, maxLines = 1, softWrap = false)
             }
         }
     }

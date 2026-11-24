@@ -120,6 +120,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.Modifier
@@ -140,7 +141,6 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
@@ -260,17 +260,33 @@ fun EditorScreen(
 
     // The pieces of the editor; a phone stacks them, a wide screen puts the panels beside the video.
     val topBar: @Composable () -> Unit = {
+      // What fits is measured: the icons shown, the export label and the title in this language and
+      // text size. Short of room the title goes first, then the export button keeps only its icon.
+      val measurer = rememberTextMeasurer()
+      val density = LocalDensity.current
+      val exportLabel = t("ייצוא")
+      val titleLabel = t("עריכה")
+      val labelW = with(density) { measurer.measure(exportLabel, MaterialTheme.typography.titleMedium).size.width.toDp() }
+      val titleW = with(density) { measurer.measure(titleLabel, AppType.Title).size.width.toDp() }
+      val showProps = hidden && selecting && isWide()
+      val icons = 3 + (if (ctrl.previewAvailable) 1 else 0) + (if (safeZoneAvailable) 1 else 0)
+      // Row padding, the icon buttons, the export button without its word (padding, icon, gap, end
+      // margin) and the properties button when it shows.
+      val fixed = Space.XS * 2 + 48.dp * icons + Space.M * 2 + 20.dp + Space.S + Space.S + (if (showProps) 150.dp else 0.dp)
+      BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val exportIconOnly = maxWidth < fixed + labelW + Space.XS
+        val showTitle = maxWidth >= fixed + labelW + titleW + Space.L
         Row(
             Modifier.fillMaxWidth().height(56.dp).padding(horizontal = Space.XS),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Everything is saved in the project as it's edited.
             IconButton(onClick = onClose, modifier = Modifier.testTag(Tags.BACK)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, t("חזרה")) }
-            // A narrow phone has no room for the title next to the tools and the export button: the
-            // space is kept, the word goes (the screen says what it is by itself).
-            if (LocalConfiguration.current.screenWidthDp >= 400) {
+            // No room for the title next to the tools and the export button: the space is kept, the
+            // word goes (the screen says what it is by itself).
+            if (showTitle) {
                 Text(
-                    t("עריכה"),
+                    titleLabel,
                     style = AppType.Title,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -281,7 +297,7 @@ fun EditorScreen(
             }
             // Something selected and the side panel closed: its properties are one tap away
             // (the panel never opens by itself, so nothing on screen jumps).
-            if (hidden && selecting && isWide()) {
+            if (showProps) {
                 FilledTonalButton(onClick = { hidden = false }, modifier = Modifier.padding(end = Space.S).testTag(Tags.PROPERTIES)) {
                     Icon(AppIcons.Tune, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(Space.S))
@@ -311,15 +327,17 @@ fun EditorScreen(
             IconButton(onClick = ctrl::undo, enabled = ctrl.model.canUndo && !busy, modifier = Modifier.testTag(Tags.UNDO)) { Icon(EditorIcons.Undo, t("בטל")) }
             IconButton(onClick = ctrl::redo, enabled = ctrl.model.canRedo && !busy, modifier = Modifier.testTag(Tags.REDO)) { Icon(EditorIcons.Redo, t("בצע שוב")) }
             GradientButton(
-                t("ייצוא"),
+                exportLabel,
                 onClick = { ctrl.pauser(); exportSheet = true },
                 enabled = !busy,
                 icon = EditorIcons.ExportIcon,
                 height = 40.dp,
                 sidePadding = Space.M,
+                iconOnly = exportIconOnly,
                 modifier = Modifier.padding(end = Space.S).testTag(Tags.EXPORT),
             )
         }
+      }
     }
     // One video for both layouts (see EditorVideoArea).
     val videoArea = remember(ctrl) {
