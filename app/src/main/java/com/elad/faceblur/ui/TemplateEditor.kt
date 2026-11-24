@@ -200,14 +200,14 @@ internal fun TemplateEditorScreen(store: TemplateStore, template: Template, onCl
             }
         }
     }
-    val leave: () -> Unit = { if (dirty) { askLeave = true } else { onClose() } }
+    val leave: () -> Unit = { if (saving) Unit else if (dirty) { askLeave = true } else { onClose() } }
     // Back closes the subtitle style panel first.
     BackHandler { if (styleOpen) styleOpen = false else leave() }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { insets ->
         Column(Modifier.fillMaxSize().padding(insets)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = Space.S), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = leave, modifier = Modifier.testTag(Tags.TEMPLATE_EDITOR_CLOSE)) { Icon(Icons.Filled.Close, t("סגור")) }
+                IconButton(onClick = leave, enabled = !saving, modifier = Modifier.testTag(Tags.TEMPLATE_EDITOR_CLOSE)) { Icon(Icons.Filled.Close, t("סגור")) }
                 Text(t("עריכת תבנית"), style = AppType.Title, modifier = Modifier.weight(1f))
                 if (shipped != null) {
                     Box {
@@ -294,7 +294,7 @@ internal fun TemplateEditorScreen(store: TemplateStore, template: Template, onCl
             dismissButton = {
                 Row {
                     TextButton(onClick = { askLeave = false }) { Text(t("המשך לערוך")) }
-                    TextButton(onClick = { askLeave = false; onClose() }) { Text(t("בטל שינויים"), color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { askLeave = false; onClose() }, enabled = !saving) { Text(t("בטל שינויים"), color = MaterialTheme.colorScheme.error) }
                 }
             },
         )

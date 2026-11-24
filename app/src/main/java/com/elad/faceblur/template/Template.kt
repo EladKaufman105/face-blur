@@ -229,8 +229,8 @@ data class TemplateSettings(
 
 /**
  * [s] with the speech model that is on the phone, when the one it asks for isn't (so subtitles
- * don't wait for a download). The Hebrew model also understands other languages, so a Hebrew
- * template can use the multilingual one and keeps its spoken language; the multilingual model is
+ * don't wait for a download). The multilingual model also understands Hebrew, so a Hebrew
+ * template can use it and keeps its spoken language; the multilingual model is
  * swapped for the Hebrew only when the spoken language is Hebrew. Otherwise [s] as it is (the
  * model is downloaded).
  */

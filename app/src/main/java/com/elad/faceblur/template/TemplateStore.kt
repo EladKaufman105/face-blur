@@ -1,5 +1,6 @@
 package com.elad.faceblur.template
 
+import com.elad.faceblur.pipeline.Watermark
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -88,7 +89,9 @@ class TemplateStore(private val context: Context) {
     fun withOwnLogo(tpl: Template): Template {
         val e = tpl.export
         val w = e?.watermark
-        val path = files.commitLogo(tpl.id, w?.logo?.takeIf { w.image })
+        // A logo picture with no file of its own is the app's logo: the template keeps a copy, so it is self-contained.
+        val picked = w?.takeIf { it.image }?.let { it.logo ?: Watermark.imageFile(context).takeIf { f -> f.exists() }?.path }
+        val path = files.commitLogo(tpl.id, picked)
         if (e == null || w == null) return tpl
         return tpl.copy(export = e.copy(watermark = w.copy(logo = path)))
     }
