@@ -95,7 +95,11 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.foundation.Image
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -315,7 +319,6 @@ fun EditorScreen(
                     )
                 }
             }
-            // Where a platform's own screens cover the picture (only drawn here, not in the export).
             // Where a platform's own screens cover the picture (only drawn here, not in the export). The
             // platform is picked in a small bar of icons over the video while this is on.
             if (safeZoneAvailable) {
@@ -547,7 +550,8 @@ private fun EditorVideoArea(ctrl: EditorController, export: ExportOptions, subSt
     Box(modifier.fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
         VideoWithOverlay(ctrl, export.subs, subStyle, export.aspect, export.watermark)
         // The safe zone's platform: a small bar of icons over the top of the video (only for 9:16 portrait).
-        if (ctrl.safeZoneOn && SafeZone.appliesTo(export.aspect, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)) {
+        // Not with a phone's panel open (the video is small then, and the bar would cover it).
+        if (!messages && ctrl.safeZoneOn && SafeZone.appliesTo(export.aspect, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)) {
             PlatformChooser(ctrl.safePlatform, { ctrl.safePlatform = it }, Modifier.align(Alignment.TopCenter).padding(top = Space.M))
         }
         // With a panel in the timeline's place (a phone), the messages go at the video's foot.
@@ -1790,18 +1794,20 @@ private fun PlatformChooser(selected: Platform, onSelect: (Platform) -> Unit, mo
             val on = p == selected
             Box(
                 Modifier
-                    .size(44.dp)
+                    .size(MinTouch)
                     .clip(CircleShape)
                     .background(if (on) Color.White else Color.Transparent)
                     .selectable(selected = on, role = Role.RadioButton, onClick = { onSelect(p) })
                     .testTag(Tags.SAFE_ZONE + "." + p.name),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    painterResource(platformIconRes(p)),
+                // Scaled down smoothly (the files are large), in one color.
+                Image(
+                    ImageBitmap.imageResource(platformIconRes(p)),
                     platformName(p),
                     Modifier.size(24.dp),
-                    tint = if (on) Color(0xFF111111) else Color.White,
+                    filterQuality = FilterQuality.High,
+                    colorFilter = ColorFilter.tint(if (on) Color(0xFF111111) else Color.White),
                 )
             }
         }
