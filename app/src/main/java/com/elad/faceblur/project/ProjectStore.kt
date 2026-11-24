@@ -60,6 +60,12 @@ class ProjectMeta(
      * edits (see [ProjectStore.keepCounts]).
      */
     val countsFromEdits: Boolean = false,
+    /** The batch it was made in (projects of one batch are shown as one folder); null: not from a batch. */
+    val batchId: String? = null,
+    /** When that batch started (the folder's default name). */
+    val batchAt: Long = 0L,
+    /** The folder's own name if it was renamed; null: named by its date and time. */
+    val batchName: String? = null,
 )
 
 /** A project read back: its settings (JSON), the analysis, and the edits. */
@@ -120,6 +126,9 @@ object ProjectStore {
             background = Background.fromJson(o.optJSONObject("background")).active,
             removed = if (o.has("removed")) o.optInt("removed") else old?.removed ?: 0,
             countsFromEdits = old != null,
+            batchId = o.optString("batchId").takeIf { it.isNotBlank() },
+            batchAt = o.optLong("batchAt"),
+            batchName = o.optString("batchName").takeIf { it.isNotBlank() },
         )
     }
 
@@ -238,6 +247,31 @@ object ProjectStore {
             atomic(File(d, "project.json")) { it.writeText(json.toString()) }
         }
     }
+
+    /** Names the folder of batch [batchId] (every project of it keeps the name; blank: back to its date and time). */
+    fun renameBatch(context: Context, batchId: String, name: String) {
+        for (id in batchMembers(context, batchId)) {
+            val d = dir(context, id)
+            synchronized(jsonLock) {
+                if (!d.exists()) return@synchronized
+                val json = readJson(d)
+                if (name.isBlank()) json.remove("batchName") else json.put("batchName", name.trim())
+                atomic(File(d, "project.json")) { it.writeText(json.toString()) }
+            }
+        }
+    }
+
+    /** Deletes every project of batch [batchId] (the videos saved in the gallery stay). Returns how many. */
+    fun deleteBatch(context: Context, batchId: String): Int {
+        val ids = batchMembers(context, batchId)
+        for (id in ids) delete(context, id)
+        return ids.size
+    }
+
+    private fun batchMembers(context: Context, batchId: String): List<String> =
+        (root(context).listFiles { f -> f.isDirectory } ?: emptyArray())
+            .filter { d -> runCatching { readJson(d).optString("batchId") == batchId }.getOrDefault(false) }
+            .map { it.name }
 
     fun delete(context: Context, id: String) {
         val d = dir(context, id)
