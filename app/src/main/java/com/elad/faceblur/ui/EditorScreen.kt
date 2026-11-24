@@ -50,6 +50,9 @@ import androidx.compose.animation.core.animateDecay
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -516,16 +519,7 @@ private fun EditorVideoArea(ctrl: EditorController, export: ExportOptions, subSt
         VideoWithOverlay(ctrl, export.subs, subStyle, export.aspect, export.watermark)
         // The view aid's platform chooser (only for a vertical frame).
         if (ctrl.safeZoneOn && SafeZone.appliesTo(export.aspect, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)) {
-            Row(Modifier.align(Alignment.TopCenter).padding(top = Space.S), horizontalArrangement = Arrangement.spacedBy(Space.S)) {
-                for (p in Platform.entries) {
-                    FilterChip(
-                        selected = ctrl.safePlatform == p,
-                        onClick = { ctrl.safePlatform = p },
-                        label = { Text(platformName(p), style = MaterialTheme.typography.labelMedium) },
-                        colors = FilterChipDefaults.filterChipColors(containerColor = Color.Black.copy(alpha = 0.55f), labelColor = Color.White),
-                    )
-                }
-            }
+            PlatformChooser(ctrl.safePlatform, { ctrl.safePlatform = it }, Modifier.align(Alignment.TopCenter).padding(top = Space.S))
         }
         // With a panel in the timeline's place (a phone), the messages go at the video's foot.
         if (messages) EditorMessages(ctrl, Modifier.align(Alignment.BottomCenter))
@@ -854,7 +848,7 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
             if (faded) nc.restore()
         }
         if (ctrl.safeZoneOn && fw >= 2f && fh >= 2f && SafeZone.appliesTo(aspect, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)) {
-            drawSafeZone(SafeZone.of(ctrl.safePlatform), Offset(fl, ft), Size(fw, fh))
+            drawSafeZone(ctrl.safePlatform, SafeZone.of(ctrl.safePlatform), Offset(fl, ft), Size(fw, fh))
         }
         if (live && ctrl.playing) return@Canvas
         val shapes = ctrl.model.shapesAt(ctrl.shownFrame, ctrl.padding)
@@ -1744,4 +1738,40 @@ private fun PropTimes(range: String, seconds: Float?) {
 @Composable
 private fun PropActions(content: @Composable () -> Unit) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { content() }
+}
+
+
+/** The safe-zone aid's platform chooser: a pill of segments, each a neutral glyph and the short name (no brand marks). */
+@Composable
+private fun PlatformChooser(selected: Platform, onSelect: (Platform) -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color.Black.copy(alpha = 0.6f))
+            .padding(3.dp)
+            .selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        for (p in Platform.entries) {
+            val on = p == selected
+            val icon = when (p) {
+                Platform.TIKTOK -> AppIcons.MusicNote
+                Platform.REELS -> AppIcons.Movie
+                Platform.SHORTS -> AppIcons.PlayBox
+            }
+            val ink = if (on) Color(0xFF111111) else Color.White
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (on) Color.White else Color.Transparent)
+                    .selectable(selected = on, role = Role.RadioButton, onClick = { onSelect(p) })
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Icon(icon, null, Modifier.size(16.dp), tint = ink)
+                Text(platformName(p), color = ink, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            }
+        }
+    }
 }

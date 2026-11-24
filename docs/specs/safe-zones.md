@@ -1,6 +1,6 @@
 # Platform safe zones (Android)
 
-The safe zone is **a view aid in the editor only**: a switch (with a small TikTok / Reels / Shorts chooser) draws the platform's covered areas over the preview. It shows only when the frame being edited is vertical 9:16 (a vertical export, or a vertical video as shot) and is hidden for landscape and square frames. It is never burned into the export, and it is not part of templates, template previews, batch or export placement: subtitles and the watermark are not moved by platform.
+The safe zone is **a view aid in the editor only**: a switch (with a small chooser of three segments, each a neutral glyph and the short name TikTok / Reels / Shorts, never a brand logo) draws a generic mock of a short-video app's own screens over the preview, laid out by the platform's covered areas. It shows only when the frame being edited is vertical 9:16 (a vertical export, or a vertical video as shot) and is hidden for landscape and square frames. It is never burned into the export, and it is not part of templates, template previews, batch or export placement: subtitles and the watermark are not moved by platform.
 
 Values are fractions of a 1080x1920 frame: the part the platform's own screens cover at the top, bottom, left and right. `SafeZone.of(platform)` in `template/SafeZone.kt` holds them.
 
@@ -22,5 +22,5 @@ None of the three platforms publishes one official table of numbers for organic 
 
 ## How the overlay works
 
-- Overlay: shaded where the platform covers, dashed outline around what stays clear (`drawSafeZone`), over the editor's video, inside the export frame's window.
+- Overlay (`drawSafeZone` in `ui/SafeZoneMock.kt`): a generic, made-up app interface in semi-transparent white with a soft shadow, over a light shade at the top and bottom, plus a thin dashed outline around the clear middle. It copies no platform's logo, name or artwork. Elements: a tab strip at the top ("Following | For you"; TikTok adds a search icon, Shorts search and menu), a right column of buttons placed in the right margin (TikTok: avatar with plus, heart, comment, bookmark, share, sound disc; Reels: heart, comment, paper plane, menu, sound thumbnail; Shorts: like, dislike, comment, share, menu, sound thumbnail), at the bottom the account line (Reels and Shorts with an avatar and a Follow / Subscribe pill), two caption bars, a sound line, and a thin progress bar. All positions come from the platform's margins. Drawn in the editor's canvas, over the video's window only: it takes no touches.
 - `SafeZone.appliesTo(exportAspect, sourceWidth, sourceHeight)` decides whether the aid is offered.

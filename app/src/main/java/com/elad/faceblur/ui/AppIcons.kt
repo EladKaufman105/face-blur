@@ -12,6 +12,15 @@ internal object AppIcons {
         .addPath(pathData = addPathNodes(path), fill = SolidColor(Color.Black))
         .build()
 
+    /** music_note (the chooser's glyph for the vertical-video platform with a sound disc) */
+    val MusicNote = icon("music_note", MockGlyphs.NOTE)
+
+    /** movie (a generic film glyph, not a brand mark) */
+    val Movie = icon("movie", MockGlyphs.MOVIE)
+
+    /** A play button in a rectangle (generic, not a brand mark). */
+    val PlayBox = icon("play_box", MockGlyphs.PLAY_BOX)
+
     /** folder_open */
     val Folder = icon("folder_open", "M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z")
 
