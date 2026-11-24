@@ -7,6 +7,7 @@ import androidx.media3.effect.Presentation
 import com.elad.faceblur.edit.ExportAspect
 import com.elad.faceblur.edit.Reframer
 import com.elad.faceblur.edit.SubLang
+import com.elad.faceblur.template.Platform
 import org.json.JSONObject
 import kotlin.math.max
 import kotlin.math.min
@@ -36,6 +37,8 @@ data class ExportOptions(
     val aspect: ExportAspect = ExportAspect.ORIGINAL,
     /** A logo or text in a corner. */
     val watermark: Watermark = Watermark(),
+    /** The platform whose safe zone the watermark keeps to (null: only the usual margin). */
+    val platform: Platform? = null,
 ) {
     /** The crop for [aspect] as fractions of the frame (1, 1 for as shot). */
     fun crop(info: VideoInfo): Pair<Float, Float> = Reframer.cropFraction(info.displayWidth, info.displayHeight, aspect.ratio)
@@ -111,6 +114,7 @@ data class ExportOptions(
     fun toJson(): JSONObject = JSONObject()
         .put("shortSide", shortSide).put("fps", fps).put("quality", quality.name).put("codec", codec.name)
         .put("subs", subs.name).put("saveSrt", saveSrt).put("aspect", aspect.name).put("watermark", watermark.toJson())
+        .apply { platform?.let { put("platform", it.name) } }
 
     companion object {
         private const val AUDIO_BITRATE = 128_000
@@ -126,6 +130,7 @@ data class ExportOptions(
                 saveSrt = o.optBoolean("saveSrt", true),
                 aspect = runCatching { ExportAspect.valueOf(o.optString("aspect")) }.getOrDefault(ExportAspect.ORIGINAL),
                 watermark = Watermark.fromJson(o.optString("watermark")),
+                platform = runCatching { Platform.valueOf(o.optString("platform")) }.getOrNull(),
             )
         }
 
