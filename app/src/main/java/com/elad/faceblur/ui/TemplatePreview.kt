@@ -9,6 +9,8 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
 import android.util.LruCache
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
@@ -77,9 +79,9 @@ internal fun TemplateSettings.preview(sourceAspect: Float? = null, textBoost: Fl
 @Composable
 internal fun TemplatePreview(spec: PreviewSpec, frame: Bitmap?, modifier: Modifier = Modifier, zone: SafeZone? = null) {
     val ctx = LocalContext.current
-    val key = PreviewKey(spec, frame?.let { System.identityHashCode(it) } ?: 0)
+    val key = PreviewKey(spec, frame?.let { PreviewRenderer.frameId(it) } ?: 0)
     val bmp by produceState(PreviewRenderer.cached(key), key) {
-        value = PreviewRenderer.cached(key) ?: withContext(Dispatchers.Default) { runCatching { PreviewRenderer.render(ctx, key, frame) }.getOrNull() }
+        value = PreviewRenderer.cached(key) ?: withContext(PreviewRenderer.thread) { runCatching { PreviewRenderer.render(ctx, key, frame) }.getOrNull() }
     }
     val shape = MaterialTheme.shapes.small
     Box(
@@ -121,7 +123,19 @@ internal data class PreviewKey(val spec: PreviewSpec, val frameId: Int)
 
 /** Draws the preview frames: a generated sample scene (or a frame of the open video), the face's blur, the subtitles and the watermark. */
 internal object PreviewRenderer {
-    private val cache = object : LruCache<PreviewKey, Bitmap>(40) {}
+    /** Up to 1/16 of the app's memory, by size. */
+    private val cache = object : LruCache<PreviewKey, Bitmap>((Runtime.getRuntime().maxMemory() / 16).toInt().coerceAtLeast(4 shl 20)) {
+        override fun sizeOf(key: PreviewKey, value: Bitmap) = value.byteCount
+    }
+
+    /** One preview drawn at a time (a pickerful at once would take a lot of memory). */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val thread: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1)
+
+    /** A number for each video frame shown (an identity hash can come back for another frame). */
+    private val frameIds = java.util.WeakHashMap<Bitmap, Int>()
+    private var nextFrameId = 1
+    fun frameId(frame: Bitmap): Int = synchronized(frameIds) { frameIds.getOrPut(frame) { nextFrameId++ } }
 
     fun cached(key: PreviewKey): Bitmap? = cache.get(key)
 
