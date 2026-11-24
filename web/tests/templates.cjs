@@ -187,9 +187,8 @@ const [, , url, video1, video2, out] = process.argv
     await p.evaluate(() => { window.__asks = 0; let open = false; new MutationObserver(() => { const now = !!document.querySelector('.speech-ask'); if (now && !open) window.__asks++; open = now }).observe(document.body, { childList: true, subtree: true }) })
     await p.click('.batch-start')
     await p.waitForSelector('.batch-item')
-    // Asked once for the whole batch (not per video).
-    await p.waitForSelector('.speech-ask', { timeout: 300000 })
-    await p.click('.speech-go')
+    // Start was the go-ahead (the size was shown in the setup): no question at the first video.
+    await p.waitForFunction(() => !!document.querySelector('.batch-cancel'), null, { timeout: 300000 })
     // The tab must stay open: leaving the page asks first, while it runs.
     const asks = await p.evaluate(() => { const e = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(e); return e.defaultPrevented })
     if (!asks) fail('leaving the page does not ask during a batch')
@@ -208,7 +207,7 @@ const [, , url, video1, video2, out] = process.argv
     if (items.some((i) => i.notes.length === 0 || !i.notes[0].includes('שלב בתבנית לא הושלם'))) fail('failed subtitle step not reported')
     if (workers.filter((u) => u.includes('subs.worker')).length < 3) fail('the subtitle step was not asked for in the batch')
     const asksSeen = await p.evaluate(() => window.__asks)
-    if (asksSeen !== 1) fail('the model question was asked ' + asksSeen + ' times in the batch')
+    if (asksSeen !== 0) fail('the model question was asked ' + asksSeen + ' times in the batch')
     if ((await p.textContent('.batch-pct')) !== '100%') fail('overall percent')
     if (await p.evaluate(() => { const e = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(e); return e.defaultPrevented })) fail('still asks to stay when done')
     await p.screenshot({ path: `${out}/6_batch_done.png` })
