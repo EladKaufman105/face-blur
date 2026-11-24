@@ -267,8 +267,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun idsOf(choice: TemplateChoice): List<String> =
         listOfNotNull(choice.user) + (if (choice.user == null) listOfNotNull(choice.look, choice.dest) else emptyList())
 
+    /** The settings a template is laid over (for the previews): before any template was chosen. */
+    fun previewBase(): TemplateSettings = templateBase ?: currentSettings()
+
     private fun recomputeBatch() {
-        val base = templateBase ?: currentSettings()
+        val base = previewBase()
         val notes = ArrayList<String>()
         val chosen = idsOf(batchChoice).mapNotNull { templates.find(it) }.map { templates.usable(it, notes) }
         batchSettings = applyAll(base, chosen)

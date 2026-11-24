@@ -15,6 +15,12 @@ internal object AppIcons {
     /** folder_open */
     val Folder = icon("folder_open", "M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z")
 
+    /** video_library */
+    val Videos = icon("video_library", "M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 12.5v-9l6 4.5-6 4.5z")
+
+    /** grid_on (the safe area drawn over the picture) */
+    val SafeArea = icon("safe_area", "M3 3v18h18V3H3zm6 16H5v-4h4v4zm0-6H5V9h4v4zm0-6H5V5h4v2zm6 12h-4v-4h4v4zm0-6h-4V9h4v4zm0-6h-4V5h4v2zm4 12h-2v-4h2v4zm0-6h-2V9h2v4zm0-6h-2V5h2v2z")
+
     /** tune */
     val Tune = icon("tune", "M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z")
 

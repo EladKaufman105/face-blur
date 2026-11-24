@@ -83,6 +83,14 @@ import com.elad.faceblur.template.TemplateCategory
 import com.elad.faceblur.template.TemplateChoice
 import com.elad.faceblur.template.TemplateGroup
 import com.elad.faceblur.template.TemplateStore
+import com.elad.faceblur.template.DestinationSummary
+import com.elad.faceblur.template.Platform
+import com.elad.faceblur.template.SafeZone
+import com.elad.faceblur.template.TemplateSettings
+import com.elad.faceblur.template.applyAll
+import com.elad.faceblur.template.ids
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.testTag
 import com.elad.faceblur.template.VoicePart
 import com.elad.faceblur.audio.AudioEdit
 import kotlinx.coroutines.Dispatchers
@@ -115,7 +123,7 @@ private fun categoryIcon(c: TemplateCategory): ImageVector = when (c) {
 /** What a template includes, in a line. */
 internal fun templateSummary(tpl: Template): String = when (tpl.group) {
     TemplateGroup.LOOK -> t("מראה: כתוביות וטשטוש")
-    TemplateGroup.DESTINATION -> t("יעד: גודל, פורמט ואיכות")
+    TemplateGroup.DESTINATION -> tpl.export?.let { DestinationSummary.line(it, ::t) } ?: t("יעד: גודל, פורמט ואיכות")
     TemplateGroup.USER -> tpl.categories.joinToString(" · ") { categoryLabel(it) }.ifEmpty { t("ריקה") }
 }
 
@@ -139,39 +147,78 @@ private fun SwitchRow(title: String, checked: Boolean, subtitle: String? = null,
 
 // ---------------------------------------------------------------------- picking a template
 
-/** The picker: the user's own templates, the built-in looks (with a picture) and the destinations. */
+/** What templates [ids] come to over [base] (a font that's gone falls back to the default one). */
+internal fun previewSettings(store: TemplateStore, base: TemplateSettings, ids: List<String>): TemplateSettings =
+    applyAll(base, ids.mapNotNull { store.find(it) }.map { store.usable(it) })
+
+private val CardWidth = 132.dp
+private val CardStage = 120.dp
+
+/**
+ * The picker: a large preview of what's chosen, then the user's own templates, the looks and the
+ * destinations, each with a rendered preview. [frame]: the open video's frame to preview on
+ * (null: a sample scene); [sourceAspect]: that video's shape.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun TemplatePicker(store: TemplateStore, choice: TemplateChoice, onChoose: (TemplateChoice) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
+internal fun TemplatePicker(
+    store: TemplateStore,
+    choice: TemplateChoice,
+    onChoose: (TemplateChoice) -> Unit,
+    base: TemplateSettings,
+    frame: android.graphics.Bitmap? = null,
+    sourceAspect: Float? = null,
+) {
+    var showZone by rememberSaveable { mutableStateOf(false) }
+    var picked by rememberSaveable { mutableStateOf(Platform.TIKTOK) }
+    val current = remember(choice, base, store.user) { previewSettings(store, base, choice.ids) }
+    // The platform whose zone is drawn: the destination's, or the one picked here when none is chosen.
+    fun zoneOf(s: TemplateSettings): SafeZone? = if (showZone) SafeZone.of(s.export.platform ?: picked) else null
+    fun specOf(s: TemplateSettings, boost: Float = 2f) = s.preview(sourceAspect, boost)
+
+    Column(verticalArrangement = Arrangement.spacedBy(Space.L)) {
+        // What the choice comes to, as it will look.
+        Box(
+            Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.surfaceContainerLowest).padding(vertical = Space.M),
+            Alignment.Center,
+        ) {
+            PreviewStage(specOf(current, 1.7f), frame, 260.dp, 230.dp, zone = zoneOf(current))
+        }
+        Text(choiceSummary(store, choice), style = MaterialTheme.typography.titleSmall)
+        val dest = choice.dest?.let { store.find(it) }?.export ?: choice.user?.let { store.find(it) }?.export
+        if (dest != null) {
+            Text(DestinationSummary.line(dest, ::t), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        SafeZoneToggle(showZone, { showZone = it }, picked, { picked = it }, platformFixed = current.export.platform)
+
         if (store.user.isNotEmpty()) {
             Caption(t("התבניות שלי"))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.S)) {
+            CardRow {
                 for (tpl in store.user) {
-                    FilterChip(
-                        selected = choice.user == tpl.id,
-                        onClick = { onChoose(if (choice.user == tpl.id) TemplateChoice() else TemplateChoice(user = tpl.id)) },
-                        label = { Text(tpl.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    )
+                    val s = remember(tpl, base) { previewSettings(store, base, listOf(tpl.id)) }
+                    ChoiceCard(specOf(s), frame, templateName(tpl), null, choice.user == tpl.id, zoneOf(s)) {
+                        onChoose(if (choice.user == tpl.id) TemplateChoice() else TemplateChoice(user = tpl.id))
+                    }
                 }
             }
         }
         Caption(t("מראה"))
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Space.S)) {
+        CardRow {
             for (look in BuiltInTemplates.LOOKS) {
-                LookCard(look, choice.look == look.id) {
+                // The look as it comes out with the destination already chosen.
+                val s = remember(look, base, choice.dest) { previewSettings(store, base, listOfNotNull(look.id, choice.dest)) }
+                ChoiceCard(specOf(s), frame, templateName(look), null, choice.look == look.id, zoneOf(s)) {
                     onChoose(choice.copy(user = null, look = if (choice.look == look.id) null else look.id))
                 }
             }
         }
         Caption(t("יעד"))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.S)) {
+        CardRow {
             for (d in BuiltInTemplates.DESTINATIONS) {
-                FilterChip(
-                    selected = choice.dest == d.id,
-                    onClick = { onChoose(choice.copy(user = null, dest = if (choice.dest == d.id) null else d.id)) },
-                    label = { Text(templateName(d)) },
-                )
+                val s = remember(d, base, choice.look) { previewSettings(store, base, listOfNotNull(choice.look, d.id)) }
+                ChoiceCard(specOf(s), frame, templateName(d), DestinationSummary.line(d.export!!, ::t), choice.dest == d.id, zoneOf(s)) {
+                    onChoose(choice.copy(user = null, dest = if (choice.dest == d.id) null else d.id))
+                }
             }
         }
         if (!choice.isEmpty) {
@@ -180,35 +227,69 @@ internal fun TemplatePicker(store: TemplateStore, choice: TemplateChoice, onChoo
     }
 }
 
-/** A built-in look: its subtitles drawn on a small card, and its name. */
 @Composable
-private fun LookCard(look: Template, selected: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(12.dp)
-    Column(Modifier.width(120.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+private fun CardRow(content: @Composable () -> Unit) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Space.M)) { content() }
+}
+
+/** A choice: its preview on a stage, its name and, if it has one, a line saying what it sets. */
+@Composable
+private fun ChoiceCard(spec: PreviewSpec, frame: android.graphics.Bitmap?, name: String, note: String?, selected: Boolean, zone: SafeZone?, onClick: () -> Unit) {
+    val shape = MaterialTheme.shapes.medium
+    Column(Modifier.width(CardWidth), horizontalAlignment = Alignment.Start) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
                 .border(if (selected) BorderStroke(2.5.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape)
-                .clickable(onClick = onClick),
-        ) {
-            val style = look.subs?.style
-            if (style != null) StylePreview(style, Modifier.fillMaxWidth().aspectRatio(1.5f))
-        }
+                .clickable(onClick = onClick)
+                .padding(Space.XS),
+            Alignment.Center,
+        ) { PreviewStage(spec, frame, CardWidth - Space.XS * 2 - 2.dp, CardStage, zone = zone) }
         Text(
-            templateName(look),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            modifier = Modifier.padding(top = 3.dp),
+            name,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = Space.XS),
         )
+        if (note != null) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
     }
 }
 
-/** On the Ready screen: the template, folded under one row that says what's chosen. */
+/** "Show the platform's safe zone" over the previews; with no destination chosen, a small chooser of the platform. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun TemplatePickerCard(store: TemplateStore, choice: TemplateChoice, onChoose: (TemplateChoice) -> Unit) {
-    var open by rememberSaveable { mutableStateOf(false) }
-    ClipCard(contentPadding = 0.dp) {
+internal fun SafeZoneToggle(on: Boolean, onChange: (Boolean) -> Unit, picked: Platform, onPick: (Platform) -> Unit, platformFixed: Platform?, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(Space.S)) {
+        SwitchRow(
+            t("אזור בטוח"),
+            on,
+            t("מסמן איפה ממשק האפליקציה (כיתוב, כפתורים, שם המשתמש) מכסה את הסרטון. רק בתצוגה, לא נשמר בסרטון."),
+            onChange,
+        )
+        if (on && platformFixed == null) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.S)) {
+                for (p in Platform.entries) FilterChip(selected = picked == p, onClick = { onPick(p) }, label = { Text(platformName(p)) })
+            }
+        }
+    }
+}
+
+/** On the Ready screen and the batch setup: the template, with its previews open (a row that folds them away). */
+@Composable
+internal fun TemplatePickerCard(
+    store: TemplateStore,
+    choice: TemplateChoice,
+    onChoose: (TemplateChoice) -> Unit,
+    base: TemplateSettings,
+    frame: android.graphics.Bitmap? = null,
+    sourceAspect: Float? = null,
+) {
+    var open by rememberSaveable { mutableStateOf(true) }
+    ClipCard(contentPadding = 0.dp, modifier = Modifier.testTag(Tags.TEMPLATE_PICKER)) {
         Column {
             Row(
                 Modifier
@@ -219,7 +300,7 @@ internal fun TemplatePickerCard(store: TemplateStore, choice: TemplateChoice, on
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    SectionTitle(t("תבנית"), MaterialTheme.colorScheme.primary)
+                    SectionTitle(t("תבנית"), Feature.FACES.tint)
                     Text(
                         choiceSummary(store, choice),
                         style = MaterialTheme.typography.bodySmall,
@@ -227,18 +308,18 @@ internal fun TemplatePickerCard(store: TemplateStore, choice: TemplateChoice, on
                         modifier = Modifier.padding(start = SectionTitleInset),
                     )
                 }
-                Icon(Icons.Filled.KeyboardArrowDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Filled.KeyboardArrowDown, null, Modifier.rotate(if (open) 180f else 0f), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (open) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Column(Modifier.padding(Space.L)) {
                     Text(
-                        t("ההגדרות מתמלאות לפי התבנית. אפשר לשנות אותן אחר כך."),
+                        t("מראה ויעד מוכנים לסרטון: כתוביות, טשטוש וגודל. ההגדרות מתמלאות לפי הבחירה, ואפשר לשנות אותן אחר כך."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = Space.M),
                     )
-                    TemplatePicker(store, choice, onChoose)
+                    TemplatePicker(store, choice, onChoose, base, frame, sourceAspect)
                 }
             }
         }
@@ -353,14 +434,11 @@ private fun TemplateRow(tpl: Template, actions: List<Pair<String, () -> Unit>>) 
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Row(Modifier.padding(Space.S), verticalAlignment = Alignment.CenterVertically) {
+            val settings = remember(tpl) { applyAll(TemplateSettings(), listOf(tpl)) }
             Box(
-                Modifier.size(width = 72.dp, height = 48.dp).clip(RoundedCornerShape(Radius.Control)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                Modifier.size(width = 72.dp, height = 64.dp).clip(RoundedCornerShape(Radius.Control)).background(MaterialTheme.colorScheme.surfaceContainerLowest),
                 Alignment.Center,
-            ) {
-                val style = tpl.subs?.style
-                if (tpl.group == TemplateGroup.LOOK && style != null) StylePreview(style, Modifier.size(width = 72.dp, height = 48.dp))
-                else Icon(if (tpl.group == TemplateGroup.DESTINATION) EditorIcons.ExportIcon else AppIcons.Tune, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            ) { PreviewStage(settings.preview(), null, 68.dp, 60.dp, zone = null) }
             Spacer(Modifier.width(Space.M))
             Column(Modifier.weight(1f)) {
                 Text(templateName(tpl), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)

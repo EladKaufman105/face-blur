@@ -52,11 +52,14 @@ object BuiltInTemplates {
 
     val LOOKS = listOf(CLEAN, BOLD, NEWS, MINIMAL)
 
-    /** 9:16, 1080p, 30 fps. */
-    val TIKTOK = destination("dest.tiktok", "טיקטוק / ריילס", ExportPart(ExportAspect.VERTICAL, 1080, 30, ExportQuality.HIGH, ExportCodec.SAME))
+    /** 9:16, 1080p, 30 fps; subtitles and watermark inside TikTok's safe zone. */
+    val TIKTOK = destination("dest.tiktok", "טיקטוק", ExportPart(ExportAspect.VERTICAL, 1080, 30, ExportQuality.HIGH, ExportCodec.SAME, platform = Platform.TIKTOK))
 
-    /** 9:16, 1080p. */
-    val SHORTS = destination("dest.shorts", "שורטס", ExportPart(ExportAspect.VERTICAL, 1080, 0, ExportQuality.HIGH, ExportCodec.SAME))
+    /** 9:16, 1080p, 30 fps; inside Instagram's Reels safe zone (its sides and top differ from TikTok's). */
+    val REELS = destination("dest.reels", "ריילס", ExportPart(ExportAspect.VERTICAL, 1080, 30, ExportQuality.HIGH, ExportCodec.SAME, platform = Platform.REELS))
+
+    /** 9:16, 1080p, the source frame rate (Shorts take up to 60 fps); inside the Shorts safe zone. */
+    val SHORTS = destination("dest.shorts", "שורטס", ExportPart(ExportAspect.VERTICAL, 1080, 0, ExportQuality.HIGH, ExportCodec.SAME, platform = Platform.SHORTS))
 
     /** 720p, a small file. */
     val WHATSAPP = destination("dest.whatsapp", "וואטסאפ", ExportPart(ExportAspect.ORIGINAL, 720, 30, ExportQuality.SAVER, ExportCodec.H264))
@@ -64,7 +67,7 @@ object BuiltInTemplates {
     /** No change to the video's shape, size or encoding. */
     val SOURCE = destination("dest.source", "כמו המקור", ExportPart(ExportAspect.ORIGINAL, 0, 0, ExportQuality.ORIGINAL, ExportCodec.SAME))
 
-    val DESTINATIONS = listOf(TIKTOK, SHORTS, WHATSAPP, SOURCE)
+    val DESTINATIONS = listOf(TIKTOK, REELS, SHORTS, WHATSAPP, SOURCE)
 
     val all = LOOKS + DESTINATIONS
 

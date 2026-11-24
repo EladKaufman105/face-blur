@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,8 +63,7 @@ internal fun HomeContent(vm: MainViewModel, wide: Boolean, onPick: () -> Unit, o
         Row(horizontalArrangement = Arrangement.spacedBy(Space.XL)) {
             Column(Modifier.weight(1.15f), verticalArrangement = Arrangement.spacedBy(Space.XL)) {
                 BatchState.current?.let { b -> BatchBanner(b, vm::showBatch) }
-                EnterUp(0) { HeroCard(onPick) }
-                if (!vm.batchRunning) EnterUp(1) { BatchCard(onBatch) }
+                EnterUp(0) { NewVideoGroup(vm.batchRunning, onPick, onBatch) }
                 EnterUp(1) { ToolsSection(onTool) }
                 EnterUp(3) { ShareHint() }
             }
@@ -72,8 +72,7 @@ internal fun HomeContent(vm: MainViewModel, wide: Boolean, onPick: () -> Unit, o
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(Space.XL)) {
             BatchState.current?.let { b -> BatchBanner(b, vm::showBatch) }
-            EnterUp(0) { HeroCard(onPick) }
-            if (!vm.batchRunning) EnterUp(1) { BatchCard(onBatch) }
+            EnterUp(0) { NewVideoGroup(vm.batchRunning, onPick, onBatch) }
             EnterUp(1) { ToolsSection(onTool) }
             EnterUp(2) { projects() }
             EnterUp(3) { ShareHint() }
@@ -173,23 +172,23 @@ private fun HeroCard(onPick: () -> Unit) {
     }
 }
 
-/** Several videos at once, with one template (a batch). */
+/** The ways to start: one video (the hero), and under it, closer than the sections, several at once. */
+@Composable
+private fun NewVideoGroup(batchRunning: Boolean, onPick: () -> Unit, onBatch: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
+        HeroCard(onPick)
+        if (!batchRunning) BatchCard(onBatch)
+    }
+}
+
+/** Several videos at once, with one template (a batch): a wide tile in the tools' style, the face blur's color. */
 @Composable
 private fun BatchCard(onClick: () -> Unit) {
-    ClipCard(onClick = onClick, accent = Feature.FACES.color, modifier = Modifier.testTag(Tags.BATCH)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            FeatureTile(AppIcons.Folder, Feature.FACES.tint, 48.dp)
-            Spacer(Modifier.width(Space.M))
-            Column(Modifier.weight(1f)) {
-                Text(t("כמה סרטונים"), style = MaterialTheme.typography.titleSmall)
-                Text(
-                    t("עד %d סרטונים בבת אחת, עם תבנית אחת. ממשיך גם כשהמסך כבוי.").format(BatchMath.MAX_VIDEOS),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
+    WideTile(
+        AppIcons.Videos, t("כמה סרטונים"),
+        t("עד %d סרטונים בבת אחת, עם תבנית אחת. ממשיך גם כשהמסך כבוי.").format(BatchMath.MAX_VIDEOS),
+        Feature.FACES, onClick, Modifier.testTag(Tags.BATCH),
+    )
 }
 
 /** Quick ways into the editor without face detection, one per tool. */
@@ -208,8 +207,9 @@ private fun ToolsSection(onTool: (QuickTool) -> Unit) {
     }
 }
 
+/** The surface of a home tile: the same shape, fill and border for every one. */
 @Composable
-private fun ToolTile(modifier: Modifier, icon: ImageVector, label: String, feature: Feature, onClick: () -> Unit) {
+private fun TileSurface(modifier: Modifier, onClick: () -> Unit, content: @Composable () -> Unit) {
     val source = remember { MutableInteractionSource() }
     val shape = MaterialTheme.shapes.large
     Surface(
@@ -218,7 +218,13 @@ private fun ToolTile(modifier: Modifier, icon: ImageVector, label: String, featu
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         interactionSource = source,
-    ) {
+        content = content,
+    )
+}
+
+@Composable
+private fun ToolTile(modifier: Modifier, icon: ImageVector, label: String, feature: Feature, onClick: () -> Unit) {
+    TileSurface(modifier, onClick) {
         Column(
             Modifier.padding(vertical = Space.L, horizontal = Space.S),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -226,6 +232,33 @@ private fun ToolTile(modifier: Modifier, icon: ImageVector, label: String, featu
             FeatureTile(icon, feature.tint, 48.dp)
             Spacer(Modifier.height(Space.M))
             Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+/** A tile across the screen: the same icon tile, then a title and a line, with [trailing] (an arrow by default) at the end. */
+@Composable
+internal fun WideTile(
+    icon: ImageVector,
+    title: String,
+    note: String,
+    feature: Feature,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    trailing: @Composable () -> Unit = {
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    },
+) {
+    TileSurface(modifier.fillMaxWidth(), onClick) {
+        Row(Modifier.padding(Space.L), verticalAlignment = Alignment.CenterVertically) {
+            FeatureTile(icon, feature.tint, 48.dp)
+            Spacer(Modifier.width(Space.M))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.width(Space.S))
+            trailing()
         }
     }
 }

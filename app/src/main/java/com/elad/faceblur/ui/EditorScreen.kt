@@ -1,6 +1,8 @@
 package com.elad.faceblur.ui
 
 import com.elad.faceblur.i18n.t
+import com.elad.faceblur.template.Platform
+import com.elad.faceblur.template.SafeZone
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.media.MediaFormat
@@ -119,6 +121,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -281,6 +285,14 @@ fun EditorScreen(
                         tint = if (ctrl.previewOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+            // Where a platform's own screens cover the picture (only drawn here, not in the export).
+            IconButton(onClick = { ctrl.safeZoneOn = !ctrl.safeZoneOn }, modifier = Modifier.testTag(Tags.SAFE_ZONE)) {
+                Icon(
+                    AppIcons.SafeArea,
+                    t("אזור בטוח"),
+                    tint = if (ctrl.safeZoneOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             IconButton(onClick = ctrl::undo, enabled = ctrl.model.canUndo && !busy, modifier = Modifier.testTag(Tags.UNDO)) { Icon(EditorIcons.Undo, t("בטל")) }
             IconButton(onClick = ctrl::redo, enabled = ctrl.model.canRedo && !busy, modifier = Modifier.testTag(Tags.REDO)) { Icon(EditorIcons.Redo, t("בצע שוב")) }
@@ -497,7 +509,20 @@ fun EditorScreen(
 @Composable
 private fun EditorVideoArea(ctrl: EditorController, export: ExportOptions, subStyle: SubtitleStyle, modifier: Modifier, messages: Boolean) {
     Box(modifier.fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
-        VideoWithOverlay(ctrl, export.subs, subStyle, export.aspect, export.watermark)
+        VideoWithOverlay(ctrl, export.subs, subStyle, export.aspect, export.watermark, export.platform)
+        // No destination picked: which platform's zone to draw.
+        if (ctrl.safeZoneOn && export.platform == null) {
+            Row(Modifier.align(Alignment.TopCenter).padding(top = Space.S), horizontalArrangement = Arrangement.spacedBy(Space.S)) {
+                for (p in Platform.entries) {
+                    FilterChip(
+                        selected = ctrl.safePlatform == p,
+                        onClick = { ctrl.safePlatform = p },
+                        label = { Text(platformName(p), style = MaterialTheme.typography.labelMedium) },
+                        colors = FilterChipDefaults.filterChipColors(containerColor = Color.Black.copy(alpha = 0.55f), labelColor = Color.White),
+                    )
+                }
+            }
+        }
         // With a panel in the timeline's place (a phone), the messages go at the video's foot.
         if (messages) EditorMessages(ctrl, Modifier.align(Alignment.BottomCenter))
     }
@@ -541,6 +566,7 @@ private fun VideoWithOverlay(
     style: SubtitleStyle,
     frameShape: ExportAspect = ExportAspect.ORIGINAL,
     watermark: Watermark = Watermark(),
+    platform: Platform? = null,
 ) {
     val context = LocalContext.current
     val analysis = ctrl.session.analysis
@@ -606,7 +632,7 @@ private fun VideoWithOverlay(
             update = { if (it.player !== player) it.player = player },
             modifier = Modifier.fillMaxSize(),
         )
-        Overlay(ctrl, subs, style, frameShape, watermark, Modifier.fillMaxSize())
+        Overlay(ctrl, subs, style, frameShape, watermark, platform, Modifier.fillMaxSize())
     }
 }
 
@@ -748,7 +774,7 @@ private class PlayerSync(
 }
 
 @Composable
-private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle, aspect: ExportAspect, watermark: Watermark, modifier: Modifier) {
+private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle, aspect: ExportAspect, watermark: Watermark, platform: Platform?, modifier: Modifier) {
     val context = LocalContext.current
     val renderer = SubtitleRenderer.get(context)
     // The watermark as it will be burned in, drawn once per size.
@@ -796,11 +822,11 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
             drawRect(Color.White.copy(alpha = 0.8f), Offset(fl, ft), Size(fw, fh), style = Stroke(1.5.dp.toPx()))
         }
         if (watermark.enabled(context) && fw >= 2f && fh >= 2f) {
-            val key = Triple(watermark, fw.toInt(), fh.toInt())
+            val key = listOf(watermark, fw.toInt(), fh.toInt(), platform)
             if (wmCache[0] != key) {
                 (wmCache[1] as? android.graphics.Bitmap)?.recycle()
                 wmCache[1] = android.graphics.Bitmap.createBitmap(fw.toInt(), fh.toInt(), android.graphics.Bitmap.Config.ARGB_8888).also {
-                    Watermark.draw(context, watermark, android.graphics.Canvas(it), it.width, it.height)
+                    Watermark.draw(context, watermark, android.graphics.Canvas(it), it.width, it.height, platform?.let { p -> SafeZone.of(p) })
                 }
                 wmCache[0] = key
             }
@@ -824,6 +850,7 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
             nc.restore()
             if (faded) nc.restore()
         }
+        if (ctrl.safeZoneOn && fw >= 2f && fh >= 2f) drawSafeZone(SafeZone.of(platform ?: ctrl.safePlatform), Offset(fl, ft), Size(fw, fh))
         if (live && ctrl.playing) return@Canvas
         val shapes = ctrl.model.shapesAt(ctrl.shownFrame, ctrl.padding)
         label.textSize = 13.dp.toPx()

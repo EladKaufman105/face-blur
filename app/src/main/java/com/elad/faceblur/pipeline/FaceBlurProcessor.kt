@@ -285,7 +285,7 @@ class FaceBlurProcessor(private val context: Context) {
         }
         val overlays = ArrayList<TextureOverlay>()
         if (burn.isNotEmpty()) overlays += SubtitleOverlay(burn, subStyle, SubtitleRenderer.get(context))
-        if (export.watermark.enabled(context)) overlays += WatermarkOverlay(context, export.watermark)
+        if (export.watermark.enabled(context)) overlays += WatermarkOverlay(context, export.watermark, export.platform?.let { com.elad.faceblur.template.SafeZone.of(it) })
         val subsEffect = if (overlays.isEmpty()) emptyList() else listOf<Effect>(OverlayEffect(ImmutableList.copyOf(overlays)))
         // The voice: the pitch, then bleeps and robot sound (so the beep isn't shifted).
         val audioFx = ArrayList<AudioProcessor>()

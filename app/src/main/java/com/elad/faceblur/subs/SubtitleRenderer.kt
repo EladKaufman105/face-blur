@@ -163,6 +163,9 @@ class SubtitleRenderer private constructor(private val assets: AssetManager?, pr
      * word starts (µs), if known. Returns where the text is (for tapping it), or null if nothing
      * was drawn.
      */
+    // One draw at a time: the scratch path, rect and paints are shared (export thread, editor,
+    // template previews).
+    @Synchronized
     fun draw(
         canvas: Canvas,
         blocks: List<String>,

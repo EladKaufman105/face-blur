@@ -104,6 +104,10 @@ class EditorController(
     var previewOn by mutableStateOf(true)
         private set
     var previewAvailable by mutableStateOf(true)
+    /** Draw the platform's safe zone over the preview (never in the export). */
+    var safeZoneOn by mutableStateOf(false)
+    /** The platform whose zone is drawn when the export has none of its own. */
+    var safePlatform by mutableStateOf(com.elad.faceblur.template.Platform.TIKTOK)
 
     /**
      * How far the player's GPU effects were cut back after failing on this device: 0 all of them
