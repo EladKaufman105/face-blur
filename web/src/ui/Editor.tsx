@@ -8,7 +8,7 @@ import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIco
 import { FRAME, Timeline } from './Timeline'
 import { BlurBar } from './BlurBar'
 import { CutTab, wordSpan } from './CutTab'
-import { addCuts, CutMap, cutAt, cutTotal, uncut, type Range } from '../lib/cutmap'
+import { addCuts, CutMap, cutAt, cutTotal, skipTarget, uncut, type Range } from '../lib/cutmap'
 import { isFiller } from '../lib/silence'
 import { applyFollow, boxNear, newTrack, nextTrackId, retime, setEnd, setStart, shift, split, type Box } from '../lib/tracks'
 import type { FollowMessage, FollowRequest } from '../workers/follow.worker'
@@ -29,7 +29,7 @@ import { cleanupOn, type Cleanup } from '../lib/cleanup'
 import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
 import { Analyzing } from './Analyzing'
 import { bleepRanges, cueAt, maskCue, shownText, type Cue, type SubStyle, type Word } from '../lib/subtitles'
-import { loadSubFont, normalizeStyle } from '../lib/substyle'
+import { DEFAULT_SUB_STYLE, loadSubFont, normalizeStyle } from '../lib/substyle'
 import { cueWordTimes, drawCue } from '../lib/subrender'
 import { getFont } from '../lib/projects'
 import { loadSfx, makeBuffer, sfxName } from '../lib/sfx'
@@ -306,28 +306,37 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     if (!v) return
     let stop = false
     const hasVfc = 'requestVideoFrameCallback' in v
-    // Playing, the cut stretches are jumped over.
-    const skipCut = (at: number) => {
-      const cm = state.current.cutMap
-      if (cm.empty || v.paused) return
-      const end = cm.cutEnd(at + 0.5 / (state.current.fps || 30))
-      if (end > 0) v.currentTime = isFinite(v.duration) ? Math.min(end + 1e-3, v.duration) : end + 1e-3
+    // Playing, the cut stretches are jumped over: once per cut (not again while the jump is under
+    // way), to the first frame after it, and never back. Returns whether it jumped.
+    const skipCut = (at: number): boolean => {
+      const st = state.current
+      if (st.cutMap.empty || v.paused || v.seeking) return false
+      const sk = skipTarget(st.cutMap, at, v.currentTime, st.fps || 30, v.duration, st.times)
+      if (!sk) return false
+      if (sk.end) {
+        // The cut reaches the end of the video: playback stops there.
+        v.pause()
+        v.currentTime = sk.to
+      } else v.currentTime = sk.to
+      return true
     }
     const onFrame = (_: number, meta: { mediaTime: number }) => {
       if (stop) return
-      skipCut(meta.mediaTime)
-      state.current.mediaTime = meta.mediaTime
-      draw()
-      setTime(meta.mediaTime)
+      if (!skipCut(meta.mediaTime)) {
+        state.current.mediaTime = meta.mediaTime
+        draw()
+        setTime(meta.mediaTime)
+      }
       ;(v as any).requestVideoFrameCallback(onFrame)
     }
     let raf = 0
     const loop = () => {
       if (stop) return
-      skipCut(v.currentTime)
-      state.current.mediaTime = v.currentTime
-      draw()
-      setTime(v.currentTime)
+      if (!skipCut(v.currentTime)) {
+        state.current.mediaTime = v.currentTime
+        draw()
+        setTime(v.currentTime)
+      }
       raf = requestAnimationFrame(loop)
     }
     if (hasVfc) (v as any).requestVideoFrameCallback(onFrame)
@@ -1304,12 +1313,13 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     {saveTpl && (
       <SaveTemplate
         settings={{
-          blurOff: false, look, sensitive: false, createSubs: cues.length > 0, language: savedLanguage(lang.value === 'he'), translate: false, subStyle,
+          // Faces never looked for (the video came from a tool): a template made from it has no face blur, so a batch doesn't look for faces either.
+          blurOff: !analyzed && tracks.length === 0, look, sensitive: false, createSubs: cues.length > 0, language: savedLanguage(lang.value === 'he'), translate: false, subStyle,
           split: { words: 0, chars: 0 }, burn: exportOpts.burn === false ? 'NONE' : subStyle.show === 'tr' ? 'TRANSLATED' : subStyle.show === 'both' ? 'BOTH' : 'ORIGINAL', saveSrt: exportOpts.srt,
           voice, denoise, enhance, loud: loudOn, cutSilences: cuts.length > 0, minPauseMs: 800, cutFillers: cuts.length > 0 && cues.length > 0,
           background, stabilize: steadyLevel, aspect: exportOpts.aspect, shortSide: exportOpts.shortSide, fps: exportOpts.fps, quality: exportOpts.quality, codec: exportOpts.codec, watermark: mark,
         }}
-        initial={['blur', ...(cues.length ? ['subs' as const] : []), ...(voice !== 'none' || cleanupOn(clean) ? ['voice' as const] : []), ...(background.fill !== 'none' ? ['background' as const] : []), ...(steadyLevel > 0 ? ['stabilize' as const] : []), 'export']}
+        initial={['blur', ...(cues.length || JSON.stringify(subStyle) !== JSON.stringify(DEFAULT_SUB_STYLE) ? ['subs' as const] : []), ...(voice !== 'none' || cleanupOn(clean) ? ['voice' as const] : []), ...(background.fill !== 'none' ? ['background' as const] : []), ...(steadyLevel > 0 ? ['stabilize' as const] : []), 'export']}
         onClose={() => setSaveTpl(false)}
         onSaved={() => { setSaveTpl(false); setNotice(t('התבנית נשמרה')) }}
       />
