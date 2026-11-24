@@ -45,6 +45,10 @@ class SafeZoneTest {
         assertTrue(SafeZone.appliesTo(ExportAspect.ORIGINAL, 1080, 1920))
         assertFalse(SafeZone.appliesTo(ExportAspect.ORIGINAL, 1920, 1080))
         assertFalse(SafeZone.appliesTo(ExportAspect.ORIGINAL, 1080, 1080))
+        // Only 9:16 portrait as it is: not 4:5 nor a taller phone screen recording.
+        assertFalse(SafeZone.appliesTo(ExportAspect.ORIGINAL, 1080, 1350))
+        assertFalse(SafeZone.appliesTo(ExportAspect.ORIGINAL, 1080, 2400))
+        assertTrue(SafeZone.appliesTo(ExportAspect.ORIGINAL, 720, 1280))
         // A square or 4:5 export is not vertical 9:16.
         assertFalse(SafeZone.appliesTo(ExportAspect.SQUARE, 1080, 1920))
         assertFalse(SafeZone.appliesTo(ExportAspect.PORTRAIT, 1080, 1920))

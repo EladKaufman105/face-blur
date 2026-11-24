@@ -1,6 +1,6 @@
 # Platform safe zones (Android)
 
-The safe zone is **a view aid in the editor only**: a switch (with a small chooser of three segments, each a neutral glyph and the short name TikTok / Reels / Shorts, never a brand logo) draws a generic mock of a short-video app's own screens over the preview, laid out by the platform's covered areas. It shows only when the frame being edited is vertical 9:16 (a vertical export, or a vertical video as shot) and is hidden for landscape and square frames. It is never burned into the export, and it is not part of templates, template previews, batch or export placement: subtitles and the watermark are not moved by platform.
+The safe zone is **a view aid in the editor only**: one button in the editor's top bar opens a short menu (Off, TikTok, Reels, Shorts, each with a neutral glyph, never a brand logo; nothing is placed over the video, and the button shows the chosen platform's glyph while it is on) and draws a generic mock of a short-video app's own screens over the preview, laid out by the platform's covered areas. It shows only when the frame being edited is vertical 9:16 (a vertical export, or a video shot at 9:16 portrait, width/height between 0.53 and 0.60; not 4:5 or a taller screen recording) and is hidden for landscape and square frames. It is never burned into the export, and it is not part of templates, template previews, batch or export placement: subtitles and the watermark are not moved by platform.
 
 Values are fractions of a 1080x1920 frame: the part the platform's own screens cover at the top, bottom, left and right. `SafeZone.of(platform)` in `template/SafeZone.kt` holds them.
 
@@ -10,7 +10,7 @@ Values are fractions of a 1080x1920 frame: the part the platform's own screens c
 | Instagram Reels | 14% | 35% | 6% | 6% |
 | YouTube Shorts | 288 px (15%) | 672 px (35%) | 48 px (4.4%) | 192 px (17.8%) |
 
-TikTok and Reels are separate choices in the chooser because their zones differ at the sides (11% / 17% against 6%) and at the top.
+TikTok and Reels are separate choices in the menu because their zones differ at the sides (11% / 17% against 6%) and at the top.
 
 ## Sources and how sure they are
 
