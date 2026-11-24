@@ -353,6 +353,7 @@ async function processOne(b: Batch, item: BatchItem) {
 
 function friendly(e: unknown): string {
   if (e instanceof StepError && e.code === 'voice-failed') return e.message
+  if (e instanceof StepError && e.code === 'anonymize') return t('השינוי בקול או הצפצופים לא הוחלו, ולכן שום דבר לא יוצא (כדי שהקול המקורי לא יישמר)')
   const m = String((e as Error)?.message ?? e)
   if (/decode|codec/i.test(m)) return t('הדפדפן לא מצליח לפענח את הסרטון הזה (%s). נסה Chrome או Safari מעודכנים.', m.replace("can't decode ", '').slice(0, 80))
   if (/memory|alloc/i.test(m)) return t('נגמר הזיכרון. נסה סרטון קצר יותר או סגור לשוניות אחרות.')

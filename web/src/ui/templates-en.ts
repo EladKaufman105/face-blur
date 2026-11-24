@@ -71,6 +71,8 @@ addEnglish({
   'יוצר כתוביות': 'Creating subtitles',
   'חותך': 'Cutting',
   'מעבד את הסאונד': 'Processing the sound',
+  'השינוי בקול או הצפצופים לא הוחלו, ולכן שום דבר לא יוצא (כדי שהקול המקורי לא יישמר)': 'The voice change or the bleeps were not applied, so nothing was exported (so the original voice is never kept)',
+  'לא ניתן לפענח את הסאונד של הסרטון, ולכן לא נמצאו שתיקות': 'The video\'s sound could not be decoded, so no pauses were found',
   'שינוי הקול נכשל, ולכן הסרטון לא נשמר (כדי שהקול המקורי לא יישמר בטעות): %s': 'The voice change failed, so the video was not saved (so the original voice is never saved by mistake): %s',
   'עיבוד הסאונד נכשל, והסרטון יישמר עם הסאונד המקורי: %s': 'Processing the sound failed, and the video will be saved with its original sound: %s',
   'שינוי הקול נכשל, ולכן אי אפשר לייצא (כדי שהקול המקורי לא יישמר בטעות)': 'The voice change failed, so exporting is blocked (so the original voice is never exported by mistake)',

@@ -34,7 +34,7 @@ export function Exporting({ job, onBack, onNew, onEdit }: { job: ExportJob; onBa
         }
         m.bitmap.close()
       } else if (m.type === 'done') { setResult({ blob: m.blob, ms: m.ms }); worker.terminate() }
-      else { setError(m.message); worker.terminate() }
+      else { setError(m.code === 'anonymize' ? t('השינוי בקול או הצפצופים לא הוחלו, ולכן שום דבר לא יוצא (כדי שהקול המקורי לא יישמר)') : m.message); worker.terminate() }
     }
     worker.onerror = (e) => { setError(e.message || 'error'); worker.terminate() }
     let cancelled = false

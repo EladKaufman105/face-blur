@@ -282,7 +282,7 @@ export async function processVideo(file: File, s: TemplateSettings, report: (pha
         cuts = addCuts(cuts, ranges).ranges
       } catch (e) {
         if (e instanceof Aborted) throw e
-        notes.push(t('אין סאונד בסרטון'))
+        notes.push((e as StepError).code === 'undecodable' ? t('לא ניתן לפענח את הסאונד של הסרטון, ולכן לא נמצאו שתיקות') : t('אין סאונד בסרטון'))
       }
     }
     if (s.cutFillers) {
