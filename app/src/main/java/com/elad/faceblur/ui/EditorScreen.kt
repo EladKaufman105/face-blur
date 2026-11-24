@@ -95,11 +95,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.res.imageResource
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -253,6 +256,8 @@ fun EditorScreen(
     val watermarkOn = export.watermark.enabled(LocalContext.current)
     // The safe-zone view aid is for vertical frames only (the export's, or the video's own).
     val safeZoneAvailable = SafeZone.appliesTo(export.aspect, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)
+    // While it's on, its platform chooser has a strip of its own directly above the video (see SafeZoneStrip).
+    val safeZoneShown = safeZoneAvailable && ctrl.safeZoneOn
     // A group opens the tool used last in it (or its first).
     val lastInGroup = remember(ctrl) { mutableStateMapOf<ToolGroup, EditorPanel>() }
     LaunchedEffect(ctrl.panel) { ctrl.panel?.let { lastInGroup[groupOf(it)] = it } }
@@ -320,7 +325,7 @@ fun EditorScreen(
                 }
             }
             // Where a platform's own screens cover the picture (only drawn here, not in the export). The
-            // platform is picked in a small bar of icons over the video while this is on.
+            // platform is picked in a small bar of icons in a strip above the video while this is on.
             if (safeZoneAvailable) {
                 IconButton(onClick = { ctrl.safeZoneOn = !ctrl.safeZoneOn }, modifier = Modifier.testTag(Tags.SAFE_ZONE)) {
                     Icon(
@@ -450,7 +455,11 @@ fun EditorScreen(
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         topBar()
                         Row(Modifier.weight(1f)) {
-                            videoArea(Modifier.width(videoW).fillMaxHeight(), export, subStyle, false)
+                            // The safe zone's strip goes above the video, in its column; the video keeps its width.
+                            Column(Modifier.width(videoW).fillMaxHeight()) {
+                                SafeZoneStrip(ctrl, safeZoneShown)
+                                videoArea(Modifier.weight(1f), export, subStyle, false)
+                            }
                             Column(Modifier.weight(1f).fillMaxHeight()) {
                                 if (!hidden) {
                                     side(Modifier.weight(1f).fillMaxWidth())
@@ -469,6 +478,7 @@ fun EditorScreen(
                 } else {
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         topBar()
+                        SafeZoneStrip(ctrl, safeZoneShown)
                         videoArea(Modifier.weight(1f), export, subStyle, false)
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy, zoom) }
                         timelineArea(false, null)
@@ -491,6 +501,8 @@ fun EditorScreen(
     ) {
         topBar()
         val phoneShows: Any? = if (propsOpen && selecting) PROPS else ctrl.panel
+        // Not with a panel open: the video is small then, and the strip would take more of it.
+        SafeZoneStrip(ctrl, safeZoneShown && phoneShows == null)
         videoArea(Modifier.weight(1f), export, subStyle, phoneShows != null)
 
         // Video controls and timelines run left to right even in a Hebrew UI.
@@ -549,11 +561,6 @@ fun EditorScreen(
 private fun EditorVideoArea(ctrl: EditorController, export: ExportOptions, subStyle: SubtitleStyle, modifier: Modifier, messages: Boolean) {
     Box(modifier.fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
         VideoWithOverlay(ctrl, export.subs, subStyle, export.aspect, export.watermark)
-        // The safe zone's platform: a small bar of icons over the top of the video (only for 9:16 portrait).
-        // Not with a phone's panel open (the video is small then, and the bar would cover it).
-        if (!messages && ctrl.safeZoneOn && SafeZone.appliesTo(export.aspect, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)) {
-            PlatformChooser(ctrl.safePlatform, { ctrl.safePlatform = it }, Modifier.align(Alignment.TopCenter).padding(top = Space.M))
-        }
         // With a panel in the timeline's place (a phone), the messages go at the video's foot.
         if (messages) EditorMessages(ctrl, Modifier.align(Alignment.BottomCenter))
     }
@@ -1775,40 +1782,74 @@ private fun PropActions(content: @Composable () -> Unit) {
 
 
 /**
- * The safe zone's platform chooser: a pill of round icon buttons, the chosen one white. The icons are
- * plain PNG files (white on a transparent background, any size) in res/drawable-nodpi, named
- * platform_tiktok.png, platform_reels.png and platform_shorts.png: replacing a file changes its icon,
- * with no code change. They are drawn as one color (the alpha is the shape).
+ * The safe zone's own strip directly above the video (not over it: the whole frame stays in view),
+ * holding the platform chooser. It folds open and shut like the app's other folds; the video takes
+ * the height that is left, so it shrinks and grows with the fold instead of jumping.
+ */
+@Composable
+private fun SafeZoneStrip(ctrl: EditorController, visible: Boolean) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = expandVertically(tween(Motion.PANEL)) + fadeIn(tween(Motion.CONTENT)),
+        exit = shrinkVertically(tween(Motion.STATE)) + fadeOut(tween(Motion.CONTENT)),
+    ) {
+        Box(Modifier.fillMaxWidth().padding(vertical = Space.S), contentAlignment = Alignment.Center) {
+            PlatformChooser(ctrl.safePlatform, { ctrl.safePlatform = it })
+        }
+    }
+}
+
+/**
+ * The safe zone's platform chooser: a pill of round icon buttons (no text), the chosen one on a white
+ * circle that slides from the old choice to the new one while the icons' colors cross-fade with it.
+ *
+ * The icons are the platforms' own logos, single-colour, from Simple Icons (CC0; trademarks of their
+ * owners, used only to label the platform): vector drawables in res/drawable named platform_tiktok.xml,
+ * platform_reels.xml and platform_shorts.xml. Replacing a file changes its icon, with no code change.
+ * A PNG with the same name in res/drawable-nodpi works too once the XML is removed (white on a
+ * transparent background, about 96 px square: it is scaled plainly). Either is drawn as one color
+ * (the alpha is the shape).
  */
 @Composable
 private fun PlatformChooser(selected: Platform, onSelect: (Platform) -> Unit, modifier: Modifier = Modifier) {
-    Row(
+    val gap = 6.dp
+    val step = with(LocalDensity.current) { (MinTouch + gap).toPx() }
+    // Where the white circle is, in buttons from the start; a short spring with a hint of overshoot.
+    val at = animateFloatAsState(
+        Platform.entries.indexOf(selected).toFloat(),
+        spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow),
+        label = "platform",
+    )
+    Box(
         modifier
             .clip(RoundedCornerShape(50))
             .background(Color.Black.copy(alpha = 0.55f))
-            .padding(4.dp)
-            .selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(4.dp),
     ) {
-        for (p in Platform.entries) {
-            val on = p == selected
-            Box(
-                Modifier
-                    .size(MinTouch)
-                    .clip(CircleShape)
-                    .background(if (on) Color.White else Color.Transparent)
-                    .selectable(selected = on, role = Role.RadioButton, onClick = { onSelect(p) })
-                    .testTag(Tags.SAFE_ZONE + "." + p.name),
-                contentAlignment = Alignment.Center,
-            ) {
-                // Scaled down smoothly (the files are large), in one color.
-                Image(
-                    ImageBitmap.imageResource(platformIconRes(p)),
-                    platformName(p),
-                    Modifier.size(24.dp),
-                    filterQuality = FilterQuality.High,
-                    colorFilter = ColorFilter.tint(if (on) Color(0xFF111111) else Color.White),
-                )
+        // One circle behind the buttons. Modifier.offset follows the layout direction, like the row:
+        // right to left in Hebrew.
+        Box(
+            Modifier
+                .offset { IntOffset((at.value * step).roundToInt(), 0) }
+                .size(MinTouch)
+                .background(Color.White, CircleShape),
+        )
+        Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+            Platform.entries.forEachIndexed { i, p ->
+                val on = p == selected
+                // The icon's color cross-fades with the circle under it: near-black where the white
+                // circle is, white elsewhere (so no icon goes white on white while the circle passes).
+                val tint = lerp(Color.White, Color(0xFF111111), (1f - abs(at.value - i)).coerceIn(0f, 1f))
+                Box(
+                    Modifier
+                        .size(MinTouch)
+                        .clip(CircleShape)
+                        .selectable(selected = on, role = Role.RadioButton, onClick = { onSelect(p) })
+                        .testTag(Tags.SAFE_ZONE + "." + p.name),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(painterResource(platformIconRes(p)), platformName(p), Modifier.size(24.dp), tint = tint)
+                }
             }
         }
     }
