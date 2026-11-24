@@ -170,12 +170,17 @@ export function planFor(quality: Quality, d: Device, forceCpu = gpuFailed.value)
   }
 }
 
-/** How many threads WebAssembly gets: only a cross-origin isolated page has them (see lib/isolation.ts); a phone's big cores, not all. ?threads=N sets it (tests). */
-export function wasmThreads(d: Device): number {
+/**
+ * How many threads WebAssembly gets: only a cross-origin isolated page has them (see lib/isolation.ts).
+ * Half the logical cores, at most 4: measured on CI (4 vCPUs, whisper-base, 55 s of speech), 2 threads
+ * took 9.9 s against 13.3 s on one, and 3 or 4 threads were slower (11-12 s): the encoder keeps
+ * gaining but the decoder's many small steps lose to the cost of waking threads. ?threads=N sets it (tests).
+ */
+export function wasmThreads(_d: Device): number {
   const forced = Number(param('threads'))
   if (forced >= 1) return Math.min(16, Math.floor(forced))
   if (typeof crossOriginIsolated === 'undefined' || !crossOriginIsolated) return 1
-  return Math.max(1, Math.min(d.weak ? 4 : 6, navigator.hardwareConcurrency || 2))
+  return Math.max(1, Math.min(4, Math.ceil((navigator.hardwareConcurrency || 2) / 2)))
 }
 
 /** What a download agreement is for: the model and its file kinds. */
