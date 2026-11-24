@@ -583,10 +583,13 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     }
     audioWorker.onerror = failed
     audioWorker.onmessageerror = failed
+    // A worker that never answers (its script did not load, or it hung) is a failure, with a retry.
+    let watchdog: ReturnType<typeof setTimeout> | undefined
     const timer = setTimeout(() => {
       audioWorker.onmessage = (e: MessageEvent<AudioMessage>) => {
         const m = e.data
         if (audioSeq.current !== seq || (m as { id?: number }).id !== seq) return
+        clearTimeout(watchdog)
         if (m.type === 'done') {
           setVoiceBusy(false)
           setVoiceAudio({ rate: m.rate, data: m.data, buffer: makeBuffer(m.data, m.rate) })
@@ -605,15 +608,18 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       }
       const req: AudioRequest = { id: seq, file, voice, bleeps: bleepRanges(words, bleeped), tone, clean }
       audioWorker.postMessage(req)
+      watchdog = setTimeout(failed, 60000)
     }, 250)
-    return () => clearTimeout(timer)
+    return () => { clearTimeout(timer); clearTimeout(watchdog) }
   }, [voice, bleeped, tone, words, clean, audioWorker])
 
   const needsAudio = voice !== 'none' || bleeped.size > 0
   /** The sound isn't ready to be exported: still processing, or a voice change (or bleeps) without its processed sound. */
   const soundBlocked = voiceBusy || (needsAudio && !voiceAudio && !noAudio) || !!soundFail?.hard
   const retrySound = () => setAudioTry((n) => n + 1)
-  const dropVoice = () => { setVoice('none'); setBleeped(new Set()) }
+  // Only the voice change goes; the bleeps stay (and are made, or block the export again). They go only by their own action.
+  const dropVoice = () => setVoice('none')
+  const dropBleeps = () => setBleeped(new Set())
 
 
   // Undo and redo. Quick changes in a row (typing, dragging a sound) are one step.
@@ -1070,7 +1076,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       </div>
 
       <aside class="side">
-        {tplRun && (tplBusy || tplRun.notes.length > 0 || !!soundFail) && (
+        {tplRun && (tplBusy || tplRun.notes.length > 0) && (
           <section class="card tpl-run" role="status">
             <div class="row">
               <strong class="grow">{tplBusy ? t('מחיל את התבנית…') : t('שלב בתבנית לא הושלם')}</strong>
@@ -1082,7 +1088,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
                 <div class="progress"><div style={{ width: `${Math.max(3, Math.round((tplRun.step !== null ? tplRun.progress : picBusy ? picBusy.progress : 0.5) * 100))}%` }} /></div>
               </>
             )}
-            {[...tplRun.notes, ...(soundFail && !tplBusy ? [soundFail.hard ? t('שינוי הקול נכשל, ולכן אי אפשר לייצא (כדי שהקול המקורי לא יישמר בטעות)') : t('עיבוד הסאונד נכשל. הסרטון ייוצא עם הסאונד המקורי')] : [])].map((n) => <p class="small tpl-note" style="margin:0;color:var(--primary)">{n}</p>)}
+            {tplRun.notes.map((n) => <p class="small tpl-note" style="margin:0;color:var(--primary)">{n}</p>)}
           </section>
         )}
         <div class="tabs" role="tablist">
@@ -1239,7 +1245,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             <p class="small" style="margin:0">{soundFail.hard ? t('שינוי הקול נכשל, ולכן אי אפשר לייצא (כדי שהקול המקורי לא יישמר בטעות)') : t('עיבוד הסאונד נכשל. הסרטון ייוצא עם הסאונד המקורי')}</p>
             <div class="row" style="gap:8px;flex-wrap:wrap">
               <button class="btn tonal sound-retry" onClick={retrySound}>{t('נסה שוב')}</button>
-              {soundFail.hard && <button class="btn ghost sound-drop" onClick={dropVoice}>{voice !== 'none' ? t('הסר את שינוי הקול') : t('הסר את הצפצופים')}</button>}
+              {soundFail.hard && <button class="btn ghost sound-drop" onClick={voice !== 'none' ? dropVoice : dropBleeps}>{voice !== 'none' ? t('הסר את שינוי הקול') : t('הסר את הצפצופים')}</button>}
               {!soundFail.hard && <button class="btn ghost" onClick={() => setSoundFail(null)}>{t('הבנתי')}</button>}
             </div>
           </div>
@@ -1290,7 +1296,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           if (tplBusy || soundBlocked) { setExportOpen(false); return }
           setExportOpen(false)
           saveExportOptions(exportOpts)
-          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: shownText(c, masked(c), subStyle.show) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, cuts, words, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
+          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: shownText(c, masked(c), subStyle.show) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, anonymize: voice !== 'none' || bleeped.size > 0, cuts, words, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
         }}
       />
     )}
