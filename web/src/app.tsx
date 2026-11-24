@@ -98,7 +98,7 @@ export function App() {
   const pickTool = async (file: File, tab: Tool) => {
     if (!supported()) return
     if (tab === 'mp3') {
-      setJob({ file, times: new Float64Array(0), tracks: [], look: DEFAULT_LOOK, width: 0, height: 0, sfx: [], watermark: NO_WATERMARK, cues: [], subStyle: DEFAULT_SUB_STYLE, voice: null, cuts: [], options: { ...DEFAULT_EXPORT, format: 'mp3' }, standalone: true })
+      setJob({ file, times: new Float64Array(0), tracks: [], look: DEFAULT_LOOK, width: 0, height: 0, sfx: [], watermark: NO_WATERMARK, cues: [], subStyle: DEFAULT_SUB_STYLE, voice: null, anonymize: false, cuts: [], options: { ...DEFAULT_EXPORT, format: 'mp3' }, standalone: true })
       return
     }
     const size = await videoSize(file)
@@ -184,7 +184,7 @@ export function App() {
             const path = save.options.aspect !== 'original' && times.length ? reframePath(times.length, tracks, analysis.cuts ?? [], fps, cw, ch) : null
             setScreen({ name: 'ready', file: screen.file })
             saved.current = { file: screen.file, analysis }
-            setJob({ file: screen.file, times, tracks, look: save.look, width: w, height: h, sfx: [], watermark: template?.watermark ?? loadWatermark(), cues: [], subStyle: DEFAULT_SUB_STYLE, voice: null, cuts: [], options: save.options, standalone: true, twoSteps: true, picture: { background: null, masks: null, steady: null, path } })
+            setJob({ file: screen.file, times, tracks, look: save.look, width: w, height: h, sfx: [], watermark: template?.watermark ?? loadWatermark(), cues: [], subStyle: DEFAULT_SUB_STYLE, voice: null, anonymize: false, cuts: [], options: save.options, standalone: true, twoSteps: true, picture: { background: null, masks: null, steady: null, path } })
           }}
         />
       )}

@@ -45,6 +45,7 @@ function run<T, M>(make: () => Worker, start: (w: Worker) => void, handle: (m: M
     signal?.addEventListener('abort', onAbort)
     w.onmessage = (e: MessageEvent<M>) => handle(e.data, (v) => { end(); resolve(v) }, (err) => { end(); reject(err) })
     w.onerror = (e) => { end(); reject(new StepError(e.message || 'error')) }
+    w.onmessageerror = () => { end(); reject(new StepError('error')) }
     start(w)
   })
 }
@@ -330,7 +331,7 @@ export function jobOf(file: File, s: TemplateSettings, p: Processed): ExportJob 
   const usable = bg.fill !== 'none' && (bg.key !== 'person' || !!p.picture?.masks)
   return {
     file, times: p.analysis.times, tracks: p.tracks, look: s.look, width: p.analysis.width, height: p.analysis.height, sfx: [],
-    watermark: s.watermark, cues: p.cues, subStyle: style, words: p.words, voice: p.voice, cuts: p.cuts, options: exportOptionsOf(s), standalone: true,
+    watermark: s.watermark, cues: p.cues, subStyle: style, words: p.words, voice: p.voice, anonymize: s.voice !== 'none', cuts: p.cuts, options: exportOptionsOf(s), standalone: true,
     picture: { background: usable ? bg : null, masks: bg.key === 'person' && bg.fill !== 'none' ? p.picture?.masks ?? null : null, steady: p.steady, path: p.path },
   }
 }

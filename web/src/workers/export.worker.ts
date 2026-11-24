@@ -17,7 +17,7 @@ import { loadSubFont } from '../lib/substyle'
 import { CutMap, type Range } from '../lib/cutmap'
 import { speakerColor } from '../lib/speakers'
 
-export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; /** The site's root (for the fonts). */ base: string; /** The recognized words (when each is said). */ words: Word[]; /** An imported font's bytes. */ customFont?: ArrayBuffer | null; voice: { rate: number; data: Float32Array } | null; cuts: Range[]; options?: ExportOptions; picture?: ExportPicture }
+export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; /** The site's root (for the fonts). */ base: string; /** The recognized words (when each is said). */ words: Word[]; /** An imported font's bytes. */ customFont?: ArrayBuffer | null; voice: { rate: number; data: Float32Array } | null; /** The voice is changed or words are bleeped: the source's own sound must never be exported. */ anonymize: boolean; cuts: Range[]; options?: ExportOptions; picture?: ExportPicture }
 export type ExportMessage =
   | { type: 'progress'; progress: number }
   | { type: 'done'; blob: Blob; ms: number }
@@ -114,6 +114,13 @@ async function mp3({ file, sfx, voice, cuts: cutList }: ExportRequest, t0: numbe
 async function run(req: ExportRequest) {
   const t0 = performance.now()
   const o = req.options ?? DEFAULT_EXPORT
+  // Defense in depth: with a voice change or bleeps asked for, the processed sound must have been
+  // made. Without it the source's sound (the real voice) is never copied or re-encoded; only a
+  // source with no sound at all can go on.
+  if (req.anonymize && !req.voice) {
+    const own = await new Input({ source: new BlobSource(req.file), formats: ALL_FORMATS }).getPrimaryAudioTrack()
+    if (own) return post({ type: 'error', code: 'anonymize', message: 'the voice change or the bleeps were not applied, so nothing was exported (the original voice would be kept)' })
+  }
   if (o.format === 'mp3') return mp3(req, t0)
   const { file, times, tracks, look, sfx, overlay, cues, subStyle, base, words, voice, cuts: cutList } = req
   const cuts = new CutMap(cutList ?? [])

@@ -9,7 +9,7 @@ import { getFont } from './projects'
 import type { Range } from './cutmap'
 import { DEFAULT_EXPORT, outputSize, type ExportOptions } from './exportopts'
 
-export type ExportJob = { file: File; times: Float64Array; tracks: Track[]; look: Look; width: number; height: number; sfx: SfxClip[]; watermark: Watermark; cues: Cue[]; subStyle: SubStyle; words?: Word[]; voice: { rate: number; data: Float32Array } | null; cuts: Range[]; options?: ExportOptions; standalone?: boolean; picture?: Omit<ExportPicture, 'image'>; /** The second of two steps (found and saved straight away). */ twoSteps?: boolean }
+export type ExportJob = { file: File; times: Float64Array; tracks: Track[]; look: Look; width: number; height: number; sfx: SfxClip[]; watermark: Watermark; cues: Cue[]; subStyle: SubStyle; words?: Word[]; voice: { rate: number; data: Float32Array } | null; /** A voice change or bleeps are asked for (the export refuses to go without the processed sound). */ anonymize: boolean; cuts: Range[]; options?: ExportOptions; standalone?: boolean; picture?: Omit<ExportPicture, 'image'>; /** The second of two steps (found and saved straight away). */ twoSteps?: boolean }
 
 /**
  * The export worker's request for [job], and what to transfer with it. The sounds' samples and
@@ -26,7 +26,7 @@ export async function exportRequest(job: ExportJob): Promise<{ req: ExportReques
   const image = bg?.fill === 'image' && bg.image ? await createImageBitmap(await (await fetch(bg.image)).blob()) : null
   const customFont = job.subStyle.customFont ? await getFont(job.subStyle.customFont) : null
   const picture: ExportPicture | undefined = job.picture ? { ...job.picture, image } : undefined
-  const req: ExportRequest = { file: job.file, times: job.times, tracks: job.tracks, look: job.look, sfx, overlay, cues: job.options?.burn === false ? [] : job.cues, subStyle: job.subStyle, voice: job.voice, cuts: job.cuts, options: job.options, picture, base: new URL('.', document.baseURI).href, words: job.words ?? [], customFont }
+  const req: ExportRequest = { file: job.file, times: job.times, tracks: job.tracks, look: job.look, sfx, overlay, cues: job.options?.burn === false ? [] : job.cues, subStyle: job.subStyle, voice: job.voice, anonymize: job.anonymize, cuts: job.cuts, options: job.options, picture, base: new URL('.', document.baseURI).href, words: job.words ?? [], customFont }
   const transfer: Transferable[] = []
   if (overlay) transfer.push(overlay)
   if (image) transfer.push(image)

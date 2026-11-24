@@ -38,14 +38,16 @@ self.onmessage = async (e: MessageEvent<AudioRequest>) => {
     const msg: AudioMessage = { type: 'done', id, rate: cache.rate, data, lufs: c.lufs, gainDb: c.gainDb }
     ;(self as unknown as Worker).postMessage(msg, [data.buffer])
   } catch (err) {
-    ;(self as unknown as Worker).postMessage({ type: 'error', id, code: 'failed', message: String((err as Error)?.message ?? err) } satisfies AudioMessage)
+    ;(self as unknown as Worker).postMessage({ type: 'error', id, code: (err as { code?: string })?.code === 'undecodable' ? 'undecodable' : 'failed', message: String((err as Error)?.message ?? err) } satisfies AudioMessage)
   }
 }
 
 async function decode(file: File): Promise<{ file: File; rate: number; data: Float32Array; channels: number } | null> {
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
   const track = await input.getPrimaryAudioTrack()
-  if (!track || !(await track.canDecode())) return null
+  if (!track) return null
+  // A sound the browser can't decode is not "no sound": the original voice is in it, so the caller must not export it as if it were clean.
+  if (!(await track.canDecode())) throw Object.assign(new Error('the sound cannot be decoded'), { code: 'undecodable' })
   const parts: Float32Array[] = []
   let rate = 48000, total = 0
   for await (const s of new AudioSampleSink(track).samples()) {
