@@ -7,7 +7,7 @@ import type { AnalyzeMessage, AnalyzeRequest } from '../workers/analyze.worker'
 import type { AudioMessage, AudioRequest } from '../workers/audio.worker'
 import type { FollowMessage, FollowRequest } from '../workers/follow.worker'
 import type { PictureMessage, PictureRequest } from '../workers/picture.worker'
-import type { SubsMessage, SubsRequest } from '../workers/subs.worker'
+import { confirmSpeech, SpeechAborted, SpeechError, transcribeFile, type SpeechStatus } from './speech'
 import type { ExportMessage } from '../workers/export.worker'
 import { exportRequest, type ExportJob } from './exportjob'
 import { wordsToCues, type Cue, type Word } from './subtitles'
@@ -103,19 +103,20 @@ export function findFaces(file: File, sensitive: boolean, onProgress: (p: number
   )
 }
 
-/** Speech in [file] as timed words. [onStage]: the model's download, or the recognition, and how far (0..1). */
-export function transcribe(file: File, language: string | null, onStage: (stage: 'download' | 'transcribe', p: number) => void, signal?: AbortSignal) {
-  return run<Word[], SubsMessage>(
-    () => new Worker(new URL('../workers/subs.worker.ts', import.meta.url), { type: 'module' }),
-    (w) => w.postMessage({ file, language } satisfies SubsRequest),
-    (m, ok, fail) => {
-      if (m.type === 'download') onStage('download', m.progress)
-      else if (m.type === 'transcribe') onStage('transcribe', m.progress)
-      else if (m.type === 'done') ok(m.words)
-      else if (m.type === 'error') fail(new StepError(m.message, m.code))
-    },
-    signal,
-  )
+/**
+ * Speech in [file] as timed words. [onStatus]: where it is (the download, the loading, the
+ * recognition and how far). When the model isn't in the browser yet the person is asked first.
+ */
+export async function transcribe(file: File, language: string | null, onStatus: (s: SpeechStatus) => void, signal?: AbortSignal) {
+  try {
+    const plan = await confirmSpeech(signal)
+    if (!plan) throw new StepError(t('הורדת המודל לא אושרה'), 'declined')
+    return (await transcribeFile(file, language, { plan, onStatus, signal })).words
+  } catch (e) {
+    if (e instanceof SpeechAborted) throw new Aborted()
+    if (e instanceof SpeechError) throw new StepError(e.message, e.code)
+    throw e
+  }
 }
 
 /** The pauses longer than [minPause] seconds (not over [words]). */
@@ -240,7 +241,11 @@ export async function processVideo(file: File, s: TemplateSettings, report: (pha
   if (s.createSubs) {
     within('subtitles', 0)
     try {
-      words = await transcribe(file, s.language, (stage, p) => within(stage === 'download' ? 'download' : 'subtitles', stage === 'download' ? 0 : p, stage === 'download' ? `${Math.round(p * 100)}%` : undefined), signal)
+      words = await transcribe(file, s.language, (st) => {
+        if (st.stage === 'download') within('download', 0, `${Math.round(st.progress * 100)}%`)
+        else if (st.stage === 'recognize') within('subtitles', st.progress)
+        else within('subtitles', 0, st.stage === 'load' ? t('טוען את המודל…') : st.stage === 'fallback' ? t('עובר למעבד…') : undefined)
+      }, signal)
       cues = wordsToCues(words, s.split.words, s.split.chars)
       if (cues.length === 0) notes.push(t('לא נמצא דיבור בסרטון'))
       else if (s.burn === 'NONE') notes.push(t('הכתוביות נוצרו, אבל לא ייצרבו בסרטון (ההגדרה: בלי כתוביות בסרטון)'))

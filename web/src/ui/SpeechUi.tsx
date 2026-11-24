@@ -1,0 +1,116 @@
+// The speech model's parts of the screen: the choice (faster / better quality, with the size
+// before anything downloads), the progress of a job, and the question before a template downloads.
+import { useEffect, useState } from 'preact/hooks'
+import { t } from '../i18n'
+import { answerSpeechAsk, device, mbOf, planCached, planFor, probeDevice, qualityChoice, setQuality, speechAsk, defaultQuality, type Quality, type SpeechPlan, type SpeechStatus } from '../lib/speech'
+
+/** The plan now (the device's graphics processor is asked once, then the plan may change), and whether its files are already here. */
+export function useSpeechPlan(): { plan: SpeechPlan; cached: boolean | null } {
+  const d = device.value
+  const q = qualityChoice.value
+  const plan = planFor(q ?? defaultQuality(d), d)
+  const [cached, setCached] = useState<boolean | null>(null)
+  useEffect(() => { probeDevice() }, [])
+  useEffect(() => {
+    let live = true
+    setCached(null)
+    planCached(plan).then((c) => { if (live) setCached(c) })
+    return () => { live = false }
+  }, [plan.repo, plan.dtype])
+  return { plan, cached }
+}
+
+/** "Faster" and "Better quality", each with its download size; the choice is kept. */
+export function QualityChoice({ cls }: { cls?: string }) {
+  const d = device.value
+  const { plan } = useSpeechPlan()
+  const options: [Quality, string][] = [['fast', 'מהיר'], ['better', 'איכות טובה יותר']]
+  const sizes = options.map(([q]) => planFor(q, d))
+  const [have, setHave] = useState<boolean[]>([false, false])
+  useEffect(() => {
+    let live = true
+    Promise.all(sizes.map(planCached)).then((h) => { if (live) setHave(h) })
+    return () => { live = false }
+  }, [sizes.map((s) => s.repo + s.dtype).join()])
+  return (
+    <div class={'chips speech-quality ' + (cls ?? '')} role="radiogroup" aria-label={t('איכות הזיהוי')}>
+      {options.map(([q, label], k) => (
+        <button role="radio" aria-checked={plan.quality === q} data-q={q} class={'chip' + (plan.quality === q ? ' on' : '')} onClick={() => setQuality(q)}>
+          {t(label)} · <span dir="ltr">{have[k] ? t('במכשיר') : `${mbOf(sizes[k])} MB`}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** What a job says, and how far (null: no percent exists for it). */
+export function speechLine(s: SpeechStatus): { text: string; progress: number | null } {
+  switch (s.stage) {
+    case 'audio': return { text: t('מכין את הקול…'), progress: null }
+    case 'download': return { text: t('מוריד את המודל…'), progress: s.progress }
+    case 'load': return { text: t('טוען את המודל למכשיר…'), progress: null }
+    case 'fallback': return { text: t('המעבד הגרפי לא הגיב. ממשיך על המעבד עם מודל קטן יותר…'), progress: null }
+    case 'recognize': return { text: t('מזהה דיבור…'), progress: s.progress }
+  }
+}
+
+/** Seconds since [key] last changed (a counter proves a phase without a percent is alive). */
+function useElapsed(key: string): number {
+  const [n, setN] = useState(0)
+  useEffect(() => {
+    const t0 = Date.now()
+    setN(0)
+    const id = setInterval(() => setN(Math.floor((Date.now() - t0) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [key])
+  return n
+}
+
+/** A job's progress: its phase, a percent or (when there is none) a moving bar and the seconds so far, and Cancel. */
+export function SpeechProgress({ status, onCancel }: { status: SpeechStatus; onCancel?: () => void }) {
+  const line = speechLine(status)
+  const secs = useElapsed(status.stage)
+  const pct = line.progress === null ? null : Math.floor(line.progress * 100)
+  return (
+    <div class="speech-progress" style="display:grid;gap:10px">
+      <div class="row">
+        <strong class="grow">{line.text}</strong>
+        <span class="muted small" dir="ltr">
+          {status.stage === 'download' && status.total ? `${(status.loaded / 1e6).toFixed(0)} / ${(status.total / 1e6).toFixed(0)} MB` : pct !== null ? `${pct}%` : secs > 2 ? `${secs}s` : ''}
+        </span>
+      </div>
+      <div class={'progress' + (line.progress === null ? ' indet' : '')}><div style={line.progress === null ? undefined : { width: `${Math.max(2, (line.progress ?? 0) * 100)}%` }} /></div>
+      {onCancel && <button class="btn tonal speech-cancel" onClick={onCancel}>{t('ביטול')}</button>}
+    </div>
+  )
+}
+
+/** The question before a template's subtitles download a model (shown over any screen). */
+export function SpeechAsk() {
+  const ask = speechAsk.value
+  const { plan } = useSpeechPlan()
+  useEffect(() => {
+    if (!ask) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') answerSpeechAsk(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [ask?.id])
+  if (!ask) return null
+  const d = device.value
+  return (
+    <div class="sheet-back speech-ask">
+      <div class="sheet" role="dialog" aria-modal="true" aria-label={t('מודל זיהוי דיבור')}>
+        <h3 class="sheet-title">{t('להוריד את מודל זיהוי הדיבור?')}</h3>
+        <div class="sheet-body">
+          <p style="margin:0">{t('כדי ליצור כתוביות צריך מודל זיהוי דיבור. הוא יורד פעם אחת (כ-%d MB) ונשמר בדפדפן. מומלץ להיות ב-Wi-Fi.', mbOf(plan))}</p>
+          <p class="small muted" style="margin:0">{d.weak ? t('בטלפון "מהיר" קטן יותר, חם פחות ומסיים מהר יותר.') : t('"איכות טובה יותר" מדויק יותר, אבל גדול ואיטי יותר.')}</p>
+          <QualityChoice />
+        </div>
+        <div class="actions">
+          <button class="btn primary speech-go" onClick={() => answerSpeechAsk(plan.quality)}>{t('הורד והמשך')}</button>
+          <button class="btn ghost speech-skip" onClick={() => answerSpeechAsk(null)}>{t('בלי כתוביות')}</button>
+        </div>
+      </div>
+    </div>
+  )
+}

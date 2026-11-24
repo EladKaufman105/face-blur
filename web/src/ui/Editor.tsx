@@ -24,6 +24,7 @@ import { createProject, saveProject, summarize, type ProjectPicture, type Projec
 import { reserveCueIds, wordsToCues } from '../lib/subtitles'
 import { speakerColor } from '../lib/speakers'
 import { reserveClipIds } from './EditorTabs'
+import { speechLine } from './SpeechUi'
 import { cleanupOn, type Cleanup } from '../lib/cleanup'
 import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
 import { Analyzing } from './Analyzing'
@@ -422,11 +423,18 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   // ---------------------------------------------------------------- a template's processing
 
   /** What the template is doing now (its step and how far), and what couldn't be done. */
-  const [tplRun, setTplRun] = useState<{ step: string | null; progress: number; notes: string[] } | null>(() => (tpl && hasProcessing(tpl) ? { step: null, progress: 0, notes: [] } : null))
+  const [tplRun, setTplRun] = useState<{ step: string | null; progress: number; indet?: boolean; notes: string[] } | null>(() => (tpl && hasProcessing(tpl) ? { step: null, progress: 0, notes: [] } : null))
   const [saveTpl, setSaveTpl] = useState(false)
+  const tplCtl = useRef<AbortController | null>(null)
+  /** Stops the template's processing now (its speech worker is ended with it). */
+  const cancelTpl = () => {
+    tplCtl.current?.abort()
+    setTplRun({ step: null, progress: 1, notes: [t('התבנית בוטלה')] })
+  }
   useEffect(() => {
     if (!tpl || !hasProcessing(tpl)) return
     const ctl = new AbortController()
+    tplCtl.current = ctl
     ;(async () => {
       const notes: string[] = []
       const run = (step: string | null, progress = 0) => setTplRun({ step, progress, notes: [...notes] })
@@ -434,7 +442,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       if (tpl.createSubs) {
         run(t('יוצר כתוביות'))
         try {
-          ws = await transcribe(file, tpl.language, (stage, p) => setTplRun({ step: stage === 'download' ? t('מוריד את המודל…') : t('מזהה דיבור…'), progress: p, notes: [...notes] }), ctl.signal)
+          ws = await transcribe(file, tpl.language, (st) => { const l = speechLine(st); setTplRun({ step: l.text, progress: l.progress ?? 0, indet: l.progress === null, notes: [...notes] }) }, ctl.signal)
           const cs = wordsToCues(ws, tpl.split.words, tpl.split.chars)
           reserveCueIds(cs)
           setWords(ws)
@@ -444,6 +452,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         } catch (e) {
           if (e instanceof Aborted) return
           notes.push((e as any)?.code === 'no-audio' ? t('לסרטון אין פס קול.') : t('הכתוביות לא נוצרו: %s', String((e as Error)?.message ?? e).slice(0, 160)))
+          // A stuck or failed recognition can be run again from the subtitles tab.
         }
         if (tpl.translate) notes.push(t('התרגום לא נתמך בעיבוד אוטומטי, והכתוביות נשארו בשפת הדיבור'))
       }
@@ -1100,7 +1109,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             {tplBusy && (
               <>
                 <div class="small muted tpl-step">{tplRun.step ?? (voiceBusy ? t('מעבד את הסאונד') : picBusy ? (picBusy.what === 'people' ? t('מזהה אנשים… %d%', Math.round(picBusy.progress * 100)) : t('מודד את תנועת המצלמה… %d%', Math.round(picBusy.progress * 100))) : '')}</div>
-                <div class="progress"><div style={{ width: `${Math.max(3, Math.round((tplRun.step !== null ? tplRun.progress : picBusy ? picBusy.progress : 0.5) * 100))}%` }} /></div>
+                <div class={'progress' + (tplRun.step !== null && tplRun.indet ? ' indet' : '')}><div style={tplRun.step !== null && tplRun.indet ? undefined : { width: `${Math.max(3, Math.round((tplRun.step !== null ? tplRun.progress : picBusy ? picBusy.progress : 0.5) * 100))}%` }} /></div>
+                {tplRun.step !== null && <button class="btn tonal tpl-cancel" onClick={cancelTpl}>{t('ביטול')}</button>}
               </>
             )}
             {tplRun.notes.map((n) => <p class="small tpl-note" style="margin:0;color:var(--primary)">{n}</p>)}

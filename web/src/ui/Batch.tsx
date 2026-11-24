@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { duration, lang, t } from '../i18n'
 import {
   cancelAll, checkCount, current, dismiss, doneCount, downloadAll, estimateText, failedCount, isDone, loadSpeeds, MAX_VIDEOS, needsCheck, progressOf, remainingMs, remainingText,
-  savedCount, skip, speechModelCached, startBatch, storageCheck, totalMs, version, videoDuration, type BatchItem,
+  savedCount, skip, startBatch, storageCheck, totalMs, version, videoDuration, type BatchItem,
 } from '../lib/batch'
 import { applyTemplate, currentSettings, type TemplateSettings } from '../lib/template'
 import { findTemplate, loadTemplates } from '../lib/templatestore'
@@ -13,6 +13,8 @@ import { TemplatePicker, templateLabel } from './TemplatePicker'
 import { useFrame } from './TemplatePreview'
 import { loadWatermark } from './EditorTabs'
 import { SwitchRow } from './EditorTabs'
+import { QualityChoice, useSpeechPlan } from './SpeechUi'
+import { mbOf } from '../lib/speech'
 import './templates-en'
 
 const thumbs = new WeakMap<File, Promise<string | null>>()
@@ -87,10 +89,9 @@ export function BatchSetup({ onBack, onStarted, initial }: { onBack: () => void;
   const [tplId, setTplId] = useState<string | null>(null)
   const [settings, setSettings] = useState<TemplateSettings>(baseline)
   const [auto, setAuto] = useState(true)
-  const [cached, setCached] = useState<boolean | null>(null)
   const [space, setSpace] = useState<{ need: number; free: number | null } | null>(null)
   const [note, setNote] = useState<string | null>(null)
-  useEffect(() => { speechModelCached().then(setCached) }, [])
+  const { plan: speechPlan, cached } = useSpeechPlan()
   useEffect(() => { storageCheck(files).then(setSpace) }, [files])
   useEffect(() => {
     let live = true
@@ -150,7 +151,12 @@ export function BatchSetup({ onBack, onStarted, initial }: { onBack: () => void;
           <div class="row"><span class="grow">{t('זמן משוער')}</span><strong class="batch-estimate">{estimateText(estimate)}</strong></div>
         )}
         {files.length > 0 && <p class="small muted" style="margin:0">{t('ההערכה משתפרת אחרי שהמכשיר הזה מעבד כמה סרטונים.')}</p>}
-        {settings.createSubs && cached === false && <p class="small batch-model" style="margin:0;color:var(--primary)">{t('כתוביות צריכות מודל זיהוי דיבור, שמורידים פעם אחת (%d MB).', 560)}</p>}
+        {settings.createSubs && cached === false && (
+          <>
+            <p class="small batch-model" style="margin:0;color:var(--primary)">{t('כתוביות צריכות מודל זיהוי דיבור, שמורידים פעם אחת (%d MB).', mbOf(speechPlan))}</p>
+            <QualityChoice />
+          </>
+        )}
         {tight && <p class="small batch-space" style="margin:0;color:#e5484d">{t('אין מספיק מקום בדפדפן לשמירת הפרויקטים (%s פנוי, צריך כ-%s). אפשר להסיר סרטונים או למחוק פרויקטים.', mb(space!.free!), mb(space!.need))}</p>}
         <p class="small muted" style="margin:0">{canKeepAwake() ? t('השאר את הלשונית פתוחה עד הסוף: העיבוד נעצר אם היא נסגרת. המסך יישאר דלוק.') : t('השאר את הלשונית ואת המסך פתוחים עד הסוף: העיבוד נעצר אם הם נסגרים.')}</p>
         <SwitchRow cls="batch-auto" title={t('שמור כל סרטון כשהוא מוכן')} text={t('אם הדפדפן חוסם הורדות אוטומטיות, אפשר לשמור מהרשימה בסוף.')} on={auto} onChange={setAuto} />

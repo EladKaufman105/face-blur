@@ -3,9 +3,9 @@
 // restored; a template copied, renamed and deleted; two videos processed as a batch with a
 // template (one after the other, each saved and kept as a project in one folder), the folder
 // renamed, opened and deleted.
-// The speech model (Whisper, 1.4 GB from Hugging Face) is not downloaded here: its requests are
-// blocked, so the subtitle step is asked for and then reported as not done (that is checked; the
-// subtitles themselves are tests/subs.cjs's).
+// The speech model (Whisper, from Hugging Face) is not downloaded here: its requests are
+// blocked, so the subtitle step is asked for (after the question about the download) and then
+// reported as not done (that is checked; the subtitles themselves are tests/subs.cjs's).
 // Run: node tests/templates.cjs <url> <video with sound> <video> <out dir>
 const { chromium } = require('playwright')
 const fs = require('fs')
@@ -80,6 +80,14 @@ const [, , url, video1, video2, out] = process.argv
     // The editor opens on the faces found, the template applied there: its design, and the subtitle step asked for.
     await p.click('.blur-faces')
     await p.waitForSelector('.editor .tabs, .no-faces', { timeout: 240000 })
+    // The model is not in the browser: the person is asked first (with its size), nothing downloads before the go-ahead.
+    await p.waitForSelector('.speech-ask', { timeout: 120000 })
+    const askText = await p.textContent('.speech-ask')
+    console.log('speech ask:', askText.replace(/\s+/g, ' ').slice(0, 160))
+    if (!/\d+ MB/.test(askText)) fail('the question does not say the size')
+    if (blocked !== 0 || workers.some((u) => u.includes('subs.worker'))) fail('the speech model started before the go-ahead')
+    await p.screenshot({ path: `${out}/2a_speech_ask.png` })
+    await p.click('.speech-go')
     await p.waitForFunction(() => !!document.querySelector('.tpl-note'), null, { timeout: 120000 })
     const asked = workers.filter((u) => u.includes('subs.worker')).length
     const note = await p.textContent('.tpl-note')
@@ -176,8 +184,12 @@ const [, , url, video1, video2, out] = process.argv
     if (!model) fail('no notice about the speech model')
     await p.screenshot({ path: `${out}/4_batch_setup.png` })
     const t0 = Date.now()
+    await p.evaluate(() => { window.__asks = 0; let open = false; new MutationObserver(() => { const now = !!document.querySelector('.speech-ask'); if (now && !open) window.__asks++; open = now }).observe(document.body, { childList: true, subtree: true }) })
     await p.click('.batch-start')
     await p.waitForSelector('.batch-item')
+    // Asked once for the whole batch (not per video).
+    await p.waitForSelector('.speech-ask', { timeout: 300000 })
+    await p.click('.speech-go')
     // The tab must stay open: leaving the page asks first, while it runs.
     const asks = await p.evaluate(() => { const e = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(e); return e.defaultPrevented })
     if (!asks) fail('leaving the page does not ask during a batch')
@@ -195,6 +207,8 @@ const [, , url, video1, video2, out] = process.argv
     // A step that did not work out is said on the video, not skipped.
     if (items.some((i) => i.notes.length === 0 || !i.notes[0].includes('שלב בתבנית לא הושלם'))) fail('failed subtitle step not reported')
     if (workers.filter((u) => u.includes('subs.worker')).length < 3) fail('the subtitle step was not asked for in the batch')
+    const asksSeen = await p.evaluate(() => window.__asks)
+    if (asksSeen !== 1) fail('the model question was asked ' + asksSeen + ' times in the batch')
     if ((await p.textContent('.batch-pct')) !== '100%') fail('overall percent')
     if (await p.evaluate(() => { const e = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(e); return e.defaultPrevented })) fail('still asks to stay when done')
     await p.screenshot({ path: `${out}/6_batch_done.png` })

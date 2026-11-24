@@ -25,6 +25,7 @@ import { loadTemplates } from './lib/templatestore'
 import { current as batchNow, running as batchRunning, startBatch, version as batchVersion, doneCount } from './lib/batch'
 import { videoSize as sizeOf } from './lib/templaterun'
 import './ui/templates-en'
+import { SpeechAsk } from './ui/SpeechUi'
 
 /** A tool from the home screen: a group of the editor, or straight to an MP3. */
 type Tool = EditorTab | 'mp3'
@@ -112,6 +113,7 @@ export function App() {
   return (
     <div class="app">
       <Header />
+      <SpeechAsk />
       {screen.name === 'home' && !job && <Home onPick={pick} onTool={pickTool} onProject={openProject} onBatch={() => { if (supported()) setScreen({ name: 'batchSetup' }) }} onQueue={() => setScreen({ name: 'batch' })} error={screen.error} />}
       {screen.name === 'batchSetup' && !job && <BatchSetup onBack={() => setScreen({ name: 'home' })} onStarted={() => setScreen({ name: 'batch' })} />}
       {screen.name === 'batch' && !job && <BatchQueue onHome={() => setScreen({ name: 'home' })} onCheck={(id) => { void openProject(id) }} />}

@@ -169,17 +169,6 @@ export function videoDuration(file: File): Promise<number> {
   })
 }
 
-/** Whether the speech model's files are already in the browser (so subtitles need no download). */
-export async function speechModelCached(): Promise<boolean> {
-  try {
-    if (!('caches' in window) || !(await caches.has('transformers-cache'))) return false
-    const c = await caches.open('transformers-cache')
-    return (await c.keys()).some((r) => r.url.includes('whisper-large-v3-turbo'))
-  } catch {
-    return false
-  }
-}
-
 /** Space the batch needs in the browser's storage (each video is kept as a project) with a margin, and what's free (null: unknown). */
 export async function storageCheck(files: File[]): Promise<{ need: number; free: number | null }> {
   const need = Math.round(files.reduce((s, f) => s + f.size, 0) * 1.3)
