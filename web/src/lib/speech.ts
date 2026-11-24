@@ -10,7 +10,7 @@ import type { Word } from './subtitles'
 
 /** What the person picks: "fast" (small, light on a phone) or "better" (bigger, slower, more exact). */
 export type Quality = 'fast' | 'better'
-export type Dtype = 'q4' | 'q4f16' | 'q8'
+export type Dtype = 'fp32' | 'fp16' | 'q4' | 'q4f16' | 'q8'
 type ModelKey = 'base' | 'small' | 'large'
 
 /** Hugging Face repos by onnx-community: Whisper with word timings (cross-attention alignment heads in their generation config). */
@@ -20,21 +20,30 @@ const MODELS: Record<ModelKey, { repo: string; label: string }> = {
   large: { repo: 'onnx-community/whisper-large-v3-turbo_timestamped', label: 'Whisper large-v3-turbo' },
 }
 
-/** [encoder, decoder] file sizes in bytes (as listed on the Hub), by dtype. The tokenizer and config files add a few MB. */
-const BYTES: Record<ModelKey, Partial<Record<Dtype, [number, number]>>> = {
-  base: { q4: [18771046, 123738327], q8: [23159167, 53712708] },
-  small: { q4: [66178491, 233421212], q8: [92240498, 156795750] },
-  large: { q4f16: [370035242, 193566135], q4: [425003939, 334207912] },
+/** File sizes in bytes (as listed on the Hub) of the encoder and the decoder, by dtype. The tokenizer and config files add a few MB. */
+const ENC_BYTES: Record<ModelKey, Partial<Record<Dtype, number>>> = {
+  base: { q4: 18771046, q8: 23159167, fp16: 41270731, fp32: 82451730 },
+  small: { q4: 66178491, q8: 92240498, fp16: 176483570 },
+  large: { q4f16: 370035242, q4: 425003939 },
+}
+const DEC_BYTES: Record<ModelKey, Partial<Record<Dtype, number>>> = {
+  base: { q4: 123738327, q8: 53712708, q4f16: 68541844 },
+  small: { q4: 233421212, q8: 156795750, q4f16: 145778021 },
+  large: { q4f16: 193566135, q4: 334207912 },
 }
 const EXTRA_BYTES = 4e6
-const SUFFIX: Record<Dtype, string> = { q4: '_q4', q4f16: '_q4f16', q8: '_quantized' }
+const SUFFIX: Record<Dtype, string> = { fp32: '', fp16: '_fp16', q4: '_q4', q4f16: '_q4f16', q8: '_quantized' }
 
 export interface SpeechPlan {
   quality: Quality
   model: ModelKey
   repo: string
   device: 'webgpu' | 'wasm'
+  /** The file kinds: the encoder's, and the decoder's. */
+  encDtype: Dtype
   dtype: Dtype
+  /** WebAssembly threads (1 when the page is not cross-origin isolated, or on the graphics processor). */
+  threads: number
   /** The two model files this plan downloads (relative to the repo). */
   files: [string, string]
   bytes: number
@@ -132,16 +141,45 @@ export const gpuFailed = signal(false)
 export function planFor(quality: Quality, d: Device, forceCpu = gpuFailed.value): SpeechPlan {
   let model = modelFor(quality, d)
   const wanted = param('backend')
+  // A phone runs on the CPU unless the address asks for its graphics processor (?backend=webgpu): that
+  // path is for trying it (its results can't be checked here), the CPU's is the one known to be right.
   let dev: 'webgpu' | 'wasm' = d.weak || !d.gpu || forceCpu ? 'wasm' : 'webgpu'
-  if (!forceCpu && (wanted === 'wasm' || wanted === 'webgpu')) dev = wanted
+  if (!forceCpu && (wanted === 'wasm' || (wanted === 'webgpu' && d.gpu))) dev = wanted
   if (dev === 'webgpu' && model === 'large' && !d.gpu?.big) dev = 'wasm'
   // The big model on the CPU takes minutes for each 30 seconds: "better" is the small one there.
   if (dev === 'wasm' && model === 'large' && !forcedModel()) model = 'small'
-  const dtype: Dtype = model === 'large' ? (dev === 'webgpu' && d.gpu?.f16 ? 'q4f16' : 'q4') : dev === 'webgpu' ? 'q4' : 'q8'
-  const [enc, dec] = BYTES[model][dtype]!
-  const s = SUFFIX[dtype]
-  return { quality, model, repo: MODELS[model].repo, device: dev, dtype, files: [`onnx/encoder_model${s}.onnx`, `onnx/decoder_model_merged${s}.onnx`], bytes: enc + dec + EXTRA_BYTES }
+  const f16 = dev === 'webgpu' && d.gpu?.f16 === true
+  let encDtype: Dtype, dtype: Dtype
+  if (model === 'large') encDtype = dtype = f16 ? 'q4f16' : 'q4'
+  else if (dev === 'wasm') encDtype = dtype = 'q8'
+  else if (d.weak) {
+    // A phone's graphics processor (only by asking for it, see below): the encoder in the half or full
+    // precision the big ones use, a 4-bit decoder.
+    encDtype = f16 ? 'fp16' : 'fp32'
+    dtype = f16 ? 'q4f16' : 'q4'
+  } else encDtype = dtype = 'q4'
+  // What isn't on the Hub for this model (the small one's full-precision encoder is 350 MB) goes back to the CPU.
+  if (ENC_BYTES[model][encDtype] === undefined || DEC_BYTES[model][dtype] === undefined) {
+    dev = 'wasm'
+    encDtype = dtype = 'q8'
+  }
+  const enc = ENC_BYTES[model][encDtype]!, dec = DEC_BYTES[model][dtype]!
+  return {
+    quality, model, repo: MODELS[model].repo, device: dev, encDtype, dtype, threads: dev === 'wasm' ? wasmThreads(d) : 1,
+    files: [`onnx/encoder_model${SUFFIX[encDtype]}.onnx`, `onnx/decoder_model_merged${SUFFIX[dtype]}.onnx`], bytes: enc + dec + EXTRA_BYTES,
+  }
 }
+
+/** How many threads WebAssembly gets: only a cross-origin isolated page has them (see lib/isolation.ts); a phone's big cores, not all. ?threads=N sets it (tests). */
+export function wasmThreads(d: Device): number {
+  const forced = Number(param('threads'))
+  if (forced >= 1) return Math.min(16, Math.floor(forced))
+  if (typeof crossOriginIsolated === 'undefined' || !crossOriginIsolated) return 1
+  return Math.max(1, Math.min(d.weak ? 4 : 6, navigator.hardwareConcurrency || 2))
+}
+
+/** What a download agreement is for: the model and its file kinds. */
+const planKey = (p: SpeechPlan) => `${p.repo}|${p.encDtype}|${p.dtype}`
 
 /** The plan the person's choice (or the device's default) gives. */
 export function currentPlan(d: Device = device.value): SpeechPlan {
@@ -187,7 +225,7 @@ export async function confirmSpeech(signal?: AbortSignal): Promise<SpeechPlan | 
   if (signal?.aborted) throw new SpeechAborted()
   const d = await probeDevice()
   let plan = currentPlan(d)
-  if (granted.has(plan.repo + plan.dtype) || (await planCached(plan))) return plan
+  if (granted.has(planKey(plan)) || (await planCached(plan))) return plan
   if (signal && declinedRuns.has(signal)) return null
   if (!asking) {
     const id = ++askId
@@ -215,13 +253,13 @@ export async function confirmSpeech(signal?: AbortSignal): Promise<SpeechPlan | 
     return null
   }
   plan = planFor(q, d)
-  granted.add(plan.repo + plan.dtype)
+  granted.add(planKey(plan))
   return plan
 }
 
 /** A button pressed on purpose ("create subtitles", or Start in the batch's setup, where the size is shown) is a go-ahead for that plan. */
 export function grantSpeech(plan: SpeechPlan) {
-  granted.add(plan.repo + plan.dtype)
+  granted.add(planKey(plan))
 }
 
 // ------------------------------------------------------------------ one job
@@ -244,8 +282,8 @@ export class SpeechError extends Error {
 /** Seconds without any sign of life, per phase, before the job is called stuck. */
 const LIMITS = { audio: 90, load: 150, download: 60 }
 /**
- * Recognition: the encoder is one call with no messages (one thread: the page isn't cross-origin
- * isolated), 30 s of sound at a time; the limit is for one such window on this plan.
+ * Recognition: the encoder is one call with no messages, 30 s of sound at a time; the limit is
+ * for one such window on this plan (it is the limit of one thread, the slowest case).
  */
 function recognizeLimit(plan: SpeechPlan): number {
   if (plan.device === 'webgpu') return 120
@@ -273,6 +311,38 @@ function spokenLanguage(language: string | null): string {
 }
 
 /**
+ * A worker that finished a job keeps its loaded model for a while: the next video (a batch, a second
+ * try, another language) starts at once instead of loading the model again. It holds memory only
+ * (no work), so a phone keeps it for less time; leaving the page, a failure or a cancel ends it.
+ */
+let warm: { worker: Worker; key: string; timer: number } | null = null
+const warmKey = (p: SpeechPlan) => `${planKey(p)}|${p.device}|${p.threads}`
+function dropWarm() {
+  if (!warm) return
+  window.clearTimeout(warm.timer)
+  warm.worker.terminate()
+  warm = null
+}
+function keepWarm(worker: Worker, plan: SpeechPlan) {
+  dropWarm()
+  warm = { worker, key: warmKey(plan), timer: window.setTimeout(dropWarm, (device.value.weak ? 60 : 240) * 1000) }
+}
+/** An export is about to start: a phone gives the memory back first (a computer keeps the model for the next video). */
+export function releaseSpeechForExport() {
+  if (device.value.weak) dropWarm()
+}
+// A page that goes to the background (a phone's app switch) gives the model back too.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && device.value.weak) dropWarm() })
+function takeWarm(plan: SpeechPlan): Worker | null {
+  if (!warm) return null
+  if (warm.key !== warmKey(plan)) { dropWarm(); return null }
+  window.clearTimeout(warm.timer)
+  const w = warm.worker
+  warm = null
+  return w
+}
+
+/**
  * Recognizes the speech in [file] as timed words. [onStatus]: where it is. Ends the worker when
  * done, failed or stopped ([signal]); a stuck phase fails with code 'stalled'. A graphics processor
  * that errors or hangs is left for the CPU once, but only for a CPU model that is already in the
@@ -296,18 +366,20 @@ export function transcribeFile(
     const onVisible = () => { if (document.visibilityState === 'visible') alive() }
     document.addEventListener('visibilitychange', onVisible)
     document.addEventListener('resume', alive)
-    const stop = () => {
+    const stop = (keep?: SpeechPlan) => {
       window.clearInterval(timer)
-      worker?.terminate()
+      if (worker && keep) keepWarm(worker, keep)
+      else worker?.terminate()
       worker = null
     }
-    const end = (fn: () => void) => {
+    const end = (fn: () => void, keep?: SpeechPlan) => {
       if (finished) return
       finished = true
       signal?.removeEventListener('abort', onAbort)
       document.removeEventListener('visibilitychange', onVisible)
       document.removeEventListener('resume', alive)
-      stop()
+      if (worker) { worker.onmessage = null; worker.onerror = null; worker.onmessageerror = null }
+      stop(keep)
       fn()
     }
     // Cancel: the worker is ended on the spot (its GPU and memory go with it).
@@ -315,14 +387,22 @@ export function transcribeFile(
     signal?.addEventListener('abort', onAbort)
 
     let usedFallback = false
+    let usedOneThread = false
     const attempt = (plan: SpeechPlan) => {
       stop()
       let phase: keyof typeof LIMITS | 'recognize' = 'audio'
       alive()
-      const w = new Worker(new URL('../workers/subs.worker.ts', import.meta.url), { type: 'module' })
+      const w = takeWarm(plan) ?? new Worker(new URL('../workers/subs.worker.ts', import.meta.url), { type: 'module' })
       worker = w
       const failOrFallback = (code: string, message: string) => {
         if (finished || worker !== w) return
+        // Threads that don't start (a phone that refuses the shared memory): once more with one, in a new worker.
+        if (plan.device === 'wasm' && plan.threads > 1 && !usedOneThread && code !== 'no-audio' && phase !== 'recognize') {
+          usedOneThread = true
+          stop()
+          attempt({ ...plan, threads: 1 })
+          return
+        }
         if (plan.device === 'webgpu' && !usedFallback && code !== 'no-audio' && (phase === 'load' || phase === 'recognize')) {
           usedFallback = true
           gpuFailed.value = true
@@ -365,13 +445,13 @@ export function transcribeFile(
             phase = m.total > 0 && m.loaded >= m.total ? 'load' : 'download'
             return onStatus({ stage: 'download', progress: m.progress, loaded: m.loaded, total: m.total })
           case 'transcribe': phase = 'recognize'; return onStatus({ stage: 'recognize', progress: m.progress })
-          case 'done': return end(() => resolve({ words: m.words, plan }))
+          case 'done': return end(() => resolve({ words: m.words, plan }), plan)
           case 'error': return failOrFallback(m.code, m.message)
         }
       }
       w.onerror = (e) => failOrFallback('failed', e.message || 'error')
       w.onmessageerror = () => failOrFallback('failed', 'error')
-      const req: SubsRequest = { file, language: lang, repo: plan.repo, device: plan.device, dtype: plan.dtype }
+      const req: SubsRequest = { file, language: lang, repo: plan.repo, device: plan.device, encDtype: plan.encDtype, dtype: plan.dtype, threads: plan.threads }
       w.postMessage(req)
     }
     attempt(opts.plan)

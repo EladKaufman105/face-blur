@@ -6,8 +6,19 @@
 import { ALL_FORMATS, AudioSampleSink, BlobSource, Input } from 'mediabunny'
 import { pipeline, env } from '@huggingface/transformers'
 import type { Word } from '../lib/subtitles'
+import type { Dtype } from '../lib/speech'
+// The runtime's own files, served by this site (not a CDN): the threads' workers start from the
+// same file, the page's isolation (COEP) has nothing to allow, and it works offline once cached.
+import ortWasmUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm?url'
+import ortMjsUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs?url'
 
-export type SubsRequest = { file: File; language: string | null; repo: string; device: 'webgpu' | 'wasm'; dtype: 'q4' | 'q4f16' | 'q8' }
+export type SubsRequest = {
+  file: File; language: string | null; repo: string; device: 'webgpu' | 'wasm'
+  /** The file kinds of the encoder and the decoder. */
+  encDtype: Dtype; dtype: Dtype
+  /** WebAssembly threads (the page asks for more than one only when it is cross-origin isolated). */
+  threads: number
+}
 export type SubsMessage =
   /** Still working (no news): resets the page's watchdog. */
   | { type: 'tick' }
@@ -104,21 +115,35 @@ function silent(x: Float32Array, from: number, to: number): boolean {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
-async function run({ file, language, repo, device, dtype }: SubsRequest) {
+/** The model kept from the last job (the page keeps this worker for a while): the next job with the same model skips loading it. */
+let loaded: { key: string; asr: any } | null = null
+
+async function run({ file, language, repo, device, encDtype, dtype, threads }: SubsRequest) {
   post({ type: 'audio' })
   const x = await audio16k(file)
   if (!x || x.length < RATE / 2) return post({ type: 'error', code: 'no-audio', message: 'no sound' })
 
   env.allowLocalModels = false
+  const wasm: any = (env.backends as any).onnx?.wasm
+  if (wasm) {
+    wasm.wasmPaths = { mjs: new URL(ortMjsUrl, self.location.href).href, wasm: new URL(ortWasmUrl, self.location.href).href }
+    // Threads are for the CPU's path, and only in an isolated page (else the runtime would say it can't).
+    wasm.numThreads = device === 'wasm' && self.crossOriginIsolated ? Math.max(1, threads) : 1
+    // A phone that can't start the threads says so early (the page then tries again with one).
+    wasm.initTimeout = 20000
+  }
+  const key = `${repo}|${device}|${encDtype}|${dtype}|${wasm?.numThreads}`
   // Phase: loading (or starting to download). The files' bytes come as 'download'; when they are all
   // here the sessions are created, which has no percent: 'load' says so.
   post({ type: 'load' })
   let loading = true
   let news = 0
   let lastPost = 0
-  const asr: any = await pipeline('automatic-speech-recognition', repo, {
+  let asr: any = loaded?.key === key ? loaded.asr : null
+  if (!asr && loaded) { const old = loaded.asr; loaded = null; await Promise.race([old.dispose?.(), sleep(1000)]).catch(() => {}) }
+  asr ??= await pipeline('automatic-speech-recognition', repo, {
     device,
-    dtype: { encoder_model: dtype, decoder_model_merged: dtype },
+    dtype: { encoder_model: encDtype, decoder_model_merged: dtype },
     progress_callback: (p: any) => {
       const now = Date.now()
       if (p.status === 'progress_total') {
@@ -210,10 +235,11 @@ async function run({ file, language, repo, device, dtype }: SubsRequest) {
       from = to
       progress(Math.min(1, from / x.length))
     }
-    // Free the processor and the memory before the page ends this worker.
-    await Promise.race([asr.dispose?.(), sleep(3000)]).catch(() => {})
-    post({ type: 'done', words, device: `${device}/${dtype}` })
+    // The page keeps this worker (and so the model) for a few minutes, or ends it: either way it frees the memory.
+    loaded = { key, asr }
+    post({ type: 'done', words, device: `${device}/${encDtype}+${dtype}/${wasm?.numThreads ?? 1}t` })
   } catch (e) {
+    loaded = null
     await Promise.race([asr.dispose?.(), sleep(1000)]).catch(() => {})
     throw e
   }

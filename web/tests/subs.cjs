@@ -34,7 +34,10 @@ const [, , url, video, out] = process.argv
       await p.waitForTimeout(5000)
     }
     const cues = await p.evaluate(() => [...document.querySelectorAll('.cue-text')].map((e) => e.value))
-    console.log('subtitles', ((Date.now() - t0) / 1000).toFixed(0), 's:', cues.length, 'cues')
+    const iso = await p.evaluate(() => ({ isolated: self.crossOriginIsolated, cores: navigator.hardwareConcurrency }))
+    console.log('subtitles', ((Date.now() - t0) / 1000).toFixed(0), 's:', cues.length, 'cues; isolated:', JSON.stringify(iso))
+    // The models come from Hugging Face (cross-origin): they must load with the page isolated, as on the site.
+    if (!/coi=0/.test(url) && !iso.isolated) throw new Error('the page is not cross-origin isolated')
     for (const c of cues) console.log('  ' + c)
     if (cues.length === 0) throw new Error('no subtitles')
     // Nothing cut off at the end: the clip's last word ("... do for your country") is there.

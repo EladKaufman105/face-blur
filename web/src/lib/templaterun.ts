@@ -7,7 +7,7 @@ import type { AnalyzeMessage, AnalyzeRequest } from '../workers/analyze.worker'
 import type { AudioMessage, AudioRequest } from '../workers/audio.worker'
 import type { FollowMessage, FollowRequest } from '../workers/follow.worker'
 import type { PictureMessage, PictureRequest } from '../workers/picture.worker'
-import { confirmSpeech, SpeechAborted, SpeechError, transcribeFile, type SpeechStatus } from './speech'
+import { confirmSpeech, releaseSpeechForExport, SpeechAborted, SpeechError, transcribeFile, type SpeechStatus } from './speech'
 import type { ExportMessage } from '../workers/export.worker'
 import { exportRequest, type ExportJob } from './exportjob'
 import { wordsToCues, type Cue, type Word } from './subtitles'
@@ -159,7 +159,7 @@ export function picturePass(file: File, times: Float64Array, people: boolean, on
 /** The export of [job]. [onFrame]: a small picture of a frame just made, now and then (the caller closes it). */
 export function exportVideo(job: ExportJob, onProgress: (p: number) => void, onFrame?: (b: ImageBitmap) => void, signal?: AbortSignal) {
   return run<{ blob: Blob; ms: number }, ExportMessage>(
-    () => new Worker(new URL('../workers/export.worker.ts', import.meta.url), { type: 'module' }),
+    () => { releaseSpeechForExport(); return new Worker(new URL('../workers/export.worker.ts', import.meta.url), { type: 'module' }) },
     (w) => {
       exportRequest(job).then(({ req, transfer }) => { if (!signal?.aborted) w.postMessage(req, transfer) }).catch((e) => w.onerror?.(new ErrorEvent('error', { message: String(e?.message ?? e) })))
     },
