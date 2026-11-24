@@ -218,10 +218,11 @@ object ProjectStore {
     /** Points the project at another copy of its video (the old one can't be read any more). */
     fun relink(context: Context, id: String, uri: Uri) {
         val d = dir(context, id)
+        // Outside the lock, so the lock never waits on a system call.
+        keepAccess(context, uri)
         val old = synchronized(jsonLock) {
             val json = readJson(d)
             val prev = Uri.parse(json.getString("uri"))
-            keepAccess(context, uri)
             json.put("uri", uri.toString())
             atomic(File(d, "project.json")) { it.writeText(json.toString()) }
             prev

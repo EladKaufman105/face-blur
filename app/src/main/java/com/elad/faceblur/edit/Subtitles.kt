@@ -29,7 +29,8 @@ object Subtitles {
     fun bleepedWordCount(cues: List<Cue>, bleeps: List<LongArray>): Int {
         if (bleeps.isEmpty()) return 0
         val map = TreeMap<Long, Long>()
-        for (b in bleeps) map[b[0]] = maxOf(b[1], map[b[0]] ?: b[1])
+        for (b in bleeps) if (b.size == 2 && b[1] > b[0]) map[b[0]] = maxOf(b[1], map[b[0]] ?: b[1])
+        if (map.isEmpty()) return 0
         val heard = HashSet<Long>()
         var n = 0
         for (c in cues) {

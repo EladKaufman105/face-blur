@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { t, duration } from '../i18n'
 import { deleteProject, listProjects, renameProject, type ProjectMeta } from '../lib/projects'
 import { BETA } from '../lib/channel'
@@ -45,6 +45,9 @@ function pills(p: ProjectMeta): Pill[] {
   return out
 }
 
+/** Element ids of a project's rename and delete controls (for focus and aria-controls). */
+const ids = (id: string) => ({ pencil: `project-rename-btn-${id}`, input: `project-rename-in-${id}`, trash: `project-delete-btn-${id}`, confirm: `project-confirm-${id}`, yes: `project-confirm-yes-${id}` })
+
 const size = (bytes: number) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1e6))} MB`)
 
 /**
@@ -58,6 +61,27 @@ export function ProjectsSection({ onOpen }: { onOpen: (id: string) => void }) {
   const [deleting, setDeleting] = useState<string | null>(null)
   const reload = () => listProjects().then(setList)
   useEffect(() => { reload() }, [])
+  // Renaming and the delete confirm, one open at a time; focus goes into what opens and back to
+  // its button when it closes (a second tap or Escape).
+  const focusNext = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    const id = focusNext.current
+    if (!id) return
+    focusNext.current = null
+    document.getElementById(id)?.focus()
+  })
+  const toggleRename = (p: ProjectMeta) => {
+    const open = renaming?.id !== p.id
+    setDeleting(null)
+    setRenaming(open ? { id: p.id, name: p.name } : null)
+    focusNext.current = open ? ids(p.id).input : ids(p.id).pencil
+  }
+  const toggleDelete = (p: ProjectMeta) => {
+    const open = deleting !== p.id
+    setRenaming(null)
+    setDeleting(open ? p.id : null)
+    focusNext.current = open ? ids(p.id).yes : ids(p.id).trash
+  }
   if (!list) return null
   const shown = all ? list : list.slice(0, 4)
   return (
@@ -82,27 +106,27 @@ export function ProjectsSection({ onOpen }: { onOpen: (id: string) => void }) {
                   <div class="grow project-info">
                     {renaming?.id === p.id ? (
                       <div class="row">
-                        <input class="text-in rename-in" style="margin:0;padding:8px 10px" dir="auto" value={renaming.name} aria-label={t('שם הפרויקט')} onInput={(e) => setRenaming({ id: p.id, name: (e.currentTarget as HTMLInputElement).value })} />
-                        <button class="btn tonal small-btn" disabled={!renaming.name.trim()} onClick={async () => { await renameProject(p.id, renaming.name.trim()); setRenaming(null); reload() }}>{t('שמור')}</button>
+                        <input id={ids(p.id).input} class="text-in rename-in" style="margin:0;padding:8px 10px" dir="auto" value={renaming.name} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); toggleRename(p) } }} aria-label={t('שם הפרויקט')} onInput={(e) => setRenaming({ id: p.id, name: (e.currentTarget as HTMLInputElement).value })} />
+                        <button class="btn tonal small-btn" disabled={!renaming.name.trim()} onClick={async () => { await renameProject(p.id, renaming.name.trim()); setRenaming(null); focusNext.current = ids(p.id).pencil; reload() }}>{t('שמור')}</button>
                       </div>
                     ) : (
                       <button class="project-name" onClick={() => onOpen(p.id)}><bdi>{p.name}</bdi></button>
                     )}
                     <div class="small muted"><bdi>{when(p.updated)}</bdi> · <bdi dir="ltr">{duration(p.duration)}</bdi></div>
                     {deleting === p.id && (
-                      <div class="confirm">
+                      <div id={ids(p.id).confirm} class="confirm" onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); toggleDelete(p) } }}>
                         <span class="small">{t('למחוק את הפרויקט? יפונו %s. הסרטון המקורי לא יימחק.', size(p.bytes))}</span>
                         <div class="row">
-                          <button class="btn small-btn danger-btn project-delete-yes" onClick={async () => { await deleteProject(p.id); setDeleting(null); reload() }}>{t('מחק')}</button>
-                          <button class="btn ghost small-btn" onClick={() => setDeleting(null)}>{t('ביטול')}</button>
+                          <button id={ids(p.id).yes} class="btn small-btn danger-btn project-delete-yes" onClick={async () => { await deleteProject(p.id); setDeleting(null); reload() }}>{t('מחק')}</button>
+                          <button class="btn ghost small-btn" onClick={() => toggleDelete(p)}>{t('ביטול')}</button>
                         </div>
                       </div>
                     )}
                   </div>
                   {/* Rename toward the name, delete at the card's outer edge; a second tap closes either. */}
                   <div class="project-acts">
-                    <button class="icon-btn project-rename" aria-label={`${t('שנה שם')}: ${p.name}`} title={t('שנה שם')} aria-pressed={renaming?.id === p.id} onClick={() => setRenaming(renaming?.id === p.id ? null : { id: p.id, name: p.name })}><EditIcon size={20} /></button>
-                    <button class="icon-btn danger project-delete" aria-label={`${t('מחק')}: ${p.name}`} title={t('מחק')} aria-expanded={deleting === p.id} onClick={() => setDeleting(deleting === p.id ? null : p.id)}><DeleteIcon size={20} /></button>
+                    <button id={ids(p.id).pencil} class="icon-btn project-rename" aria-label={`${t('שנה שם')}: ${p.name}`} title={t('שנה שם')} aria-pressed={renaming?.id === p.id} aria-controls={ids(p.id).input} onClick={() => toggleRename(p)}><EditIcon size={20} /></button>
+                    <button id={ids(p.id).trash} class="icon-btn danger project-delete" aria-label={`${t('מחק')}: ${p.name}`} title={t('מחק')} aria-expanded={deleting === p.id} aria-controls={ids(p.id).confirm} onClick={() => toggleDelete(p)}><DeleteIcon size={20} /></button>
                   </div>
                 </div>
                 {/* What it has, on a line of its own across the card. */}
