@@ -101,8 +101,7 @@ import androidx.compose.foundation.border
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.selection.selectable
@@ -452,11 +451,13 @@ fun EditorScreen(
                     // A tall video stays at the side at full height; the panel and the timeline
                     // share the rest of the width. With the panel closed, the timeline takes its
                     // place: every row of blurs in view, like an editor's timeline on a computer.
-                    val videoW = minOf((fullH - 56.dp) * aspect, (fullW - rail) * 0.5f)
+                    // The top bar and, while it shows, the safe zone's strip are above the video.
+                    val stripH = if (safeZoneShown) SafeZoneStripHeight else 0.dp
+                    val videoW = minOf((fullH - 56.dp - stripH) * aspect, (fullW - rail) * 0.5f)
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         topBar()
                         Row(Modifier.weight(1f)) {
-                            // The safe zone's strip goes above the video, in its column; the video keeps its width.
+                            // The safe zone's strip goes above the video, in its column (videoW allows for it).
                             Column(Modifier.width(videoW).fillMaxHeight()) {
                                 SafeZoneStrip(ctrl, safeZoneShown)
                                 videoArea(Modifier.weight(1f), export, subStyle, false)
@@ -502,8 +503,10 @@ fun EditorScreen(
     ) {
         topBar()
         val phoneShows: Any? = if (propsOpen && selecting) PROPS else ctrl.panel
-        // Not with a panel open: the video is small then, and the strip would take more of it.
-        SafeZoneStrip(ctrl, safeZoneShown && phoneShows == null)
+        // Not with a panel open (the video is small then, and the strip would take more of it), nor on a
+        // screen this short (a phone on its side): the overlay stays, with the platform chosen last.
+        val stripRoom = LocalConfiguration.current.screenHeightDp >= 480
+        SafeZoneStrip(ctrl, safeZoneShown && phoneShows == null && stripRoom)
         videoArea(Modifier.weight(1f), export, subStyle, phoneShows != null)
 
         // Video controls and timelines run left to right even in a Hebrew UI.
@@ -1782,19 +1785,22 @@ private fun PropActions(content: @Composable () -> Unit) {
 }
 
 
+/** Height of the safe zone's strip: the chooser's pill (a button and its padding) and a margin above and below. */
+private val SafeZoneStripHeight: Dp = MinTouch + 4.dp * 2 + Space.S * 2
+
 /**
  * The safe zone's own strip directly above the video (not over it: the whole frame stays in view),
- * holding the platform chooser. It folds open and shut like the app's other folds; the video takes
- * the height that is left, so it shrinks and grows with the fold instead of jumping.
+ * holding the platform chooser. It fades in and out; the layout changes once (the video takes the
+ * height that is left), it is not resized frame by frame.
  */
 @Composable
 private fun SafeZoneStrip(ctrl: EditorController, visible: Boolean) {
     AnimatedVisibility(
         visible = visible,
-        enter = expandVertically(tween(Motion.PANEL)) + fadeIn(tween(Motion.CONTENT)),
-        exit = shrinkVertically(tween(Motion.STATE)) + fadeOut(tween(Motion.CONTENT)),
+        enter = fadeIn(tween(Motion.STATE)),
+        exit = fadeOut(tween(Motion.CONTENT)),
     ) {
-        Box(Modifier.fillMaxWidth().padding(vertical = Space.S), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().height(SafeZoneStripHeight), contentAlignment = Alignment.Center) {
             PlatformChooser(ctrl.safePlatform, { ctrl.safePlatform = it })
         }
     }
@@ -1813,9 +1819,10 @@ private fun SafeZoneStrip(ctrl: EditorController, visible: Boolean) {
  * color (the alpha is the shape).
  */
 @Composable
-private fun PlatformChooser(selected: Platform, onSelect: (Platform) -> Unit, modifier: Modifier = Modifier) {
+private fun PlatformChooser(selected: Platform, onSelect: (Platform) -> Unit) {
     val gap = 6.dp
-    val step = with(LocalDensity.current) { (MinTouch + gap).toPx() }
+    // In whole pixels, as the row places its buttons (each size and the gap rounded on their own).
+    val step = with(LocalDensity.current) { MinTouch.roundToPx() + gap.roundToPx() }
     // Where the circle is, in buttons from the start; a short spring with a hint of overshoot.
     val at = animateFloatAsState(
         Platform.entries.indexOf(selected).toFloat(),
@@ -1830,7 +1837,7 @@ private fun PlatformChooser(selected: Platform, onSelect: (Platform) -> Unit, mo
     val iconOn = colors.surface
     val pill = RoundedCornerShape(50)
     Box(
-        modifier
+        Modifier
             .clip(pill)
             .background(colors.surfaceContainerHigh)
             .border(1.dp, colors.outlineVariant, pill)
