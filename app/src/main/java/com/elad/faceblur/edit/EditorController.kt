@@ -286,25 +286,50 @@ class EditorController(
     fun onFrameShown(f: Int) {
         if (!playing && !skips.pending) return
         val shown = f.coerceIn(0, frameCount - 1)
-        if (model.removed.isNotEmpty()) {
-            val endMs = CutSkip.skipEndMs(model.removed, msAtRelUs(timeOf(shown)))
-            if (endMs >= 0) {
-                val to = firstFrameFrom(cueRelUs(endMs))
-                when (val step = skips.onCutFrame(to, frameCount, android.os.SystemClock.uptimeMillis())) {
-                    is CutSkipStep.Seek -> { frame = step.frame; seeker(step.frame) }
-                    CutSkipStep.Finish -> {
-                        // Stops on the last frame that is kept (not inside the cut), where the time shown can move on from.
-                        frame = lastKeptFrame()
-                        pauser()
-                        seeker(frame)
-                    }
-                    CutSkipStep.None -> frame = if (to < frameCount) to else lastKeptFrame()
-                }
-                return
-            }
-            skips.cleared()
-        }
+        if (handleCut(shown)) return
+        if (model.removed.isNotEmpty()) skips.cleared()
         frame = shown
+    }
+
+    /**
+     * From the playback clock: only meets a cut (seeks past it, or stops at the end). It never sets the
+     * frame shown and never clears the guard, so it can't fight the frames the player reports.
+     */
+    fun checkCutAt(f: Int) {
+        if (!playing && !skips.pending) return
+        handleCut(f.coerceIn(0, frameCount - 1))
+    }
+
+    /** If frame [shown] is inside a cut, deals with it and returns true. */
+    private fun handleCut(shown: Int): Boolean {
+        if (model.removed.isEmpty()) return false
+        val endMs = CutSkip.skipEndMs(model.removed, msAtRelUs(timeOf(shown)))
+        if (endMs < 0) return false
+        var to = firstFrameFrom(cueRelUs(endMs))
+        // A gap too short to hold a kept frame doesn't count: go on to a frame that really is kept.
+        while (to < frameCount && frameCut(to)) to++
+        when (val step = skips.onCutFrame(to, frameCount, android.os.SystemClock.uptimeMillis())) {
+            is CutSkipStep.Seek -> { frame = step.frame; seeker(step.frame) }
+            CutSkipStep.Finish -> {
+                frame = lastKeptFrame()
+                pauser()
+                seeker(frame)
+            }
+            CutSkipStep.None -> Unit
+        }
+        return true
+    }
+
+    /** Ends a jump over a cut (the player was paused or sought by the user). */
+    fun cancelSkip() = skips.cleared()
+
+    /** The frame to play from: the current one, or the first kept one after the cut it is paused in. */
+    fun resumeFrame(): Int {
+        if (!frameCut(frame)) return frame
+        val endMs = CutSkip.skipEndMs(model.removed, msAtRelUs(timeOf(frame)))
+        var to = firstFrameFrom(cueRelUs(endMs))
+        while (to < frameCount && frameCut(to)) to++
+        return if (to >= frameCount) firstKeptFrame() else to
     }
     private val skips = CutSkipGuard()
 

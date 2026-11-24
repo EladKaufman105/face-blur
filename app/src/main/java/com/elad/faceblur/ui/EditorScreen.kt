@@ -679,9 +679,10 @@ private fun VideoWithOverlay(
             if (!player.isPlaying) continue
             // With cuts, on every frame of the screen: the clock meets a cut without waiting for its frames to be shown.
             // Without, only when the player stops reporting frames.
-            if (ctrl.model.removed.isNotEmpty() || SystemClock.uptimeMillis() - sync.lastFrameReportMs > 300) {
-                ctrl.onFrameShown(sync.frameAtPosition(player.currentPosition))
-            }
+            val at = sync.frameAtPosition(player.currentPosition)
+            // The clock only meets cuts; the frame shown comes from the player's frames (or from the clock when they stop).
+            if (ctrl.model.removed.isNotEmpty()) ctrl.checkCutAt(at)
+            if (SystemClock.uptimeMillis() - sync.lastFrameReportMs > 300) ctrl.onFrameShown(at)
         }
     }
     Box(Modifier.aspectRatio(aspect, matchHeightConstraintsFirst = true).onSizeChanged { onBoxWidth(it.width) }) {
@@ -718,13 +719,16 @@ private class PlayerSync(
         player.addListener(this)
         player.setVideoFrameMetadataListener(this)
         ctrl.seeker = { seekTo(it) }
-        ctrl.pauser = { player.pause() }
+        ctrl.pauser = { ctrl.cancelSkip(); player.pause() }
         ctrl.playToggler = {
-            if (player.isPlaying) {
+            if (player.playWhenReady && player.playbackState != Player.STATE_ENDED) {
+                ctrl.cancelSkip()
                 player.pause()
             } else {
-                // From the start (the first frame that isn't cut) when at the end, or after a stop at a cut that runs to the end.
+                // From the start (the first frame that isn't cut) when at the end, or after a stop at a cut that runs to the end;
+                // from the end of the cut when paused inside one.
                 if (player.playbackState == Player.STATE_ENDED || ctrl.frame >= ctrl.lastKeptFrame()) seekTo(ctrl.firstKeptFrame())
+                else ctrl.resumeFrame().let { if (it != ctrl.frame) seekTo(it) }
                 player.play()
             }
         }
@@ -799,6 +803,11 @@ private class PlayerSync(
             if (times[mid] <= t) lo = mid else hi = mid
         }
         return if (abs(times[hi] - t) < abs(times[lo] - t)) hi else lo
+    }
+
+    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+        // Pausing during a jump over a cut: isPlaying was already false, so only this tells.
+        ctrl.playing = player.isPlaying || (ctrl.skipPending && playWhenReady)
     }
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {

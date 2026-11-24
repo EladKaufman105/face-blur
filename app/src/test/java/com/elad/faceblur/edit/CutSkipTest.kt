@@ -80,4 +80,13 @@ class CutSkipTest {
         g.cleared()
         assertEquals(CutSkipStep.Finish, g.onCutFrame(100, 100, 5000))
     }
+
+    @Test
+    fun cancellingAJumpMeansNothingIsPendingAndALaterCutSeeksAgain() {
+        val g = CutSkipGuard()
+        assertEquals(CutSkipStep.Seek(50), g.onCutFrame(50, 100, 0))
+        g.cleared()
+        assertFalse(g.pending)
+        assertEquals(CutSkipStep.Seek(50), g.onCutFrame(50, 100, 10))
+    }
 }
