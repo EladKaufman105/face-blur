@@ -4,8 +4,8 @@ ONIT is an Android video editor with a browser version in `web/`. See README.md 
 
 ## Branches
 
-- `main`: releases only. A merge publishes a public GitHub release (APK) once the emulator e2e passes, and deploys the web app to GitHub Pages when web files changed.
-- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Beta" once the emulator e2e passes (merges that change only `web/` make no beta). It has its own app id and installs beside ONIT.
+- `main`: releases only. A merge publishes a public GitHub release (APK) once the emulator e2e passes. The web app from `main` is at https://eladkaufman105.github.io/face-blur/.
+- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Beta" once the emulator e2e passes (merges that change only `web/` make no beta). It has its own app id and installs beside ONIT. The web app from `develop` is the beta web app, at https://eladkaufman105.github.io/face-blur/beta/.
 - Never push, force-push, rebase or delete `main` or `develop`. Repository rulesets block this.
 - `labs` is retired. Do not push to it.
 
@@ -42,7 +42,7 @@ Every change reaches `develop` or `main` through a PR. No human approval is requ
 
 The full Android emulator e2e runs after merge (`build.yml`): the 20 instrumented tests in 3 parallel emulator shards, plus the release build's self-test. It gates the release or beta. The arm64 release APK is built in parallel and published only when every shard passed.
 
-On a PR, `pr.yml` builds Android (debug) only when Android files, `ci/` or workflows change, and builds and tests the web app (Chromium, 4 parallel shards) only when `web/`, the assets it copies from `app/src/main/assets` or workflows change. `android-build` and `web-build` always report, and pass when their work was skipped. A push to `develop` doesn't repeat the web tests; a push to `main` builds and deploys the web app without them. Results are workflow artifacts on the run.
+On a PR, `pr.yml` builds Android (debug) only when Android files, `ci/` or workflows change, and builds and tests the web app (Chromium, 4 parallel shards) only when `web/`, the assets it copies from `app/src/main/assets` or workflows change. `android-build` and `web-build` always report, and pass when their work was skipped. A push to `main` that changes web files (`web/`, the assets it copies from `app/src/main/assets`, `web.yml`, `web-tests.yml`, `ci/web-tests.sh`, `ci/publish-pages.sh`, `ci/pages-build.sh` or `.github/actions/`) deploys the release web app, and such a push to `develop` the beta web app, each without repeating the web tests and without touching the other. A manual run of `web.yml` runs every web test on the branch it's started from, then deploys the release (always built from `main`), the beta (always built from `develop`) or both; the weekly run only tests. Results are workflow artifacts on the run.
 
 ## Review loop
 
@@ -66,7 +66,7 @@ For every PR into `develop`, and for hotfix PRs into `main`:
 ```
 git fetch origin --tags
 BETA=$(git tag --list 'v*-beta.*' --sort=-v:refname | head -1)
-git diff --name-only "$BETA" origin/develop -- . ':!web' ':!.github/workflows/web.yml' ':!.github/workflows/web-tests.yml' ':!.github/actions' ':!ci/web-tests.sh' ':!.github/workflows/models.yml'
+git diff --name-only "$BETA" origin/develop -- . ':!web' ':!.github/workflows/web.yml' ':!.github/workflows/web-tests.yml' ':!.github/actions' ':!ci/web-tests.sh' ':!ci/publish-pages.sh' ':!ci/pages-build.sh' ':!.github/workflows/models.yml'
 ```
 
 It must print nothing. If it prints files, wait for the next beta and test it. If that beta never came because its e2e failed, fix that first.
@@ -91,6 +91,7 @@ Run the review loop, get a clear yes, then merge with a merge commit. Then open 
 - e2e fails after a merge into `develop`: no beta. Fix it with a normal PR.
 - e2e fails after a merge into `main`: no release. Fix it with a `hotfix/*` PR.
 - A release exists but has no APK: tell the owner. Re-running fails on purpose.
+- Until the first release brings the new `web.yml` to `main`, a hotfix into `main` that changes web files runs `main`'s old web workflow (GitHub Actions Pages deploy), which may fail or briefly replace the site: afterwards run "Web app" on `develop` with channel `both`.
 - Changed a PR's base branch? Push a new commit so the builds run again.
 - Never put `[skip ci]` in a commit message or merge title.
 
@@ -110,7 +111,8 @@ CI computes SemVer from git tags in `ci/version.sh`. Nobody types version number
 
 - Side workflow branches are not merged into `develop`. Pushing runs their workflow: `opencv-src` builds `opencv-min2`, `ml-src` builds `ml-models`, `sfx-src` builds `sfx-fs`, `bench` runs the ARM benchmark (log only).
 - Data branches are downloaded at runtime by the app or CI: `gpu-model`, `speaker-model`, `ml-models` (pinned commit), `opencv-min2` (SHA-pinned in `ci/fetch-opencv.sh`), `test-media`, `sfx-fs` (source of the bundled sounds, see `scripts/build_sfx.py`). Never delete, rebase or force-push them by hand. Installed apps would break.
-- CI no longer writes branches. Its outputs are workflow artifacts (e2e results and screenshots, web test results, build logs on failure; kept 14 days). The old output branches `ci-results`, `ci-results-develop`, `ci-results-labs`, `ci-log`, `model-check` are kept but no longer written. Also kept: `opencv-min`.
+- `gh-pages` is the web site (GitHub Pages serves it): the release web app at its root, the beta under `beta/`. Only CI writes it (`ci/publish-pages.sh`, one force-pushed commit), and it is the only branch CI writes. Never edit, push or delete it by hand.
+- Apart from `gh-pages`, CI no longer writes branches. Its outputs are workflow artifacts (e2e results and screenshots, web test results, build logs on failure; kept 14 days). The old output branches `ci-results`, `ci-results-develop`, `ci-results-labs`, `ci-log`, `model-check` are kept but no longer written. Also kept: `opencv-min`.
 
 ## Secrets
 

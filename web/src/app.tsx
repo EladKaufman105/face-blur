@@ -16,6 +16,8 @@ import { NoFaces, Ready } from './ui/Ready'
 import { loadProject, type ProjectPicture, type ProjectState } from './lib/projects'
 import { ProjectsSection } from './ui/Projects'
 import { installed, takeShared } from './lib/share'
+import { BETA } from './lib/channel'
+import { BetaLogo, BetaName, BetaNote } from './ui/Beta'
 
 /** A tool from the home screen: a group of the editor, or straight to an MP3. */
 type Tool = EditorTab | 'mp3'
@@ -180,11 +182,16 @@ function Header() {
   return (
     <header class="top">
       <div class="brand">
-        <img class="logo light" src="icons/logo-light.png" alt="" />
-        <img class="logo dark" src="icons/logo-dark.png" alt="" />
+        {BETA ? <BetaLogo /> : (
+          <>
+            <img class="logo light" src="icons/logo-light.png" alt="" />
+            <img class="logo dark" src="icons/logo-dark.png" alt="" />
+          </>
+        )}
         <div class="grow">
-          <h1>ONIT</h1>
+          <h1>ONIT{BETA && <BetaName />}</h1>
           <p class="tag"><LockIcon size={14} /> {t('הכל מעובד על המכשיר. שום דבר לא עולה לרשת.')}</p>
+          {BETA && <BetaNote />}
         </div>
       </div>
       <button class="icon-btn settings-btn" onClick={() => setOpen(true)} aria-label={t('הגדרות')} title={t('הגדרות')}><SettingsIcon /></button>

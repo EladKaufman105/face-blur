@@ -1,4 +1,5 @@
 import { signal } from '@preact/signals'
+import { storageKey } from './lib/channel'
 
 // Dark first, like a video editor (and like the app); light, or the system's choice, on request.
 export type Theme = 'dark' | 'light' | 'system'
@@ -23,8 +24,8 @@ function read<T extends string>(key: string, allowed: readonly T[], fallback: T)
   return fallback
 }
 
-export const theme = signal<Theme>(read('onit.theme', ['dark', 'light', 'system'] as const, 'dark'))
-export const palette = signal<Palette>(read('onit.palette', PALETTES.map(([p]) => p), 'onit'))
+export const theme = signal<Theme>(read(storageKey('theme'), ['dark', 'light', 'system'] as const, 'dark'))
+export const palette = signal<Palette>(read(storageKey('palette'), PALETTES.map(([p]) => p), 'onit'))
 
 export function applyTheme(v: Theme) {
   document.documentElement.dataset.theme = v
@@ -39,12 +40,12 @@ export function applyPalette(p: Palette) {
 
 export function setTheme(v: Theme) {
   theme.value = v
-  try { localStorage.setItem('onit.theme', v) } catch {}
+  try { localStorage.setItem(storageKey('theme'), v) } catch {}
   applyTheme(v)
 }
 
 export function setPalette(p: Palette) {
   palette.value = p
-  try { localStorage.setItem('onit.palette', p) } catch {}
+  try { localStorage.setItem(storageKey('palette'), p) } catch {}
   applyPalette(p)
 }

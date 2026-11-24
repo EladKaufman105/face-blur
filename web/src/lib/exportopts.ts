@@ -1,6 +1,7 @@
 // What the export makes, as the app's export options: a video (its frame, resolution, frame
 // rate, quality and codec) or only its sound as MP3, and the subtitles as an SRT file too.
 import { ASPECT_RATIO, cropFraction, type Aspect } from './camera'
+import { storageKey } from './channel'
 
 export type ExportFormat = 'mp4' | 'mp3'
 export type ExportQuality = 'original' | 'high' | 'saver'
@@ -26,7 +27,7 @@ export const DEFAULT_EXPORT: ExportOptions = { format: 'mp4', shortSide: 0, fps:
 
 export function loadExportOptions(): ExportOptions {
   try {
-    const o = JSON.parse(localStorage.getItem('onit.export') ?? 'null')
+    const o = JSON.parse(localStorage.getItem(storageKey('export')) ?? 'null')
     // The frame is the video's own choice: each video starts as shot.
     if (o && typeof o === 'object') return { ...DEFAULT_EXPORT, ...o, format: 'mp4', aspect: 'original' }
   } catch {}
@@ -34,7 +35,7 @@ export function loadExportOptions(): ExportOptions {
 }
 
 export function saveExportOptions(o: ExportOptions) {
-  try { localStorage.setItem('onit.export', JSON.stringify(o)) } catch {}
+  try { localStorage.setItem(storageKey('export'), JSON.stringify(o)) } catch {}
 }
 
 /** Smaller sizes offered for a source (the short side, below the source's). */

@@ -9,6 +9,7 @@ import type { VoiceFx } from './voice'
 import type { Range } from './cutmap'
 import type { Background, PeopleMasks } from './background'
 import type { Aspect } from './camera'
+import { storeName } from './channel'
 
 export type ProjectMeta = {
   id: string
@@ -58,18 +59,20 @@ export type ProjectPicture = { motion: Float32Array; cuts: number[]; masks: Peop
 
 export type LoadedProject = { meta: ProjectMeta; file: File; state: ProjectState | null; picture: ProjectPicture | null }
 
-const DB = 'onit-projects'
-const STORES = ['meta', 'state', 'picture', 'video'] as const
+const DB = storeName('projects')
+/** The database's version: what this build reads and writes. */
+export const DB_VERSION = 3
+export const STORES = ['meta', 'state', 'picture', 'video'] as const
 /** Fonts the user imported for subtitles (by name), kept apart from the projects. */
-const FONTS = 'fonts'
+export const FONTS = 'fonts'
 /** Sounds the user imported (by name: the file's bytes), as the app's "mine". */
-const SOUNDS = 'sounds'
+export const SOUNDS = 'sounds'
 type Store = (typeof STORES)[number]
 
 let db: Promise<IDBDatabase> | null = null
 function open(): Promise<IDBDatabase> {
   db ??= new Promise((resolve, reject) => {
-    const r = indexedDB.open(DB, 3)
+    const r = indexedDB.open(DB, DB_VERSION)
     r.onupgradeneeded = () => { for (const s of [...STORES, FONTS, SOUNDS]) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s) }
     r.onsuccess = () => resolve(r.result)
     r.onerror = () => { db = null; reject(r.error) }
@@ -139,6 +142,35 @@ export async function loadProject(id: string): Promise<LoadedProject | null> {
   const state = (await get<ProjectState>('state', id)) ?? null
   const picture = (await get<ProjectPicture>('picture', id)) ?? null
   return { meta, file, state, picture }
+}
+
+/** A project's every record, as kept (for a copy). */
+export type ProjectRecords = { meta: ProjectMeta; state: ProjectState | null; picture: ProjectPicture | null; video: File }
+
+/**
+ * A new project from another one's records (the beta's copy of a release project): a new id and
+ * [name], its own copy of every record, and the imported [fonts] and [sounds] it uses (kept unless
+ * ones of the same name are). All in one transaction: on a failure nothing is kept. Never replaces
+ * a project. Its id.
+ */
+export async function addProjectCopy(p: ProjectRecords, name: string, fonts: [string, ArrayBuffer][], sounds: [string, ArrayBuffer][]): Promise<string> {
+  navigator.storage?.persist?.().catch(() => {})
+  const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  const d = await open()
+  const t = d.transaction([...STORES, FONTS, SOUNDS], 'readwrite')
+  const addIfMissing = (store: string, key: string, data: ArrayBuffer) => {
+    const s = t.objectStore(store)
+    const r = s.getKey(key)
+    r.onsuccess = () => { if (r.result === undefined) s.add(data, key) }
+  }
+  for (const [n, data] of fonts) addIfMissing(FONTS, n, data)
+  for (const [n, data] of sounds) addIfMissing(SOUNDS, n, data)
+  t.objectStore('video').add(p.video, id)
+  if (p.state) t.objectStore('state').add(p.state, id)
+  if (p.picture) t.objectStore('picture').add(p.picture, id)
+  t.objectStore('meta').add({ ...p.meta, id, name, updated: Date.now() }, id)
+  await new Promise<void>((resolve, reject) => { t.oncomplete = () => resolve(); t.onerror = () => reject(t.error); t.onabort = () => reject(t.error ?? new Error('aborted')) })
+  return id
 }
 
 export async function renameProject(id: string, name: string) {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
+import { storageKey } from '../lib/channel'
 import { t, duration } from '../i18n'
 import { decodeSound, forgetSfx, MAX_IMPORT_SEC, previewSfx, sfxName, SFX_GROUPS, USER_SFX, type SfxClip } from '../lib/sfx'
 import { NO_WATERMARK, normalizeWatermark, POSITIONS, type Watermark, type WatermarkLook } from '../lib/watermark'
@@ -240,7 +241,7 @@ function TranslateCard({ cues, onCues, show, onShow }: { cues: Cue[]; onCues: (c
 
 export function loadWatermark(): Watermark {
   try {
-    const w = JSON.parse(localStorage.getItem('onit.watermark') ?? 'null')
+    const w = JSON.parse(localStorage.getItem(storageKey('watermark')) ?? 'null')
     if (w && typeof w.text === 'string') return { ...normalizeWatermark(w), image: null }
   } catch {}
   return NO_WATERMARK
@@ -255,7 +256,7 @@ export function WatermarkTab({ mark, onChange }: { mark: Watermark; onChange: (w
   const set = (patch: Partial<Watermark>) => {
     const w = { ...mark, ...patch }
     onChange(w)
-    try { localStorage.setItem('onit.watermark', JSON.stringify({ ...w, image: null })) } catch {}
+    try { localStorage.setItem(storageKey('watermark'), JSON.stringify({ ...w, image: null })) } catch {}
   }
   return (
     <section class="card">
@@ -393,7 +394,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
     onBleeped(new Set())
     onCues(wordsToCues(words, rule.words, rule.chars), true)
   }
-  const [lang, setLang] = useState<string | null>(() => { try { return localStorage.getItem('onit.subs.lang') } catch { return null } })
+  const [lang, setLang] = useState<string | null>(() => { try { return localStorage.getItem(storageKey('subs.lang')) } catch { return null } })
   const [run, setRun] = useState<SubsRun>(null)
   const worker = useRef<Worker | null>(null)
   const start = () => {
@@ -440,7 +441,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
             <p class="small muted" style="margin:0 0 10px">{t('שפת הדיבור')}</p>
             <div class="chips">
               {LANGUAGES.map(([code, label]) => (
-                <button class={'chip' + (lang === code ? ' on' : '')} onClick={() => { setLang(code); try { if (code) localStorage.setItem('onit.subs.lang', code); else localStorage.removeItem('onit.subs.lang') } catch {} }}>{t(label)}</button>
+                <button class={'chip' + (lang === code ? ' on' : '')} onClick={() => { setLang(code); try { if (code) localStorage.setItem(storageKey('subs.lang'), code); else localStorage.removeItem(storageKey('subs.lang')) } catch {} }}>{t(label)}</button>
               ))}
             </div>
             <button class="btn primary" style="width:100%;margin-top:14px" onClick={start}>{t('צור כתוביות')}</button>

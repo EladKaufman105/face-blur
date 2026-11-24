@@ -170,6 +170,20 @@ button { cursor: pointer; }
   font-variation-settings: 'ROND' 100, 'opsz' 32;
 }
 .top .tag { margin: 4px 0 0; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+/* The beta (ui/Beta.tsx): a BETA tag on the logo as on its icons, " Beta" after the name, its note. */
+.top .logo-wrap { position: relative; flex: none; display: flex; }
+.beta-tag {
+  position: absolute; right: -6px; bottom: -4px;
+  padding: 1px 5px; border-radius: 999px; border: 1px solid rgb(255 255 255 / 0.92);
+  background: #0B0D1C; color: #fff; font-size: 9px; line-height: 11px; font-weight: 600; letter-spacing: 0.6px; direction: ltr;
+}
+.top h1 .beta-name { font-size: 0.5em; font-weight: 500; letter-spacing: 0.04em; }
+.top .beta-note { margin: 2px 0 0; }
+.top .beta-note a { color: inherit; }
+.import-item { align-items: center; cursor: pointer; }
+.import-missing { opacity: 0.6; cursor: default; }
+.import-item input { width: 18px; height: 18px; flex: none; accent-color: var(--primary); }
+.import-item img, .import-item .ph { width: 72px; height: 40px; object-fit: cover; border-radius: var(--radius-control); background: var(--surface-3); flex: none; }
 .chip-btn {
   border: 1px solid var(--outline);
   background: transparent;

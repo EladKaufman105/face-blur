@@ -36,4 +36,11 @@ one by one; the look (blur, pixels, cover), strength and size match the app.
 Build: `cd web && npm ci && npm run build` (needs python3 with onnx, numpy and
 onnxconverter-common: the face model is made in float32 for the CPU and float16 for GPUs with
 half precision). Add `?debug=1` to the address to see where the time goes while it analyzes. The "Web app" workflow tests it in
-Chromium on a sample clip and, from `main`, publishes it to GitHub Pages.
+Chromium on a sample clip and publishes it to GitHub Pages (the `gh-pages` branch, written only
+by CI): the release, from `main`, at https://eladkaufman105.github.io/face-blur/, and "ONIT Beta",
+from `develop`, at https://eladkaufman105.github.io/face-blur/beta/, each updated on its own.
+Both keep their data in the same site storage in the browser: clearing the site's data deletes
+both versions' projects.
+`ONIT_CHANNEL=beta npm run build` builds the beta: its own name, icons
+(`web/scripts/make_beta_icons.py`) and installed app, and its own saved settings and projects
+(`web/src/lib/channel.ts`); it can copy projects from the release, never the other way.

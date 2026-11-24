@@ -1,11 +1,12 @@
 import { signal } from '@preact/signals'
+import { storageKey } from './lib/channel'
 
 // Hebrew first (the strings are the keys), English on request, as in the Android app.
 export type Lang = 'he' | 'en'
 
 function initial(): Lang {
   try {
-    const saved = localStorage.getItem('onit.lang')
+    const saved = localStorage.getItem(storageKey('lang'))
     if (saved === 'he' || saved === 'en') return saved
   } catch {}
   return navigator.language?.startsWith('he') || !navigator.language ? 'he' : 'en'
@@ -15,7 +16,7 @@ export const lang = signal<Lang>(initial())
 
 export function setLang(l: Lang) {
   lang.value = l
-  try { localStorage.setItem('onit.lang', l) } catch {}
+  try { localStorage.setItem(storageKey('lang'), l) } catch {}
   document.documentElement.lang = l
   document.documentElement.dir = l === 'he' ? 'rtl' : 'ltr'
 }
@@ -495,6 +496,11 @@ const EN: Record<string, string> = {
   'רקע שחור': 'Black box',
   'תיבה על המילה': 'Word box',
   'תיבה צבעונית': 'Color box',
+}
+
+/** More English (the beta's own strings, see ui/Beta.tsx). */
+export function addEnglish(more: Record<string, string>) {
+  Object.assign(EN, more)
 }
 
 export function t(he: string, ...args: (string | number)[]): string {

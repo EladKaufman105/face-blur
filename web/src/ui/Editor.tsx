@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { storageKey } from '../lib/channel'
 import { t, duration } from '../i18n'
 import { BlurRenderer, ellipseFor, type Ellipse } from '../lib/renderer'
 import { frameAt, loadLook, saveLook, trackBox, type Analysis, type BlurMode, type Look, type Track } from '../lib/types'
@@ -144,7 +145,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [sfxLength, setSfxLength] = useState<Map<string, number>>(new Map())
   const [subStyle, setSubStyle] = useState<SubStyle>(() => {
     if (saved) return normalizeStyle(saved.subStyle)
-    try { return normalizeStyle(JSON.parse(localStorage.getItem('onit.substyle') ?? 'null')) } catch { return normalizeStyle(null) }
+    try { return normalizeStyle(JSON.parse(localStorage.getItem(storageKey('substyle')) ?? 'null')) } catch { return normalizeStyle(null) }
   })
   const [sfx, setSfx] = useState<SfxClip[]>(saved?.sfx ?? [])
   const [mark, setMark] = useState<Watermark>(() => (saved?.mark ? normalizeWatermark(saved.mark) : loadWatermark()))
@@ -453,7 +454,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   }, [notice])
 
   useEffect(() => {
-    try { localStorage.setItem('onit.substyle', JSON.stringify(subStyle)) } catch {}
+    try { localStorage.setItem(storageKey('substyle'), JSON.stringify(subStyle)) } catch {}
   }, [subStyle])
 
   // The watermark's font, loaded for the preview.

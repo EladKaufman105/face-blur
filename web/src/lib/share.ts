@@ -1,9 +1,10 @@
 // A video shared to the installed app (the service worker keeps it for the page, see public/sw.js).
+import { storeName } from './channel'
 
 /** The video shared, once (it's removed as it's taken), or null. */
 export async function takeShared(): Promise<File | null> {
   try {
-    const cache = await caches.open('onit-share')
+    const cache = await caches.open(storeName('share'))
     const r = await cache.match('shared-video')
     if (!r) return null
     await cache.delete('shared-video')
