@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
@@ -212,6 +213,10 @@ fun GradientButton(
     height: Dp = 56.dp,
     colors: List<Color> = listOf(Brand.Coral, Color(0xFFFF7A59)),
     enabled: Boolean = true,
+    /** The room on each side of the label (a crowded bar gives less). */
+    sidePadding: Dp = Space.XL,
+    /** Only the icon (the label becomes its description), for a bar with no room for the word. */
+    iconOnly: Boolean = false,
 ) {
     val source = remember { MutableInteractionSource() }
     Surface(
@@ -227,12 +232,17 @@ fun GradientButton(
             Modifier.background(Brush.horizontalGradient(if (enabled) colors else colors.map { it.copy(alpha = 0.35f) })),
             contentAlignment = Alignment.Center,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(horizontal = Space.XL)) {
-                if (icon != null) {
-                    Icon(icon, null, tint = Brand.Ink, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(Space.S))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(horizontal = sidePadding)) {
+                if (icon != null && iconOnly) {
+                    Icon(icon, text, tint = Brand.Ink, modifier = Modifier.size(20.dp))
+                } else {
+                    if (icon != null) {
+                        Icon(icon, null, tint = Brand.Ink, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(Space.S))
+                    }
+                    // One line always: a label with no room ends in "…" instead of breaking in two.
+                    Text(text, style = MaterialTheme.typography.titleMedium, color = Brand.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Text(text, style = MaterialTheme.typography.titleMedium, color = Brand.Ink)
             }
         }
     }

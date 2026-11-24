@@ -247,7 +247,7 @@ class EditorScreenTest {
         Thread.sleep(600)
 
         // Export sheet, then the whole editor in English.
-        rule.onNodeWithText("ייצוא").performClick()
+        rule.onNodeWithTag(Tags.EXPORT).performClick()
         rule.waitForIdle()
         val opened = runCatching { rule.waitUntil(5000) { rule.onAllNodes(isRoot()).fetchSemanticsNodes().size > 1 } }.isSuccess
         note("export sheet opened: $opened")
