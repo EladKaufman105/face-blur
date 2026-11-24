@@ -47,7 +47,15 @@ const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים 
 
     // ---- the look cards: drawn, in a row that scrolls, many of them
     await p.waitForSelector('.preset-row .chip.preset canvas')
-    await p.waitForTimeout(1500)
+    if (await p.evaluate(() => scrollY) !== 0) fail('the page jumped when the row of looks showed')
+    // The cards are drawn as they come near the screen: go along the row, as a finger does.
+    await p.evaluate(async () => {
+      const r = document.querySelector('.preset-row')
+      const dir = getComputedStyle(r).direction === 'rtl' ? -1 : 1
+      for (let x = 0; x <= r.scrollWidth + 300; x += 250) { r.scrollLeft = dir * x; await new Promise((ok) => setTimeout(ok, 120)) }
+      r.scrollLeft = 0
+    })
+    await p.waitForTimeout(1200)
     const cards = await p.evaluate(() => [...document.querySelectorAll('.preset-row .chip.preset')].map((c) => {
       const k = c.querySelector('canvas')
       const d = k.getContext('2d').getImageData(0, 0, k.width, k.height).data
@@ -88,6 +96,8 @@ const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים 
 
     // ---- editing where it is: tap a subtitle, its actions show on it alone
     if (await p.$('.cue-split')) fail('actions shown before a subtitle is tapped')
+    await seek(3)
+    const before = await frame()
     await p.click('.cue-list .cue-text >> nth=1')
     await p.waitForSelector('.cue-split')
     if ((await p.$$('.cue-split')).length !== 1) fail('actions on more than the tapped subtitle')
@@ -95,8 +105,15 @@ const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים 
     const t1 = await p.evaluate(() => document.querySelector('video').currentTime)
     if (t1 < 2.5 || t1 > 5) fail('tapping a subtitle did not bring the video to it: ' + t1)
     await seek(3)
-    const edited = await frame()
-    if (edited === white) { /* the same moment as before was not measured: compare with another look instead */ }
+    if ((await frame()) === before) fail('the edited text is not what the video shows')
+    // The subtitle being edited is above the export bar (the page leaves room for it).
+    await p.waitForTimeout(900)
+    const room = await p.evaluate(() => {
+      const c = document.querySelector('.clip.open').getBoundingClientRect()
+      const e = document.querySelector('.export-bar').getBoundingClientRect()
+      return { bottom: c.bottom, barTop: e.top }
+    })
+    if (room.bottom > room.barTop + 1) fail('the edited subtitle is under the export bar: ' + JSON.stringify(room))
     await p.screenshot({ path: `${out}/4_edit.png` })
 
     // ---- the rest is folded, and opens; fine-tuning is folded too

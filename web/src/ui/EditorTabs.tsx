@@ -338,6 +338,15 @@ export function WatermarkTab({ mark, onChange, template }: { mark: Watermark; on
 }
 
 
+const FIELD_SIZING = typeof CSS !== 'undefined' && CSS.supports?.('field-sizing', 'content')
+/** A subtitle's field shows all its text (CSS does it where it can; elsewhere its height follows the text). */
+function fitText(el: HTMLTextAreaElement | null) {
+  if (!el || FIELD_SIZING || el.dataset.fit === el.value) return
+  el.dataset.fit = el.value
+  el.style.height = 'auto'
+  el.style.height = el.scrollHeight + 2 + 'px'
+}
+
 type SubsRun = SpeechStatus | { stage: 'error'; message: string } | null
 
 /** What the model costs: its size the first time (before anything downloads), or that it is already here. */
@@ -352,9 +361,11 @@ function SpeechNote() {
 }
 
 /** Subtitles: made on the device from the speech, then edited, styled and saved as SRT too. */
-export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
+export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
   /** [step]: a change of its own for undo (not merged with the typing around it). */
-  file: File; cues: Cue[]; onCues: (c: Cue[], step?: boolean) => void; words: Word[]; onWords: (w: Word[]) => void
+  file: File; cues: Cue[]; onCues: (c: Cue[], step?: boolean) => void; words: Word[]
+  /** The subtitles, their words and the bleeped words replaced together, as one undo step. */
+  onReplace: (c: Cue[], w: Word[], b: Set<number>) => void
   bleeped: Set<number>; onBleeped: (b: Set<number>) => void; tone: boolean; onTone: (t: boolean) => void
   style: SubStyle; onStyle: (s: SubStyle) => void; time: number; onSeek: (t: number) => void
 }) {
@@ -407,8 +418,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
   const [split, setSplit] = useState<{ words: number; chars: number }>({ words: 0, chars: 0 })
   const regroup = (rule: { words: number; chars: number }) => {
     setSplit(rule)
-    onBleeped(new Set())
-    onCues(wordsToCues(words, rule.words, rule.chars), true)
+    onReplace(wordsToCues(words, rule.words, rule.chars), words, new Set())
   }
   const [lang, setLang] = useState<string | null>(() => { try { return localStorage.getItem(storageKey('subs.lang')) } catch { return null } })
   const [run, setRun] = useState<SubsRun>(null)
@@ -417,6 +427,8 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
   useEffect(() => () => ctl.current?.abort(), [])
   const start = async () => {
     ctl.current?.abort()
+    setImportErr(null)
+    setPendingImport(null)
     const c = new AbortController()
     ctl.current = c
     setRun({ stage: 'audio' })
@@ -427,10 +439,8 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
       grantSpeech(plan)
       const r = await transcribeFile(file, lang, { plan, onStatus: (s) => { if (ctl.current === c) setRun(s) }, signal: c.signal })
       if (ctl.current !== c) return
-      onWords(r.words)
-      onBleeped(new Set())
       const made = wordsToCues(r.words)
-      onCues(made)
+      onReplace(made, r.words, new Set())
       if (made.length) onSeek(Math.min(...made.map((c) => c.start)) + 0.01)
       setRun(null)
     } catch (e) {
@@ -452,18 +462,48 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
   const busy = run !== null && run.stage !== 'error'
   // The subtitle being edited (its actions show; the video shows it too).
   const [openId, setOpenId] = useState<number | null>(null)
-  const importSrt = (
-    <label class="btn tonal srt-import">
-      {t('ייבוא קובץ SRT')}
-      <input type="file" accept=".srt,text/plain,application/x-subrip" hidden onChange={async (e) => {
-        const f = (e.currentTarget as HTMLInputElement).files?.[0]
-        ;(e.currentTarget as HTMLInputElement).value = ''
-        if (!f) return
-        const list = parseSrt(await f.text())
-        if (list.length) { onWords([]); onBleeped(new Set()); onCues(list, true); onSeek(Math.min(...list.map((c) => c.start)) + 0.01) }
-        else setRun({ stage: 'error', message: t('לא נמצאו כתוביות בקובץ') })
-      }} />
-    </label>
+  // An SRT replaces the subtitles: with some there (or bleeped words, which go with them) it asks first.
+  const [pendingImport, setPendingImport] = useState<Cue[] | null>(null)
+  const [importErr, setImportErr] = useState<string | null>(null)
+  const applyImport = (list: Cue[]) => {
+    setPendingImport(null)
+    setOpenId(null)
+    setBleepMode(false)
+    onReplace(list, [], new Set())
+    onSeek(Math.min(...list.map((c) => c.start)) + 0.01)
+  }
+  const importSrt = busy ? null : (
+    <>
+      <label class="btn tonal srt-import">
+        {t('ייבוא קובץ SRT')}
+        <input type="file" accept=".srt,text/plain,application/x-subrip" hidden onChange={async (e) => {
+          const f = (e.currentTarget as HTMLInputElement).files?.[0]
+          ;(e.currentTarget as HTMLInputElement).value = ''
+          if (!f) return
+          setImportErr(null)
+          setPendingImport(null)
+          const list = parseSrt(await f.text())
+          if (!list.length) { setImportErr(t('לא נמצאו כתוביות בקובץ')); return }
+          if (cues.length > 0 || bleeped.size > 0) setPendingImport(list)
+          else applyImport(list)
+        }} />
+      </label>
+      {importErr && <p class="small srt-error" role="alert" style="margin:0;color:var(--primary)">{importErr}</p>}
+      {pendingImport && (
+        <div class="confirm srt-confirm" role="alertdialog" aria-label={t('להחליף את הכתוביות?')}>
+          <strong class="small">{t('להחליף את הכתוביות?')}</strong>
+          <span class="small">
+            {bleeped.size > 0
+              ? t('הכתוביות הקיימות יוחלפו בקובץ, והצפצופים (%d) יוסרו. אפשר לבטל את הפעולה.', bleeped.size)
+              : t('הכתוביות הקיימות יוחלפו בקובץ. אפשר לבטל את הפעולה.')}
+          </span>
+          <div class="row">
+            <button class="btn small-btn danger-btn srt-confirm-yes" onClick={() => applyImport(pendingImport)}>{t('החלף')}</button>
+            <button class="btn ghost small-btn srt-confirm-no" onClick={() => setPendingImport(null)}>{t('השאר את הקיימות')}</button>
+          </div>
+        </div>
+      )}
+    </>
   )
   return (
     <>
@@ -494,6 +534,22 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
       {cues.length > 0 && busy && run && <section class="card"><SpeechProgress status={run} onCancel={cancel} /></section>}
       {/* The looks, with a sample of each, show at once (also before the subtitles are made). */}
       <SubStyleCard file={file} style={style} onStyle={onStyle} />
+      {cues.length > 0 && words.length > 0 && (
+                <section class="card bleep">
+                  <h3 class="section-title">{t('צפצוף מילים')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{bleeped.size === 1 ? t('מילה אחת') : bleeped.size > 1 ? t('%d מילים', bleeped.size) : ''}</span></h3>
+                  <p class="small muted" style="margin:0 0 10px">{t('בחר מילים בטקסט, והן יוחלפו בצפצוף או בשקט.')}</p>
+                  <div class="actions">
+                    <button class={'btn ' + (bleepMode ? 'primary' : 'tonal')} onClick={() => setBleepMode(!bleepMode)}>{bleepMode ? t('סיום') : t('בחר מילים')}</button>
+                    {bleeped.size > 0 && <button class="btn ghost" onClick={() => onBleeped(new Set())}>{t('נקה')}</button>}
+                  </div>
+                  <h4 class="caption">{t('במקום המילה')}</h4>
+                  <div class="seg" style="grid-template-columns:1fr 1fr">
+                    <button class={tone ? 'on' : ''} onClick={() => onTone(true)}>{t('צפצוף')}</button>
+                    <button class={!tone ? 'on' : ''} onClick={() => onTone(false)}>{t('שקט')}</button>
+                  </div>
+                  <SwitchRow cls="mask-subs" title={t('הסתר אותן גם בכתוביות')} text="****" on={style.maskBleeped !== false} onChange={(on) => onStyle({ ...style, maskBleeped: on })} />
+                </section>
+              )}
       {cues.length > 0 && (
         <section class="card cue-list">
           <h3 class="section-title">{t('הטקסט')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{cues.length}</span></h3>
@@ -527,14 +583,20 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
                         dir="auto"
                         rows={isOpen ? 2 : 1}
                         value={c.text}
-                        onFocus={() => { if (openId !== c.id) { setOpenId(c.id); if (!(time >= c.start && time < c.end)) onSeek(c.start + 0.01) } }}
-                        onInput={(e) => { const el = e.currentTarget as HTMLTextAreaElement; caret.current.set(c.id, el.selectionStart); edit(c.id, { text: el.value }) }}
+                        onFocus={(e) => {
+                          const el = e.currentTarget as HTMLTextAreaElement
+                          if (openId !== c.id) { setOpenId(c.id); if (!(time >= c.start && time < c.end)) onSeek(c.start + 0.01) }
+                          // Room above the export bar and the keyboard: the subtitle in the middle of what shows.
+                          setTimeout(() => el.closest('.clip')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)
+                        }}
+                        ref={fitText}
+                        onInput={(e) => { const el = e.currentTarget as HTMLTextAreaElement; caret.current.set(c.id, el.selectionStart); fitText(el); edit(c.id, { text: el.value }) }}
                         onSelect={(e) => caret.current.set(c.id, (e.currentTarget as HTMLTextAreaElement).selectionStart)}
                         onClick={(e) => caret.current.set(c.id, (e.currentTarget as HTMLTextAreaElement).selectionStart)}
                         onKeyUp={(e) => caret.current.set(c.id, (e.currentTarget as HTMLTextAreaElement).selectionStart)}
                       />
                       {c.tr !== undefined && (
-                        <textarea class="cue-text cue-tr" dir="auto" rows={isOpen ? 2 : 1} aria-label={t('תרגום')} placeholder={t('תרגום')} value={c.tr} onFocus={() => setOpenId(c.id)} onInput={(e) => edit(c.id, { tr: (e.currentTarget as HTMLTextAreaElement).value })} />
+                        <textarea class="cue-text cue-tr" dir="auto" rows={isOpen ? 2 : 1} aria-label={t('תרגום')} placeholder={t('תרגום')} value={c.tr} ref={fitText} onFocus={() => setOpenId(c.id)} onInput={(e) => { fitText(e.currentTarget as HTMLTextAreaElement); edit(c.id, { tr: (e.currentTarget as HTMLTextAreaElement).value }) }} />
                       )}
                     </div>
                   )}
@@ -556,7 +618,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
       <details class="card subs-more">
         <summary>{t('עוד אפשרויות')}</summary>
         <div class="subs-more-body">
-          {cues.length === 0 && (
+          {cues.length === 0 && !busy && (
             <>
               <p class="small muted" style="margin:0">{t('איכות הזיהוי')}</p>
               <QualityChoice />
@@ -600,23 +662,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
               )}
               <TranslateCard cues={cues} onCues={onCues} show={style.show ?? 'src'} onShow={(v) => set({ show: v })} />
               <SpeakersCard file={file} cues={cues} onCues={onCues} color={style.color} chosen={style.speakerColors} />
-              {words.length > 0 && (
-                <section class="card bleep">
-                  <h3 class="section-title">{t('צפצוף מילים')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{bleeped.size === 1 ? t('מילה אחת') : bleeped.size > 1 ? t('%d מילים', bleeped.size) : ''}</span></h3>
-                  <p class="small muted" style="margin:0 0 10px">{t('בחר מילים בטקסט, והן יוחלפו בצפצוף או בשקט.')}</p>
-                  <div class="actions">
-                    <button class={'btn ' + (bleepMode ? 'primary' : 'tonal')} onClick={() => setBleepMode(!bleepMode)}>{bleepMode ? t('סיום') : t('בחר מילים')}</button>
-                    {bleeped.size > 0 && <button class="btn ghost" onClick={() => onBleeped(new Set())}>{t('נקה')}</button>}
-                  </div>
-                  <h4 class="caption">{t('במקום המילה')}</h4>
-                  <div class="seg" style="grid-template-columns:1fr 1fr">
-                    <button class={tone ? 'on' : ''} onClick={() => onTone(true)}>{t('צפצוף')}</button>
-                    <button class={!tone ? 'on' : ''} onClick={() => onTone(false)}>{t('שקט')}</button>
-                  </div>
-                  <SwitchRow cls="mask-subs" title={t('הסתר אותן גם בכתוביות')} text="****" on={style.maskBleeped !== false} onChange={(on) => onStyle({ ...style, maskBleeped: on })} />
-                </section>
-              )}
-              <button class="btn ghost" onClick={() => { onCues([]); onWords([]); onBleeped(new Set()); setOpenId(null) }}>{t('מחק כתוביות')}</button>
+              <button class="btn ghost" onClick={() => { onReplace([], [], new Set()); setOpenId(null); setBleepMode(false); setPendingImport(null) }}>{t('מחק כתוביות')}</button>
             </>
           )}
         </div>

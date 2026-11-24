@@ -1,6 +1,7 @@
 // The ready-made subtitle looks as a row of cards (as the app's style panel): each card is a
 // small picture of a sample line drawn with the real subtitle renderer, the chosen one outlined.
-import { useEffect, useRef } from 'preact/hooks'
+import { memo } from 'preact/compat'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { lang, t } from '../i18n'
 import { drawCue } from '../lib/subrender'
 import { DEFAULT_SUB_STYLE, loadSubFont, SUB_PRESETS, type SubStyle } from '../lib/substyle'
@@ -16,16 +17,25 @@ export function sampleText(): string {
 /** Whether [style] is [preset]'s look (what a card sets; the shown language and the imported font are not part of it). */
 export function samePreset(style: SubStyle, preset: SubStyle): boolean {
   if (style.customFont) return false
-  const keys: (keyof SubStyle)[] = ['font', 'size', 'color', 'accent', 'outline', 'shadow', 'glow', 'box', 'effect', 'position', 'weight']
+  const keys: (keyof SubStyle)[] = ['font', 'size', 'color', 'accent', 'outline', 'shadow', 'glow', 'box', 'effect', 'position', 'weight', 'round', 'outlineColor']
   return keys.every((k) => (style[k] ?? 0) === (preset[k] ?? 0)) && (!preset.box || style.boxColor === preset.boxColor)
 }
 
 function Card({ name, preset, frame, on, onPick }: { name: string; preset: SubStyle; frame: HTMLCanvasElement | null; on: boolean; onPick: () => void }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const text = sampleText()
+  // A card is drawn (and its font fetched) once it is near the screen, not all 28 at once.
+  const [seen, setSeen] = useState(typeof IntersectionObserver === 'undefined')
+  const btn = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (seen || !btn.current) return
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { setSeen(true); io.disconnect() } }, { rootMargin: '200px' })
+    io.observe(btn.current)
+    return () => io.disconnect()
+  }, [seen])
   useEffect(() => {
     const c = canvas.current
-    if (!c) return
+    if (!c || !seen) return
     let live = true
     const dpr = 2
     c.width = CARD_W * dpr
@@ -50,9 +60,9 @@ function Card({ name, preset, frame, on, onPick }: { name: string; preset: SubSt
     loadSubFont({ ...DEFAULT_SUB_STYLE, ...preset }, document.fonts, document.baseURI).then(() => { if (live) draw() })
     draw()
     return () => { live = false }
-  }, [frame, text, name])
+  }, [frame, text, name, seen])
   return (
-    <button class={'chip preset' + (on ? ' on' : '')} role="radio" aria-checked={on} onClick={onPick}>
+    <button ref={btn} class={'chip preset' + (on ? ' on' : '')} role="radio" aria-checked={on} onClick={onPick}>
       <canvas ref={canvas} style={{ width: CARD_W + 'px', height: CARD_H + 'px' }} aria-hidden="true" />
       <span class="preset-name">{t(name)}</span>
     </button>
@@ -60,11 +70,16 @@ function Card({ name, preset, frame, on, onPick }: { name: string; preset: SubSt
 }
 
 /** A horizontally scrolling row of look cards. */
-export function SubPresetRow({ style, onStyle, file }: { style: SubStyle; onStyle: (s: SubStyle) => void; file: File | null }) {
+function PresetRow({ style, onStyle, file }: { style: SubStyle; onStyle: (s: SubStyle) => void; file: File | null }) {
   const frame = useFrame(file)
   const row = useRef<HTMLDivElement>(null)
-  // The chosen card is in view when the row first shows.
-  useEffect(() => { row.current?.querySelector('.on')?.scrollIntoView({ inline: 'center', block: 'nearest' }) }, [])
+  // The chosen card is in view when the row first shows (the row's own scroll: the page doesn't move).
+  useEffect(() => {
+    const r = row.current, on = r?.querySelector('.on')
+    if (!r || !on) return
+    const a = r.getBoundingClientRect(), b = on.getBoundingClientRect()
+    r.scrollLeft += b.left + b.width / 2 - (a.left + a.width / 2)
+  }, [])
   return (
     <div class="chips presets preset-row" role="radiogroup" aria-label={t('סגנונות')} ref={row}>
       {SUB_PRESETS.map(([name, p]) => (
@@ -73,3 +88,6 @@ export function SubPresetRow({ style, onStyle, file }: { style: SubStyle; onStyl
     </div>
   )
 }
+
+/** Not drawn again while the video plays: only when the look, the video or the language changes. */
+export const SubPresetRow = memo(PresetRow)

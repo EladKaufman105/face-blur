@@ -712,15 +712,23 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 
 /* Subtitles: the looks as cards in one scrolling row (each a sample drawn by the real renderer), the
    rest folded away; a subtitle's actions only on the one being edited. */
-.chips.presets.preset-row { flex-wrap: nowrap; max-height: none; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; padding: 4px 2px 8px; gap: 8px; -webkit-overflow-scrolling: touch; }
+.chips.presets.preset-row { max-height: 380px; overflow-y: auto; padding: 4px 2px 8px; gap: 8px; }
 .chip.preset { flex: none; display: grid; gap: 6px; justify-items: center; padding: 4px; border-radius: var(--radius-card); scroll-snap-align: start; font-size: 13px; }
 .chip.preset canvas { display: block; border-radius: calc(var(--radius-card) - 4px); background: var(--surface-3); }
 .chip.preset .preset-name { max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-bottom: 2px; }
 .chip.preset.on { border-width: 2px; padding: 3px; }
-.scroll-row { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
-.scroll-row .chip { flex: none; }
+/* On a phone the looks and the languages are one row that scrolls sideways; on a wide screen they wrap. */
+@media (max-width: 600px) {
+  .chips.presets.preset-row { flex-wrap: nowrap; max-height: none; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+  .scroll-row { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .scroll-row .chip { flex: none; }
+}
 .sub-fine, .subs-more { display: block; }
-.sub-fine > summary, .subs-more > summary { cursor: pointer; font-weight: 700; min-height: 44px; display: flex; align-items: center; color: var(--primary); list-style-position: inside; }
+.sub-fine > summary, .subs-more > summary { cursor: pointer; font-weight: 700; min-height: 44px; display: flex; align-items: center; gap: 8px; color: var(--primary); list-style: none; }
+.sub-fine > summary::-webkit-details-marker, .subs-more > summary::-webkit-details-marker { display: none; }
+.sub-fine > summary::after, .subs-more > summary::after { content: ''; margin-inline-start: auto; width: 9px; height: 9px; border: solid currentColor; border-width: 0 2.5px 2.5px 0; transform: translateY(-2px) rotate(45deg); transition: transform 0.15s; }
+.sub-fine[open] > summary::after, .subs-more[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
+@media (prefers-reduced-motion: reduce) { .sub-fine > summary::after, .subs-more > summary::after { transition: none; } }
 .sub-fine[open] > summary, .subs-more[open] > summary { margin-bottom: var(--space-2); }
 .sub-fine > :not(summary) { margin-top: var(--space-2); }
 .subs-more { padding-block: 0; }
@@ -728,7 +736,7 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .subs-more-body .card { box-shadow: none; border: 1px solid var(--outline-soft); }
 .clip .cue-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .clip.open { outline: 2px solid var(--primary); }
-.cue-text { resize: none; }
+.cue-text { resize: none; field-sizing: content; }
 .srt-import { cursor: pointer; justify-content: center; }
 .subs-start .subs-create { min-height: 52px; font-size: 17px; }
 
@@ -748,6 +756,9 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .cue-text { font-size: 16px; padding: 10px; min-height: 44px; box-sizing: border-box; }
 }
 @media (max-width: 600px) {
+  /* A subtitle being edited stays clear of the sticky export bar; with the keyboard up the bar steps aside. */
+  html { scroll-padding-bottom: 110px; }
+  .editor:has(.cue-text:focus) .export-bar { position: static; }
   .top { padding-bottom: 8px; }
   .top .tag { display: none; }
   .editor .side { padding-bottom: 8px; }

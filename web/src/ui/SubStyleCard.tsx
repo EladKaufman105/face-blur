@@ -1,3 +1,4 @@
+import { memo } from 'preact/compat'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { t } from '../i18n'
 import { deleteFont, listFonts, saveFont } from '../lib/projects'
@@ -23,21 +24,24 @@ function hasHebrew(family: string): boolean {
  * The subtitles' design, as the app's style panel: ready-made looks, the font (bundled or one
  * imported), its weight, the effect, colors, outline, shadow, glow, a box, size and place.
  */
-export function SubStyleCard({ style, onStyle, file }: { style: SubStyle; onStyle: (s: SubStyle) => void; file?: File | null }) {
+function StyleCard({ style, onStyle, file }: { style: SubStyle; onStyle: (s: SubStyle) => void; file?: File | null }) {
   const set = (patch: Partial<SubStyle>) => onStyle({ ...style, ...patch })
   const [custom, setCustom] = useState<string[]>([])
   const [note, setNote] = useState<string | null>(null)
   const [, setReady] = useState(0)
   const [speaker, setSpeaker] = useState(2)
   const input = useRef<HTMLInputElement>(null)
-  // Every font loaded, so each name shows in its own font.
+  // The fonts load when the manual fine-tuning opens (not with the tab), so each name shows in its own font.
+  const [fine, setFine] = useState(false)
+  // The imported fonts' names are listed at once (they are the user's own, small); their files load with the rest.
+  useEffect(() => { listFonts().then((list) => setCustom(list.map((f) => f.name))) }, [])
   useEffect(() => {
+    if (!fine) return
     for (const f of SUB_FONTS) loadSubFont({ ...DEFAULT_SUB_STYLE, font: f.id }, document.fonts, document.baseURI).then(() => setReady((n) => n + 1))
     listFonts().then((list) => {
-      setCustom(list.map((f) => f.name))
       for (const f of list) loadSubFont({ ...DEFAULT_SUB_STYLE, customFont: f.name }, document.fonts, document.baseURI, f.data).then(() => setReady((n) => n + 1))
     })
-  }, [])
+  }, [fine])
   const outline = style.outline <= 0 ? 0 : style.outline < 0.13 ? 1 : 2
   return (
     <section class="card sub-style">
@@ -45,7 +49,7 @@ export function SubStyleCard({ style, onStyle, file }: { style: SubStyle; onStyl
 
       <SubPresetRow style={style} onStyle={onStyle} file={file ?? null} />
 
-      <details class="sub-fine">
+      <details class="sub-fine" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) setFine(true) }}>
       <summary>{t('כוונון ידני')}</summary>
 
       <h4 class="caption">{t('גופן')}</h4>
@@ -149,3 +153,6 @@ export function SubStyleCard({ style, onStyle, file }: { style: SubStyle; onStyl
     </section>
   )
 }
+
+/** Not drawn again with every frame of the playing video: only when the style or the file changes. */
+export const SubStyleCard = memo(StyleCard)
