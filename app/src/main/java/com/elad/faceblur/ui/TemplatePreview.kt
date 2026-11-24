@@ -11,6 +11,11 @@ import android.graphics.Shader
 import android.util.LruCache
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
@@ -31,11 +36,13 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.elad.faceblur.effects.BlurMode
 import com.elad.faceblur.pipeline.Watermark
+import com.elad.faceblur.subs.SubEffect
 import com.elad.faceblur.subs.SubtitleRenderer
 import com.elad.faceblur.subs.SubtitleStyle
 import com.elad.faceblur.template.Platform
@@ -70,11 +77,40 @@ internal fun TemplateSettings.preview(sourceAspect: Float? = null, textBoost: Fl
     subStyle = subStyle, watermark = export.watermark, textBoost = textBoost,
 )
 
-/** A rendered sample frame with the look applied. [modifier] sets one side of its size; the shape follows [PreviewSpec.aspect]. */
+/** The sample subtitle: shown from [SAMPLE_START_US] to [SAMPLE_END_US]; a still preview is drawn at [STILL_US]. */
+private const val SAMPLE_START_US = 200_000L
+private const val SAMPLE_END_US = 2_200_000L
+private const val STILL_US = 1_100_000L
+
+/** One round of the looping preview, in ms: the sample subtitle's two seconds and a short rest. */
+internal const val PREVIEW_LOOP_MS = 2_800
+
+/** Animations are off in the system's settings (animator duration scale 0): nothing should move. */
+internal fun animationsOff(durationScale: Float): Boolean = durationScale <= 0f
+
+/** The sample time to draw the subtitle at, [loopMs] into the loop (a still frame when motion is reduced). */
+internal fun previewTimeUs(loopMs: Float, reduceMotion: Boolean): Long = if (reduceMotion) STILL_US else (loopMs * 1000f).toLong()
+
+/** True when the system's animator duration scale is 0 ("remove animations"): previews then stand still. */
 @Composable
-internal fun TemplatePreview(spec: PreviewSpec, frame: Bitmap?, modifier: Modifier = Modifier) {
+internal fun rememberReduceMotion(): Boolean {
     val ctx = LocalContext.current
-    val key = PreviewKey(spec, frame?.let { PreviewRenderer.frameId(it) } ?: 0)
+    return remember {
+        runCatching { animationsOff(android.provider.Settings.Global.getFloat(ctx.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)) }
+            .getOrDefault(false)
+    }
+}
+
+/**
+ * A rendered sample frame with the look applied. [modifier] sets one side of its size; the shape follows [PreviewSpec.aspect].
+ * With [animate], a subtitle with an effect plays it in a loop (drawn live over the cached frame, as the editor draws it);
+ * with motion reduced in the system's settings, or with no effect, it stands still.
+ */
+@Composable
+internal fun TemplatePreview(spec: PreviewSpec, frame: Bitmap?, modifier: Modifier = Modifier, animate: Boolean = false) {
+    val ctx = LocalContext.current
+    val live = animate && spec.subStyle.effect != SubEffect.NONE
+    val key = PreviewKey(spec, frame?.let { PreviewRenderer.frameId(it) } ?: 0, subs = !live)
     val bmp by produceState(PreviewRenderer.cached(key), key) {
         value = PreviewRenderer.cached(key) ?: withContext(PreviewRenderer.thread) { runCatching { PreviewRenderer.render(ctx, key, frame) }.getOrNull() }
     }
@@ -87,10 +123,27 @@ internal fun TemplatePreview(spec: PreviewSpec, frame: Bitmap?, modifier: Modifi
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
     ) {
         bmp?.let { Image(it.asImageBitmap(), null, Modifier.matchParentSize(), contentScale = ContentScale.FillBounds) }
+        if (live) LiveSubtitle(spec, Modifier.matchParentSize())
     }
 }
 
-internal data class PreviewKey(val spec: PreviewSpec, val frameId: Int)
+/** The sample subtitle drawn live, looping, over a frame that has none. */
+@Composable
+private fun LiveSubtitle(spec: PreviewSpec, modifier: Modifier) {
+    val renderer = SubtitleRenderer.get(LocalContext.current)
+    val reduce = rememberReduceMotion()
+    val loop by rememberInfiniteTransition(label = "preview").animateFloat(
+        0f, PREVIEW_LOOP_MS.toFloat(), infiniteRepeatable(tween(PREVIEW_LOOP_MS, easing = LinearEasing)), label = "t",
+    )
+    val style = remember(spec.subStyle, spec.textBoost) { spec.subStyle.copy(size = spec.subStyle.size * spec.textBoost) }
+    androidx.compose.foundation.Canvas(modifier) {
+        val t = previewTimeUs(if (reduce) 0f else loop, reduce)
+        renderer.draw(drawContext.canvas.nativeCanvas, SampleBlocks.take(1), SAMPLE_START_US, SAMPLE_END_US, t, style, size.width.toInt(), size.height.toInt())
+    }
+}
+
+/** [subs]: the subtitle is drawn into the picture (false: left out, for one drawn live over it). */
+internal data class PreviewKey(val spec: PreviewSpec, val frameId: Int, val subs: Boolean = true)
 
 /** Draws the preview frames: a generated sample scene (or a frame of the open video), the face's blur, the subtitles and the watermark. */
 internal object PreviewRenderer {
@@ -133,10 +186,12 @@ internal object PreviewRenderer {
         }
         if (frame != null && !spec.blurOff) drawBadge(c, w, h, spec)
         if (spec.watermark.enabled(context)) Watermark.draw(context, spec.watermark, c, w, h)
-        SubtitleRenderer.get(context).draw(
-            c, SampleBlocks.take(1), 200_000L, 2_200_000L, 1_100_000L,
-            spec.subStyle.copy(size = spec.subStyle.size * spec.textBoost), w, h,
-        )
+        if (key.subs) {
+            SubtitleRenderer.get(context).draw(
+                c, SampleBlocks.take(1), SAMPLE_START_US, SAMPLE_END_US, STILL_US,
+                spec.subStyle.copy(size = spec.subStyle.size * spec.textBoost), w, h,
+            )
+        }
         cache.put(key, out)
         return out
     }
@@ -253,9 +308,9 @@ internal fun platformName(p: Platform): String = when (p) {
 
 /** A fixed [width]x[height] stage with the preview fitted inside it (so cards line up whatever the frame's shape). */
 @Composable
-internal fun PreviewStage(spec: PreviewSpec, frame: Bitmap?, width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+internal fun PreviewStage(spec: PreviewSpec, frame: Bitmap?, width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier, animate: Boolean = false) {
     Box(modifier.size(width, height), contentAlignment = androidx.compose.ui.Alignment.Center) {
         val wide = spec.aspect > width / height
-        TemplatePreview(spec, frame, if (wide) Modifier.fillMaxWidth() else Modifier.fillMaxHeight())
+        TemplatePreview(spec, frame, if (wide) Modifier.fillMaxWidth() else Modifier.fillMaxHeight(), animate)
     }
 }

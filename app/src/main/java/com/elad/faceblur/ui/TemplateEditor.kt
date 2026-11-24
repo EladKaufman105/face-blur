@@ -326,7 +326,7 @@ private fun EditorPreview(store: TemplateStore, draft: Template) {
     }
     val height = if (isWide()) 240.dp else 188.dp
     BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = Space.L, vertical = Space.S), contentAlignment = Alignment.Center) {
-        PreviewStage(shown, null, maxWidth, height)
+        PreviewStage(shown, null, maxWidth, height, animate = true)
     }
 }
 
