@@ -133,7 +133,13 @@ export function App() {
           }}
           onBlurAndSave={(look, options, template, templateName) => {
             // Any template (its processing, watermark and export settings): processed as a batch of one, with no editor on the way.
-            // An audio export (MP3) has no video to apply them to: it goes the plain way.
+            // An audio export (MP3) has no video to apply them to: it goes the plain way, unless the
+            // template changes the sound (voice, cleanup, loudness, cuts): then the editor opens with
+            // it applied, so the sound is never saved without them (a voice change is for anonymity).
+            if (template && options.format === 'mp3' && (template.voice !== 'none' || template.denoise > 0 || template.enhance || template.loud || template.cutSilences || template.cutFillers)) {
+              setScreen({ name: 'analyzing', file: screen.file, template })
+              return
+            }
             if (template && options.format !== 'mp3') {
               startBatch([screen.file], template, templateName, { folder: false, autoDownload: true })
               setScreen({ name: 'batch' })
