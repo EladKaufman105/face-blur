@@ -756,6 +756,12 @@ internal val English: Map<String, String> = mapOf(
     "תבנית היא עיצוב ועיבוד לסרטון: כתוביות, טשטוש, קול, חיתוכים וייצוא. אפשר לבחור אותה במסך הסרטון ובעיבוד כמה סרטונים. תבנית חדשה נשמרת מהעורך." to "A template is a design and processing for a video: subtitles, blur, voice, cuts and export. Pick one on the video screen and when processing several videos. New templates are saved from the editor.",
     "אזור בטוח" to "Safe zone",
     "ריילס" to "Reels",
+    // The safe-zone mock: neutral stand-ins for a short-video app's own screens.
+    "עוקבים" to "Following",
+    "בשבילך" to "For you",
+    "סאונד מקורי" to "Original sound",
+    "עקוב" to "Follow",
+    "הרשמה" to "Subscribe",
     "מסמן איפה ממשק האפליקציה (כיתוב, כפתורים, שם המשתמש) מכסה את הסרטון. רק בתצוגה, לא נשמר בסרטון." to "Shows where the app's own screens (caption, buttons, username) cover the video. Preview only, never saved in the video.",
     "מראה ויעד מוכנים לסרטון: כתוביות, טשטוש וגודל. ההגדרות מתמלאות לפי הבחירה, ואפשר לשנות אותן אחר כך." to "A ready look and destination: subtitles, blur and size. The settings fill in from your choice, and you can change them later.",
     "צורה מקורית" to "Original shape",

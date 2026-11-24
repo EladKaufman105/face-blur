@@ -29,10 +29,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -41,7 +39,6 @@ import com.elad.faceblur.pipeline.Watermark
 import com.elad.faceblur.subs.SubtitleRenderer
 import com.elad.faceblur.subs.SubtitleStyle
 import com.elad.faceblur.template.Platform
-import com.elad.faceblur.template.SafeZone
 import com.elad.faceblur.template.TemplateSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -91,29 +88,6 @@ internal fun TemplatePreview(spec: PreviewSpec, frame: Bitmap?, modifier: Modifi
     ) {
         bmp?.let { Image(it.asImageBitmap(), null, Modifier.matchParentSize(), contentScale = ContentScale.FillBounds) }
     }
-}
-
-/**
- * The platform's safe zone over a frame at [origin] of [frame] size: shaded where its own screens
- * cover the video, with a thin dashed outline around what stays clear. Only drawn on screen,
- * never burned into the video.
- */
-internal fun DrawScope.drawSafeZone(zone: SafeZone, origin: Offset, frame: Size) {
-    val shade = Color(0xFFFF3D5A).copy(alpha = 0.30f)
-    val x0 = origin.x
-    val y0 = origin.y
-    val l = frame.width * zone.left
-    val r = frame.width * zone.right
-    val t = frame.height * zone.top
-    val b = frame.height * zone.bottom
-    drawRect(shade, Offset(x0, y0), Size(frame.width, t))
-    drawRect(shade, Offset(x0, y0 + frame.height - b), Size(frame.width, b))
-    drawRect(shade, Offset(x0, y0 + t), Size(l, frame.height - t - b))
-    drawRect(shade, Offset(x0 + frame.width - r, y0 + t), Size(r, frame.height - t - b))
-    drawRect(
-        Color.White.copy(alpha = 0.9f), Offset(x0 + l, y0 + t), Size(frame.width - l - r, frame.height - t - b),
-        style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))),
-    )
 }
 
 internal data class PreviewKey(val spec: PreviewSpec, val frameId: Int)
