@@ -55,6 +55,7 @@ import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
 import com.elad.faceblur.ui.EditorScreen
 import com.elad.faceblur.ui.EditorTheme
+import com.elad.faceblur.template.BuiltInTemplates
 import com.elad.faceblur.ui.Tags
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -235,6 +236,15 @@ class EditorScreenTest {
         rule.runOnIdle { ctrl.togglePreview() }
         Thread.sleep(1200)
         shot(outDir, "6_outlines.png")
+        // The platform's safe zone over a vertical frame (preview only).
+        rule.runOnIdle {
+            ctrl.safeZoneOn = true
+            export = ExportOptions(aspect = com.elad.faceblur.edit.ExportAspect.VERTICAL, platform = com.elad.faceblur.template.Platform.TIKTOK)
+        }
+        Thread.sleep(1500)
+        shot(outDir, "6b_safe_zone.png")
+        rule.runOnIdle { ctrl.safeZoneOn = false; export = ExportOptions() }
+        Thread.sleep(600)
 
         // Export sheet, then the whole editor in English.
         rule.onNodeWithText("ייצוא").performClick()
@@ -365,6 +375,12 @@ class EditorScreenTest {
         rule.waitForIdle()
         Thread.sleep(800)
         shot(outDir, "9_settings_he.png")
+        // A look and a destination chosen: the previews and the destination's summary.
+        rule.runOnIdle { vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice(look = BuiltInTemplates.BOLD.id, dest = BuiltInTemplates.TIKTOK.id)) }
+        Thread.sleep(1500)
+        shot(outDir, "9c_ready_template.png")
+        rule.runOnIdle { vm.chooseTemplates(com.elad.faceblur.template.TemplateChoice()) }
+        Thread.sleep(600)
         // The blur's settings are folded away; open them.
         rule.onNodeWithTag(Tags.BLUR_SETTINGS).performScrollTo().performClick()
         rule.waitForIdle()
