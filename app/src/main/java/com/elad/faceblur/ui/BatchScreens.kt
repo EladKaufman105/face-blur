@@ -57,6 +57,7 @@ import com.elad.faceblur.batch.BatchService
 import com.elad.faceblur.batch.ItemStatus
 import com.elad.faceblur.batch.progressLine
 import com.elad.faceblur.i18n.t
+import com.elad.faceblur.i18n.tn
 import com.elad.faceblur.pipeline.VideoInfo
 import kotlin.math.ceil
 import kotlin.math.roundToInt
@@ -66,7 +67,7 @@ private fun bytesText(bytes: Long) = ltr(if (bytes >= 1_000_000_000L) "%.1f GB".
 /** "About 12 minutes" / "About 1:20 hours". */
 private fun estimateText(ms: Long): String {
     val min = ceil(ms / 60_000.0).toInt().coerceAtLeast(1)
-    return if (min < 60) t("כ-%d דקות").format(min) else t("כ-%d:%02d שעות").format(min / 60, min % 60)
+    return if (min < 60) tn(min, "כדקה", "כ-%d דקות") else t("כ-%d:%02d שעות").format(min / 60, min % 60)
 }
 
 private fun freeBytes(): Long = runCatching { StatFs(Environment.getExternalStorageDirectory().path).availableBytes }.getOrDefault(Long.MAX_VALUE)
@@ -88,8 +89,10 @@ internal fun BatchSetupContent(vm: MainViewModel, s: UiState.BatchSetup, onAddMo
     val need = BatchMath.neededBytes(s.videos, settings.export) + (if (modelReady) 0L else settings.speechModel.approxBytes)
     val free = freeBytes()
     val roomOk = free >= need
-    val downloading = models.downloading != null
-    val canStart = modelReady && roomOk && !downloading
+    // Any download holds the start back; the model row below shows only the one this template needs.
+    val anyDownloading = models.downloading != null
+    val downloading = models.downloading == settings.speechModel
+    val canStart = modelReady && roomOk && !anyDownloading
 
     val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.startBatch() }
     val start = {
@@ -124,6 +127,7 @@ internal fun BatchSetupContent(vm: MainViewModel, s: UiState.BatchSetup, onAddMo
                 vm.templates, vm.batchChoice, vm::chooseBatchTemplates, vm.previewBase(),
                 createSubs = if (chosen?.subs != null) settings.createSubs else null,
                 onCreateSubs = vm::setBatchSubtitles,
+                onEdit = { vm.editTemplate(it.id) },
             )
         }
         EnterUp(3) {
@@ -144,7 +148,7 @@ internal fun BatchSetupContent(vm: MainViewModel, s: UiState.BatchSetup, onAddMo
                             else t("צריך להוריד פעם אחת (%s)").format(bytesText(settings.speechModel.approxBytes)),
                             modelReady,
                         )
-                        if (!modelReady && !downloading) {
+                        if (!modelReady && !anyDownloading) {
                             AccentOutlinedButton(
                                 t("הורד את המודל עכשיו"), vm::downloadBatchModel, Modifier.fillMaxWidth(),
                                 accent = Feature.SUBTITLES.tint, height = 44.dp,
@@ -350,7 +354,8 @@ private fun BatchRow(vm: MainViewModel, batch: Batch, item: BatchItem) {
                 }
             }
             item.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-            for (n in item.notes) Text(n, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            for (n in item.failures) Text(n, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            for (n in item.warnings) Text(n, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             item.analysisInfo?.takeIf { status.done }?.let {
                 Text(ltr(t("זיהוי פנים") + ": " + it), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

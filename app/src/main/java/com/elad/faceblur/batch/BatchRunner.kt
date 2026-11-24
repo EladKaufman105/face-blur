@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.SystemClock
 import com.elad.faceblur.edit.EditSession
 import com.elad.faceblur.edit.EditorController
-import com.elad.faceblur.edit.ExportAspect
 import com.elad.faceblur.pipeline.FaceBlurProcessor
 import com.elad.faceblur.pipeline.ProcessingErrors
 import com.elad.faceblur.pipeline.Settings
@@ -58,7 +57,7 @@ object BatchRunner {
         var projectId: String? = null
         item.startedAt = SystemClock.elapsedRealtime()
         try {
-            item.status = ItemStatus.ANALYZING
+            item.begin(ItemStatus.ANALYZING)
             item.progress = 0f
             onChange()
             val info = withContext(Dispatchers.IO) { VideoInfo.probe(ctx, item.uri) }
@@ -110,14 +109,16 @@ object BatchRunner {
 
             // The template's processing.
             if (s.hasProcessing) {
-                item.status = ItemStatus.PROCESSING
+                item.begin(ItemStatus.PROCESSING)
                 item.progress = ANALYSIS_SHARE
                 onChange()
-                item.notes = TemplateRunner.applyProcessing(c, s)
+                val notes = TemplateRunner.applyProcessing(c, s)
+                item.failures = notes.failures
+                item.warnings = notes.warnings
             }
 
             val noFaces = !s.blurOff && sess.model.tracks.isEmpty()
-            if (noFaces && !worthSaving(ctx, batch)) {
+            if (noFaces && !worthSaving(ctx, batch, c)) {
                 // Nothing would change in the video: no copy is saved; the project is there to open.
                 saveProject(ctx, id, c, batch)
                 item.status = ItemStatus.NO_FACES
@@ -125,7 +126,7 @@ object BatchRunner {
                 return
             }
 
-            item.status = ItemStatus.EXPORTING
+            item.begin(ItemStatus.EXPORTING)
             item.progress = ANALYSIS_SHARE + PROCESSING_SHARE
             onChange()
             val saved = FaceBlurProcessor(ctx).render(
@@ -193,16 +194,13 @@ object BatchRunner {
         withContext(Dispatchers.IO) { ProjectStore.save(ctx, id, fields, edits) }
     }
 
-    /** A video without faces is still saved if something else is done to it or it's exported differently. */
-    private fun worthSaving(ctx: Context, batch: Batch): Boolean {
-        val s = batch.settings
-        val e = s.export
-        return s.hasProcessing || e.aspect != ExportAspect.ORIGINAL || e.shortSide > 0 || e.fps > 0 ||
-            e.quality != com.elad.faceblur.pipeline.ExportQuality.ORIGINAL || e.codec != com.elad.faceblur.pipeline.ExportCodec.SAME ||
-            e.watermark.enabled(ctx)
-    }
+    /**
+     * A video without faces is still saved if the processing changed it (what it really did, not
+     * what the template asked for) or it's exported differently.
+     */
+    private fun worthSaving(ctx: Context, batch: Batch, c: EditorController): Boolean =
+        TemplateRunner.changesVideo(c, batch.settings) || TemplateRunner.exportChangesVideo(ctx, batch.settings.export)
 
-    /** Shares of an item's bar: the analysis, then the template's processing, then the export. */
-    private const val ANALYSIS_SHARE = 0.4f
-    private const val PROCESSING_SHARE = 0.15f
+    private const val ANALYSIS_SHARE = BatchMath.ANALYSIS_SHARE
+    private const val PROCESSING_SHARE = BatchMath.PROCESSING_SHARE
 }

@@ -6,7 +6,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.runtime.key
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -107,28 +109,17 @@ internal fun categoryLabel(c: TemplateCategory): String = when (c) {
     TemplateCategory.EXPORT -> t("ייצוא")
 }
 
-private fun categoryIcon(c: TemplateCategory): ImageVector = when (c) {
-    TemplateCategory.BLUR -> AppIcons.Face
-    TemplateCategory.SUBTITLES -> AppIcons.Subtitles
-    TemplateCategory.VOICE -> AppIcons.Voice
-    TemplateCategory.CUTS -> AppIcons.Cut
-    TemplateCategory.BACKGROUND -> AppIcons.Background
-    TemplateCategory.STABILIZE -> AppIcons.Steady
-    TemplateCategory.EXPORT -> EditorIcons.ExportIcon
-}
-
-/** What a template includes, in a line. */
-internal fun templateSummary(tpl: Template): String = when (tpl.group) {
-    TemplateGroup.LOOK -> t("עיצוב כתוביות וטשטוש, ויוצר כתוביות")
-    TemplateGroup.USER -> tpl.categories.joinToString(" · ") { categoryLabel(it) }.ifEmpty { t("ריקה") }
-}
+/** What a template includes, in a line (a built-in look as shipped has its own line). */
+internal fun templateSummary(tpl: Template): String =
+    if (tpl.group == TemplateGroup.LOOK && tpl == BuiltInTemplates.byId(tpl.id)) t("עיצוב כתוביות וטשטוש, ויוצר כתוביות")
+    else tpl.categories.joinToString(" · ") { categoryLabel(it) }.ifEmpty { t("ריקה") }
 
 /** The name of what's chosen, or a word for none. */
 internal fun choiceSummary(store: TemplateStore, choice: TemplateChoice): String =
     choice.id?.let { store.find(it) }?.let { templateName(it) } ?: t("בלי תבנית")
 
 @Composable
-private fun SwitchRow(title: String, checked: Boolean, subtitle: String? = null, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(title: String, checked: Boolean, subtitle: String? = null, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleSmall)
@@ -162,22 +153,28 @@ internal fun TemplatePicker(
     base: TemplateSettings,
     frame: android.graphics.Bitmap? = null,
     sourceAspect: Float? = null,
+    /** Long-pressing a card opens the template in the editor. */
+    onEdit: ((Template) -> Unit)? = null,
 ) {
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.L),
         horizontalArrangement = Arrangement.spacedBy(Space.S),
     ) {
         NoTemplateCard(choice.isEmpty) { onChoose(TemplateChoice()) }
-        val all = store.user + BuiltInTemplates.LOOKS
-        for (tpl in all) {
+        val all = store.user + store.builtIns
+        for (tpl in all) key(tpl.id) {
             val s = remember(tpl, base) { previewSettings(store, base, listOf(tpl.id)) }
-            ChoiceCard(s.preview(sourceAspect, 2f), frame, templateName(tpl), choice.id == tpl.id) { onChoose(TemplateChoice(tpl.id)) }
+            ChoiceCard(
+                s.preview(sourceAspect, 2f), frame, templateName(tpl), choice.id == tpl.id,
+                onLongClick = onEdit?.let { edit -> { edit(tpl) } },
+            ) { onChoose(TemplateChoice(tpl.id)) }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CardFrame(selected: Boolean, onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun CardFrame(selected: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
     val shape = MaterialTheme.shapes.medium
     Box(
         Modifier
@@ -185,7 +182,7 @@ private fun CardFrame(selected: Boolean, onClick: () -> Unit, content: @Composab
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             .border(if (selected) BorderStroke(2.5.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape)
-            .clickable(role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick)
+            .combinedClickable(role = androidx.compose.ui.semantics.Role.RadioButton, onLongClick = onLongClick, onClick = onClick)
             .padding(Space.XS),
         Alignment.Center,
     ) {
@@ -225,9 +222,9 @@ private fun NoTemplateCard(selected: Boolean, onClick: () -> Unit) {
 
 /** A choice: its preview on a stage, and its name. */
 @Composable
-private fun ChoiceCard(spec: PreviewSpec, frame: android.graphics.Bitmap?, name: String, selected: Boolean, onClick: () -> Unit) {
+private fun ChoiceCard(spec: PreviewSpec, frame: android.graphics.Bitmap?, name: String, selected: Boolean, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     Column(Modifier.width(CardWidth)) {
-        CardFrame(selected, onClick) { PreviewStage(spec, frame, CardWidth - Space.XS * 2 - 2.dp, CardStage) }
+        CardFrame(selected, onClick, onLongClick) { PreviewStage(spec, frame, CardWidth - Space.XS * 2 - 2.dp, CardStage) }
         CardName(name, selected)
     }
 }
@@ -247,15 +244,18 @@ internal fun TemplatePickerCard(
     sourceAspect: Float? = null,
     createSubs: Boolean? = null,
     onCreateSubs: (Boolean) -> Unit = {},
+    /** Opens a template in the editor (long press on a card, or "Edit" for the chosen one). */
+    onEdit: ((Template) -> Unit)? = null,
     footer: @Composable () -> Unit = {},
 ) {
     ClipCard(contentPadding = 0.dp, modifier = Modifier.testTag(Tags.TEMPLATE_PICKER)) {
         Column(verticalArrangement = Arrangement.spacedBy(Space.M), modifier = Modifier.padding(vertical = Space.L)) {
+            val tpl = choice.id?.let { store.find(it) }
             Row(Modifier.fillMaxWidth().padding(horizontal = Space.L), verticalAlignment = Alignment.CenterVertically) {
                 SectionTitle(t("תבנית"), Feature.FACES.tint, Modifier.weight(1f))
+                if (tpl != null && onEdit != null) TextButton(onClick = { onEdit(tpl) }) { Text(t("ערוך")) }
             }
-            TemplatePicker(store, choice, onChoose, base, frame, sourceAspect)
-            val tpl = choice.id?.let { store.find(it) }
+            TemplatePicker(store, choice, onChoose, base, frame, sourceAspect, onEdit)
             Column(Modifier.padding(horizontal = Space.L), verticalArrangement = Arrangement.spacedBy(Space.S)) {
                 Text(
                     if (tpl == null) t("בלי תבנית: ההגדרות נשארות כמו שהן.") else templateSummary(tpl),
@@ -306,10 +306,10 @@ internal fun SaveTemplateDialog(inUse: Set<TemplateCategory>, onSave: (String, S
 /** All templates: the user's own (rename, duplicate, edit, delete) and the built-in ones (duplicate). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TemplateManagerSheet(store: TemplateStore, onDismiss: () -> Unit) {
+internal fun TemplateManagerSheet(store: TemplateStore, onEdit: (Template) -> Unit, onDismiss: () -> Unit) {
     var renaming by remember { mutableStateOf<Template?>(null) }
     var deleting by remember { mutableStateOf<Template?>(null) }
-    var editing by remember { mutableStateOf<Template?>(null) }
+    var restoring by remember { mutableStateOf<Template?>(null) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             Modifier
@@ -322,7 +322,7 @@ internal fun TemplateManagerSheet(store: TemplateStore, onDismiss: () -> Unit) {
         ) {
             Text(t("תבניות"), style = AppType.Title)
             Text(
-                t("תבנית היא עיצוב ועיבוד לסרטון: כתוביות, טשטוש, קול, חיתוכים וייצוא. אפשר לבחור אותה במסך הסרטון ובעיבוד כמה סרטונים. תבנית חדשה נשמרת מהעורך."),
+                t("תבנית היא עיצוב ועיבוד לסרטון: כתוביות, טשטוש, קול, חיתוכים וייצוא. אפשר לבחור אותה במסך הסרטון ובעיבוד כמה סרטונים. תבנית חדשה נשמרת מהעורך, ואפשר לערוך כל תבנית, גם מובנית."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -330,20 +330,31 @@ internal fun TemplateManagerSheet(store: TemplateStore, onDismiss: () -> Unit) {
             if (store.user.isEmpty()) {
                 Text(t("עדיין אין תבניות. בעורך: ייצוא, ואז \"שמור כתבנית\"."), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            for (tpl in store.user) {
+            for (tpl in store.user) key(tpl.id) {
                 TemplateRow(
                     tpl,
                     actions = listOf(
+                        t("ערוך") to { onEdit(tpl) },
                         t("שנה שם") to { renaming = tpl },
                         t("שכפל") to { store.duplicate(tpl.id, t("%s (עותק)").format(tpl.name)) },
-                        t("ערוך") to { editing = tpl },
                         t("מחק") to { deleting = tpl },
                     ),
+                    onClick = { onEdit(tpl) },
                 )
             }
             Caption(t("מובנות"))
-            for (tpl in BuiltInTemplates.all) {
-                TemplateRow(tpl, actions = listOf(t("שכפל") to { store.duplicate(tpl.id, t("%s (עותק)").format(t(tpl.name))) }))
+            for (tpl in store.builtIns) key(tpl.id) {
+                val edited = store.isOverridden(tpl.id)
+                TemplateRow(
+                    tpl,
+                    actions = listOfNotNull(
+                        t("ערוך") to { onEdit(tpl) },
+                        t("שכפל") to { store.duplicate(tpl.id, t("%s (עותק)").format(templateName(tpl))) },
+                        if (edited) t("שחזר את המקור") to { restoring = tpl } else null,
+                    ),
+                    edited = edited,
+                    onClick = { onEdit(tpl) },
+                )
             }
         }
     }
@@ -366,14 +377,29 @@ internal fun TemplateManagerSheet(store: TemplateStore, onDismiss: () -> Unit) {
             dismissButton = { TextButton(onClick = { deleting = null }) { Text(t("ביטול")) } },
         )
     }
-    editing?.let { tpl -> TemplateEditSheet(tpl, store) { editing = null } }
+    restoring?.let { tpl ->
+        RestoreOriginalDialog(templateName(tpl), onConfirm = { store.restoreBuiltIn(tpl.id); restoring = null }, onDismiss = { restoring = null })
+    }
+}
+
+/** Asks before the user's changes to a built-in look are thrown away. */
+@Composable
+internal fun RestoreOriginalDialog(name: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(t("לשחזר את התבנית המקורית?")) },
+        text = { Text(t("השינויים שעשית ב\"%s\" יימחקו, והתבנית תחזור למה שהגיע עם האפליקציה.").format(name)) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(t("שחזר"), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(t("ביטול")) } },
+    )
 }
 
 @Composable
-private fun TemplateRow(tpl: Template, actions: List<Pair<String, () -> Unit>>) {
+private fun TemplateRow(tpl: Template, actions: List<Pair<String, () -> Unit>>, edited: Boolean = false, onClick: () -> Unit = {}) {
     var menu by remember { mutableStateOf(false) }
     val shape = MaterialTheme.shapes.medium
     Surface(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -387,7 +413,10 @@ private fun TemplateRow(tpl: Template, actions: List<Pair<String, () -> Unit>>) 
             Spacer(Modifier.width(Space.M))
             Column(Modifier.weight(1f)) {
                 Text(templateName(tpl), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(templateSummary(tpl), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    (if (edited) t("ערוכה") + " · " else "") + templateSummary(tpl),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
             }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, t("אפשרויות")) }
@@ -398,261 +427,5 @@ private fun TemplateRow(tpl: Template, actions: List<Pair<String, () -> Unit>>) 
                 }
             }
         }
-    }
-}
-
-// ---------------------------------------------------------------------- editing a template
-
-@Composable
-private fun CategoryBlock(c: TemplateCategory, included: Boolean, onIncluded: (Boolean) -> Unit, content: @Composable () -> Unit) {
-    val shape = MaterialTheme.shapes.medium
-    Column(
-        Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape).padding(Space.M),
-        verticalArrangement = Arrangement.spacedBy(Space.M),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(categoryIcon(c), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(Space.M))
-            Text(categoryLabel(c), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-            Switch(checked = included, onCheckedChange = onIncluded)
-        }
-        if (included) content()
-    }
-}
-
-/** Every part of a template, each category with its own include switch; the values are changed here. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun TemplateEditSheet(template: Template, store: TemplateStore, onDismiss: () -> Unit) {
-    var tpl by remember { mutableStateOf(template) }
-    var name by remember { mutableStateOf(template.name) }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = Space.XL)
-                .padding(bottom = Space.L)
-                .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(Space.M),
-        ) {
-            Text(t("עריכת תבנית"), style = AppType.Title)
-            OutlinedTextField(name, { name = it }, singleLine = true, label = { Text(t("שם התבנית")) }, modifier = Modifier.fillMaxWidth())
-            Text(
-                t("קטגוריה שכבויה לא משנה כלום: ההגדרות הנוכחיות נשארות."),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            CategoryBlock(TemplateCategory.BLUR, tpl.blur != null, { tpl = tpl.copy(blur = if (it) BlurPart(false, BlurMode.BLUR, 0.6f, 1.6f, false) else null) }) {
-                BlurEdit(tpl.blur ?: BlurPart()) { tpl = tpl.copy(blur = it) }
-            }
-            CategoryBlock(TemplateCategory.SUBTITLES, tpl.subs != null, { tpl = tpl.copy(subs = if (it) (tpl.subs ?: SubsPart(create = false, translate = false, burn = SubLang.ORIGINAL, saveSrt = true, splitWords = 0, splitChars = 0)) else null) }) {
-                SubsEdit(tpl.subs ?: SubsPart()) { tpl = tpl.copy(subs = it) }
-            }
-            CategoryBlock(TemplateCategory.VOICE, tpl.voice != null, { tpl = tpl.copy(voice = if (it) VoicePart(AudioEdit()) else null) }) {
-                VoiceEdit(tpl.voice ?: VoicePart(AudioEdit())) { tpl = tpl.copy(voice = it) }
-            }
-            CategoryBlock(TemplateCategory.CUTS, tpl.cuts != null, { tpl = tpl.copy(cuts = if (it) CutsPart(silences = true, minPauseMs = 800L, fillers = false) else null) }) {
-                CutsEdit(tpl.cuts ?: CutsPart(false, 800L, false)) { tpl = tpl.copy(cuts = it) }
-            }
-            CategoryBlock(TemplateCategory.BACKGROUND, tpl.background != null, { tpl = tpl.copy(background = if (it) Background(fill = BgFill.BLUR) else null) }) {
-                BackgroundEdit(tpl.background ?: Background()) { tpl = tpl.copy(background = it) }
-            }
-            CategoryBlock(TemplateCategory.STABILIZE, tpl.stabilize != null, { tpl = tpl.copy(stabilize = if (it) 2 else null) }) {
-                Segments(listOf(0 to t("כבוי"), 1 to t("קל"), 2 to t("בינוני"), 3 to t("חזק")), tpl.stabilize ?: 0) { tpl = tpl.copy(stabilize = it) }
-            }
-            CategoryBlock(TemplateCategory.EXPORT, tpl.export != null, { tpl = tpl.copy(export = if (it) ExportPart(ExportAspect.ORIGINAL, 0, 0, ExportQuality.ORIGINAL, ExportCodec.SAME, tpl.export?.watermark) else null) }) {
-                ExportEdit(tpl.export ?: ExportPart()) { tpl = tpl.copy(export = it) }
-            }
-            GradientButton(
-                t("שמור"),
-                {
-                    val bg = tpl.background?.let { store.withOwnImage(it, tpl.id) }
-                    store.save(tpl.copy(name = name.trim(), background = bg))
-                    onDismiss()
-                },
-                Modifier.fillMaxWidth(),
-                enabled = name.isNotBlank(),
-            )
-        }
-    }
-}
-
-@Composable
-private fun BlurEdit(p: BlurPart, onChange: (BlurPart) -> Unit) {
-    val idx = if (p.none == true) 0 else when (p.mode ?: BlurMode.BLUR) {
-        BlurMode.BLUR -> 1
-        BlurMode.PIXELATE -> 2
-        BlurMode.SOLID -> 3
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
-        Segments(listOf(0 to t("בלי"), 1 to t("טשטוש"), 2 to t("פיקסלים"), 3 to t("כיסוי")), idx) { i ->
-            onChange(
-                if (i == 0) p.copy(none = true)
-                else p.copy(none = false, mode = when (i) { 1 -> BlurMode.BLUR; 2 -> BlurMode.PIXELATE; else -> BlurMode.SOLID }),
-            )
-        }
-        if (idx != 0) {
-            if (idx != 3) SliderRow(t("עוצמה"), t("עדין"), t("חזק"), p.strength ?: 0.6f, 0f..1f) { onChange(p.copy(strength = it)) }
-            SliderRow(t("גודל האזור סביב הפנים"), t("צמוד"), t("רחב"), p.padding ?: 1.6f, 1.2f..2.0f) { onChange(p.copy(padding = it)) }
-            SwitchRow(t("זיהוי מורחב"), p.sensitive ?: false) { onChange(p.copy(sensitive = it)) }
-        }
-    }
-}
-
-@Composable
-private fun SubsEdit(p: SubsPart, onChange: (SubsPart) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
-        SwitchRow(t("ליצור כתוביות אוטומטית"), p.create ?: false, t("זיהוי הדיבור במכשיר, לכל סרטון")) { onChange(p.copy(create = it)) }
-        if (p.create == true) {
-            Caption(t("מודל זיהוי דיבור"))
-            Segments(
-                listOf(SpeechModel.HEBREW to t("עברית (ivrit.ai)"), SpeechModel.MULTILINGUAL to t("רב-לשוני")),
-                p.model ?: SpeechModel.HEBREW,
-            ) { onChange(p.copy(model = it, language = it.language)) }
-            SwitchRow(t("הוסף תרגום"), p.translate ?: false, t("עברית לאנגלית ואנגלית לעברית, במכשיר")) { onChange(p.copy(translate = it)) }
-        }
-        Caption(t("סגנון"))
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Space.S)) {
-            for (preset in SubPresets.all) {
-                val sel = p.style?.copy(speakerColors = preset.style.speakerColors) == preset.style
-                val shape = RoundedCornerShape(12.dp)
-                Column(Modifier.width(104.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(shape)
-                            .border(if (sel) BorderStroke(2.5.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape)
-                            .clickable { onChange(p.copy(style = preset.style)) },
-                    ) { StylePreview(preset.style, Modifier.fillMaxWidth().aspectRatio(1.5f)) }
-                    Text(t(preset.name), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
-                }
-            }
-        }
-        Caption(t("חלוקה לכתוביות"))
-        val split = when {
-            (p.splitChars ?: 0) > 0 -> 2
-            (p.splitWords ?: 0) > 0 -> 1
-            else -> 0
-        }
-        Segments(listOf(0 to t("משפטים שלמים"), 1 to t("עד 4 מילים"), 2 to t("שורה קצרה")), split) { i ->
-            onChange(
-                when (i) {
-                    0 -> p.copy(splitWords = 0, splitChars = 0)
-                    1 -> p.copy(splitWords = 4, splitChars = 0)
-                    else -> p.copy(splitWords = 0, splitChars = 32)
-                },
-            )
-        }
-        Caption(t("כתוביות בסרטון המיוצא"))
-        if (p.translate == true) {
-            Segments(
-                listOf(SubLang.ORIGINAL to t("כמו שנאמר"), SubLang.TRANSLATED to t("תרגום"), SubLang.BOTH to t("שתיהן"), SubLang.NONE to t("בלי")),
-                p.burn ?: SubLang.ORIGINAL,
-            ) { onChange(p.copy(burn = it)) }
-        } else {
-            Segments(
-                listOf(SubLang.ORIGINAL to t("לצרוב בסרטון"), SubLang.NONE to t("לא לצרוב")),
-                if (p.burn == SubLang.NONE) SubLang.NONE else SubLang.ORIGINAL,
-            ) { onChange(p.copy(burn = it)) }
-        }
-        SwitchRow(t("שמור גם קובצי SRT"), p.saveSrt ?: true) { onChange(p.copy(saveSrt = it)) }
-    }
-}
-
-@Composable
-private fun VoiceEdit(p: VoicePart, onChange: (VoicePart) -> Unit) {
-    val a = p.audio
-    Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
-        Caption(t("שינוי קול"))
-        Chips(VoiceFx.entries.map { it to voiceLabel(it) }, a.voice) { onChange(VoicePart(a.copy(voice = it))) }
-        Caption(t("ניקוי קול"))
-        Segments(listOf(0 to t("כבוי"), 1 to t("קל"), 2 to t("בינוני"), 3 to t("חזק")), a.denoise) { onChange(VoicePart(a.copy(denoise = it))) }
-        SwitchRow(t("שיפור קול"), a.enhance) { onChange(VoicePart(a.copy(enhance = it))) }
-        SwitchRow(t("עוצמה לרשתות"), a.loud, t("כמו שטיקטוק, אינסטגרם ויוטיוב מצפים")) { onChange(VoicePart(a.copy(loud = it))) }
-    }
-}
-
-@Composable
-private fun CutsEdit(p: CutsPart, onChange: (CutsPart) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
-        SwitchRow(t("הסר שתיקות"), p.silences) { onChange(p.copy(silences = it)) }
-        if (p.silences) {
-            Chips(
-                listOf(500L, 800L, 1200L).map { it to (t("שתיקה מעל") + " " + ltr("%.1f".format(it / 1000f)) + t(" שנ׳")) },
-                p.minPauseMs,
-            ) { onChange(p.copy(minPauseMs = it)) }
-        }
-        SwitchRow(t("הסר \"אממ\" ו\"אה\""), p.fillers, t("דורש כתוביות עם זמני מילים")) { onChange(p.copy(fillers = it)) }
-    }
-}
-
-@Composable
-private fun BackgroundEdit(b: Background, onChange: (Background) -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) scope.launch {
-            val path = withContext(Dispatchers.IO) { runCatching { Background.importImage(context, uri) }.getOrNull() }
-            if (path != null) onChange(b.copy(fill = BgFill.IMAGE, image = path))
-        }
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
-        Segments(
-            listOf(BgFill.NONE to t("ללא"), BgFill.BLUR to t("טשטוש"), BgFill.COLOR to t("צבע"), BgFill.IMAGE to t("תמונה")),
-            b.fill,
-        ) { f ->
-            if (f == BgFill.IMAGE && b.image == null) picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-            else onChange(b.copy(fill = f))
-        }
-        when (b.fill) {
-            BgFill.COLOR -> Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Space.S)) {
-                for (c in listOf(0xFF00B140.toInt(), 0xFF0F1115.toInt()) + SubPresets.colors) {
-                    Box(
-                        Modifier
-                            .size(36.dp)
-                            .background(Color(c), CircleShape)
-                            .border(if (c == b.color) 3.dp else 1.dp, if (c == b.color) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                            .clickable { onChange(b.copy(color = c)) },
-                    )
-                }
-            }
-            BgFill.IMAGE -> OutlinedButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-                Text(if (b.image == null) t("בחר תמונה") else t("החלף תמונה"))
-            }
-            else -> {}
-        }
-        if (b.fill != BgFill.NONE) {
-            Text(
-                t("הרקע מוחלף אחרי שהאנשים בסרטון מזוהים (שלב נוסף בעיבוד)."),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ExportEdit(e: ExportPart, onChange: (ExportPart) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
-        Caption(t("פורמט"))
-        Segments(
-            listOf(ExportAspect.ORIGINAL to t("מקור"), ExportAspect.VERTICAL to "9:16", ExportAspect.SQUARE to "1:1", ExportAspect.PORTRAIT to "4:5"),
-            e.aspect ?: ExportAspect.ORIGINAL,
-        ) { onChange(e.copy(aspect = it)) }
-        Caption(t("רזולוציה"))
-        Chips(listOf(0 to t("מקור"), 1080 to "1080p", 720 to "720p", 480 to "480p"), e.shortSide ?: 0) { onChange(e.copy(shortSide = it)) }
-        Caption(t("קצב פריימים"))
-        Chips(listOf(0 to t("מקור"), 60 to ltr("60 fps"), 30 to ltr("30 fps"), 24 to ltr("24 fps")), e.fps ?: 0) { onChange(e.copy(fps = it)) }
-        Caption(t("איכות וגודל קובץ"))
-        Segments(
-            listOf(ExportQuality.ORIGINAL to t("כמו המקור"), ExportQuality.HIGH to t("גבוהה"), ExportQuality.SAVER to t("חיסכון")),
-            e.quality ?: ExportQuality.ORIGINAL,
-        ) { onChange(e.copy(quality = it)) }
-        Caption(t("קידוד"))
-        Segments(
-            listOf(ExportCodec.SAME to t("כמו המקור"), ExportCodec.H264 to "H.264", ExportCodec.HEVC to "HEVC"),
-            e.codec ?: ExportCodec.SAME,
-        ) { onChange(e.copy(codec = it)) }
     }
 }

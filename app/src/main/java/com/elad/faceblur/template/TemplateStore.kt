@@ -7,49 +7,60 @@ import androidx.compose.runtime.setValue
 import com.elad.faceblur.effects.BgFill
 import com.elad.faceblur.i18n.t
 import com.elad.faceblur.subs.FontStore
-import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
 /**
  * The user's templates, one JSON file each in the app's own storage (templates/<id>.json); a
  * background picture a template uses is copied beside it (templates/<id>.bg.jpg). The built-in
- * looks and destinations are in [BuiltInTemplates].
+ * looks are in [BuiltInTemplates]; the user's changes to one are saved as an override beside the
+ * user's own (see [TemplateFiles]) and survive app updates until the look is restored.
  */
 class TemplateStore(private val context: Context) {
-    private val dir: File get() = File(context.filesDir, "templates").apply { mkdirs() }
+    private val files = TemplateFiles(File(context.filesDir, "templates"))
 
     /** The user's templates, newest first. Read this from composition to follow changes. */
-    var user by mutableStateOf(load())
+    var user by mutableStateOf(files.readUser())
         private set
 
-    private fun load(): List<Template> =
-        (File(context.filesDir, "templates").listFiles { f -> f.name.endsWith(".json") } ?: emptyArray())
-            .mapNotNull { f -> runCatching { Template.fromJson(JSONObject(f.readText()))?.to(f.lastModified()) }.getOrNull() }
-            .sortedByDescending { it.second }
-            .map { it.first }
+    /** The user's own versions of built-in looks (same id), which replace the shipped ones everywhere. */
+    var overrides by mutableStateOf(files.readOverrides())
+        private set
 
-    fun find(id: String): Template? = user.firstOrNull { it.id == id } ?: BuiltInTemplates.byId(id)
+    /** The built-in looks as they are now: the user's version where there is one, else the shipped one. */
+    val builtIns: List<Template> get() = BuiltInTemplates.all.map { overrides[it.id] ?: it }
+
+    fun isOverridden(id: String): Boolean = id in overrides
+
+    fun find(id: String): Template? = user.firstOrNull { it.id == id } ?: overrides[id] ?: BuiltInTemplates.byId(id)
 
     fun newId(): String = "u" + UUID.randomUUID().toString().take(8)
 
     /** Saves [tpl] as the user's own (replacing the one with its id). */
     fun save(tpl: Template) {
         val own = tpl.copy(group = TemplateGroup.USER, builtIn = false)
-        val f = File(dir, own.id + ".json")
-        val tmp = File(dir, own.id + ".json.tmp")
-        tmp.writeText(own.toJson().toString())
-        if (!tmp.renameTo(f)) {
-            f.delete()
-            tmp.renameTo(f)
-        }
+        files.writeUser(own)
         user = listOf(own) + user.filter { it.id != own.id }
-        pruneImages()
+        files.pruneImages(user.map { it.id }.toSet())
+    }
+
+    /** Saves the user's version of a built-in look (it keeps the look's id and is a built-in still). */
+    fun saveBuiltIn(tpl: Template) {
+        if (BuiltInTemplates.byId(tpl.id) == null) return
+        files.writeOverride(tpl)
+        overrides = overrides + (tpl.id to tpl.copy(group = TemplateGroup.LOOK, builtIn = true))
+    }
+
+    /** Brings back the shipped version of the built-in look [id]. */
+    fun restoreBuiltIn(id: String) {
+        files.deleteOverride(id)
+        overrides = overrides - id
     }
 
     fun delete(id: String) {
-        File(dir, "$id.json").delete()
-        File(dir, "$id.bg.jpg").delete()
+        // A built-in can't be deleted.
+        if (BuiltInTemplates.byId(id) != null) return
+        files.deleteUser(id)
         user = user.filter { it.id != id }
     }
 
@@ -60,7 +71,7 @@ class TemplateStore(private val context: Context) {
         save(old.copy(name = n))
     }
 
-    /** A copy of [id] (a built-in too) as the user's own, named [name]. */
+    /** A copy of [id] (a built-in too, as the user has it) as the user's own, named [name]. */
     fun duplicate(id: String, name: String): Template? {
         val src = find(id) ?: return null
         val newId = newId()
@@ -75,17 +86,9 @@ class TemplateStore(private val context: Context) {
         val path = b.image ?: return b
         val src = File(path)
         if (!src.exists()) return b.copy(image = null)
-        val dst = File(dir, "$id.bg.jpg")
+        val dst = files.imageFile(id)
         if (src.absolutePath != dst.absolutePath) src.copyTo(dst, overwrite = true)
         return b.copy(image = dst.absolutePath)
-    }
-
-    /** Pictures of templates that are gone. */
-    private fun pruneImages() {
-        val ids = user.map { it.id }.toSet()
-        dir.listFiles { f -> f.name.endsWith(".bg.jpg") }?.forEach { f ->
-            if (f.name.removeSuffix(".bg.jpg") !in ids) f.delete()
-        }
     }
 
     /**

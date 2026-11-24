@@ -57,7 +57,7 @@ import com.elad.faceblur.i18n.t
 @Composable
 internal fun HomeContent(vm: MainViewModel, wide: Boolean, onPick: () -> Unit, onTool: (QuickTool) -> Unit, onBatch: () -> Unit) {
     val projects: @Composable () -> Unit = {
-        ProjectsSection(vm.projects, vm::openProject, vm::renameProject, vm::deleteProject, vm::renameBatchFolder, vm::deleteBatchFolder)
+        ProjectsSection(vm.projects, vm::openProject, vm::renameProject, vm::deleteProject, vm::renameBatchFolder, vm::deleteBatchFolder, vm.runningBatchId)
     }
     if (wide) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.XL)) {

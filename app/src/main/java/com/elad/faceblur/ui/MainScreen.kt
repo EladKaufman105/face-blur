@@ -124,6 +124,8 @@ fun MainScreen(vm: MainViewModel) {
     val working = state is UiState.Working
     var saveTemplate by remember { mutableStateOf(false) }
     var showTemplates by remember { mutableStateOf(false) }
+    // The manager was open when a template was opened for editing: it comes back after.
+    var backToManager by remember { mutableStateOf(false) }
 
     val view = LocalView.current
     DisposableEffect(working) {
@@ -134,6 +136,24 @@ fun MainScreen(vm: MainViewModel) {
     // The batch's screens: back goes home (a running batch goes on in the background).
     BackHandler(enabled = state is UiState.BatchSetup || state is UiState.BatchRun) {
         if (state is UiState.BatchRun) vm.leaveBatch() else vm.reset()
+    }
+
+    // The template editor takes the whole screen (opened from Settings, the Ready screen or the batch setup).
+    vm.editingTemplate?.let { id ->
+        val tpl = vm.templates.find(id)
+        if (tpl == null) {
+            vm.closeTemplateEditor()
+        } else {
+            TemplateEditorScreen(
+                vm.templates, tpl,
+                onClose = {
+                    vm.closeTemplateEditor()
+                    if (backToManager) { backToManager = false; showTemplates = true }
+                },
+                onSaved = vm::templateSaved,
+            )
+            return
+        }
     }
 
     if (state is UiState.Editing) {
@@ -165,7 +185,13 @@ fun MainScreen(vm: MainViewModel) {
     }
     var showSettings by remember { mutableStateOf(false) }
     if (showSettings) AppSettingsSheet(vm.prefs, { showSettings = false }, onTemplates = { showSettings = false; showTemplates = true })
-    if (showTemplates) TemplateManagerSheet(vm.templates) { showTemplates = false }
+    if (showTemplates) {
+        TemplateManagerSheet(
+            vm.templates,
+            onEdit = { showTemplates = false; backToManager = true; vm.editTemplate(it.id) },
+            onDismiss = { showTemplates = false },
+        )
+    }
     vm.crashReport?.let { report -> CrashDialog(report, onClose = vm::dismissCrash) }
 
     val light = MaterialTheme.colorScheme.isLight

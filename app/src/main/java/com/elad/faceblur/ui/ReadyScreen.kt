@@ -89,6 +89,7 @@ internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, on
             // The switch shows when the chosen template has subtitles in it.
             createSubs = if (chosen?.subs != null) vm.templateSettings?.createSubs ?: false else null,
             onCreateSubs = vm::setTemplateSubtitles,
+            onEdit = { vm.editTemplate(it.id) },
             footer = { SpeechModelRow(vm) },
         )
     }
@@ -125,7 +126,8 @@ internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, on
 private fun SpeechModelRow(vm: MainViewModel) {
     val settings = vm.templateSettings ?: return
     if (!settings.needsSpeechModel || vm.models.isReady(settings.speechModel)) return
-    val downloading = vm.models.downloading != null
+    // Only a download of the model this template needs is "downloading" here (another one is not its business).
+    val downloading = vm.models.downloading == settings.speechModel
     Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
         Text(
             if (downloading) t("מוריד… %d%%").format((vm.models.progress * 100).roundToInt())
@@ -134,8 +136,8 @@ private fun SpeechModelRow(vm: MainViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (downloading) LinearProgressIndicator(progress = { vm.models.progress }, modifier = Modifier.fillMaxWidth())
-        else AccentOutlinedButton(t("הורד את המודל עכשיו"), vm::downloadTemplateModel, Modifier.fillMaxWidth(), accent = Feature.SUBTITLES.tint, height = 44.dp)
-        vm.batchDownloadError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        else if (vm.models.downloading == null) AccentOutlinedButton(t("הורד את המודל עכשיו"), vm::downloadTemplateModel, Modifier.fillMaxWidth(), accent = Feature.SUBTITLES.tint, height = 44.dp)
+        vm.templateDownloadError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     }
 }
 

@@ -33,8 +33,10 @@ class BatchItem(
     var details by mutableStateOf<String?>(null)
     /** Some detected faces had low detection confidence. */
     var lowConfidence by mutableStateOf(false)
-    /** Things that could not be done (the video was still saved). */
-    var notes by mutableStateOf<List<String>>(emptyList())
+    /** Steps of the template that could not be done (the video was still saved, but needs a look). */
+    var failures by mutableStateOf<List<String>>(emptyList())
+    /** Things only worth knowing (nothing went wrong): they don't flag the video. */
+    var warnings by mutableStateOf<List<String>>(emptyList())
     /** Its project, to open in the editor (once there is one). */
     var projectId by mutableStateOf<String?>(null)
     /** The video saved in Movies/ONIT, if it was saved. */
@@ -43,6 +45,17 @@ class BatchItem(
     /** When its work started and ended (SystemClock.elapsedRealtime; 0: not yet), for the time left. */
     @Volatile var startedAt = 0L
     @Volatile var endedAt = 0L
+    /** When the stage it is in (analysis, processing, export) started. */
+    @Volatile var stageStartedAt = 0L
+
+    /** Moves to the stage [next], noting when it began. */
+    fun begin(next: ItemStatus) {
+        stageStartedAt = android.os.SystemClock.elapsedRealtime()
+        status = next
+    }
+
+    /** It ended with a video in the gallery. */
+    val saved: Boolean get() = isSaved(status, output != null)
 
     @Volatile var skipRequested = false
     var job: Job? = null
@@ -50,12 +63,22 @@ class BatchItem(
     /** How face detection went (where it ran, its pace), to compare with a single video's. */
     var analysisInfo by mutableStateOf<String?>(null)
 
-    /** A step of the template didn't work out (said in [notes]): the video was still saved, but needs a look. */
-    val stepFailed: Boolean get() = notes.isNotEmpty() && status != ItemStatus.FAILED
+    /** A step of the template didn't work out (said in [failures]): the video was still saved, but needs a look. */
+    val stepFailed: Boolean get() = isStepFailed(status, failures)
 
     /** Worth a look: no faces found, faces with low confidence, a template step that didn't work, or failed. */
-    val needsCheck: Boolean get() = status == ItemStatus.FAILED || status == ItemStatus.NO_FACES || lowConfidence || stepFailed
+    val needsCheck: Boolean get() = itemNeedsCheck(status, lowConfidence, failures)
 }
+
+/** The video of an item in [status] is in the gallery: saved, or saved after no faces were found. */
+fun isSaved(status: ItemStatus, hasOutput: Boolean): Boolean = status == ItemStatus.SAVED || (status == ItemStatus.NO_FACES && hasOutput)
+
+/** A template step failed (a warning never counts). */
+fun isStepFailed(status: ItemStatus, failures: List<String>): Boolean = failures.isNotEmpty() && status != ItemStatus.FAILED
+
+/** An item is worth a look. Warnings don't make it so. */
+fun itemNeedsCheck(status: ItemStatus, lowConfidence: Boolean, failures: List<String>): Boolean =
+    status == ItemStatus.FAILED || status == ItemStatus.NO_FACES || lowConfidence || isStepFailed(status, failures)
 
 /** A batch being processed (or finished): its videos and the settings every one gets. */
 class Batch(val items: List<BatchItem>, val settings: TemplateSettings, val templateName: String) {
@@ -70,7 +93,7 @@ class Batch(val items: List<BatchItem>, val settings: TemplateSettings, val temp
     var cancelled by mutableStateOf(false)
 
     val doneCount: Int get() = items.count { it.status.done }
-    val savedCount: Int get() = items.count { it.status == ItemStatus.SAVED || (it.status == ItemStatus.NO_FACES && it.output != null) }
+    val savedCount: Int get() = items.count { it.saved }
     val failedCount: Int get() = items.count { it.status == ItemStatus.FAILED }
     val checkCount: Int get() = items.count { it.needsCheck }
 
@@ -87,7 +110,13 @@ class Batch(val items: List<BatchItem>, val settings: TemplateSettings, val temp
                 else -> BatchMath.Phase.RUNNING
             }
             val elapsed = if (i.startedAt == 0L) 0L else (if (i.endedAt > 0) i.endedAt else now) - i.startedAt
-            BatchMath.ItemTiming(i.durationMs, i.progress, phase, elapsed)
+            val stage = when (i.status) {
+                ItemStatus.PROCESSING -> BatchMath.Stage.PROCESSING
+                ItemStatus.EXPORTING -> BatchMath.Stage.EXPORTING
+                else -> BatchMath.Stage.ANALYZING
+            }
+            val stageElapsed = if (i.stageStartedAt == 0L) elapsed else (now - i.stageStartedAt).coerceAtLeast(0L)
+            BatchMath.ItemTiming(i.durationMs, i.progress, phase, elapsed, i.saved, stage, stageElapsed)
         }
         return BatchMath.remainingMs(timings, settings, sp)
     }
@@ -124,7 +153,7 @@ fun remainingText(ms: Long): String {
     val min = kotlin.math.ceil(ms / 60_000.0).toInt()
     return when {
         ms < 45_000L -> com.elad.faceblur.i18n.t("נותרה פחות מדקה")
-        min < 60 -> com.elad.faceblur.i18n.t("נותרו כ-%d דקות").format(min)
+        min < 60 -> com.elad.faceblur.i18n.tn(min, "נותרה כדקה", "נותרו כ-%d דקות")
         else -> com.elad.faceblur.i18n.t("נותרו כ-%d:%02d שעות").format(min / 60, min % 60)
     }
 }

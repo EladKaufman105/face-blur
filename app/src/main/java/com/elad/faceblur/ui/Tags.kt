@@ -22,6 +22,9 @@ object Tags {
     const val UNDO = "editor.undo"
     const val SAFE_ZONE = "editor.safeZone"
     const val NO_TEMPLATE = "template.none"
+    const val TEMPLATE_EDITOR_CLOSE = "templateEditor.close"
+    const val TEMPLATE_EDITOR_SAVE = "templateEditor.save"
+    const val TEMPLATE_EDITOR_NAME = "templateEditor.name"
     const val ADD_BLUR = "tool.addBlur"
     const val PANEL_CLOSE = "panel.close"
     const val PANEL_DONE = "panel.done"
@@ -39,6 +42,9 @@ object Tags {
 
     /** A group of tools in the editor's bar. */
     fun group(name: String) = "group." + name.lowercase()
+
+    /** A category's include switch in the template editor. */
+    fun templateCategory(c: com.elad.faceblur.template.TemplateCategory) = "templateEditor." + c.name.lowercase()
 
     /** A panel's tab in its group's panel. */
     fun tab(panel: EditorPanel) = "tab." + panel.name.lowercase()
