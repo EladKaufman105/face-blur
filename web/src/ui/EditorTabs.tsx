@@ -13,7 +13,8 @@ import { canTranslate, guessLang, LANG_NAMES, translateAll } from '../lib/transl
 import { MAX_SPEAKERS } from '../lib/speakers'
 import { SpeakerDot, SpeakersCard } from './Speakers'
 import { VOICES, type VoiceFx } from '../lib/voice'
-import type { SubsMessage, SubsRequest } from '../workers/subs.worker'
+import { currentPlan, grantSpeech, mbOf, probeDevice, SpeechAborted, transcribeFile, type SpeechStatus } from '../lib/speech'
+import { QualityChoice, SpeechProgress, useSpeechPlan } from './SpeechUi'
 import type { Cleanup } from '../lib/cleanup'
 
 /** A row with a title, a line under it and a switch. */
@@ -337,7 +338,18 @@ export function WatermarkTab({ mark, onChange, template }: { mark: Watermark; on
 }
 
 
-type SubsRun = { stage: 'start' | 'download' | 'transcribe'; progress: number; loaded?: number; total?: number } | { stage: 'error'; message: string } | null
+type SubsRun = SpeechStatus | { stage: 'error'; message: string } | null
+
+/** What the model costs: its size the first time (before anything downloads), or that it is already here. */
+function SpeechNote() {
+  const { plan, cached } = useSpeechPlan()
+  return (
+    <p class="small muted speech-note" style="margin:10px 0 0">
+      {t('הזיהוי רץ על המכשיר עם Whisper, והקול לא עוזב אותו.')}{' '}
+      {cached ? t('המודל כבר במכשיר.') : t('בפעם הראשונה יורד מודל של כ-%d MB (נשמר בדפדפן לפעמים הבאות).', mbOf(plan))}
+    </p>
+  )
+}
 
 /** Subtitles: made on the device from the speech, then edited, styled and saved as SRT too. */
 export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
@@ -400,32 +412,32 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
   }
   const [lang, setLang] = useState<string | null>(() => { try { return localStorage.getItem(storageKey('subs.lang')) } catch { return null } })
   const [run, setRun] = useState<SubsRun>(null)
-  const worker = useRef<Worker | null>(null)
-  const start = () => {
-    worker.current?.terminate()
-    const w = new Worker(new URL('../workers/subs.worker.ts', import.meta.url), { type: 'module' })
-    worker.current = w
-    setRun({ stage: 'start', progress: 0 })
-    w.onmessage = (e: MessageEvent<SubsMessage>) => {
-      const m = e.data
-      if (m.type === 'download') setRun({ stage: 'download', progress: m.progress, loaded: m.loaded, total: m.total })
-      else if (m.type === 'transcribe') setRun({ stage: 'transcribe', progress: m.progress })
-      else if (m.type === 'done') {
-        onWords(m.words)
-        onBleeped(new Set())
-        onCues(wordsToCues(m.words))
-        setRun(null)
-        w.terminate()
-      } else {
-        setRun({ stage: 'error', message: m.code === 'no-audio' ? t('לסרטון אין פס קול.') : m.message })
-        w.terminate()
-      }
+  const ctl = useRef<AbortController | null>(null)
+  // The speech worker goes when the tab is left (it must not go on heating the device unseen).
+  useEffect(() => () => ctl.current?.abort(), [])
+  const start = async () => {
+    ctl.current?.abort()
+    const c = new AbortController()
+    ctl.current = c
+    setRun({ stage: 'audio' })
+    try {
+      const d = await probeDevice()
+      const plan = currentPlan(d)
+      // Pressing "create subtitles" is the go-ahead: the size was shown above the button.
+      grantSpeech(plan)
+      const r = await transcribeFile(file, lang, { plan, onStatus: (s) => { if (ctl.current === c) setRun(s) }, signal: c.signal })
+      if (ctl.current !== c) return
+      onWords(r.words)
+      onBleeped(new Set())
+      onCues(wordsToCues(r.words))
+      setRun(null)
+    } catch (e) {
+      if (e instanceof SpeechAborted || ctl.current !== c) return
+      setRun({ stage: 'error', message: (e as any)?.code === 'no-audio' ? t('לסרטון אין פס קול.') : String((e as Error)?.message ?? e) })
     }
-    w.onerror = (e) => { setRun({ stage: 'error', message: e.message || 'error' }); w.terminate() }
-    const req: SubsRequest = { file, language: lang }
-    w.postMessage(req)
   }
-  const cancel = () => { worker.current?.terminate(); setRun(null) }
+  /** Cancel ends the worker on the spot. */
+  const cancel = () => { ctl.current?.abort(); ctl.current = null; setRun(null) }
   const set = (patch: Partial<SubStyle>) => onStyle({ ...style, ...patch })
   const edit = (id: number, patch: Partial<Cue>) => onCues(cues.map((c) => (c.id === id ? { ...c, ...patch } : c)))
   const srt = () => {
@@ -448,6 +460,8 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
                 <button class={'chip' + (lang === code ? ' on' : '')} onClick={() => { setLang(code); try { if (code) localStorage.setItem(storageKey('subs.lang'), code); else localStorage.removeItem(storageKey('subs.lang')) } catch {} }}>{t(label)}</button>
               ))}
             </div>
+            <p class="small muted" style="margin:14px 0 8px">{t('איכות הזיהוי')}</p>
+            <QualityChoice />
             <button class="btn primary" style="width:100%;margin-top:14px" onClick={start}>{t('צור כתוביות')}</button>
             <label class="btn ghost srt-import" style="width:100%;margin-top:6px;cursor:pointer">
               {t('או ייבא קובץ SRT')}
@@ -460,23 +474,10 @@ export function SubtitlesTab({ file, cues, onCues, words, onWords, bleeped, onBl
                 else setRun({ stage: 'error', message: t('לא נמצאו כתוביות בקובץ') })
               }} />
             </label>
-            <p class="small muted" style="margin:10px 0 0">{t('הזיהוי רץ על המכשיר עם Whisper. בפעם הראשונה יורד מודל של כ-560MB (נשמר בדפדפן לפעמים הבאות). על מחשב זה מהיר; בטלפון או טאבלט חלש זה עלול לקחת זמן.')}</p>
+            <SpeechNote />
           </>
         )}
-        {busy && run && 'progress' in run && (
-          <div style="display:grid;gap:10px">
-            <div class="row">
-              <strong class="grow">
-                {run.stage === 'download' ? t('מוריד את המודל…') : run.stage === 'transcribe' ? t('מזהה דיבור…') : t('מכין את הקול…')}
-              </strong>
-              <span class="muted small" dir="ltr">
-                {run.stage === 'download' && run.total ? `${(run.loaded! / 1e6).toFixed(0)} / ${(run.total / 1e6).toFixed(0)} MB` : `${Math.floor(run.progress * 100)}%`}
-              </span>
-            </div>
-            <div class="progress"><div style={{ width: `${Math.max(2, run.progress * 100)}%` }} /></div>
-            <button class="btn tonal" onClick={cancel}>{t('ביטול')}</button>
-          </div>
-        )}
+        {busy && run && <SpeechProgress status={run} onCancel={cancel} />}
         {run?.stage === 'error' && (
           <div style="margin-top:10px">
             <p class="small" style="color:var(--primary);margin:0 0 8px">{t('משהו השתבש')}: {run.message}</p>

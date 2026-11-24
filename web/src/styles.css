@@ -281,6 +281,10 @@ button { cursor: pointer; }
 @keyframes pulse { 50% { opacity: 0.3; } }
 .progress { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
 .progress div { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #ff4d6d, #ffc53d); transition: width 0.25s; }
+/* A phase with no percent (loading the model): a bar that moves, so it never looks frozen. */
+@keyframes indet { from { margin-inline-start: 0; } to { margin-inline-start: 65%; } }
+.progress.indet div { width: 35%; animation: indet 1.1s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .progress.indet div { animation: none; width: 100%; opacity: 0.5; } }
 .big-num { font: var(--text-display); font-weight: 600; color: var(--primary); font-variation-settings: 'ROND' 100; }
 .face-icon { width: 44px; height: 44px; border-radius: var(--radius-card); background: var(--primary-soft); display: grid; place-items: center; color: var(--primary); flex: none; }
 

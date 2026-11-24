@@ -26,13 +26,15 @@ case "${1:?shard}" in
     # A video shared to the installed app (Web Share Target) or opened with it.
     t share.cjs "$U" $S/walk.mp4 $R/share   # 1
     ;;
-  2) # 106 s
+  2) # 146 s
     # A deep voice on a clip with speech.
     (export VOICE=1; t e2e.cjs "$U" $S/speech_two.mp4 $R/voice)   # 43
     # The ready screen: the video first, the blur's settings, "blur and save" without the editor.
     t ready.cjs "$U" $S/walk.mp4 $S/classroom.mp4 $R/ready   # 39
     # Speakers found from their voices (the sample's two halves).
     t speakers.cjs "$U" $S/speech_two.mp4 $R/speakers   # 8
+    # The speech model's flow with no download: faster / better quality kept, a stuck recognition ends with an error and a retry, Cancel ends the worker, a template asks before downloading.
+    t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 40
     # Where it was filmed and on what phone don't go out with the export.
     t privacy.cjs "$U" $S/speech_two.mp4 $R/privacy   # 10
     # The keyboard: groups by number, play / pause, a frame step, undo and redo.
@@ -66,8 +68,8 @@ case "${1:?shard}" in
     # The landing page (/home/): it loads whole, its parts work, its links lead to the editor.
     t home.cjs "http://localhost:4173/" $R/home   # 24
     ;;
-  subs) # Whisper's model downloads from Hugging Face (1.4 GB): its own job, only when subtitle code changes.
-    t subs.cjs "$U" $S/speech_en.mp4 $R/subs   # 168
+  subs) # Whisper's model downloads from Hugging Face: its own job, only when subtitle code changes. The small one (whisper-base, 77 MB on the CPU) is forced: the phone path, and quick.
+    t subs.cjs "$U&subsmodel=base" $S/speech_en.mp4 $R/subs   # 60
     ;;
   *) echo "unknown shard: $1" >&2; exit 2 ;;
 esac
