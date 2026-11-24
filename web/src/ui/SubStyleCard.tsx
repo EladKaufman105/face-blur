@@ -24,7 +24,9 @@ function hasHebrew(family: string): boolean {
  * The subtitles' design, as the app's style panel: ready-made looks, the font (bundled or one
  * imported), its weight, the effect, colors, outline, shadow, glow, a box, size and place.
  */
-function StyleCard({ style, onStyle, file }: { style: SubStyle; onStyle: (s: SubStyle) => void; file?: File | null }) {
+function StyleCard({ style, onStyle, file, part }: { style: SubStyle; onStyle: (s: SubStyle) => void; file?: File | null; part?: string }) {
+  // On a phone one tab of it at a time (as the app's style panel); on a wide screen everything.
+  const P = (k: string) => !part || part === k
   const set = (patch: Partial<SubStyle>) => onStyle({ ...style, ...patch })
   const [custom, setCustom] = useState<string[]>([])
   const [note, setNote] = useState<string | null>(null)
@@ -35,23 +37,26 @@ function StyleCard({ style, onStyle, file }: { style: SubStyle; onStyle: (s: Sub
   const [fine, setFine] = useState(false)
   // The imported fonts' names are listed at once (they are the user's own, small); their files load with the rest.
   useEffect(() => { listFonts().then((list) => setCustom(list.map((f) => f.name))) }, [])
+  const loadFonts = fine || part === 'font'
   useEffect(() => {
-    if (!fine) return
+    if (!loadFonts) return
     for (const f of SUB_FONTS) loadSubFont({ ...DEFAULT_SUB_STYLE, font: f.id }, document.fonts, document.baseURI).then(() => setReady((n) => n + 1))
     listFonts().then((list) => {
       for (const f of list) loadSubFont({ ...DEFAULT_SUB_STYLE, customFont: f.name }, document.fonts, document.baseURI, f.data).then(() => setReady((n) => n + 1))
     })
-  }, [fine])
+  }, [loadFonts])
   const outline = style.outline <= 0 ? 0 : style.outline < 0.13 ? 1 : 2
   return (
     <section class="card sub-style">
-      <h3 class="section-title">{t('עיצוב כתוביות')}</h3>
+      {!part && <h3 class="section-title">{t('עיצוב כתוביות')}</h3>}
 
-      <SubPresetRow style={style} onStyle={onStyle} file={file ?? null} />
+      {P('looks') && <SubPresetRow style={style} onStyle={onStyle} file={file ?? null} />}
 
-      <details class="sub-fine" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) setFine(true) }}>
-      <summary>{t('כוונון ידני')}</summary>
+      {(() => { const Fine = (part ? 'div' : 'details') as 'details'; return (
+      <Fine class="sub-fine" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) setFine(true) }}>
+      {!part && <summary>{t('כוונון ידני')}</summary>}
 
+{P('font') && <>
       <h4 class="caption">{t('גופן')}</h4>
       <div class="chips fonts">
         {SUB_FONTS.map((f) => (
@@ -83,6 +88,8 @@ function StyleCard({ style, onStyle, file }: { style: SubStyle; onStyle: (s: Sub
       {note && <p class="small muted" style="margin:0">{note}</p>}
       <FontAxes choice={style} onChange={(weight, round) => set({ weight, round })} />
 
+</>}
+{P('effect') && <>
       <h4 class="caption">{t('אפקט')}</h4>
       <div class="chips effects">
         {SUB_EFFECTS.map(([e, label]) => (
@@ -90,6 +97,8 @@ function StyleCard({ style, onStyle, file }: { style: SubStyle; onStyle: (s: Sub
         ))}
       </div>
 
+</>}
+{P('color') && <>
       <h4 class="caption">{t('צבע הטקסט')}</h4>
       <div class="swatches">
         {SUB_COLORS.map((c) => <button class={'swatch' + (style.color === c ? ' on' : '')} style={{ background: c }} aria-label={c} onClick={() => set({ color: c })} />)}
@@ -135,6 +144,8 @@ function StyleCard({ style, onStyle, file }: { style: SubStyle; onStyle: (s: Sub
         ))}
       </div>
 
+</>}
+{P('layout') && <>
       <h4 class="caption">{t('גודל ומיקום')}</h4>
       <div class="slider-row">
         <label>{t('גודל')}</label>
@@ -149,7 +160,9 @@ function StyleCard({ style, onStyle, file }: { style: SubStyle; onStyle: (s: Sub
         <label>{t('גובה מדויק')}</label>
         <input type="range" min={0.05} max={0.95} step={0.01} value={style.position} onInput={(e) => set({ position: Number((e.currentTarget as HTMLInputElement).value) })} />
       </div>
-      </details>
+</>}
+      </Fine>
+      ) })()}
     </section>
   )
 }

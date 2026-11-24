@@ -70,7 +70,7 @@ export function reserveClipIds(clips: SfxClip[]) {
 }
 
 /** The sound effects: pick a group, ▶ to hear, tap to add at the playhead; the added ones below. */
-export function SoundTab({ clips, time, onChange, onSeek, voice, onVoice, voiceBusy }: { clips: SfxClip[]; time: number; onChange: (c: SfxClip[]) => void; onSeek: (at: number) => void; voice: VoiceFx; onVoice: (v: VoiceFx) => void; voiceBusy: boolean }) {
+export function SoundTab({ clips, time, onChange, onSeek, voice, onVoice, voiceBusy, part }: { part?: 'voice' | 'sfx'; clips: SfxClip[]; time: number; onChange: (c: SfxClip[]) => void; onSeek: (at: number) => void; voice: VoiceFx; onVoice: (v: VoiceFx) => void; voiceBusy: boolean }) {
   const [group, setGroup] = useState(0)
   // The sounds imported from the device ("mine", the last group), kept in the browser.
   const MINE = SFX_GROUPS.length
@@ -100,7 +100,7 @@ export function SoundTab({ clips, time, onChange, onSeek, voice, onVoice, voiceB
   const update = (id: number, patch: Partial<SfxClip>) => onChange(clips.map((c) => (c.id === id ? { ...c, ...patch } : c)).sort((a, b) => a.at - b.at))
   return (
     <>
-      <section class="card">
+      {(!part || part === 'voice') && <section class="card">
         <h3 class="section-title">{t('שינוי קול')}</h3>
         <div class="chips">
           {VOICES.map((v) => (
@@ -108,8 +108,8 @@ export function SoundTab({ clips, time, onChange, onSeek, voice, onVoice, voiceB
           ))}
         </div>
         <p class="small muted" style="margin:10px 0 0">{voiceBusy ? t('מעבד את הקול…') : t('שינוי קול מקשה לזהות את הדובר, אבל לא מבטיח אנונימיות מלאה.')}</p>
-      </section>
-      <section class="card">
+      </section>}
+      {(!part || part === 'sfx') && <section class="card">
         <h3 class="section-title">{t('אפקטים קוליים')}</h3>
         <div class="chips">
           {SFX_GROUPS.map((g, k) => (
@@ -146,8 +146,8 @@ export function SoundTab({ clips, time, onChange, onSeek, voice, onVoice, voiceB
           ;(e.currentTarget as HTMLInputElement).value = ''
           if (f) importSound(f)
         }} />
-      </section>
-      {clips.length > 0 && (
+      </section>}
+      {(!part || part === 'sfx') && clips.length > 0 && (
         <section class="card">
           <h3 class="section-title">{t('בסרטון')}</h3>
           <div class="clips">
@@ -361,7 +361,9 @@ function SpeechNote() {
 }
 
 /** Subtitles: made on the device from the speech, then edited, styled and saved as SRT too. */
-export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
+export function SubtitlesTab({ part, stylePart, file, cues, onCues, words, onReplace, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
+  /** On a phone: the sub-tool shown ('make', 'list' or 'style'); on a wide screen all of them. */
+  part?: 'make' | 'list' | 'style'; stylePart?: string
   /** [step]: a change of its own for undo (not merged with the typing around it). */
   file: File; cues: Cue[]; onCues: (c: Cue[], step?: boolean) => void; words: Word[]
   /** The subtitles, their words and the bleeped words replaced together, as one undo step. */
@@ -369,6 +371,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
   bleeped: Set<number>; onBleeped: (b: Set<number>) => void; tone: boolean; onTone: (t: boolean) => void
   style: SubStyle; onStyle: (s: SubStyle) => void; time: number; onSeek: (t: number) => void
 }) {
+  const show = (k: 'make' | 'list' | 'style') => !part || part === k
   const [bleepMode, setBleepMode] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
   const [find, setFind] = useState('')
@@ -540,15 +543,83 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
       )}
     </>
   )
+  // What used to be folded away as "more options". On a phone each piece sits in the sub-tool it
+  // belongs to (making and translating, the list's tools); on a wide screen they share one fold,
+  // which shows only when it has something in it.
+  const findBlock = cues.length > 0 && (
+    <>
+      <div class="row wrap">
+        <button class={'btn small-btn ' + (findOpen ? 'primary' : 'tonal')} onClick={() => { setFindOpen(!findOpen); setFindResult(null) }}>{t('חפש והחלף')}</button>
+        <button class="btn tonal small-btn" onClick={srt}>{t('הורד SRT')}</button>
+        {!part && importSrt}
+      </div>
+      {findOpen && (
+        <div class="find-row">
+          <input class="text-in find-in" dir="auto" placeholder={t('חפש')} value={find} onInput={(e) => { setFind((e.currentTarget as HTMLInputElement).value); setFindResult(null) }} />
+          <input class="text-in repl-in" dir="auto" placeholder={t('החלף ב…')} value={repl} onInput={(e) => { setRepl((e.currentTarget as HTMLInputElement).value); setFindResult(null) }} />
+          <div class="row">
+            <button class="btn tonal small-btn replace-all" disabled={!find} onClick={replaceAll}>{t('החלף הכל')}</button>
+            {findResult && <span class="small muted find-result">{findResult}</span>}
+          </div>
+        </div>
+      )}
+      {words.length > 0 && (
+        <div class="split-cues">
+          <div class="row">
+            <span class="small grow">{t('חלוקת הכתוביות')}</span>
+            <div class="seg seg2 split-by" role="radiogroup">
+              <button class={!byChars ? 'on' : ''} role="radio" aria-checked={!byChars} onClick={() => setByChars(false)}>{t('מילים')}</button>
+              <button class={byChars ? 'on' : ''} role="radio" aria-checked={byChars} onClick={() => setByChars(true)}>{t('תווים')}</button>
+            </div>
+          </div>
+          <div class="chips scroll-row">
+            {(byChars ? [10, 15, 20, 25, 32, 42] : [1, 2, 3, 4, 5, 6, 8]).map((n) => {
+              const rule = byChars ? { words: 0, chars: n } : { words: n, chars: 0 }
+              return <button class={'chip' + (split.words === rule.words && split.chars === rule.chars ? ' on' : '')} onClick={() => regroup(rule)}>{byChars ? t('עד %d', n) : <bdi dir="ltr">{n}</bdi>}</button>
+            })}
+            <button class={'chip' + (!split.words && !split.chars ? ' on' : '')} onClick={() => regroup({ words: 0, chars: 0 })}>{t('משפט שלם')}</button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+  const makeBlock = cues.length === 0 ? (!busy && (
+    <>
+      <p class="small muted" style="margin:0">{t('איכות הזיהוי')}</p>
+      <QualityChoice />
+      {importSrt}
+    </>
+  )) : (
+    <>
+      {part && importSrt}
+      <TranslateCard cues={cues} onCues={onCues} show={style.show ?? 'src'} onShow={(v) => set({ show: v })} />
+      <SpeakersCard file={file} cues={cues} onCues={onCues} color={style.color} chosen={style.speakerColors} />
+      <button class="btn ghost" onClick={() => { onReplace([], words, bleeped); setOpenId(null); setBleepMode(false); setPendingImport(null) }}>{t('מחק כתוביות')}</button>
+    </>
+  )
+  const more = part ? (
+    <>
+      {part === 'make' && cues.length === 0 && makeBlock && <section class="card subs-make-more">{makeBlock}</section>}
+      {part === 'make' && cues.length > 0 && <div class="subs-make-more">{makeBlock}</div>}
+      {part === 'list' && cues.length > 0 && <section class="card subs-list-tools">{findBlock}</section>}
+    </>
+  ) : (cues.length > 0 || makeBlock) ? (
+    <details class="card subs-more">
+      <summary>{t('עוד אפשרויות')}</summary>
+      <div class="subs-more-body">
+        {cues.length === 0 ? makeBlock : <>{findBlock}{makeBlock}</>}
+      </div>
+    </details>
+  ) : null
   return (
     <>
-      {lostBleeps > 0 && (
+      {part !== 'style' && lostBleeps > 0 && (
         <div class="card confirm lost-bleeps" role="alert">
           <span class="small">{lostBleeps === 1 ? t('מילה מצופצפת אחת לא נמצאה בכתוביות החדשות, ולכן היא לא מצופצפת. בטל את הפעולה או צפצף אותה שוב.') : t('%d מילים מצופצפות לא נמצאו בכתוביות החדשות, ולכן הן לא מצופצפות. בטל את הפעולה או צפצף אותן שוב.', lostBleeps)}</span>
           <div class="row"><button class="btn ghost small-btn" onClick={() => setLost(null)}>{t('הבנתי')}</button></div>
         </div>
       )}
-      {cues.length === 0 && (
+      {show('make') && cues.length === 0 && (
         <section class="card subs-start">
           <h3 class="section-title">{t('כתוביות')}</h3>
           {!busy && (
@@ -578,10 +649,10 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
           )}
         </section>
       )}
-      {cues.length > 0 && busy && run && <section class="card"><SpeechProgress status={run} onCancel={cancel} /></section>}
+      {show('make') && cues.length > 0 && busy && run && <section class="card"><SpeechProgress status={run} onCancel={cancel} /></section>}
       {/* The looks, with a sample of each, show at once (also before the subtitles are made). */}
-      <SubStyleCard file={file} style={style} onStyle={onStyle} />
-      {cues.length > 0 && words.length > 0 && (
+      {show('style') && <SubStyleCard file={file} style={style} onStyle={onStyle} part={part ? stylePart ?? 'looks' : undefined} />}
+      {show('list') && cues.length > 0 && words.length > 0 && (
                 <section class="card bleep">
                   <h3 class="section-title">{t('צפצוף מילים')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{bleeped.size === 1 ? t('מילה אחת') : bleeped.size > 1 ? t('%d מילים', bleeped.size) : ''}</span></h3>
                   <p class="small muted" style="margin:0 0 10px">{t('בחר מילים בטקסט, והן יוחלפו בצפצוף או בשקט.')}</p>
@@ -597,7 +668,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
                   <SwitchRow cls="mask-subs" title={t('הסתר אותן גם בכתוביות')} text="****" on={style.maskBleeped !== false} onChange={(on) => onStyle({ ...style, maskBleeped: on })} />
                 </section>
               )}
-      {cues.length > 0 && (
+      {show('list') && cues.length > 0 && (
         <section class="card cue-list">
           <h3 class="section-title">{t('הטקסט')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{cues.length}</span></h3>
           <p class="small muted" style="margin:0">{t('הקש על כתובית כדי לערוך אותה.')}</p>
@@ -662,58 +733,7 @@ export function SubtitlesTab({ file, cues, onCues, words, onReplace, bleeped, on
           <button class="btn tonal small-btn cue-add" onClick={addHere}>{t('הוסף כתובית כאן')}</button>
         </section>
       )}
-      <details class="card subs-more">
-        <summary>{t('עוד אפשרויות')}</summary>
-        <div class="subs-more-body">
-          {cues.length === 0 && !busy && (
-            <>
-              <p class="small muted" style="margin:0">{t('איכות הזיהוי')}</p>
-              <QualityChoice />
-              {importSrt}
-            </>
-          )}
-          {cues.length > 0 && (
-            <>
-              <div class="row wrap">
-                <button class={'btn small-btn ' + (findOpen ? 'primary' : 'tonal')} onClick={() => { setFindOpen(!findOpen); setFindResult(null) }}>{t('חפש והחלף')}</button>
-                <button class="btn tonal small-btn" onClick={srt}>{t('הורד SRT')}</button>
-                {importSrt}
-              </div>
-              {findOpen && (
-                <div class="find-row">
-                  <input class="text-in find-in" dir="auto" placeholder={t('חפש')} value={find} onInput={(e) => { setFind((e.currentTarget as HTMLInputElement).value); setFindResult(null) }} />
-                  <input class="text-in repl-in" dir="auto" placeholder={t('החלף ב…')} value={repl} onInput={(e) => { setRepl((e.currentTarget as HTMLInputElement).value); setFindResult(null) }} />
-                  <div class="row">
-                    <button class="btn tonal small-btn replace-all" disabled={!find} onClick={replaceAll}>{t('החלף הכל')}</button>
-                    {findResult && <span class="small muted find-result">{findResult}</span>}
-                  </div>
-                </div>
-              )}
-              {words.length > 0 && (
-                <div class="split-cues">
-                  <div class="row">
-                    <span class="small grow">{t('חלוקת הכתוביות')}</span>
-                    <div class="seg seg2 split-by" role="radiogroup">
-                      <button class={!byChars ? 'on' : ''} role="radio" aria-checked={!byChars} onClick={() => setByChars(false)}>{t('מילים')}</button>
-                      <button class={byChars ? 'on' : ''} role="radio" aria-checked={byChars} onClick={() => setByChars(true)}>{t('תווים')}</button>
-                    </div>
-                  </div>
-                  <div class="chips">
-                    {(byChars ? [10, 15, 20, 25, 32, 42] : [1, 2, 3, 4, 5, 6, 8]).map((n) => {
-                      const rule = byChars ? { words: 0, chars: n } : { words: n, chars: 0 }
-                      return <button class={'chip' + (split.words === rule.words && split.chars === rule.chars ? ' on' : '')} onClick={() => regroup(rule)}>{byChars ? t('עד %d', n) : <bdi dir="ltr">{n}</bdi>}</button>
-                    })}
-                    <button class={'chip' + (!split.words && !split.chars ? ' on' : '')} onClick={() => regroup({ words: 0, chars: 0 })}>{t('משפט שלם')}</button>
-                  </div>
-                </div>
-              )}
-              <TranslateCard cues={cues} onCues={onCues} show={style.show ?? 'src'} onShow={(v) => set({ show: v })} />
-              <SpeakersCard file={file} cues={cues} onCues={onCues} color={style.color} chosen={style.speakerColors} />
-              <button class="btn ghost" onClick={() => { onReplace([], words, bleeped); setOpenId(null); setBleepMode(false); setPendingImport(null) }}>{t('מחק כתוביות')}</button>
-            </>
-          )}
-        </div>
-      </details>
+      {more}
     </>
   )
 }

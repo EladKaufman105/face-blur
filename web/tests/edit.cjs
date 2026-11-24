@@ -32,6 +32,7 @@ const PHONE = { viewport: { width: 393, height: 852 }, deviceScaleFactor: 2, isM
     // A blur by hand, on the man walking (at 5 s), followed both ways.
     await tap('.tabs button[data-g=faces]')
     await seek(5)
+    if (device === 'phone') await tap('.panel-head [data-sub=manual]')
     await tap('.add-blur')
     const box = await p.locator('.screen canvas >> nth=0').boundingBox()
     const t0 = Date.now()

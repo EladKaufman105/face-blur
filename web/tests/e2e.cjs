@@ -16,6 +16,8 @@ const DEVICES = {
   const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] })
   const ctx = await b.newContext({ ...(DEVICES[device] ?? { viewport: { width: 1366, height: 860 } }), locale: 'he-IL' })
   const p = await ctx.newPage()
+  // On a phone a group's tools are tabs of its panel (as the app's): open one before using its controls.
+  const sub = async (id) => { if (device === 'phone') await p.click(`.panel-head [data-sub=${id}]`) }
   const logs = []
   p.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`))
   p.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`))
@@ -44,12 +46,14 @@ const DEVICES = {
       await p.screenshot({ path: `${out}/4_face_off.png` })
       await p.click('.face >> nth=0')
     }
+    await sub('look')
     await p.click('.seg:not(.tabs) button >> nth=1')
     await p.waitForTimeout(600)
     await p.screenshot({ path: `${out}/5_pixelate.png` })
     await p.click('.seg:not(.tabs) button >> nth=0')
     // A sound effect at the playhead, and a text watermark.
     await p.click('.tabs button[data-g=sound]')
+    await sub('sfx')
     await p.click('.sound .name >> nth=0')
     await p.waitForSelector('.tl-sound', { timeout: 5000 })
     if (process.env.VOICE) {

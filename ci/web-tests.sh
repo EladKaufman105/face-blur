@@ -44,6 +44,8 @@ case "${1:?shard}" in
     t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 40
     # Subtitles on a phone (390 px): the one button on the first screen, the looks as drawn cards, one tap applies one, a subtitle edited where it is, 44 px targets. No model.
     t subsmobile.cjs "$U" $S/speech_two.mp4 $R/subsmobile   # 8
+    # The editor's panels on a phone (390 px), as the app's: each group one compact panel of a bounded height with its tools as chips, the video in view, nothing sideways, no empty "more options".
+    t panels.cjs "$U" $S/speech_two.mp4 $R/panels   # 40
     # An SRT imported over subtitles that have bleeped words asks first; keeping changes nothing; replacing is undone with its words and bleeps.
     t subsimport.cjs "$U" $S/speech_two.mp4 $R/subsimport   # 8
     # Where it was filmed and on what phone don't go out with the export.
