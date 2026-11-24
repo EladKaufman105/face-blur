@@ -11,11 +11,22 @@ const GUARD = 'onit.isolation.reload'
 /** ?coi=0 keeps the old behavior (the worker only serves the share target; no isolation, no reload): for the tests of everything else. */
 const wanted = () => new URLSearchParams(location.search).get('coi') !== '0'
 
-/** The COEP the browser knows: "credentialless" (Chrome, Firefox: cross-origin downloads need nothing from the host), else "require-corp". */
+/**
+ * "credentialless" where the browser has it (Chromium: cross-origin downloads need nothing from the
+ * host), else "off": WebKit (every iOS browser) and Firefox are NOT isolated. "require-corp" would
+ * break their cross-origin downloads and the worker scripts the service worker would have to proxy
+ * (WebKit fails to start module workers in parallel on a page a service worker controls), so there the
+ * worker only serves the share target, as before isolation existed, and the app uses one thread.
+ */
 function coep(): string {
   if (!wanted()) return 'off'
-  return 'credentialless' in window || (typeof HTMLIFrameElement !== 'undefined' && 'credentialless' in HTMLIFrameElement.prototype) ? 'credentialless' : 'require-corp'
+  return 'credentialless' in window || (typeof HTMLIFrameElement !== 'undefined' && 'credentialless' in HTMLIFrameElement.prototype) ? 'credentialless' : 'off'
 }
+
+/** Remembered per browser (user agent): isolation was tried and did not work, so don't try (or reload) again. */
+const FAILED = 'onit.isolation.failed'
+const failedBefore = () => { try { return localStorage.getItem(FAILED) === navigator.userAgent } catch { return false } }
+const rememberFailure = () => { try { localStorage.setItem(FAILED, navigator.userAgent) } catch {} }
 
 const later = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
@@ -25,18 +36,23 @@ const later = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
  */
 export async function startServiceWorker(): Promise<boolean> {
   if (!('serviceWorker' in navigator)) return false
-  const registering = navigator.serviceWorker.register(`sw.js?${BETA ? 'channel=beta&' : ''}coep=${coep()}`)
+  const mode = coep()
+  const registering = navigator.serviceWorker.register(`sw.js?${BETA ? 'channel=beta&' : ''}coep=${mode}`)
+  registering.catch(() => {})
   if (window.crossOriginIsolated) {
-    registering.catch(() => {})
     try { sessionStorage.removeItem(GUARD) } catch {}
+    try { localStorage.removeItem(FAILED) } catch {}
     return false
   }
-  if (!wanted() || !window.isSecureContext) {
-    registering.catch(() => {})
-    return false
-  }
+  // Nothing to isolate (?coi=0, an insecure page, a browser without credentialless) or the reload
+  // already happened in this tab (the guard) or isolation failed here before: draw at once.
+  if (mode !== 'credentialless' || !window.isSecureContext || failedBefore()) return false
   try {
-    const reg = await registering
+    if (sessionStorage.getItem(GUARD)) { rememberFailure(); return false }
+  } catch { return false } // sessionStorage can be unavailable (then no reload: better one thread than a loop)
+  try {
+    const reg = await Promise.race([registering, later(6000).then(() => null)])
+    if (!reg) return false
     // An older worker in charge (a visit before this one) must be replaced first: ask now, don't wait for the browser's own check.
     if (!reg.installing && !reg.waiting) await Promise.race([reg.update().catch(() => {}), later(4000)])
     // A new worker (the first visit, or a newer version of the worker) is on its way: wait until it
@@ -55,11 +71,7 @@ export async function startServiceWorker(): Promise<boolean> {
       await later(150)
     }
     if (!reg.active) return false
-    try {
-      // sessionStorage can be unavailable (then no reload: better one thread than a loop).
-      if (sessionStorage.getItem(GUARD)) return false
-      sessionStorage.setItem(GUARD, String(Date.now()))
-    } catch { return false }
+    try { sessionStorage.setItem(GUARD, String(Date.now())) } catch { return false }
     location.reload()
     return true
   } catch {

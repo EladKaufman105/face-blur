@@ -27,9 +27,9 @@ const [, , url, out] = process.argv
     }))
     let s = await info()
     check(s.iso && s.sab && s.ctl, 'first visit: isolated, SharedArrayBuffer, controlled ' + JSON.stringify(s))
-    check(navs <= 3, `first visit reloaded once (navigations: ${navs})`)
+    check(navs === 2, `first visit reloaded once (navigations: ${navs})`)
     await p.waitForTimeout(2500)
-    check(navs <= 3, `no reload loop (navigations after 2.5 s: ${navs})`)
+    check(navs === 2, `no reload loop (navigations after 2.5 s: ${navs})`)
     // A module worker of the app (served through the service worker) starts under the page's COEP.
     const worker = await p.evaluate(async () => {
       const src = await (await fetch('./')).text()
@@ -49,7 +49,7 @@ const [, , url, out] = process.argv
     check(Array.isArray(inWorker) && inWorker[0] && inWorker[1], 'a worker is isolated and has shared memory ' + JSON.stringify(inWorker))
     // A cross-origin CORS download works under the page's policy (the models come from Hugging Face's CDN).
     const cors = await p.evaluate(async () => { try { const r = await fetch('https://raw.githubusercontent.com/EladKaufman105/face-blur/develop/README.md', { cache: 'no-store' }); return r.ok ? 'ok' : 'status ' + r.status } catch (e) { return 'blocked: ' + e.message } })
-    console.log('cross-origin fetch:', cors)
+    check(cors === 'ok', 'cross-origin fetch: ' + cors)
     // A second visit in the same browser: isolated from the first response, no reload.
     const p2 = await ctx.newPage()
     let navs2 = 0

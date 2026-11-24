@@ -129,8 +129,16 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
     wasm.wasmPaths = { mjs: new URL(ortMjsUrl, self.location.href).href, wasm: new URL(ortWasmUrl, self.location.href).href }
     // Threads are for the CPU's path, and only in an isolated page (else the runtime would say it can't).
     wasm.numThreads = device === 'wasm' && self.crossOriginIsolated ? Math.max(1, threads) : 1
-    // A phone that can't start the threads says so early (the page then tries again with one).
-    wasm.initTimeout = 20000
+    // A phone that can't start the threads says so early (the page then tries again with one). The
+    // runtime's own wasm file is fetched first so the timeout measures only the threads' start, not a
+    // slow download; with one thread there is no timeout at all.
+    if (wasm.numThreads > 1) {
+      try {
+        const r = await fetch(wasm.wasmPaths.wasm)
+        if (r.ok) wasm.wasmBinary = await r.arrayBuffer()
+      } catch {}
+      wasm.initTimeout = 20000
+    } else wasm.initTimeout = 0
   }
   const key = `${repo}|${device}|${encDtype}|${dtype}|${wasm?.numThreads}`
   // Phase: loading (or starting to download). The files' bytes come as 'download'; when they are all

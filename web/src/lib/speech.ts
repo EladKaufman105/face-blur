@@ -176,12 +176,17 @@ export function planFor(quality: Quality, d: Device, forceCpu = gpuFailed.value)
  * took 9.9 s against 13.3 s on one, and 3 or 4 threads were slower (11-12 s): the encoder keeps
  * gaining but the decoder's many small steps lose to the cost of waking threads. ?threads=N sets it (tests).
  */
-export function wasmThreads(_d: Device): number {
+export function wasmThreads(_d: Device = device.value): number {
   const forced = Number(param('threads'))
   if (forced >= 1) return Math.min(16, Math.floor(forced))
   if (typeof crossOriginIsolated === 'undefined' || !crossOriginIsolated) return 1
-  return Math.max(1, Math.min(4, Math.ceil((navigator.hardwareConcurrency || 2) / 2)))
+  if (threadsFailed) return 1
+  const n = Math.max(1, Math.min(4, Math.ceil((navigator.hardwareConcurrency || 2) / 2)))
+  return _d.weak ? Math.min(2, n) : n
 }
+
+/** The threads didn't start on this device (this session): later jobs go straight to one thread. */
+let threadsFailed = false
 
 /** What a download agreement is for: the model and its file kinds. */
 const planKey = (p: SpeechPlan) => `${p.repo}|${p.encDtype}|${p.dtype}`
@@ -332,7 +337,7 @@ function keepWarm(worker: Worker, plan: SpeechPlan) {
   dropWarm()
   warm = { worker, key: warmKey(plan), timer: window.setTimeout(dropWarm, (device.value.weak ? 60 : 240) * 1000) }
 }
-/** An export is about to start: a phone gives the memory back first (a computer keeps the model for the next video). */
+/** An export, a face analysis or a picture pass is about to start: a phone gives the memory back first (a computer keeps the model for the next video). */
 export function releaseSpeechForExport() {
   if (device.value.weak) dropWarm()
 }
@@ -402,8 +407,9 @@ export function transcribeFile(
       const failOrFallback = (code: string, message: string) => {
         if (finished || worker !== w) return
         // Threads that don't start (a phone that refuses the shared memory): once more with one, in a new worker.
-        if (plan.device === 'wasm' && plan.threads > 1 && !usedOneThread && code !== 'no-audio' && phase !== 'recognize') {
+        if (plan.device === 'wasm' && plan.threads > 1 && !usedOneThread && phase === 'load') {
           usedOneThread = true
+          threadsFailed = true
           stop()
           attempt({ ...plan, threads: 1 })
           return

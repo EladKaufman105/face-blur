@@ -11,10 +11,11 @@
 // release's worker leaves everything under beta/ alone.
 const BETA = new URL(self.location.href).searchParams.get('channel') === 'beta'
 const SHARE = BETA ? 'onit-beta-share' : 'onit-share'
-// The page says which COEP its browser knows (?coep=): Chrome and Firefox have "credentialless",
-// which lets the cross-origin downloads (the speech models) work without the host's cooperation;
-// the others get "require-corp" (their downloads are CORS requests, which it allows). "off": none.
-const COEP = new URL(self.location.href).searchParams.get('coep') || 'require-corp'
+// The page says which COEP its browser knows (?coep=). Only "credentialless" (Chromium) isolates:
+// it lets the cross-origin downloads (the speech models) work without the host's cooperation.
+// Every other value, or none, is "off": the worker then only serves the share target and touches no
+// other request (as before isolation existed; WebKit and Firefox are left alone on purpose).
+const COEP = new URL(self.location.href).searchParams.get('coep') === 'credentialless' ? 'credentialless' : 'off'
 const OTHER = BETA ? null : new URL('beta/', self.registration.scope).href
 
 self.addEventListener('install', () => self.skipWaiting())
@@ -42,7 +43,7 @@ self.addEventListener('fetch', (e) => {
 /** The page and the workers' scripts of this site get the isolation headers; nothing else needs them. */
 function isolate(e) {
   const r = e.request
-  if (COEP === 'off' || (r.cache === 'only-if-cached' && r.mode !== 'same-origin')) return
+  if (COEP !== 'credentialless' || (r.cache === 'only-if-cached' && r.mode !== 'same-origin')) return
   if (!['document', 'worker', 'sharedworker'].includes(r.destination)) return
   if (new URL(r.url).origin !== self.location.origin) return
   e.respondWith(fetch(r).then((res) => {
