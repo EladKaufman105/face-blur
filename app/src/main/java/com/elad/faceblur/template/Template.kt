@@ -227,6 +227,21 @@ data class TemplateSettings(
     val needsSpeechModel: Boolean get() = createSubs
 }
 
+/**
+ * [s] with the speech model that is on the phone, when the one it asks for isn't (so subtitles
+ * don't wait for a download). The multilingual model also understands Hebrew, so a Hebrew
+ * template can use it and keeps its spoken language; the multilingual model is
+ * swapped for the Hebrew only when the spoken language is Hebrew. Otherwise [s] as it is (the
+ * model is downloaded).
+ */
+fun fitSpeechModel(s: TemplateSettings, isReady: (SpeechModel) -> Boolean): TemplateSettings {
+    if (!s.createSubs || isReady(s.speechModel)) return s
+    return when (s.speechModel) {
+        SpeechModel.HEBREW -> if (isReady(SpeechModel.MULTILINGUAL)) s.copy(speechModel = SpeechModel.MULTILINGUAL) else s
+        SpeechModel.MULTILINGUAL -> if (s.language == "he" && isReady(SpeechModel.HEBREW)) s.copy(speechModel = SpeechModel.HEBREW) else s
+    }
+}
+
 /** Lays [t] over [base]: what the template includes is replaced, the rest stays. */
 fun Template.applyTo(base: TemplateSettings): TemplateSettings {
     var s = base

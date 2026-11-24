@@ -17,10 +17,12 @@ import com.elad.faceblur.i18n.t
 object TemplateRunner {
     /**
      * Runs the steps of [s] on [ctrl] and waits for each.
-     * @return short notes about what could not be done (the video is still processed).
+     * @return what could not be done ([ProcessingNotes.failures]: the video is still processed) and
+     * what is only worth knowing ([ProcessingNotes.warnings]).
      */
-    suspend fun applyProcessing(ctrl: EditorController, s: TemplateSettings): List<String> {
+    suspend fun applyProcessing(ctrl: EditorController, s: TemplateSettings): ProcessingNotes {
         val notes = ArrayList<String>()
+        val warnings = ArrayList<String>()
 
         // Subtitles first: filler words and silences read their word times.
         if (s.createSubs) {
@@ -35,7 +37,8 @@ object TemplateRunner {
                     notes += ctrl.notice ?: t("לא נמצא דיבור בסרטון")
                 } else {
                     if (!s.split.isSentence) ctrl.changeSplit(SplitRule(s.split.words, s.split.chars))
-                    if (s.export.subs == com.elad.faceblur.edit.SubLang.NONE) notes += t("הכתוביות נוצרו, אבל לא ייצרבו בסרטון (ההגדרה: בלי כתוביות בסרטון)")
+                    // Not a failure: the template asked for it.
+                    if (s.export.subs == com.elad.faceblur.edit.SubLang.NONE) warnings += t("הכתוביות נוצרו, אבל לא ייצרבו בסרטון (ההגדרה: בלי כתוביות בסרטון)")
                 }
             }
         }
@@ -75,6 +78,36 @@ object TemplateRunner {
             ctrl.awaitIdle()
             if (ctrl.stabilizer == null) notes += t("הייצוב לא הופעל")
         }
-        return notes
+        return ProcessingNotes(notes, warnings)
     }
+
+    /**
+     * Whether the video, after the processing, is any different from the original: subtitles to
+     * burn (or an .srt to save), a changed voice, cuts, a new background or steadying. A video
+     * with no faces and no change isn't worth saving a copy of.
+     */
+    fun changesVideo(ctrl: EditorController, s: TemplateSettings): Boolean {
+        val subs = ctrl.model.cues.isNotEmpty() && (s.export.subs != com.elad.faceblur.edit.SubLang.NONE || s.export.saveSrt)
+        val a = ctrl.audio
+        val voice = a.voice != com.elad.faceblur.audio.VoiceFx.NONE || a.denoise > 0 || a.enhance || a.loud
+        val bg = ctrl.background.active && (ctrl.background.key != BgKey.PERSON || ctrl.masksReady)
+        return subs || voice || ctrl.cutCount > 0 || bg || ctrl.stabilizer != null
+    }
+
+    /** The export asks for a different video than the source (shape, size, rate, quality, codec or a watermark). */
+    fun exportChangesVideo(ctx: android.content.Context, e: com.elad.faceblur.pipeline.ExportOptions): Boolean =
+        e.aspect != com.elad.faceblur.edit.ExportAspect.ORIGINAL || e.shortSide > 0 || e.fps > 0 ||
+            e.quality != com.elad.faceblur.pipeline.ExportQuality.ORIGINAL || e.codec != com.elad.faceblur.pipeline.ExportCodec.SAME ||
+            e.watermark.enabled(ctx)
+}
+
+/**
+ * What the template's processing reported. A [failures] entry is a step that didn't work out (the
+ * video needs a look); a [warnings] entry is only worth knowing (nothing went wrong).
+ */
+data class ProcessingNotes(val failures: List<String> = emptyList(), val warnings: List<String> = emptyList()) {
+    val hasFailures: Boolean get() = failures.isNotEmpty()
+
+    /** One line for a notice: a failure first, else a warning. */
+    fun first(): String? = failures.firstOrNull() ?: warnings.firstOrNull()
 }

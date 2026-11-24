@@ -58,7 +58,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.elad.faceblur.i18n.I18n
+import com.elad.faceblur.i18n.Lang
 import com.elad.faceblur.i18n.t
+import com.elad.faceblur.i18n.tn
+import androidx.compose.runtime.key
 import com.elad.faceblur.project.ProjectEntry
 import com.elad.faceblur.project.ProjectMeta
 import com.elad.faceblur.project.groupByBatch
@@ -82,6 +86,8 @@ fun ProjectsSection(
     onDelete: (String) -> Unit,
     onRenameFolder: (String, String) -> Unit = { _, _ -> },
     onDeleteFolder: (String) -> Unit = {},
+    /** The batch being processed now: its folder can't be renamed or deleted until it's done. */
+    lockedBatchId: String? = null,
 ) {
     if (projects.isEmpty()) {
         NoProjects()
@@ -104,17 +110,20 @@ fun ProjectsSection(
         }
         for (e in if (all) entries else entries.take(FOLDED)) {
             when (e) {
-                is ProjectEntry.Single -> ProjectRow(e.item, onOpen = { onOpen(e.item.id) }, onRename = { renaming = e.item }, onDelete = { deleting = e.item })
-                is ProjectEntry.Folder -> {
+                is ProjectEntry.Single -> key(e.item.id) {
+                    ProjectRow(e.item, onOpen = { onOpen(e.item.id) }, onRename = { renaming = e.item }, onDelete = { deleting = e.item })
+                }
+                is ProjectEntry.Folder -> key(e.batchId) {
                     val open = e.batchId in openFolders
                     FolderRow(
                         e, open,
                         onToggle = { openFolders = if (open) openFolders - e.batchId else openFolders + e.batchId },
                         onRename = { renamingFolder = e }, onDelete = { deletingFolder = e },
+                        locked = e.batchId == lockedBatchId,
                     )
                     if (open) {
                         Column(Modifier.padding(start = Space.L), verticalArrangement = Arrangement.spacedBy(Space.S)) {
-                            for (p in e.items) {
+                            for (p in e.items) key(p.id) {
                                 ProjectRow(p, onOpen = { onOpen(p.id) }, onRename = { renaming = p }, onDelete = { deleting = p })
                             }
                         }
@@ -165,7 +174,14 @@ fun ProjectsSection(
             onDismissRequest = { deletingFolder = null },
             title = { Text(t("למחוק את התיקייה?")) },
             text = {
-                Text(t("%d פרויקטים יימחקו (יפונו %s). הסרטונים ששמורים בגלריה, והסרטונים המקוריים, לא יימחקו.").format(f.items.size, sizeText(f.items.sumOf { it.bytes })))
+                Text(
+                    tn(
+                        f.items.size,
+                        "פרויקט אחד יימחק (יפונו %s). הסרטונים ששמורים בגלריה, והסרטונים המקוריים, לא יימחקו.",
+                        "%d פרויקטים יימחקו (יפונו %s). הסרטונים ששמורים בגלריה, והסרטונים המקוריים, לא יימחקו.",
+                        sizeText(f.items.sumOf { it.bytes }),
+                    ),
+                )
             },
             confirmButton = {
                 TextButton(onClick = { onDeleteFolder(f.batchId); deletingFolder = null }) {
@@ -181,13 +197,15 @@ fun ProjectsSection(
 private fun folderName(f: ProjectEntry.Folder<ProjectMeta>): String {
     f.items.firstNotNullOfOrNull { it.batchName }?.let { return it }
     val at = f.items.firstOrNull { it.batchAt > 0 }?.batchAt ?: f.items.minOf { it.created }
+    // English reads "Batch of Nov 24, 2026, 14:30"; Hebrew keeps its numeric date.
+    if (I18n.lang == Lang.EN) return t("עיבוד מ-%s").format(java.text.SimpleDateFormat("MMM d, yyyy, HH:mm", Locale.US).format(java.util.Date(at)))
     val c = Calendar.getInstance().apply { timeInMillis = at }
     return t("עיבוד") + " " + String.format(Locale.US, "%d.%d.%02d %02d:%02d", c.get(Calendar.DAY_OF_MONTH), c.get(Calendar.MONTH) + 1, c.get(Calendar.YEAR) % 100, c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE))
 }
 
 /** A batch's folder: its name, how many videos, and a chevron that opens it. */
 @Composable
-private fun FolderRow(f: ProjectEntry.Folder<ProjectMeta>, open: Boolean, onToggle: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
+private fun FolderRow(f: ProjectEntry.Folder<ProjectMeta>, open: Boolean, onToggle: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit, locked: Boolean = false) {
     var menu by remember { mutableStateOf(false) }
     val source = remember { MutableInteractionSource() }
     val shape = MaterialTheme.shapes.medium
@@ -212,7 +230,7 @@ private fun FolderRow(f: ProjectEntry.Folder<ProjectMeta>, open: Boolean, onTogg
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    t("%d סרטונים").format(f.items.size),
+                    tn(f.items.size, "סרטון אחד", "%d סרטונים"),
                     style = MaterialTheme.typography.bodySmall.tnum(),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -224,8 +242,13 @@ private fun FolderRow(f: ProjectEntry.Folder<ProjectMeta>, open: Boolean, onTogg
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, t("אפשרויות")) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text(t("שנה שם")) }, onClick = { menu = false; onRename() })
-                    DropdownMenuItem(text = { Text(t("מחק"), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() })
+                    if (locked) {
+                        // The batch is still writing into it.
+                        DropdownMenuItem(text = { Text(t("אי אפשר לשנות שם או למחוק בזמן שהעיבוד רץ")) }, onClick = { menu = false }, enabled = false)
+                    } else {
+                        DropdownMenuItem(text = { Text(t("שנה שם")) }, onClick = { menu = false; onRename() })
+                        DropdownMenuItem(text = { Text(t("מחק"), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDelete() })
+                    }
                 }
             }
         }

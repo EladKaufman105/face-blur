@@ -82,8 +82,13 @@ private val CharChoices = listOf(10, 15, 20, 25, 32, 42)
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SplitControls(ctrl: EditorController) {
-    var byChars by remember { mutableStateOf(ctrl.split.chars > 0) }
+fun SplitControls(ctrl: EditorController) = SplitControls(ctrl.split) { ctrl.changeSplit(it) }
+
+/** The same choices on a plain value (a template's, where there is no video to cut yet). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SplitControls(split: SplitRule, onChange: (SplitRule) -> Unit) {
+    var byChars by remember { mutableStateOf(split.chars > 0) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Caption(t("חלוקת הכתוביות"))
@@ -100,14 +105,14 @@ fun SplitControls(ctrl: EditorController) {
             for (n in choices) {
                 val rule = if (byChars) SplitRule(chars = n) else SplitRule(words = n)
                 FilterChip(
-                    selected = ctrl.split == rule,
-                    onClick = { ctrl.changeSplit(rule) },
+                    selected = split == rule,
+                    onClick = { onChange(rule) },
                     label = { Text(if (byChars) t("עד %d").format(n) else ltr("$n")) },
                 )
             }
             FilterChip(
-                selected = ctrl.split.isSentence,
-                onClick = { ctrl.changeSplit(SplitRule()) },
+                selected = split.isSentence,
+                onClick = { onChange(SplitRule()) },
                 label = { Text(t("משפט שלם")) },
             )
         }

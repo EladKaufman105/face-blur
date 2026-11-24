@@ -19,3 +19,10 @@ object I18n {
 
 /** The UI string for Hebrew text [he] in the current language. */
 fun t(he: String): String = if (I18n.lang == Lang.HE) he else English[he] ?: he
+
+/**
+ * A count in words, singular or plural: [one] when [n] is 1, else [many] (which has `%d` for the
+ * count). Both are Hebrew texts with their English in English.kt; [args] fill any other `%s`.
+ */
+fun tn(n: Int, one: String, many: String, vararg args: Any): String =
+    if (n == 1) t(one).format(*args) else t(many).format(n, *args)

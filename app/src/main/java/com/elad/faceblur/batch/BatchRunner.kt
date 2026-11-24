@@ -4,9 +4,9 @@ import android.content.Context
 import android.os.SystemClock
 import com.elad.faceblur.edit.EditSession
 import com.elad.faceblur.edit.EditorController
-import com.elad.faceblur.edit.ExportAspect
 import com.elad.faceblur.pipeline.FaceBlurProcessor
 import com.elad.faceblur.pipeline.ProcessingErrors
+import com.elad.faceblur.pipeline.Watermark
 import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
 import com.elad.faceblur.prefs.AppPrefs
@@ -17,6 +17,7 @@ import com.elad.faceblur.template.TemplateRunner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -33,16 +34,21 @@ object BatchRunner {
         val ctx = context.applicationContext
         val models = ModelManager(ctx)
         val prefs = AppPrefs(ctx)
-        for (item in batch.items) {
-            if (batch.cancelled) {
-                if (item.status == ItemStatus.WAITING) item.status = ItemStatus.SKIPPED
-                continue
+        try {
+            for (item in batch.items) {
+                if (batch.cancelled) {
+                    if (item.status == ItemStatus.WAITING) item.status = ItemStatus.SKIPPED
+                    continue
+                }
+                if (item.status == ItemStatus.SKIPPED) continue
+                val job = scope.launch { processOne(ctx, batch, item, models, prefs, scope, onChange) }
+                item.job = job
+                job.join()
+                onChange()
             }
-            if (item.status == ItemStatus.SKIPPED) continue
-            val job = scope.launch { processOne(ctx, batch, item, models, prefs, scope, onChange) }
-            item.job = job
-            job.join()
-            onChange()
+        } finally {
+            // Every video copied what it needs into its project: the batch's own copies can go.
+            withContext(NonCancellable + Dispatchers.IO) { BatchOwnFiles.delete(BatchOwnFiles.dir(ctx.filesDir), batch.id) }
         }
         batch.finished = true
         onChange()
@@ -56,9 +62,11 @@ object BatchRunner {
         var session: EditSession? = null
         var ctrl: EditorController? = null
         var projectId: String? = null
+        // The export of this video: the template's, with a logo the project owns a copy of.
+        var export = batch.settings.export
         item.startedAt = SystemClock.elapsedRealtime()
         try {
-            item.status = ItemStatus.ANALYZING
+            item.begin(ItemStatus.ANALYZING)
             item.progress = 0f
             onChange()
             val info = withContext(Dispatchers.IO) { VideoInfo.probe(ctx, item.uri) }
@@ -93,8 +101,12 @@ object BatchRunner {
             // The project exists from here on, so a failure later can still be opened in the editor.
             val id = ProjectStore.newId()
             projectId = id
-            sess.projectDir = ProjectStore.dir(ctx, id)
-            val first = c.projectFields(s.subStyle, s.export)
+            val dir = ProjectStore.dir(ctx, id)
+            sess.projectDir = dir
+            export = withContext(Dispatchers.IO) {
+                runCatching { s.export.copy(watermark = Watermark.withOwnCopy(s.export.watermark, dir)) }.getOrDefault(s.export)
+            }
+            val first = c.projectFields(s.subStyle, export)
                 .put("v", 1)
                 .put("name", info.name)
                 .put("uri", item.uri.toString())
@@ -110,31 +122,33 @@ object BatchRunner {
 
             // The template's processing.
             if (s.hasProcessing) {
-                item.status = ItemStatus.PROCESSING
+                item.begin(ItemStatus.PROCESSING)
                 item.progress = ANALYSIS_SHARE
                 onChange()
-                item.notes = TemplateRunner.applyProcessing(c, s)
+                val notes = TemplateRunner.applyProcessing(c, s)
+                item.failures = notes.failures
+                item.warnings = notes.warnings
             }
 
             val noFaces = !s.blurOff && sess.model.tracks.isEmpty()
-            if (noFaces && !worthSaving(ctx, batch)) {
+            if (noFaces && !worthSaving(ctx, batch, c)) {
                 // Nothing would change in the video: no copy is saved; the project is there to open.
-                saveProject(ctx, id, c, batch)
+                saveProject(ctx, id, c, batch, export)
                 item.status = ItemStatus.NO_FACES
                 item.progress = 1f
                 return
             }
 
-            item.status = ItemStatus.EXPORTING
+            item.begin(ItemStatus.EXPORTING)
             item.progress = ANALYSIS_SHARE + PROCESSING_SHARE
             onChange()
             val saved = FaceBlurProcessor(ctx).render(
-                info, sess.settings, analysis, sess.model, analysisMs, s.export, s.subStyle, c.audio, c.background, sess.masks,
+                info, sess.settings, analysis, sess.model, analysisMs, export, s.subStyle, c.audio, c.background, sess.masks,
                 stabilizer = c.stabilizer,
             ) { p -> item.progress = ANALYSIS_SHARE + PROCESSING_SHARE + p * (1f - ANALYSIS_SHARE - PROCESSING_SHARE); onChange() }
             if (analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / analysisMs
             item.output = saved.uri
-            saveProject(ctx, id, c, batch)
+            saveProject(ctx, id, c, batch, export)
             item.progress = 1f
             item.status = if (noFaces) ItemStatus.NO_FACES else ItemStatus.SAVED
         } catch (e: CancellationException) {
@@ -153,7 +167,7 @@ object BatchRunner {
             val c = ctrl
             if (id != null && c != null) {
                 try {
-                    saveProject(ctx, id, c, batch)
+                    saveProject(ctx, id, c, batch, export)
                 } catch (ce: CancellationException) {
                     throw ce
                 } catch (ignored: Exception) {
@@ -187,22 +201,19 @@ object BatchRunner {
     }
 
     /** What's in the editor now, into the project (on the IO thread; the state is copied first). */
-    private suspend fun saveProject(ctx: Context, id: String, c: EditorController, batch: Batch) {
-        val fields: JSONObject = c.projectFields(batch.settings.subStyle, batch.settings.export)
+    private suspend fun saveProject(ctx: Context, id: String, c: EditorController, batch: Batch, export: com.elad.faceblur.pipeline.ExportOptions) {
+        val fields: JSONObject = c.projectFields(batch.settings.subStyle, export)
         val edits = c.model.exportState()
         withContext(Dispatchers.IO) { ProjectStore.save(ctx, id, fields, edits) }
     }
 
-    /** A video without faces is still saved if something else is done to it or it's exported differently. */
-    private fun worthSaving(ctx: Context, batch: Batch): Boolean {
-        val s = batch.settings
-        val e = s.export
-        return s.hasProcessing || e.aspect != ExportAspect.ORIGINAL || e.shortSide > 0 || e.fps > 0 ||
-            e.quality != com.elad.faceblur.pipeline.ExportQuality.ORIGINAL || e.codec != com.elad.faceblur.pipeline.ExportCodec.SAME ||
-            e.watermark.enabled(ctx)
-    }
+    /**
+     * A video without faces is still saved if the processing changed it (what it really did, not
+     * what the template asked for) or it's exported differently.
+     */
+    private fun worthSaving(ctx: Context, batch: Batch, c: EditorController): Boolean =
+        TemplateRunner.changesVideo(c, batch.settings) || TemplateRunner.exportChangesVideo(ctx, batch.settings.export)
 
-    /** Shares of an item's bar: the analysis, then the template's processing, then the export. */
-    private const val ANALYSIS_SHARE = 0.4f
-    private const val PROCESSING_SHARE = 0.15f
+    private const val ANALYSIS_SHARE = BatchMath.ANALYSIS_SHARE
+    private const val PROCESSING_SHARE = BatchMath.PROCESSING_SHARE
 }

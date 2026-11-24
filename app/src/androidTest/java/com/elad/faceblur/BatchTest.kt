@@ -119,8 +119,8 @@ class BatchTest {
             installTinyModel()
             val batch = runBatch(listOf(item), settings)
             projectId = item.projectId
-            assertTrue("saved, not ${item.status} (${item.error}; ${item.notes})", item.status == ItemStatus.SAVED || item.status == ItemStatus.NO_FACES)
-            assertTrue("no template step failed: ${item.notes}", item.notes.isEmpty() && !item.stepFailed)
+            assertTrue("saved, not ${item.status} (${item.error}; ${item.failures})", item.status == ItemStatus.SAVED || item.status == ItemStatus.NO_FACES)
+            assertTrue("no template step failed: ${item.failures}", item.failures.isEmpty() && !item.stepFailed)
             assertNotNull("a project", projectId)
             val meta = ProjectStore.list(ctx).first { it.id == projectId }
             assertTrue("the project has subtitles (${meta.cues})", meta.cues > 0)
@@ -148,7 +148,7 @@ class BatchTest {
         try {
             runBatch(listOf(item), settings)
             projectId = item.projectId
-            assertTrue("it has a reason", item.notes.isNotEmpty())
+            assertTrue("it has a reason", item.failures.isNotEmpty())
             assertTrue("flagged for a look", item.stepFailed && item.needsCheck)
         } finally {
             projectId?.let { ProjectStore.delete(ctx, it) }

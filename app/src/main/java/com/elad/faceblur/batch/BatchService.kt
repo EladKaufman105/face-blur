@@ -16,6 +16,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.elad.faceblur.MainActivity
 import com.elad.faceblur.i18n.t
+import com.elad.faceblur.i18n.tn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -117,8 +118,8 @@ class BatchService : Service() {
         runCatching { wake?.takeIf { it.isHeld }?.release() }
         stopForeground(STOP_FOREGROUND_REMOVE)
         val nm = getSystemService(NotificationManager::class.java)
-        val text = if (batch.cancelled) t("העיבוד הופסק. %d סרטונים נשמרו.").format(batch.savedCount)
-        else t("%d סרטונים נשמרו").format(batch.savedCount) + (if (batch.checkCount > 0) " · " + t("%d לבדיקה").format(batch.checkCount) else "")
+        val text = if (batch.cancelled) tn(batch.savedCount, "העיבוד הופסק. סרטון אחד נשמר.", "העיבוד הופסק. %d סרטונים נשמרו.")
+        else tn(batch.savedCount, "סרטון אחד נשמר", "%d סרטונים נשמרו") + (if (batch.checkCount > 0) " · " + t("%d לבדיקה").format(batch.checkCount) else "")
         val n = NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle(t("עיבוד הסרטונים הסתיים"))

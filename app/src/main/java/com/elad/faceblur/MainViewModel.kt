@@ -20,6 +20,7 @@ import com.elad.faceblur.pipeline.Outcome
 import com.elad.faceblur.pipeline.ProcessingErrors
 import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
+import com.elad.faceblur.pipeline.Watermark
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +49,8 @@ import com.elad.faceblur.template.TemplateRunner
 import com.elad.faceblur.template.TemplateSettings
 import com.elad.faceblur.template.TemplateStore
 import com.elad.faceblur.template.applyAll
+import com.elad.faceblur.template.fitSpeechModel
+import com.elad.faceblur.batch.BatchOwnFiles
 import com.elad.faceblur.batch.Batch
 import com.elad.faceblur.batch.BatchItem
 import com.elad.faceblur.batch.BatchMath
@@ -83,7 +86,8 @@ sealed interface UiState {
     data class Working(val info: VideoInfo, val stage: Int, val progress: Float, val subsOnly: Boolean = false, val auto: Boolean = false) : UiState
     data class Editing(val info: VideoInfo, val editor: EditorController) : UiState
     data class Done(val info: VideoInfo, val result: Outcome.Saved, val canEdit: Boolean, val subsOnly: Boolean = false) : UiState
-    data class NoFaces(val info: VideoInfo, val canEdit: Boolean) : UiState
+    /** [note]: what the template's processing could not do (shown beside the message). */
+    data class NoFaces(val info: VideoInfo, val canEdit: Boolean, val note: String? = null) : UiState
     /** A saved project whose video can't be read any more: pick it again. [wrong]: the last pick was another video. */
     data class Relink(val project: ProjectMeta, val wrong: Boolean = false) : UiState
     /**
@@ -101,8 +105,14 @@ sealed interface UiState {
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
-    var state by mutableStateOf<UiState>(UiState.Empty)
-        private set
+    private var stateValue by mutableStateOf<UiState>(UiState.Empty)
+    var state: UiState
+        get() = stateValue
+        private set(v) {
+            stateValue = v
+            // A template saved while a video was open is taken again once the Ready screen is back.
+            if (v is UiState.Ready) refreshStaleTemplate()
+        }
 
     var mode by mutableStateOf(BlurMode.BLUR)
     var strength by mutableStateOf(0.6f)
@@ -157,6 +167,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** A batch is being processed: it owns the temp files and the models, so a single video waits. */
     val batchRunning: Boolean get() = BatchState.current?.finished == false
+
+    /** The id of the batch being processed now (its folder is locked), or null. */
+    val runningBatchId: String? get() = BatchState.current?.takeIf { !it.finished }?.id
+
+    /** True (with a notice) when [batchId] is the batch being processed: its projects can't be renamed or deleted yet. */
+    private fun lockedByBatch(batchId: String?): Boolean {
+        if (batchId == null || batchId != runningBatchId) return false
+        android.widget.Toast.makeText(getApplication(), t("אי אפשר לשנות שם או למחוק בזמן שהעיבוד רץ"), android.widget.Toast.LENGTH_LONG).show()
+        return true
+    }
 
     /** True (with a notice) while a batch runs: starting any other processing waits for it. */
     fun blockedByBatch(): Boolean {
@@ -264,6 +284,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var batchDownloadError by mutableStateOf<String?>(null)
         private set
+    /** The speech model download for the next single video's template failed. */
+    var templateDownloadError by mutableStateOf<String?>(null)
+        private set
 
     private fun idsOf(choice: TemplateChoice): List<String> = listOfNotNull(choice.id)
 
@@ -272,6 +295,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var subsOverride: Boolean? = null
 
     private fun TemplateSettings.withSubs(o: Boolean?) = if (o == null) this else copy(createSubs = o)
+
+    /**
+     * With subtitles to create and the template's speech model not on the phone but the other one
+     * there, the other one is used when it can do the job (see [fitSpeechModel]), instead of holding
+     * "blur and save directly" back for a download.
+     */
+    private fun TemplateSettings.fitted(): TemplateSettings = fitSpeechModel(this, models::isReady)
 
     /** Turns subtitle creation on or off for the batch being set up (the template had it the other way). */
     fun setBatchSubtitles(on: Boolean) {
@@ -282,7 +312,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Turns subtitle creation on or off for the next video (the template had it the other way). */
     fun setTemplateSubtitles(on: Boolean) {
         subsOverride = on
-        templateSettings = templateSettings?.copy(createSubs = on)
+        templateSettings = templateSettings?.copy(createSubs = on)?.fitted()
     }
 
     /** The settings a template is laid over (for the previews): before any template was chosen. */
@@ -292,7 +322,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val base = previewBase()
         val notes = ArrayList<String>()
         val chosen = idsOf(batchChoice).mapNotNull { templates.find(it) }.map { templates.usable(it, notes) }
-        batchSettings = applyAll(base, chosen).withSubs(batchSubsOverride)
+        batchSettings = applyAll(base, chosen).withSubs(batchSubsOverride).fitted()
         batchNotes = notes
     }
 
@@ -338,24 +368,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Downloads the speech model the batch's template needs (before anything starts). */
-    fun downloadBatchModel() = downloadModel(batchSettings.speechModel)
+    fun downloadBatchModel() = downloadModel(batchSettings.speechModel, forBatch = true)
 
     /** Downloads the speech model the template chosen for the next video needs. */
-    fun downloadTemplateModel() = downloadModel(templateSettings?.speechModel ?: SpeechModel.HEBREW)
+    fun downloadTemplateModel() = downloadModel(templateSettings?.speechModel ?: SpeechModel.HEBREW, forBatch = false)
 
     /** The next video's template creates subtitles and the model for them isn't on the phone. */
     val templateNeedsModel: Boolean get() = templateSettings?.let { it.needsSpeechModel && !models.isReady(it.speechModel) } == true
 
-    private fun downloadModel(m: SpeechModel) {
+    private fun downloadModel(m: SpeechModel, forBatch: Boolean) {
         if (models.downloading != null || models.isReady(m)) return
-        batchDownloadError = null
+        if (forBatch) batchDownloadError = null else templateDownloadError = null
         viewModelScope.launch {
             try {
                 models.download(m)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                batchDownloadError = t("הורדת המודל נכשלה: %s").format(e.message ?: e.javaClass.simpleName)
+                val msg = t("הורדת המודל נכשלה: %s").format(e.message ?: e.javaClass.simpleName)
+                if (forBatch) batchDownloadError = msg else templateDownloadError = msg
             }
         }
     }
@@ -364,8 +395,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun startBatch() {
         val setup = state as? UiState.BatchSetup ?: return
         if (blockedByBatch()) return
-        val s = batchSettings
-        if (s.needsSpeechModel && !models.isReady(s.speechModel)) return
+        if (batchSettings.needsSpeechModel && !models.isReady(batchSettings.speechModel)) return
         val items = setup.videos.mapIndexed { i, v ->
             val thumb = v.thumbnail?.let { b ->
                 val k = 320f / maxOf(b.width, b.height, 1)
@@ -374,7 +404,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             BatchItem(i, v.uri, v.name, v.durationMs, thumb)
         }
         val name = idsOf(batchChoice).mapNotNull { templates.find(it) }.joinToString(" + ") { if (it.builtIn) t(it.name) else it.name }
-        BatchState.current = Batch(items, s, name.ifEmpty { t("בלי תבנית") }).also { it.speeds = batchSpeeds() }
+        val batchId = com.elad.faceblur.project.ProjectStore.newId()
+        // The batch keeps its own copy of the template's logo and picture: editing the template meanwhile changes nothing in it.
+        val s = runCatching {
+            BatchOwnFiles.own(batchSettings, BatchOwnFiles.dir(getApplication<Application>().filesDir), batchId)
+        }.getOrDefault(batchSettings)
+        BatchState.current = Batch(items, s, name.ifEmpty { t("בלי תבנית") }, batchId).also { it.speeds = batchSpeeds() }
         BatchService.start(getApplication())
         state = UiState.BatchRun
     }
@@ -405,6 +440,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     // ------------------------------------------------------------------ templates
 
+    /** The template open in the full-screen editor (null: none). */
+    var editingTemplate by mutableStateOf<String?>(null)
+        private set
+
+    fun editTemplate(id: String) {
+        editingTemplate = id
+    }
+
+    fun closeTemplateEditor() {
+        editingTemplate = null
+    }
+
+    /** A template was saved or restored: if it is the one chosen, its settings are taken again. */
+    fun templateSaved(tpl: Template) {
+        if (batchChoice.id == tpl.id) chooseBatchTemplates(batchChoice)
+        if (templateChoice.id != tpl.id) return
+        // Back on the Ready screen after a cancelled automatic run, the run's project is still open but
+        // can't be reached from here: save and close it (with its own export), so the template applies again.
+        if (stateValue is UiState.Ready && (editor != null || projectId != null)) closeSession()
+        // A video that is open (working, in the editor, done) keeps its own export and settings: the template
+        // is taken again only when the Ready screen is back.
+        if (templateIsInUse()) templateStale = true else chooseTemplates(templateChoice)
+    }
+
+    private var templateStale = false
+
+    private fun templateIsInUse() = projectId != null || editor != null || when (stateValue) {
+        is UiState.Empty, is UiState.Loading, is UiState.Ready, is UiState.BatchSetup, is UiState.BatchRun -> false
+        else -> true
+    }
+
+    private fun refreshStaleTemplate() {
+        if (!templateStale || projectId != null || editor != null) return
+        templateStale = false
+        if (templateChoice.id != null) chooseTemplates(templateChoice)
+    }
+
     /** The settings as they stand now (the Ready screen's), for a template to lay over. */
     private fun currentSettings() = TemplateSettings(
         mode = mode, strength = strength, padding = padding, sensitive = sensitive,
@@ -417,6 +489,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun chooseTemplates(choice: TemplateChoice) {
         val templateChoiceBefore = templateChoice
+        templateStale = false
         templateChoice = choice
         val ids = idsOf(choice)
         if (ids.isEmpty()) {
@@ -428,7 +501,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val notes = ArrayList<String>()
         val chosen = ids.mapNotNull { templates.find(it) }.map { templates.usable(it, notes) }
         if (choice != templateChoiceBefore) subsOverride = null
-        val s = applyAll(base, chosen).withSubs(subsOverride)
+        val s = applyAll(base, chosen).withSubs(subsOverride).fitted()
         applyToScreen(s)
         templateSettings = s
     }
@@ -475,13 +548,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (ctrl.stabilizeLevel > 0) add(TemplateCategory.STABILIZE)
     }
 
-    /** Saves the editor's choices as the user's template [name], with the [keep] categories. */
-    fun saveEditorAsTemplate(ctrl: EditorController, name: String, keep: Set<TemplateCategory>): Template {
+    /** Saves the editor's choices as the user's template [name], with the [keep] categories (the files are copied off the main thread). */
+    fun saveEditorAsTemplate(ctrl: EditorController, name: String, keep: Set<TemplateCategory>) {
         val id = templates.newId()
-        var tpl = settingsOf(ctrl).toTemplate(id, name.trim().take(60).ifBlank { t("תבנית חדשה") }, keep)
-        tpl.background?.let { b -> tpl = tpl.copy(background = templates.withOwnImage(b, id)) }
-        templates.save(tpl)
-        return tpl
+        val tpl0 = settingsOf(ctrl).toTemplate(id, name.trim().take(60).ifBlank { t("תבנית חדשה") }, keep)
+        viewModelScope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                runCatching {
+                    var tpl = tpl0
+                    tpl.background?.let { b -> tpl = tpl.copy(background = templates.withOwnImage(b, id)) }
+                    tpl = templates.withOwnLogo(tpl)
+                    templates.save(tpl)
+                    tpl
+                }.getOrNull()
+            }
+            ctrl.notice = if (saved != null) t("התבנית נשמרה") else t("התבנית לא נשמרה")
+        }
     }
 
     /** Runs the chosen template's processing on the open editor session, not waiting (the editor is on screen). */
@@ -489,16 +571,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         editorScope.launch {
             ctrl.notice = t("מחיל את התבנית…")
             val notes = TemplateRunner.applyProcessing(ctrl, s)
-            ctrl.notice = notes.firstOrNull() ?: t("התבנית הוחלה")
+            ctrl.notice = notes.first() ?: t("התבנית הוחלה")
         }
     }
 
     /** Every new editing session is saved as a project. */
-    private fun beginProject(ctrl: EditorController) {
+    private suspend fun beginProject(ctrl: EditorController) {
         val s = ctrl.session
         val id = ProjectStore.newId()
         projectId = id
-        s.projectDir = ProjectStore.dir(getApplication(), id)
+        val dir = ProjectStore.dir(getApplication(), id)
+        s.projectDir = dir
+        // A logo a template brought is copied into the project: it stays when the template changes or goes.
+        sessionExport?.let { e ->
+            if (e.watermark.logo != null) {
+                sessionExport = withContext(Dispatchers.IO) {
+                    runCatching { e.copy(watermark = Watermark.withOwnCopy(e.watermark, dir)) }.getOrDefault(e)
+                }
+            }
+        }
         val json = ctrl.projectFields(subtitleStyle, sessionExport)
             .put("v", 1)
             .put("name", s.info.name)
@@ -648,6 +739,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteProject(id: String) {
+        if (lockedByBatch(projects.firstOrNull { it.id == id }?.batchId)) return
         val app = getApplication<Application>()
         projects = projects.filter { it.id != id }
         saver.execute {
@@ -658,6 +750,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Deletes a batch's folder: its projects (not the videos saved in the gallery). */
     fun deleteBatchFolder(batchId: String) {
+        if (lockedByBatch(batchId)) return
         val app = getApplication<Application>()
         projects = projects.filter { it.batchId != batchId }
         saver.execute {
@@ -667,6 +760,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun renameBatchFolder(batchId: String, name: String) {
+        if (lockedByBatch(batchId)) return
         val n = name.trim().take(80)
         val app = getApplication<Application>()
         saver.execute {
@@ -676,6 +770,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun renameProject(id: String, name: String) {
+        if (lockedByBatch(projects.firstOrNull { it.id == id }?.batchId)) return
         val n = name.trim().take(80)
         if (n.isEmpty()) return
         val app = getApplication<Application>()
@@ -715,7 +810,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         closeSession()
         state = UiState.Working(info, 3, 0f)
         job = viewModelScope.launch {
-            guard(info, onCancel = { UiState.Ready(info) }) {
+            guard(info, onCancel = { closeSession(); UiState.Ready(info) }) {
                 val base = info.name.substringBeforeLast('.') + "_" + java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
                 val r = withContext(Dispatchers.IO) {
                     com.elad.faceblur.audio.Mp3Export.convert(getApplication(), info.uri, base, isActive = { isActive }) { p ->
@@ -742,7 +837,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         livePreview = null
         state = UiState.Working(info, 1, 0f, auto = auto)
         job = viewModelScope.launch {
-            guard(info, onCancel = { UiState.Ready(info) }) {
+            guard(info, onCancel = { closeSession(); UiState.Ready(info) }) {
                 val processor = FaceBlurProcessor(getApplication())
                 val t0 = SystemClock.elapsedRealtime()
                 // The stats panel's last minute: new for each run.
@@ -761,12 +856,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     state = UiState.Editing(info, ctrl)
                     if (processing != null) applyTemplateAsync(ctrl, processing)
                 } else {
+                    var failure: String? = null
                     if (processing != null) {
                         state = UiState.Working(info, 4, 0f, auto = true)
-                        TemplateRunner.applyProcessing(ctrl, processing)
+                        failure = TemplateRunner.applyProcessing(ctrl, processing).failures.firstOrNull()
                     }
-                    if (session.model.tracks.isEmpty() && processing == null) {
-                        state = UiState.NoFaces(info, canEdit = true)
+                    // No faces and nothing the template really changed: no copy of the same video is saved.
+                    val changed = tpl != null && (TemplateRunner.changesVideo(ctrl, tpl) || TemplateRunner.exportChangesVideo(getApplication(), tpl.export))
+                    if (session.model.tracks.isEmpty() && !changed) {
+                        state = UiState.NoFaces(info, canEdit = true, note = failure)
                     } else {
                         render(ctrl, auto = true)
                     }
@@ -789,7 +887,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         closeSession()
         state = UiState.Working(info, 0, 0f)
         job = viewModelScope.launch {
-            guard(info, onCancel = { UiState.Ready(info) }) {
+            guard(info, onCancel = { closeSession(); UiState.Ready(info) }) {
                 val analysis = withContext(Dispatchers.IO) { FaceBlurProcessor.framesOnly(getApplication(), info) }
                 val session = EditSession(info, Settings(mode, strength, padding, sensitive), analysis, 0, subtitlesOnly = true)
                 val ctrl = EditorController(session, editorScope, getApplication(), models, prefs)
@@ -875,8 +973,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun retrySensitive() {
-        sensitive = true
         backToSettings()
+        sensitive = true
     }
 
     fun reset() {

@@ -61,6 +61,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -124,6 +125,8 @@ fun MainScreen(vm: MainViewModel) {
     val working = state is UiState.Working
     var saveTemplate by remember { mutableStateOf(false) }
     var showTemplates by remember { mutableStateOf(false) }
+    // The manager was open when a template was opened for editing: it comes back after.
+    var backToManager by remember { mutableStateOf(false) }
 
     val view = LocalView.current
     DisposableEffect(working) {
@@ -134,6 +137,25 @@ fun MainScreen(vm: MainViewModel) {
     // The batch's screens: back goes home (a running batch goes on in the background).
     BackHandler(enabled = state is UiState.BatchSetup || state is UiState.BatchRun) {
         if (state is UiState.BatchRun) vm.leaveBatch() else vm.reset()
+    }
+
+    // The template editor takes the whole screen (opened from Settings, the Ready screen or the batch setup).
+    vm.editingTemplate?.let { id ->
+        val tpl = vm.templates.find(id)
+        if (tpl == null) {
+            // The template is gone: leave the editor (not while composing).
+            LaunchedEffect(id) { vm.closeTemplateEditor() }
+        } else {
+            TemplateEditorScreen(
+                vm.templates, tpl,
+                onClose = {
+                    vm.closeTemplateEditor()
+                    if (backToManager) { backToManager = false; showTemplates = true }
+                },
+                onSaved = vm::templateSaved,
+            )
+            return
+        }
     }
 
     if (state is UiState.Editing) {
@@ -155,7 +177,6 @@ fun MainScreen(vm: MainViewModel) {
                     onSave = { name, keep ->
                         vm.saveEditorAsTemplate(state.editor, name, keep)
                         saveTemplate = false
-                        state.editor.notice = t("התבנית נשמרה")
                     },
                     onDismiss = { saveTemplate = false },
                 )
@@ -165,7 +186,14 @@ fun MainScreen(vm: MainViewModel) {
     }
     var showSettings by remember { mutableStateOf(false) }
     if (showSettings) AppSettingsSheet(vm.prefs, { showSettings = false }, onTemplates = { showSettings = false; showTemplates = true })
-    if (showTemplates) TemplateManagerSheet(vm.templates) { showTemplates = false }
+    if (showTemplates) {
+        TemplateManagerSheet(
+            vm.templates,
+            onEdit = { showTemplates = false; backToManager = true; vm.editTemplate(it.id) },
+            onRestored = vm::templateSaved,
+            onDismiss = { showTemplates = false },
+        )
+    }
     vm.crashReport?.let { report -> CrashDialog(report, onClose = vm::dismissCrash) }
 
     val light = MaterialTheme.colorScheme.isLight
@@ -245,7 +273,7 @@ fun MainScreen(vm: MainViewModel) {
                             VideoCard(s.info, onReplace = pick)
                             MessageCard(
                                 title = t("לא זוהו פנים בסרטון"),
-                                body = t("אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב, או סמן אותן ידנית."),
+                                body = t("אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב, או סמן אותן ידנית.") + (s.note?.let { "\n\n" + it } ?: ""),
                                 primary = if (s.canEdit) t("סמן טשטוש ידנית") to vm::edit else t("נסה עם זיהוי מורחב") to vm::retrySensitive,
                                 secondary = if (s.canEdit) t("נסה עם זיהוי מורחב") to vm::retrySensitive else t("חזרה") to vm::backToSettings,
                                 icon = AppIcons.Face,
