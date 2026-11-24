@@ -433,6 +433,14 @@ const EN: Record<string, string> = {
   'שניהם': 'Both',
   'או ייבא קובץ SRT': 'or import an SRT file',
   'לא נמצאו כתוביות בקובץ': 'No subtitles found in the file',
+  'להחליף את הכתוביות?': 'Replace the subtitles?',
+  'הכתוביות הקיימות יוחלפו בקובץ, והצפצופים (%d) יוסרו. אפשר לבטל את הפעולה.': 'The current subtitles will be replaced by the file, and the bleeps (%d) will be removed. Undo brings them back.',
+  'הכתוביות הקיימות יוחלפו בקובץ. אפשר לבטל את הפעולה.': 'The current subtitles will be replaced by the file. Undo brings them back.',
+  'מילה אחת מצופצפת. בכתוביות חדשות יצופצפו המילים שבאותו זמן.': '1 bleeped word. New subtitles bleep the words at the same time.',
+  '%d מילים מצופצפות. בכתוביות חדשות יצופצפו המילים שבאותו זמן.': '%d bleeped words. New subtitles bleep the words at the same time.',
+  'מילה מצופצפת אחת לא נמצאה בכתוביות החדשות, ולכן היא לא מצופצפת. בטל את הפעולה או צפצף אותה שוב.': '1 bleeped word was not found in the new subtitles, so it is not bleeped. Undo, or bleep it again.',
+  '%d מילים מצופצפות לא נמצאו בכתוביות החדשות, ולכן הן לא מצופצפות. בטל את הפעולה או צפצף אותן שוב.': '%d bleeped words were not found in the new subtitles, so they are not bleeped. Undo, or bleep them again.',
+  'השאר את הקיימות': 'Keep the current ones',
   'זיהוי דוברים': 'Find speakers',
   'נמצאו %d דוברים. הקש על הנקודה ליד כתובית כדי להחליף דובר.': '%d speakers found. Tap the dot next to a subtitle to change its speaker.',
   'כל דובר בצבע משלו, גם ברשימת הכתוביות': 'Each speaker in its own color, in the subtitle list too',
@@ -559,6 +567,12 @@ const EN: Record<string, string> = {
   'רקע שחור': 'Black box',
   'תיבה על המילה': 'Word box',
   'תיבה צבעונית': 'Color box',
+  'כך נראות הכתוביות': 'Your subtitles look like this',
+  'כוונון ידני': 'Fine-tune',
+  'הקש על כתובית כדי לערוך אותה.': 'Tap a subtitle to edit it.',
+  'פצל כאן': 'Split here',
+  'עוד אפשרויות': 'More options',
+  'ייבוא קובץ SRT': 'Import an SRT file',
 }
 
 /** More English (the beta's own strings, see ui/Beta.tsx). */

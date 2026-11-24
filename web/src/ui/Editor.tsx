@@ -67,7 +67,7 @@ const GROUPS: [EditorTab, string, (p: { size?: number }) => any, string][] = [
 ]
 
 /** What undo and redo move between: the blurs and the ones turned off, the sounds, the subtitles, the cuts. */
-type Snap = { off: Set<number>; sfx: SfxClip[]; cues: Cue[]; tracks: Track[]; cuts: Range[] }
+type Snap = { off: Set<number>; sfx: SfxClip[]; cues: Cue[]; words: Word[]; bleeped: Set<number>; tracks: Track[]; cuts: Range[] }
 
 /** A key for frame [k]'s mask of [m] (a new pass gives new keys): the renderer uploads a mask once. */
 const maskGens = new WeakMap<PeopleMasks, number>()
@@ -642,7 +642,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const retrySound = () => setAudioTry((n) => n + 1)
   // Only the voice change goes; the bleeps stay (and are made, or block the export again). They go only by their own action.
   const dropVoice = () => setVoice('none')
-  const dropBleeps = () => setBleeped(new Set())
+  const dropBleeps = () => setBleepedH(new Set())
 
 
   // Undo and redo. Quick changes in a row (typing, dragging a sound) are one step.
@@ -650,7 +650,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const future = useRef<Snap[]>([])
   const lastChange = useRef(0)
   const [, setHistoryVersion] = useState(0)
-  const snap = (): Snap => ({ off: state.current.off, sfx: state.current.sfx, cues: state.current.cues, tracks: state.current.tracks, cuts: state.current.cuts })
+  const snap = (): Snap => ({ off: state.current.off, sfx: state.current.sfx, cues: state.current.cues, words: state.current.words, bleeped: state.current.bleeped, tracks: state.current.tracks, cuts: state.current.cuts })
   /** Before a change: a new undo step, or ([merge]) the same one as a change just before it. */
   const record = (merge = true) => {
     const now = performance.now()
@@ -667,6 +667,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     setOff(s.off)
     setSfx(s.sfx)
     setCues(s.cues)
+    setWords(s.words)
+    setBleeped(s.bleeped)
     setTracks(s.tracks)
     setCuts(s.cuts)
     if (s.tracks.every((tr) => tr.id !== state.current.selected)) setSelected(null)
@@ -690,6 +692,10 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const setOffH = (v: Set<number> | ((s: Set<number>) => Set<number>)) => { record(false); setOff(v) }
   const setSfxH = (v: SfxClip[] | ((s: SfxClip[]) => SfxClip[])) => { record(); setSfx(v) }
   const setCuesH = (v: Cue[], step = false) => { record(!step); setCues(v) }
+  /** Bleeped words are part of the undo steps (a quick run of taps is one). */
+  const setBleepedH = (v: Set<number>) => { record(true); setBleeped(v) }
+  /** The subtitles replaced as one undo step, with the words and the bleeps that belong to them. */
+  const replaceSubs = (c: Cue[], w: Word[], b: Set<number>) => { record(false); setCues(c); setWords(w); setBleeped(b) }
   const setTracksH = (v: Track[] | ((s: Track[]) => Track[]), merge = false) => { record(merge); setTracks(v) }
   const setCutsH = (v: Range[]) => { record(false); setCuts(v) }
   const seek = (at: number) => { const v = video.current; if (v) v.currentTime = at }
@@ -1240,9 +1246,9 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             cues={cues}
             onCues={setCuesH}
             words={words}
-            onWords={setWords}
+            onReplace={replaceSubs}
             bleeped={bleeped}
-            onBleeped={setBleeped}
+            onBleeped={setBleepedH}
             tone={tone}
             onTone={setTone}
             style={subStyle}

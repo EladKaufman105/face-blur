@@ -37,6 +37,8 @@ const [, , base, video, out] = process.argv
     await (await chooser).setFiles(video)
     await p.waitForSelector('.editor', { timeout: 60000 })
     await p.waitForSelector('text=צור כתוביות')
+    // The choice of quality is folded under "more options".
+    await p.evaluate(() => document.querySelectorAll('details.subs-more, details.sub-fine').forEach((d) => { d.open = true }))
   }
   try {
     // ---- the choice: sizes before anything downloads, kept after a reload

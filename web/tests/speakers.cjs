@@ -25,6 +25,7 @@ const SRT = spans.map(([a, b], i) => `${i + 1}\n${ts(a)} --> ${ts(b)}\nמשפט 
     await (await chooser).setFiles(video)
     await p.waitForSelector('.editor .tabs', { timeout: 30000 })
     await p.setInputFiles('.srt-import input', `${out}/in.srt`)
+    await p.evaluate(() => document.querySelectorAll('details.subs-more, details.sub-fine').forEach((d) => { d.open = true }))
     await p.waitForSelector('.speakers-go')
     const t0 = Date.now()
     await p.click('.speakers-go')

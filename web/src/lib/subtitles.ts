@@ -23,7 +23,7 @@ const PAUSE = 0.7
 const MAX_CHARS = 64
 let nextCue = 1
 
-function isNoise(t: string) {
+export function isNoise(t: string) {
   const s = t.trim()
   return !s || (s.startsWith('[') && s.endsWith(']')) || (s.startsWith('(') && s.endsWith(')')) || !/[\p{L}\p{N}]/u.test(s)
 }
