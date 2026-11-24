@@ -23,7 +23,7 @@ git push -u origin feature/<short-name>
 gh pr create --base develop
 ```
 
-When the PR is merged, its branch is deleted automatically (GitHub can restore it from the PR page). For more work, start a new branch from `origin/develop`; a cloud session whose branch was deleted recreates it from `origin/develop` (pushing recreates it on GitHub).
+With the repository setting "Automatically delete head branches" on, a feature branch is deleted when its PR is merged (restore it from the PR page). For more work, start a new branch from `origin/develop`; a cloud session whose branch was deleted recreates it from `origin/develop` (pushing recreates it on GitHub).
 
 Commit messages are one short plain sentence about the user-visible effect. An area prefix is optional (`Editor: ...`, `Web: ...`).
 
@@ -36,7 +36,7 @@ Every user-visible string needs its English text. The UI is Hebrew and English. 
 
 ## Pull request checks
 
-Every change reaches `develop` or `main` through a PR. No human approval is required. Merging deletes the PR's branch; `main`, `develop`, `gh-pages` and the data and CI branches (see "Other branches") are never deleted, rulesets block it. These checks must pass (workflows "PR guard" and "PR checks"):
+Every change reaches `develop` or `main` through a PR. No human approval is required. `main` and `develop` are never deleted (default branch and rulesets), nor are the data branches (rulesets); side-workflow and old CI branches are never PR heads, so merges don't touch them. These checks must pass (workflows "PR guard" and "PR checks"):
 
 - `source-branch`: PRs into `main` must come from `develop` or `hotfix/*`.
 - `android-build`: i18n check and debug APK build.

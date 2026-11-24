@@ -239,6 +239,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val list = withContext(Dispatchers.IO) { ProjectStore.list(getApplication()) }
             if (n == listing) projects = list
+            // Saved before project.json kept what the list shows: kept now (not the open one, its
+            // saves keep it), so listing doesn't read their edits again.
+            val app = getApplication<Application>()
+            for (p in list) {
+                if (!p.countsFromEdits || p.id == projectId) continue
+                saver.execute { if (p.id != projectId) runCatching { ProjectStore.keepCounts(app, p.id) } }
+            }
         }
     }
 

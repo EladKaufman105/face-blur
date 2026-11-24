@@ -22,7 +22,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 ## Pull requests
 
 - Every change reaches `develop` or `main` through a PR. No human approval is required.
-- Merging a PR deletes its branch automatically (GitHub can restore it from the PR page). `main`, `develop`, `gh-pages` and the data and CI branches (see "Other branches") are never deleted: rulesets block it.
+- With the repository setting "Automatically delete head branches" on, a feature branch is deleted when its PR is merged (restore it from the PR page). `main` and `develop` are never deleted (default branch and rulesets), nor are the data branches (rulesets). Side-workflow and old CI branches are never PR heads, so merges don't touch them.
 - Required checks (`.github/workflows/pr-guard.yml` runs `source-branch`; `.github/workflows/pr.yml` runs the builds):
   - `source-branch`: PRs into `main` must come from `develop` or `hotfix/*`.
   - `android-build`: i18n check and debug APK build.
