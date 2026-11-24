@@ -456,6 +456,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun templateSaved(tpl: Template) {
         if (batchChoice.id == tpl.id) chooseBatchTemplates(batchChoice)
         if (templateChoice.id != tpl.id) return
+        // Back on the Ready screen after a cancelled automatic run, the run's project is still open but
+        // can't be reached from here: save and close it (with its own export), so the template applies again.
+        if (stateValue is UiState.Ready && (editor != null || projectId != null)) closeSession()
         // A video that is open (working, in the editor, done) keeps its own export and settings: the template
         // is taken again only when the Ready screen is back.
         if (templateIsInUse()) templateStale = true else chooseTemplates(templateChoice)
@@ -970,8 +973,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun retrySensitive() {
-        sensitive = true
         backToSettings()
+        sensitive = true
     }
 
     fun reset() {
