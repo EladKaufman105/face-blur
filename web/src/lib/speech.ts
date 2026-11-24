@@ -113,20 +113,30 @@ export function defaultQuality(d: Device): Quality {
   return !d.weak && d.gpu?.big ? 'better' : 'fast'
 }
 
+const forcedModel = (): ModelKey | null => {
+  const f = param('subsmodel')
+  return f === 'base' || f === 'small' || f === 'large' ? f : null
+}
+
 function modelFor(q: Quality, d: Device): ModelKey {
-  const forced = param('subsmodel')
-  if (forced === 'base' || forced === 'small' || forced === 'large') return forced
+  const forced = forcedModel()
+  if (forced) return forced
   if (d.weak) return q === 'fast' ? 'base' : 'small'
   return q === 'fast' ? 'small' : 'large'
 }
 
+/** Set when the graphics processor failed or hung in this visit: the next job goes straight to the CPU. */
+export const gpuFailed = signal(false)
+
 /** The plan for [quality] on [d]: the model, the processor, the file kinds and what they weigh. */
-export function planFor(quality: Quality, d: Device, forceCpu = false): SpeechPlan {
-  const model = modelFor(quality, d)
+export function planFor(quality: Quality, d: Device, forceCpu = gpuFailed.value): SpeechPlan {
+  let model = modelFor(quality, d)
   const wanted = param('backend')
   let dev: 'webgpu' | 'wasm' = d.weak || !d.gpu || forceCpu ? 'wasm' : 'webgpu'
   if (!forceCpu && (wanted === 'wasm' || wanted === 'webgpu')) dev = wanted
   if (dev === 'webgpu' && model === 'large' && !d.gpu?.big) dev = 'wasm'
+  // The big model on the CPU takes minutes for each 30 seconds: "better" is the small one there.
+  if (dev === 'wasm' && model === 'large' && !forcedModel()) model = 'small'
   const dtype: Dtype = model === 'large' ? (dev === 'webgpu' && d.gpu?.f16 ? 'q4f16' : 'q4') : dev === 'webgpu' ? 'q4' : 'q8'
   const [enc, dec] = BYTES[model][dtype]!
   const s = SUFFIX[dtype]
@@ -155,12 +165,15 @@ export async function planCached(plan: SpeechPlan): Promise<boolean> {
 
 /** An open question to the person (a dialog in app.tsx shows it): download the speech model? */
 export const speechAsk = signal<{ id: number } | null>(null)
-let asking: { id: number; promise: Promise<Quality | null>; answer: (q: Quality | null) => void } | null = null
+type Answer = Quality | null | 'closed'
+let asking: { id: number; promise: Promise<Answer>; answer: (q: Answer) => void; waiters: Set<AbortSignal | undefined> } | null = null
 let askId = 0
-/** Plans the person agreed to download, and whether they declined, for this visit (a batch asks once, not per video). */
+/** Plans the person agreed to download, for this visit (a batch asks once, not per video). */
 const granted = new Set<string>()
-let declined = false
+/** The runs (their signals) whose question the person answered "no" to: only that batch or template run stops asking. */
+const declinedRuns = new WeakSet<AbortSignal>()
 
+/** The person's answer to the question. */
 export function answerSpeechAsk(q: Quality | null) {
   asking?.answer(q)
 }
@@ -168,37 +181,47 @@ export function answerSpeechAsk(q: Quality | null) {
 /**
  * The plan to run for a template's subtitles. When its model isn't in the browser yet, the person
  * is asked first (with the size, and "faster" / "better quality"), so a big download and a hot phone
- * never start by themselves. Returns null when they decline.
+ * never start by themselves. Returns null when they decline (for this run [signal] only).
  */
 export async function confirmSpeech(signal?: AbortSignal): Promise<SpeechPlan | null> {
   if (signal?.aborted) throw new SpeechAborted()
   const d = await probeDevice()
   let plan = currentPlan(d)
   if (granted.has(plan.repo + plan.dtype) || (await planCached(plan))) return plan
-  if (declined) return null
+  if (signal && declinedRuns.has(signal)) return null
   if (!asking) {
     const id = ++askId
-    let answer!: (q: Quality | null) => void
-    const promise = new Promise<Quality | null>((r) => { answer = r })
-    asking = { id, promise, answer: (q) => { asking = null; speechAsk.value = null; answer(q) } }
+    let answer!: (q: Answer) => void
+    const promise = new Promise<Answer>((r) => { answer = r })
+    asking = { id, promise, waiters: new Set(), answer: (q) => { asking = null; speechAsk.value = null; answer(q) } }
     speechAsk.value = { id }
   }
   const mine = asking
-  const onAbort = () => mine.answer(null)
-  signal?.addEventListener('abort', onAbort)
-  const q = await mine.promise
+  mine.waiters.add(signal)
+  let onAbort = () => {}
+  const aborted = new Promise<'aborted'>((r) => { onAbort = () => r('aborted'); signal?.addEventListener('abort', onAbort) })
+  const q = await Promise.race([mine.promise, aborted])
   signal?.removeEventListener('abort', onAbort)
+  if (q === 'aborted') {
+    // Only this waiter leaves; the question stays for the others, and closes with the last one.
+    mine.waiters.delete(signal)
+    if (mine.waiters.size === 0 && asking === mine) mine.answer('closed')
+    throw new SpeechAborted()
+  }
   if (signal?.aborted) throw new SpeechAborted()
-  if (!q) { declined = true; return null }
+  if (q === 'closed') return null
+  if (!q) {
+    for (const w of mine.waiters) if (w) declinedRuns.add(w)
+    return null
+  }
   plan = planFor(q, d)
   granted.add(plan.repo + plan.dtype)
   return plan
 }
 
-/** A button pressed on purpose ("create subtitles") is a go-ahead: later template runs don't ask again for what it fetched, and a "no" before is forgotten. */
+/** A button pressed on purpose ("create subtitles", or Start in the batch's setup, where the size is shown) is a go-ahead for that plan. */
 export function grantSpeech(plan: SpeechPlan) {
   granted.add(plan.repo + plan.dtype)
-  declined = false
 }
 
 // ------------------------------------------------------------------ one job
@@ -219,28 +242,59 @@ export class SpeechError extends Error {
 }
 
 /** Seconds without any sign of life, per phase, before the job is called stuck. */
-const LIMITS = { audio: 90, load: 150, download: 60, recognize: 100 }
+const LIMITS = { audio: 90, load: 150, download: 60 }
+/**
+ * Recognition: the encoder is one call with no messages (one thread: the page isn't cross-origin
+ * isolated), 30 s of sound at a time; the limit is for one such window on this plan.
+ */
+function recognizeLimit(plan: SpeechPlan): number {
+  if (plan.device === 'webgpu') return 120
+  return plan.model === 'large' ? 600 : plan.model === 'small' ? 300 : 120
+}
 
-function limitFor(phase: keyof typeof LIMITS): number {
+function limitFor(phase: keyof typeof LIMITS | 'recognize', plan: SpeechPlan): number {
   const forced = Number(param('subswatch'))
-  return (forced > 0 ? forced : LIMITS[phase]) * 1000
+  return (forced > 0 ? forced : phase === 'recognize' ? recognizeLimit(plan) : LIMITS[phase]) * 1000
+}
+
+/**
+ * The language Whisper is told. Transformers.js 4.3.2 has no language detection (a missing
+ * language decodes as English), so "automatic" is the language the person chose last, else the
+ * app's own (Hebrew in the Hebrew app).
+ */
+function spokenLanguage(language: string | null): string {
+  if (language) return language
+  try {
+    const l = localStorage.getItem(storageKey('subs.lang'))
+    if (l) return l
+  } catch {}
+  return (navigator.language || 'he').toLowerCase().startsWith('he') || !navigator.language ? 'hebrew' : 'english'
 }
 
 /**
  * Recognizes the speech in [file] as timed words. [onStatus]: where it is. Ends the worker when
  * done, failed or stopped ([signal]); a stuck phase fails with code 'stalled'. A graphics processor
- * that errors or hangs is left for the CPU with the "faster" model, once.
+ * that errors or hangs is left for the CPU once, but only for a CPU model that is already in the
+ * browser: otherwise the job fails and the person chooses (and agrees to the download) again.
  */
 export function transcribeFile(
   file: File, language: string | null,
   opts: { plan: SpeechPlan; onStatus: (s: SpeechStatus) => void; signal?: AbortSignal },
 ): Promise<{ words: Word[]; plan: SpeechPlan }> {
   const { signal, onStatus } = opts
+  const lang = spokenLanguage(language)
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new SpeechAborted())
     let worker: Worker | null = null
     let timer = 0
     let finished = false
+    let last = Date.now()
+    // A tab put to sleep (or a frozen worker) says nothing: that is not "stuck". Coming back counts from now.
+    let lastCheck = Date.now()
+    const alive = () => { last = Date.now(); lastCheck = last }
+    const onVisible = () => { if (document.visibilityState === 'visible') alive() }
+    document.addEventListener('visibilitychange', onVisible)
+    document.addEventListener('resume', alive)
     const stop = () => {
       window.clearInterval(timer)
       worker?.terminate()
@@ -250,6 +304,8 @@ export function transcribeFile(
       if (finished) return
       finished = true
       signal?.removeEventListener('abort', onAbort)
+      document.removeEventListener('visibilitychange', onVisible)
+      document.removeEventListener('resume', alive)
       stop()
       fn()
     }
@@ -260,23 +316,38 @@ export function transcribeFile(
     let usedFallback = false
     const attempt = (plan: SpeechPlan) => {
       stop()
-      let phase: keyof typeof LIMITS = 'audio'
-      let last = Date.now()
+      let phase: keyof typeof LIMITS | 'recognize' = 'audio'
+      alive()
       const w = new Worker(new URL('../workers/subs.worker.ts', import.meta.url), { type: 'module' })
       worker = w
       const failOrFallback = (code: string, message: string) => {
         if (finished || worker !== w) return
         if (plan.device === 'webgpu' && !usedFallback && code !== 'no-audio' && (phase === 'load' || phase === 'recognize')) {
           usedFallback = true
-          onStatus({ stage: 'fallback' })
-          attempt(planFor('fast', device.value, true))
+          gpuFailed.value = true
+          stop()
+          const cpu = planFor('fast', device.value, true)
+          // No download that wasn't asked for: only a CPU model that is already here.
+          planCached(cpu).then((have) => {
+            if (finished) return
+            if (have) {
+              onStatus({ stage: 'fallback' })
+              attempt(cpu)
+            } else {
+              end(() => reject(new SpeechError(t('המעבד הגרפי לא הצליח. אפשר ללחוץ שוב כדי להמשיך על המעבד עם מודל קטן יותר (כ-%d MB, יורד פעם אחת).', mbOf(cpu)), 'gpu')))
+            }
+          })
           return
         }
         end(() => reject(new SpeechError(message, code)))
       }
       timer = window.setInterval(() => {
-        const quiet = Date.now() - last
-        if (quiet > limitFor(phase)) {
+        const now = Date.now()
+        // The timer itself was paused (a frozen tab): the quiet is not the job's.
+        if (now - lastCheck > 5000) last = now
+        lastCheck = now
+        const quiet = now - last
+        if (quiet > limitFor(phase, plan)) {
           const secs = Math.round(quiet / 1000)
           failOrFallback('stalled', t('הזיהוי נתקע: אין התקדמות כבר %d שניות. אפשר לנסות שוב, או לבחור "מהיר".', secs))
         }
@@ -288,7 +359,10 @@ export function transcribeFile(
           case 'tick': return
           case 'audio': phase = 'audio'; return onStatus({ stage: 'audio' })
           case 'load': phase = 'load'; return onStatus({ stage: 'load' })
-          case 'download': phase = 'download'; return onStatus({ stage: 'download', progress: m.progress, loaded: m.loaded, total: m.total })
+          case 'download':
+            // Everything known so far is here: the loading starts (its limit), until another file starts.
+            phase = m.total > 0 && m.loaded >= m.total ? 'load' : 'download'
+            return onStatus({ stage: 'download', progress: m.progress, loaded: m.loaded, total: m.total })
           case 'transcribe': phase = 'recognize'; return onStatus({ stage: 'recognize', progress: m.progress })
           case 'done': return end(() => resolve({ words: m.words, plan }))
           case 'error': return failOrFallback(m.code, m.message)
@@ -296,7 +370,7 @@ export function transcribeFile(
       }
       w.onerror = (e) => failOrFallback('failed', e.message || 'error')
       w.onmessageerror = () => failOrFallback('failed', 'error')
-      const req: SubsRequest = { file, language, repo: plan.repo, device: plan.device, dtype: plan.dtype }
+      const req: SubsRequest = { file, language: lang, repo: plan.repo, device: plan.device, dtype: plan.dtype }
       w.postMessage(req)
     }
     attempt(opts.plan)

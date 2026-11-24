@@ -95,6 +95,7 @@ const EN: Record<string, string> = {
   'טוען את המודל…': 'Loading the model…',
   'עובר למעבד…': 'Switching to the CPU…',
   'המעבד הגרפי לא הגיב. ממשיך על המעבד עם מודל קטן יותר…': 'The graphics processor did not respond. Continuing on the CPU with a smaller model…',
+  'המעבד הגרפי לא הצליח. אפשר ללחוץ שוב כדי להמשיך על המעבד עם מודל קטן יותר (כ-%d MB, יורד פעם אחת).': 'The graphics processor did not work. You can press again to continue on the CPU with a smaller model (about %d MB, downloaded once).',
   'הזיהוי נתקע: אין התקדמות כבר %d שניות. אפשר לנסות שוב, או לבחור "מהיר".': 'Recognition got stuck: no progress for %d seconds. You can try again, or choose "Faster".',
   'הורדת המודל לא אושרה': 'The model download was not approved',
   'התבנית בוטלה': 'The template was cancelled',
