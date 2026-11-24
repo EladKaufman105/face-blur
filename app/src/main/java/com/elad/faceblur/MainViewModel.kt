@@ -810,7 +810,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         closeSession()
         state = UiState.Working(info, 3, 0f)
         job = viewModelScope.launch {
-            guard(info, onCancel = { UiState.Ready(info) }) {
+            guard(info, onCancel = { closeSession(); UiState.Ready(info) }) {
                 val base = info.name.substringBeforeLast('.') + "_" + java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
                 val r = withContext(Dispatchers.IO) {
                     com.elad.faceblur.audio.Mp3Export.convert(getApplication(), info.uri, base, isActive = { isActive }) { p ->
@@ -837,7 +837,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         livePreview = null
         state = UiState.Working(info, 1, 0f, auto = auto)
         job = viewModelScope.launch {
-            guard(info, onCancel = { UiState.Ready(info) }) {
+            guard(info, onCancel = { closeSession(); UiState.Ready(info) }) {
                 val processor = FaceBlurProcessor(getApplication())
                 val t0 = SystemClock.elapsedRealtime()
                 // The stats panel's last minute: new for each run.
@@ -887,7 +887,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         closeSession()
         state = UiState.Working(info, 0, 0f)
         job = viewModelScope.launch {
-            guard(info, onCancel = { UiState.Ready(info) }) {
+            guard(info, onCancel = { closeSession(); UiState.Ready(info) }) {
                 val analysis = withContext(Dispatchers.IO) { FaceBlurProcessor.framesOnly(getApplication(), info) }
                 val session = EditSession(info, Settings(mode, strength, padding, sensitive), analysis, 0, subtitlesOnly = true)
                 val ctrl = EditorController(session, editorScope, getApplication(), models, prefs)
