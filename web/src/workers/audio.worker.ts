@@ -11,20 +11,22 @@ import type { Range } from '../lib/cutmap'
  * the networks' level, when asked for); or ('silences') the pauses longer than [minPause] seconds.
  */
 export type AudioRequest =
-  | { type?: 'voice'; file: File; voice: VoiceFx; bleeps: Bleep[]; tone: boolean; clean?: Cleanup }
+  | { type?: 'voice'; id?: number; file: File; voice: VoiceFx; bleeps: Bleep[]; tone: boolean; clean?: Cleanup }
   | { type: 'silences'; file: File; minPause: number; words: Range[] }
 export type AudioMessage =
-  | { type: 'done'; rate: number; data: Float32Array; lufs: number | null; gainDb: number }
+  | { type: 'done'; id?: number; rate: number; data: Float32Array; lufs: number | null; gainDb: number }
   | { type: 'silences'; ranges: Range[] }
-  | { type: 'error'; code: string; message: string }
+  | { type: 'error'; id?: number; code: string; message: string }
 
 let cache: { file: File; rate: number; data: Float32Array; channels: number } | null = null
 
 self.onmessage = async (e: MessageEvent<AudioRequest>) => {
+  const r = e.data
+  // A voice request's id comes back with its answer, so a late answer is not taken for a newer one's.
+  const id = r.type === 'silences' ? undefined : r.id
   try {
-    const r = e.data
     if (cache?.file !== r.file) cache = await decode(r.file)
-    if (!cache) return (self as unknown as Worker).postMessage({ type: 'error', code: 'no-audio', message: 'no sound' } satisfies AudioMessage)
+    if (!cache) return (self as unknown as Worker).postMessage({ type: 'error', id, code: 'no-audio', message: 'no sound' } satisfies AudioMessage)
     if (r.type === 'silences') {
       const ranges = findSilences(cache.data, cache.rate, r.minPause, r.words)
       return (self as unknown as Worker).postMessage({ type: 'silences', ranges } satisfies AudioMessage)
@@ -33,10 +35,10 @@ self.onmessage = async (e: MessageEvent<AudioRequest>) => {
     const clean = r.clean ?? NO_CLEANUP
     const c = cleanupOn(clean) ? cleanup(cache.data, cache.rate, clean) : { data: cache.data, lufs: null, gainDb: 0 }
     const data = processVoice(c.data, cache.rate, voice, bleeps, tone)
-    const msg: AudioMessage = { type: 'done', rate: cache.rate, data, lufs: c.lufs, gainDb: c.gainDb }
+    const msg: AudioMessage = { type: 'done', id, rate: cache.rate, data, lufs: c.lufs, gainDb: c.gainDb }
     ;(self as unknown as Worker).postMessage(msg, [data.buffer])
   } catch (err) {
-    ;(self as unknown as Worker).postMessage({ type: 'error', code: 'failed', message: String((err as Error)?.message ?? err) } satisfies AudioMessage)
+    ;(self as unknown as Worker).postMessage({ type: 'error', id, code: 'failed', message: String((err as Error)?.message ?? err) } satisfies AudioMessage)
   }
 }
 

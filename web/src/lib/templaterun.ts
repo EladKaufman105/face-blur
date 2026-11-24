@@ -262,7 +262,11 @@ export async function processVideo(file: File, s: TemplateSettings, report: (pha
       if (s.loud && r.lufs === null) notes.push(t('לא נמצא דיבור למדידת העוצמה'))
     } catch (e) {
       if (e instanceof Aborted) throw e
-      notes.push(t('אין סאונד בסרטון'))
+      if ((e as StepError).code === 'no-audio') notes.push(t('אין סאונד בסרטון'))
+      else if (s.voice !== 'none') {
+        // A voice change is for anonymity: the video is never saved with the real voice.
+        throw new StepError(t('שינוי הקול נכשל, ולכן הסרטון לא נשמר (כדי שהקול המקורי לא יישמר בטעות): %s', message(e)), 'voice-failed')
+      } else notes.push(t('עיבוד הסאונד נכשל, והסרטון יישמר עם הסאונד המקורי: %s', message(e)))
     }
     stepNo++
   }

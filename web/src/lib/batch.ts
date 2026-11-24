@@ -5,7 +5,7 @@
 import { signal } from '@preact/signals'
 import { storageKey } from './channel'
 import { t } from '../i18n'
-import { Aborted, exportVideo, jobOf, processVideo, type Phase, type Processed } from './templaterun'
+import { Aborted, StepError, exportVideo, jobOf, processVideo, type Phase, type Processed } from './templaterun'
 import { hasProcessing, styleOf, type TemplateSettings } from './template'
 import { batchName, createProject, saveProject, deleteProject, summarize, type ProjectPicture, type ProjectState } from './projects'
 import { keepAwake } from './wakelock'
@@ -352,6 +352,7 @@ async function processOne(b: Batch, item: BatchItem) {
 }
 
 function friendly(e: unknown): string {
+  if (e instanceof StepError && e.code === 'voice-failed') return e.message
   const m = String((e as Error)?.message ?? e)
   if (/decode|codec/i.test(m)) return t('הדפדפן לא מצליח לפענח את הסרטון הזה (%s). נסה Chrome או Safari מעודכנים.', m.replace("can't decode ", '').slice(0, 80))
   if (/memory|alloc/i.test(m)) return t('נגמר הזיכרון. נסה סרטון קצר יותר או סגור לשוניות אחרות.')
