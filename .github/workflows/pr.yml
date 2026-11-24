@@ -59,6 +59,10 @@ jobs:
             subtitles:
               - 'web/src/workers/subs.worker.ts'
               - 'web/src/lib/subtitles.ts'
+              - 'web/src/lib/speech.ts'
+              - 'web/src/lib/templaterun.ts'
+              - 'web/src/ui/SpeechUi.tsx'
+              - 'ci/web-tests.sh'
               - 'web/tests/subs.cjs'
               - 'web/package.json'
               - 'web/package-lock.json'

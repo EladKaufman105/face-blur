@@ -37,6 +37,8 @@ const [, , url, video, out] = process.argv
     console.log('subtitles', ((Date.now() - t0) / 1000).toFixed(0), 's:', cues.length, 'cues')
     for (const c of cues) console.log('  ' + c)
     if (cues.length === 0) throw new Error('no subtitles')
+    // Nothing cut off at the end: the clip's last word ("... do for your country") is there.
+    if (!/country/i.test(cues.join(' '))) throw new Error('the last word is missing: ' + cues.join(' '))
     await p.evaluate(() => { const v = document.querySelector('video'); v.currentTime = 2 })
     await p.waitForTimeout(1500)
     await p.screenshot({ path: `${out}/subs_editor.png` })
