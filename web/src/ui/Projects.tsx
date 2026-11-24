@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'preact/hooks'
 import { t, duration } from '../i18n'
 import { deleteProject, listProjects, renameProject, type ProjectMeta } from '../lib/projects'
+import { BETA } from '../lib/channel'
+import { ImportFromRelease } from './Beta'
 
 /** "Today 14:05", "Yesterday 09:12" or a date. */
 function when(ms: number): string {
@@ -43,6 +45,7 @@ export function ProjectsSection({ onOpen }: { onOpen: (id: string) => void }) {
       <div class="row">
         <h3 class="section-title grow" style="margin:4px 0">{t('הפרויקטים שלי')}</h3>
         {list.length > 4 && <button class="btn ghost small-btn" onClick={() => setAll(!all)}>{all ? t('הצג פחות') : t('הצג הכל (%d)', list.length)}</button>}
+        {BETA && <ImportFromRelease onDone={reload} />}
       </div>
       {list.length === 0 ? (
         <p class="small muted" style="margin:0">{t('עדיין אין פרויקטים. כל סרטון שתפתח נשמר כאן תוך כדי עריכה, ואפשר לחזור אליו ולהמשיך מאיפה שעצרת.')}</p>

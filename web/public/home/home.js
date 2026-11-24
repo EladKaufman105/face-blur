@@ -84,7 +84,7 @@
     d.lang = l; d.dir = l === 'he' ? 'rtl' : 'ltr'; d.dataset.lang = l
     document.title = titles[l]; $('meta[name=description]').content = descs[l]
     var b = $('#lang'); b.textContent = l === 'he' ? 'EN' : 'עב'; b.setAttribute('aria-label', l === 'he' ? 'English' : 'עברית')
-    if (save) { try { localStorage.setItem('onit.lang', l) } catch (e) {} }
+    if (save) { try { localStorage.setItem((self.ONIT_STORE || 'onit') + '.lang', l) } catch (e) {} }
     splitAll(); ribbon(l)
   }
 

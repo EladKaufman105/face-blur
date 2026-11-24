@@ -15,11 +15,13 @@
 <meta property="og:image" content="https://eladkaufman105.github.io/face-blur/home/media/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preload" href="fonts/allo-hebrew.woff2" as="font" type="font/woff2" crossorigin>
+<script src="channel.js"></script>
 <script>
-  // The editor's own settings, when there are any: its language and its light / dark choice.
+  // The editor's own settings, when there are any: its language and its light / dark choice (the
+  // beta's own in the beta, see channel.js).
   ;(function () {
-    var d = document.documentElement, theme = 'dark', lang = null
-    try { theme = localStorage.getItem('onit.theme') || 'dark'; lang = localStorage.getItem('onit.lang') } catch (e) {}
+    var d = document.documentElement, theme = 'dark', lang = null, k = (self.ONIT_STORE || 'onit') + '.'
+    try { theme = localStorage.getItem(k + 'theme') || 'dark'; lang = localStorage.getItem(k + 'lang') } catch (e) {}
     if (theme === 'system') theme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
     d.dataset.theme = theme === 'light' ? 'light' : 'dark'
     if (!lang) lang = (navigator.language || 'he').indexOf('he') === 0 ? 'he' : 'en'

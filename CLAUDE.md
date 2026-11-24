@@ -4,8 +4,8 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 
 ## Branches
 
-- `main`: releases only. A merge publishes a public GitHub release (APK) once the emulator e2e passes, and deploys the web app to GitHub Pages when web files changed.
-- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Beta" (separate app id, installs beside ONIT) once the emulator e2e passes. Merges that change only `web/` make no beta.
+- `main`: releases only. A merge publishes a public GitHub release (APK) once the emulator e2e passes. The web app from `main` is at https://eladkaufman105.github.io/face-blur/.
+- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Beta" (separate app id, installs beside ONIT) once the emulator e2e passes. Merges that change only `web/` make no beta. The web app from `develop` is the beta web app, at https://eladkaufman105.github.io/face-blur/beta/.
 - Never push, force-push, rebase or delete `main` or `develop`. Repository rulesets enforce this. Do not try to work around them.
 - `labs` is retired. Do not push to it. It is kept as history.
 - `hotfix/<name>`: branch from `main`, PR into `main`, then a PR `main` -> `develop` (merge commit) to bring the fix back.
@@ -26,7 +26,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
   - `android-build`: i18n check and debug APK build.
   - `web-build`: web build and one browser smoke test.
 - The full Android emulator e2e runs after merge (`build.yml`): the 20 instrumented tests in 3 parallel emulator shards, plus the release build's self-test. It gates the release or beta. The arm64 release APK is built in parallel with it and published only when every shard passed.
-- `pr.yml` runs the Android debug build only when Android files, `ci/` or workflows change, and the web build and Chromium tests (4 parallel shards, `ci/web-tests.sh`) only when `web/`, the assets the web app copies from `app/src/main/assets`, or workflows change. `android-build` and `web-build` always report; they pass when their work was skipped. A push to `develop` doesn't repeat the web tests, and a push to `main` builds and deploys the web app without them. The subtitles test (Whisper, a 1.4 GB download) runs on a PR only when subtitle code changes, and weekly and on manual runs of `web.yml`.
+- `pr.yml` runs the Android debug build only when Android files, `ci/` or workflows change, and the web build and Chromium tests (4 parallel shards, `ci/web-tests.sh`) only when `web/`, the assets the web app copies from `app/src/main/assets`, or workflows change. `android-build` and `web-build` always report; they pass when their work was skipped. A push to `main` that changes web files (`web/`, the assets it copies from `app/src/main/assets`, `web.yml`, `web-tests.yml`, `ci/web-tests.sh`, `ci/publish-pages.sh`, `ci/pages-build.sh` or `.github/actions/`) deploys the release web app, and such a push to `develop` the beta web app, each without repeating the web tests and without touching the other. A manual run of `web.yml` runs every web test on the branch it's started from, then deploys the release (always built from `main`), the beta (always built from `develop`) or both; the weekly run only tests. The subtitles test (Whisper, a 1.4 GB download) runs on a PR only when subtitle code changes, and weekly and on manual runs of `web.yml`.
 - Every user-visible string needs its English text. `ci/i18n_check.py` checks this.
 - Fill in `.github/pull_request_template.md`.
 
@@ -49,7 +49,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 
 - Open a PR from `develop` into `main`. Skip the code-review loop. Each change was reviewed on its way into `develop`, and the user tests the beta on a device.
 - Check that PR checks are green.
-- Check that the release is the beta the user tested: nothing outside `web/` changed on `develop` since the newest beta tag. `git diff --name-only <newest vX.Y.Z-beta.N> origin/develop -- . ':!web' ':!.github/workflows/web.yml' ':!.github/workflows/web-tests.yml' ':!.github/actions' ':!ci/web-tests.sh' ':!.github/workflows/models.yml'` must print nothing.
+- Check that the release is the beta the user tested: nothing outside `web/` changed on `develop` since the newest beta tag. `git diff --name-only <newest vX.Y.Z-beta.N> origin/develop -- . ':!web' ':!.github/workflows/web.yml' ':!.github/workflows/web-tests.yml' ':!.github/actions' ':!ci/web-tests.sh' ':!ci/publish-pages.sh' ':!ci/pages-build.sh' ':!.github/workflows/models.yml'` must print nothing.
 - If it prints files, warn the user. Let them choose: wait for the next beta and test it, or release anyway. If that next beta never came because its e2e failed, fix that first with a normal PR into `develop`.
 - Write release notes in the PR body: the PRs merged into `develop` since the last release.
 - Ask the user "Release X.Y.Z?". Merge only after a clear yes. Same for hotfix PRs into `main`.
@@ -60,6 +60,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 - e2e fails after a merge into `develop`: no beta. Fix it with a normal PR into `develop`.
 - e2e fails after a merge into `main`: no release. Fix it with a `hotfix/*` PR.
 - A release or beta exists but has no APK (upload failed): tell the user. Re-running the whole workflow fails on purpose ("already released"). Do not re-run only the `publish` job (it would skip that check); the owner fixes it by hand.
+- Until the first release brings the new `web.yml` to `main`, a hotfix into `main` that changes web files runs `main`'s old web workflow (GitHub Actions Pages deploy), which may fail or briefly replace the site: afterwards run "Web app" on `develop` with channel `both`.
 - If you change a PR's base branch, push a new commit so the builds run again.
 - Never put `[skip ci]` in a commit message or merge title. In a PR it stops the required checks; in a merge into `develop` or `main` it stops the beta or release.
 
@@ -83,7 +84,8 @@ CI computes SemVer from git tags in `ci/version.sh`. Nobody types version number
   - `sfx-src` builds `sfx-fs`.
   - `bench` runs the ARM benchmark. It only writes a log.
 - Data branches are downloaded at runtime by the shipped app or by CI: `gpu-model`, `speaker-model`, `ml-models` (pinned commit), `opencv-min2` (SHA-pinned in `ci/fetch-opencv.sh`), `test-media`, `sfx-fs` (source of the bundled sounds, see `scripts/build_sfx.py`). Never delete, rebase or force-push them by hand. Installed apps would break.
-- CI no longer writes branches. Its outputs are workflow artifacts (e2e results and screenshots, web test results, build logs on failure; kept 14 days). The old output branches `ci-results`, `ci-results-develop`, `ci-results-labs`, `ci-log`, `model-check` are kept but no longer written. Also kept: `opencv-min`. Do not write to them.
+- `gh-pages` is the web site (GitHub Pages serves it): the release web app at its root, the beta under `beta/`. Only CI writes it (`ci/publish-pages.sh`, one force-pushed commit), and it is the only branch CI writes. Never edit, push or delete it by hand.
+- Apart from `gh-pages`, CI no longer writes branches. Its outputs are workflow artifacts (e2e results and screenshots, web test results, build logs on failure; kept 14 days). The old output branches `ci-results`, `ci-results-develop`, `ci-results-labs`, `ci-log`, `model-check` are kept but no longer written. Also kept: `opencv-min`. Do not write to them.
 
 ## Build
 

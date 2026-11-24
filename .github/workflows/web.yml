@@ -1,11 +1,14 @@
 name: Web app
 
-# main: build and deploy to Pages, no tests (develop -> main merges were tested in their PR).
-# Pull requests run the tests (pr.yml); a push to develop doesn't repeat them.
-# Manual and weekly runs build and run every test, including the slow subtitles one.
+# The site is the gh-pages branch (GitHub Pages serves it as it is): the release, built from main,
+# at its root, and the beta ("ONIT Beta"), built from develop, under beta/. Each is deployed on its
+# own and never touches the other's part (ci/publish-pages.sh): a push to main deploys the release,
+# a push to develop the beta, without tests (each change was tested in its PR, see pr.yml).
+# A manual run deploys either or both (always from main and develop) after every test, including
+# the slow subtitles one. The weekly run only tests.
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - 'web/**'
       # What web/scripts/copy-assets.mjs takes from the Android app.
@@ -16,39 +19,96 @@ on:
       - '.github/workflows/web.yml'
       - '.github/workflows/web-tests.yml'
       - 'ci/web-tests.sh'
+      - 'ci/publish-pages.sh'
+      - 'ci/pages-build.sh'
       - '.github/actions/**'
   workflow_dispatch:
+    inputs:
+      channel:
+        description: Which web app to deploy (the release from main, the beta from develop)
+        type: choice
+        options: [both, release, beta]
+        default: both
   schedule:
     - cron: '23 5 * * 1'
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
+# A run that deploys is never cancelled once started; weekly test runs replace each other.
 concurrency:
-  group: web-${{ github.ref }}
-  cancel-in-progress: true
+  group: web-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'schedule' }}
 
 jobs:
   web:
+    if: github.event_name != 'push'
     uses: ./.github/workflows/web-tests.yml
     with:
-      tests: ${{ github.event_name != 'push' }}
-      subtitles: ${{ github.event_name != 'push' }}
-      pages: ${{ github.ref == 'refs/heads/main' }}
+      subtitles: true
 
-  # Only main goes to the site.
+  # Each app on its own: built from its branch's newest commit, then only its part of gh-pages
+  # replaced. One deploy of each app at a time (a newer one waiting replaces an older one waiting);
+  # a release and a beta deploy at the same time can't undo each other (see ci/publish-pages.sh).
   deploy:
-    if: github.ref == 'refs/heads/main'
+    name: deploy (${{ matrix.channel }})
     needs: web
+    if: ${{ !cancelled() && needs.web.result != 'failure' && github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # push: the branch's own app; manual: as chosen.
+        channel: ${{ fromJSON(github.event_name == 'push' && (github.ref == 'refs/heads/main' && '["release"]' || '["beta"]') || (inputs.channel == 'release' && '["release"]' || inputs.channel == 'beta' && '["beta"]' || '["release","beta"]')) }}
     concurrency:
-      group: pages
+      group: gh-pages-${{ matrix.channel }}
       cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      CHANNEL: ${{ matrix.channel }}
+      SOURCE: ${{ matrix.channel == 'release' && 'main' || 'develop' }}
     steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      # This run's .github, ci/ and web/scripts/ (the shared actions, the publish script, the
+      # build's Python packages: main may not have them yet), then the app's branch.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github
+            ci
+            web/scripts
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE }}
+          path: _app
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: _app/web/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: web/scripts/requirements-ci.txt
+      - uses: ./.github/actions/apt-install
+        with:
+          packages: ffmpeg fonts-dejavu-core
+      - name: Build
+        working-directory: _app/web
+        run: |
+          pip install --quiet -r "$GITHUB_WORKSPACE/web/scripts/requirements-ci.txt"
+          npm ci
+          ONIT_CHANNEL="$CHANNEL" npm run build
+      - name: Publish to gh-pages
+        id: publish
+        run: bash ci/publish-pages.sh "$CHANNEL" _app/web/dist "$SOURCE@$(git -C _app rev-parse --short HEAD)"
+      # A push with the workflow's token may not start GitHub's Pages build: make sure one runs, and wait.
+      - name: Build GitHub Pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ steps.publish.outputs.commit }}
+        run: bash ci/pages-build.sh "$COMMIT"

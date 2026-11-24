@@ -11,7 +11,8 @@
         "refs/heads/ml-models",
         "refs/heads/opencv-min2",
         "refs/heads/test-media",
-        "refs/heads/sfx-fs"
+        "refs/heads/sfx-fs",
+        "refs/heads/gh-pages"
       ],
       "exclude": []
     }
