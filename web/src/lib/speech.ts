@@ -461,7 +461,9 @@ export function transcribeFile(
           case 'error': return failOrFallback(m.code, m.message)
         }
       }
-      w.onerror = (e) => failOrFallback('failed', e.message || 'error')
+      // A thread of the runtime that fails to start throws outside the worker's own catch: while the
+      // model loads with threads, an uncaught error is that (download errors come as messages).
+      w.onerror = (e) => failOrFallback(plan.device === 'wasm' && plan.threads > 1 && (phase === 'load' || phase === 'download') ? 'threads' : 'failed', e.message || 'error')
       w.onmessageerror = () => failOrFallback('failed', 'error')
       const req: SubsRequest = { file, language: lang, repo: plan.repo, device: plan.device, encDtype: plan.encDtype, dtype: plan.dtype, threads: plan.threads }
       w.postMessage(req)

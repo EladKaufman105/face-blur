@@ -176,7 +176,7 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
   }) } catch (e) {
     // Threads that would not start (not a download that failed): the page tries once more with one.
     const message = String((e as Error)?.message ?? e)
-    if ((wasm?.numThreads ?? 1) > 1 && !/fetch|network|locate|load file|load failed|http|40\d|50\d/i.test(message)) {
+    if ((wasm?.numThreads ?? 1) > 1 && !/could not locate file|failed to fetch|network|load failed|https?:\/\/|\b(40\d|50\d)\b/i.test(message)) {
       return post({ type: 'error', code: 'threads', message })
     }
     throw e
