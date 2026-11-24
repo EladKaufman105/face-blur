@@ -177,7 +177,6 @@ fun MainScreen(vm: MainViewModel) {
                     onSave = { name, keep ->
                         vm.saveEditorAsTemplate(state.editor, name, keep)
                         saveTemplate = false
-                        state.editor.notice = t("התבנית נשמרה")
                     },
                     onDismiss = { saveTemplate = false },
                 )

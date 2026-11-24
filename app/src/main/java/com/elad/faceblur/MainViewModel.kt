@@ -50,6 +50,7 @@ import com.elad.faceblur.template.TemplateSettings
 import com.elad.faceblur.template.TemplateStore
 import com.elad.faceblur.template.applyAll
 import com.elad.faceblur.template.fitSpeechModel
+import com.elad.faceblur.batch.BatchOwnFiles
 import com.elad.faceblur.batch.Batch
 import com.elad.faceblur.batch.BatchItem
 import com.elad.faceblur.batch.BatchMath
@@ -104,8 +105,14 @@ sealed interface UiState {
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
-    var state by mutableStateOf<UiState>(UiState.Empty)
-        private set
+    private var stateValue by mutableStateOf<UiState>(UiState.Empty)
+    var state: UiState
+        get() = stateValue
+        private set(v) {
+            stateValue = v
+            // A template saved while a video was open is taken again once the Ready screen is back.
+            if (v is UiState.Ready) refreshStaleTemplate()
+        }
 
     var mode by mutableStateOf(BlurMode.BLUR)
     var strength by mutableStateOf(0.6f)
@@ -388,8 +395,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun startBatch() {
         val setup = state as? UiState.BatchSetup ?: return
         if (blockedByBatch()) return
-        val s = batchSettings
-        if (s.needsSpeechModel && !models.isReady(s.speechModel)) return
+        if (batchSettings.needsSpeechModel && !models.isReady(batchSettings.speechModel)) return
         val items = setup.videos.mapIndexed { i, v ->
             val thumb = v.thumbnail?.let { b ->
                 val k = 320f / maxOf(b.width, b.height, 1)
@@ -398,7 +404,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             BatchItem(i, v.uri, v.name, v.durationMs, thumb)
         }
         val name = idsOf(batchChoice).mapNotNull { templates.find(it) }.joinToString(" + ") { if (it.builtIn) t(it.name) else it.name }
-        BatchState.current = Batch(items, s, name.ifEmpty { t("בלי תבנית") }).also { it.speeds = batchSpeeds() }
+        val batchId = com.elad.faceblur.project.ProjectStore.newId()
+        // The batch keeps its own copy of the template's logo and picture: editing the template meanwhile changes nothing in it.
+        val s = runCatching {
+            BatchOwnFiles.own(batchSettings, BatchOwnFiles.dir(getApplication<Application>().filesDir), batchId)
+        }.getOrDefault(batchSettings)
+        BatchState.current = Batch(items, s, name.ifEmpty { t("בלי תבנית") }, batchId).also { it.speeds = batchSpeeds() }
         BatchService.start(getApplication())
         state = UiState.BatchRun
     }
@@ -443,8 +454,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** A template was saved or restored: if it is the one chosen, its settings are taken again. */
     fun templateSaved(tpl: Template) {
-        if (templateChoice.id == tpl.id) chooseTemplates(templateChoice)
         if (batchChoice.id == tpl.id) chooseBatchTemplates(batchChoice)
+        if (templateChoice.id != tpl.id) return
+        // A video that is open (working, in the editor, done) keeps its own export and settings: the template
+        // is taken again only when the Ready screen is back.
+        if (templateIsInUse()) templateStale = true else chooseTemplates(templateChoice)
+    }
+
+    private var templateStale = false
+
+    private fun templateIsInUse() = projectId != null || editor != null || when (stateValue) {
+        is UiState.Empty, is UiState.Loading, is UiState.Ready, is UiState.BatchSetup, is UiState.BatchRun -> false
+        else -> true
+    }
+
+    private fun refreshStaleTemplate() {
+        if (!templateStale || projectId != null || editor != null) return
+        templateStale = false
+        if (templateChoice.id != null) chooseTemplates(templateChoice)
     }
 
     /** The settings as they stand now (the Ready screen's), for a template to lay over. */
@@ -459,6 +486,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun chooseTemplates(choice: TemplateChoice) {
         val templateChoiceBefore = templateChoice
+        templateStale = false
         templateChoice = choice
         val ids = idsOf(choice)
         if (ids.isEmpty()) {
@@ -517,14 +545,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (ctrl.stabilizeLevel > 0) add(TemplateCategory.STABILIZE)
     }
 
-    /** Saves the editor's choices as the user's template [name], with the [keep] categories. */
-    fun saveEditorAsTemplate(ctrl: EditorController, name: String, keep: Set<TemplateCategory>): Template {
+    /** Saves the editor's choices as the user's template [name], with the [keep] categories (the files are copied off the main thread). */
+    fun saveEditorAsTemplate(ctrl: EditorController, name: String, keep: Set<TemplateCategory>) {
         val id = templates.newId()
-        var tpl = settingsOf(ctrl).toTemplate(id, name.trim().take(60).ifBlank { t("תבנית חדשה") }, keep)
-        tpl.background?.let { b -> tpl = tpl.copy(background = templates.withOwnImage(b, id)) }
-        tpl = templates.withOwnLogo(tpl)
-        templates.save(tpl)
-        return tpl
+        val tpl0 = settingsOf(ctrl).toTemplate(id, name.trim().take(60).ifBlank { t("תבנית חדשה") }, keep)
+        viewModelScope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                runCatching {
+                    var tpl = tpl0
+                    tpl.background?.let { b -> tpl = tpl.copy(background = templates.withOwnImage(b, id)) }
+                    tpl = templates.withOwnLogo(tpl)
+                    templates.save(tpl)
+                    tpl
+                }.getOrNull()
+            }
+            ctrl.notice = if (saved != null) t("התבנית נשמרה") else t("התבנית לא נשמרה")
+        }
     }
 
     /** Runs the chosen template's processing on the open editor session, not waiting (the editor is on screen). */
@@ -537,7 +573,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Every new editing session is saved as a project. */
-    private fun beginProject(ctrl: EditorController) {
+    private suspend fun beginProject(ctrl: EditorController) {
         val s = ctrl.session
         val id = ProjectStore.newId()
         projectId = id
@@ -546,7 +582,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // A logo a template brought is copied into the project: it stays when the template changes or goes.
         sessionExport?.let { e ->
             if (e.watermark.logo != null) {
-                sessionExport = runCatching { e.copy(watermark = Watermark.withOwnCopy(e.watermark, dir)) }.getOrDefault(e)
+                sessionExport = withContext(Dispatchers.IO) {
+                    runCatching { e.copy(watermark = Watermark.withOwnCopy(e.watermark, dir)) }.getOrDefault(e)
+                }
             }
         }
         val json = ctrl.projectFields(subtitleStyle, sessionExport)
