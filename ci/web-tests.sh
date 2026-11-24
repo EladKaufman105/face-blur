@@ -53,6 +53,8 @@ case "${1:?shard}" in
   4) # 105 s
     # The sound's cleanup, MP3 (from the editor and the home screen), a lower size and frame rate.
     t sound.cjs "$U" $S/speech_two.mp4 $S/speech_en.mp4 $S/classroom60.mp4 $R/sound   # 19
+    # A sound step that fails never exports the original voice: the editor's export stays blocked, a batch item fails.
+    t soundfail.cjs "$U" $S/speech_two.mp4 $R/soundfail   # 15
     # Editing: a blur by hand (followed, split, deleted, ended), cuts by hand and of pauses.
     t edit.cjs "$U" $S/speech_two.mp4 $R/edit   # 19
     # A tool from the home screen; faces found later; the editor kept across the export.
