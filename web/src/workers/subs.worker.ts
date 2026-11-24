@@ -21,6 +21,8 @@ export type SubsMessage =
   | { type: 'error'; code: string; message: string }
 
 const RATE = 16000
+/** Whisper's decoder holds 448 tokens; the prompt (start, language, task) takes 3 of them. */
+const MAX_NEW = 440
 const post = (m: SubsMessage) => (self as unknown as Worker).postMessage(m)
 
 self.onmessage = async (e: MessageEvent<SubsRequest>) => {
@@ -113,19 +115,27 @@ async function run({ file, language, repo, device, dtype }: SubsRequest) {
   post({ type: 'load' })
   let loading = true
   let news = 0
+  let lastPost = 0
   const asr: any = await pipeline('automatic-speech-recognition', repo, {
     device,
     dtype: { encoder_model: dtype, decoder_model_merged: dtype },
     progress_callback: (p: any) => {
+      const now = Date.now()
       if (p.status === 'progress_total') {
         const n = ++news
         if (p.total > 0 && p.loaded >= p.total) {
           // All of what is known so far is here: if no other file starts soon, it is the loading.
+          // (The page itself moves to its loading phase at once, from loaded >= total.)
           setTimeout(() => { if (n === news && !loading) { loading = true; post({ type: 'load' }) } }, 1500)
         }
         loading = false
+        // One message per update: it is also the sign of life, so no extra tick goes with it.
+        lastPost = now
         post({ type: 'download', progress: p.progress / 100, loaded: p.loaded, total: p.total })
-      } else post({ type: 'tick' })
+      } else if (now - lastPost > 500) {
+        lastPost = now
+        post({ type: 'tick' })
+      }
     },
   })
 
@@ -140,10 +150,11 @@ async function run({ file, language, repo, device, dtype }: SubsRequest) {
       const winSec = (to - from) / RATE
       const base = from / x.length, span = (to - from) / x.length
       if (!silent(x, from, to)) {
-        let at = 0, sent = 0
+        let at = 0, sent = 0, tokens = 0
         // One token at a time through here: a sign of life, and (from the timestamps) how far it is.
         const streamer = {
           put(v: bigint[][]) {
+            tokens++
             const row = v?.[0]
             const tok = Number(row?.[row.length - 1])
             if (tok >= tsBegin) at = Math.min(winSec, (tok - tsBegin) * 0.02)
@@ -155,6 +166,8 @@ async function run({ file, language, repo, device, dtype }: SubsRequest) {
           },
           end() {},
         }
+        // The encoder is one long call with no messages: say so first, so the page's watchdog counts from here.
+        post({ type: 'tick' })
         const out = await asr(x.subarray(from, to), {
           return_timestamps: 'word',
           task: 'transcribe',
@@ -162,13 +175,28 @@ async function run({ file, language, repo, device, dtype }: SubsRequest) {
           streamer,
           // Always set: it keeps the library from re-running the window in a loop when the model
           // makes no progress (the cause of a hot phone stuck at 0%), and caps a runaway output.
-          max_new_tokens: Math.min(440, Math.ceil(winSec * 9) + 24),
+          // The whole budget (a 3-token prompt, at most 448): Hebrew, Arabic and Persian need many
+          // tokens a second in fast speech, and a smaller cap cuts the end of the window off.
+          max_new_tokens: MAX_NEW,
         })
         const offset = from / RATE
+        let lastEnd = 0
         for (const c of out.chunks ?? []) {
           const [a, b] = c.timestamp as [number, number | null]
           if (a == null) continue
-          words.push({ start: offset + a, end: offset + (b ?? a + 0.3), text: c.text })
+          const e = b ?? a + 0.3
+          lastEnd = Math.max(lastEnd, e)
+          words.push({ start: offset + a, end: offset + e, text: c.text })
+        }
+        // The cap was hit: the speech after the last word is still to do, so the next window starts
+        // there (at least 1 s on, so it always moves forward) and nothing is skipped.
+        if (tokens >= MAX_NEW - 2 && lastEnd < winSec - 1) {
+          const next = from + Math.floor(Math.max(1, lastEnd) * RATE)
+          if (next > from && next < to) {
+            from = next
+            post({ type: 'transcribe', progress: Math.min(1, from / x.length) })
+            continue
+          }
         }
       }
       from = to
