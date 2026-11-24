@@ -97,6 +97,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.foundation.border
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -1800,30 +1801,39 @@ private fun SafeZoneStrip(ctrl: EditorController, visible: Boolean) {
 }
 
 /**
- * The safe zone's platform chooser: a pill of round icon buttons (no text), the chosen one on a white
- * circle that slides from the old choice to the new one while the icons' colors cross-fade with it.
+ * The safe zone's platform chooser: a pill of round icon buttons (no text) in the theme's colors, the
+ * chosen one on a high-contrast circle that slides from the old choice to the new one while the icons'
+ * colors cross-fade with it.
  *
  * The icons are the platforms' own logos, single-colour, from Simple Icons (CC0; trademarks of their
  * owners, used only to label the platform): vector drawables in res/drawable named platform_tiktok.xml,
  * platform_reels.xml and platform_shorts.xml. Replacing a file changes its icon, with no code change.
  * A PNG with the same name in res/drawable-nodpi works too once the XML is removed (white on a
- * transparent background, about 96 px square: it is scaled plainly). Either is drawn as one color
- * (the alpha is the shape).
+ * transparent background, about 96 px square: it is scaled plainly). Either is drawn tinted in one
+ * color (the alpha is the shape).
  */
 @Composable
 private fun PlatformChooser(selected: Platform, onSelect: (Platform) -> Unit, modifier: Modifier = Modifier) {
     val gap = 6.dp
     val step = with(LocalDensity.current) { (MinTouch + gap).toPx() }
-    // Where the white circle is, in buttons from the start; a short spring with a hint of overshoot.
+    // Where the circle is, in buttons from the start; a short spring with a hint of overshoot.
     val at = animateFloatAsState(
         Platform.entries.indexOf(selected).toFloat(),
         spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow),
         label = "platform",
     )
+    // In the theme's colors (it sits on the editor's background, not on the video): a slightly raised
+    // pill, a circle in the strongest contrast (light in the dark theme, dark in the light one) and the
+    // chosen icon cut out of it in the background's color.
+    val colors = MaterialTheme.colorScheme
+    val iconOff = colors.onSurfaceVariant
+    val iconOn = colors.surface
+    val pill = RoundedCornerShape(50)
     Box(
         modifier
-            .clip(RoundedCornerShape(50))
-            .background(Color.Black.copy(alpha = 0.55f))
+            .clip(pill)
+            .background(colors.surfaceContainerHigh)
+            .border(1.dp, colors.outlineVariant, pill)
             .padding(4.dp),
     ) {
         // One circle behind the buttons. Modifier.offset follows the layout direction, like the row:
@@ -1832,14 +1842,14 @@ private fun PlatformChooser(selected: Platform, onSelect: (Platform) -> Unit, mo
             Modifier
                 .offset { IntOffset((at.value * step).roundToInt(), 0) }
                 .size(MinTouch)
-                .background(Color.White, CircleShape),
+                .background(colors.onSurface, CircleShape),
         )
         Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(gap)) {
             Platform.entries.forEachIndexed { i, p ->
                 val on = p == selected
-                // The icon's color cross-fades with the circle under it: near-black where the white
-                // circle is, white elsewhere (so no icon goes white on white while the circle passes).
-                val tint = lerp(Color.White, Color(0xFF111111), (1f - abs(at.value - i)).coerceIn(0f, 1f))
+                // The icon's color cross-fades with the circle under it: the cut-out color where the
+                // circle is, the plain one elsewhere (so no icon vanishes into the circle as it passes).
+                val tint = lerp(iconOff, iconOn, (1f - abs(at.value - i)).coerceIn(0f, 1f))
                 Box(
                     Modifier
                         .size(MinTouch)
