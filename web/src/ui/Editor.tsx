@@ -152,6 +152,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [voiceBusy, setVoiceBusy] = useState(true)
   /** The sound step failed: [hard] when a voice change or bleeps are asked for (then nothing can be exported). */
   const [soundFail, setSoundFail] = useState<{ hard: boolean } | null>(null)
+  /** The worker has the current settings' request and has not answered or failed (so a late answer can still come). */
+  const [soundInflight, setSoundInflight] = useState(false)
   /** The video has no sound: nothing to change or anonymise. */
   const [noAudio, setNoAudio] = useState(false)
   const [audioTry, setAudioTry] = useState(0)
@@ -567,6 +569,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     const seq = ++audioSeq.current
     setSoundFail(null)
     setNoAudio(false)
+    setSoundInflight(false)
     if (voice === 'none' && bleeped.size === 0 && !cleanupOn(clean)) {
       setVoiceAudio(null)
       setVoiceBusy(false)
@@ -574,23 +577,31 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     }
     setVoiceBusy(true)
     const hard = voice !== 'none' || bleeped.size > 0
-    const failed = () => {
+    const failed = (over = true) => {
       if (audioSeq.current !== seq) return
       // Never silently the original voice: a voice change that did not happen blocks the export.
       setVoiceAudio(null)
       setVoiceBusy(false)
+      // The worker died or answered with an error: nothing is coming. A silent one (the watchdog) may still answer, and until it does a request is in flight.
+      if (over) setSoundInflight(false)
       setSoundFail({ hard })
     }
-    audioWorker.onerror = failed
-    audioWorker.onmessageerror = failed
-    // A worker that never answers (its script did not load, or it hung) is a failure, with a retry.
+    audioWorker.onerror = () => failed()
+    audioWorker.onmessageerror = () => failed()
+    // A worker that is dead or stuck (its script did not load, or it hung) is a failure, with a retry. A long job is not:
+    // the worker sends a message at least every few seconds while it works, and each one restarts this clock.
+    const silentMs = Number(new URLSearchParams(location.search).get('audiowd')) || 20000
     let watchdog: ReturnType<typeof setTimeout> | undefined
     const timer = setTimeout(() => {
       audioWorker.onmessage = (e: MessageEvent<AudioMessage>) => {
         const m = e.data
         if (audioSeq.current !== seq || (m as { id?: number }).id !== seq) return
         clearTimeout(watchdog)
+        if (m.type === 'started' || m.type === 'progress') { watchdog = setTimeout(() => failed(false), silentMs); return }
+        setSoundInflight(false)
         if (m.type === 'done') {
+          // A late answer, after the watchdog gave up, is a success all the same.
+          setSoundFail(null)
           setVoiceBusy(false)
           setVoiceAudio({ rate: m.rate, data: m.data, buffer: makeBuffer(m.data, m.rate) })
           if (clean.loud) {
@@ -607,15 +618,16 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         } else failed()
       }
       const req: AudioRequest = { id: seq, file, voice, bleeps: bleepRanges(words, bleeped), tone, clean }
+      setSoundInflight(true)
       audioWorker.postMessage(req)
-      watchdog = setTimeout(failed, 60000)
+      watchdog = setTimeout(() => failed(false), silentMs)
     }, 250)
     return () => { clearTimeout(timer); clearTimeout(watchdog) }
   }, [voice, bleeped, tone, words, clean, audioWorker])
 
   const needsAudio = voice !== 'none' || bleeped.size > 0
   /** The sound isn't ready to be exported: still processing, or a voice change (or bleeps) without its processed sound. */
-  const soundBlocked = voiceBusy || (needsAudio && !voiceAudio && !noAudio) || !!soundFail?.hard
+  const soundBlocked = voiceBusy || (needsAudio && !voiceAudio && !noAudio) || !!soundFail?.hard || soundInflight
   const retrySound = () => setAudioTry((n) => n + 1)
   // Only the voice change goes; the bleeps stay (and are made, or block the export again). They go only by their own action.
   const dropVoice = () => setVoice('none')

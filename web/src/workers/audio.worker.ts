@@ -14,6 +14,8 @@ export type AudioRequest =
   | { type?: 'voice'; id?: number; file: File; voice: VoiceFx; bleeps: Bleep[]; tone: boolean; clean?: Cleanup }
   | { type: 'silences'; file: File; minPause: number; words: Range[] }
 export type AudioMessage =
+  | { type: 'started'; id?: number }
+  | { type: 'progress'; id?: number }
   | { type: 'done'; id?: number; rate: number; data: Float32Array; lufs: number | null; gainDb: number }
   | { type: 'silences'; ranges: Range[] }
   | { type: 'error'; id?: number; code: string; message: string }
@@ -24,8 +26,13 @@ self.onmessage = async (e: MessageEvent<AudioRequest>) => {
   const r = e.data
   // A voice request's id comes back with its answer, so a late answer is not taken for a newer one's.
   const id = r.type === 'silences' ? undefined : r.id
+  const post = (m: AudioMessage) => (self as unknown as Worker).postMessage(m)
+  // Heartbeats, so the page can tell a long job from a dead worker (at most one a second).
+  let last = 0
+  const beat = () => { const n = Date.now(); if (n - last >= 1000) { last = n; post({ type: 'progress', id }) } }
+  if (r.type !== 'silences') post({ type: 'started', id })
   try {
-    if (cache?.file !== r.file) cache = await decode(r.file)
+    if (cache?.file !== r.file) cache = await decode(r.file, beat)
     if (!cache) return (self as unknown as Worker).postMessage({ type: 'error', id, code: 'no-audio', message: 'no sound' } satisfies AudioMessage)
     if (r.type === 'silences') {
       const ranges = findSilences(cache.data, cache.rate, r.minPause, r.words)
@@ -33,8 +40,8 @@ self.onmessage = async (e: MessageEvent<AudioRequest>) => {
     }
     const { voice, bleeps, tone } = r
     const clean = r.clean ?? NO_CLEANUP
-    const c = cleanupOn(clean) ? cleanup(cache.data, cache.rate, clean) : { data: cache.data, lufs: null, gainDb: 0 }
-    const data = processVoice(c.data, cache.rate, voice, bleeps, tone)
+    const c = cleanupOn(clean) ? cleanup(cache.data, cache.rate, clean, beat) : { data: cache.data, lufs: null, gainDb: 0 }
+    const data = processVoice(c.data, cache.rate, voice, bleeps, tone, beat)
     const msg: AudioMessage = { type: 'done', id, rate: cache.rate, data, lufs: c.lufs, gainDb: c.gainDb }
     ;(self as unknown as Worker).postMessage(msg, [data.buffer])
   } catch (err) {
@@ -42,7 +49,7 @@ self.onmessage = async (e: MessageEvent<AudioRequest>) => {
   }
 }
 
-async function decode(file: File): Promise<{ file: File; rate: number; data: Float32Array; channels: number } | null> {
+async function decode(file: File, beat: () => void): Promise<{ file: File; rate: number; data: Float32Array; channels: number } | null> {
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
   const track = await input.getPrimaryAudioTrack()
   if (!track) return null
@@ -51,6 +58,7 @@ async function decode(file: File): Promise<{ file: File; rate: number; data: Flo
   const parts: Float32Array[] = []
   let rate = 48000, total = 0
   for await (const s of new AudioSampleSink(track).samples()) {
+    beat()
     rate = s.sampleRate
     const n = s.numberOfFrames, ch = s.numberOfChannels
     const mono = new Float32Array(n)

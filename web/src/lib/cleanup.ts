@@ -19,7 +19,7 @@ export const cleanupOn = (c: Cleanup) => c.denoise > 0 || c.enhance || c.loud
  * loudness is measured on the cleaned sound (the file made is mono, and is what the networks
  * measure), so it lands on the target whatever the noise reduction and the voice did.
  */
-export function cleanup(x: Float32Array, rate: number, c: Cleanup): { data: Float32Array; lufs: number | null; gainDb: number } {
+export function cleanup(x: Float32Array, rate: number, c: Cleanup, beat?: () => void): { data: Float32Array; lufs: number | null; gainDb: number } {
   const y = new Float32Array(x.length)
   const den = c.denoise > 0 ? new Denoiser(rate, c.denoise) : null
   const eq = c.enhance ? new VoiceEnhancer(rate) : null
@@ -27,6 +27,7 @@ export function cleanup(x: Float32Array, rate: number, c: Cleanup): { data: Floa
   // The denoiser's output is late by one window: read that much further on.
   const lag = den ? den.latency : 0
   for (let i = 0; i < x.length + lag; i++) {
+    if (beat && (i & 0xffff) === 0) beat()
     let v = i < x.length ? x[i] : 0
     if (den) v = den.process(v)
     if (i < lag) continue
@@ -34,11 +35,13 @@ export function cleanup(x: Float32Array, rate: number, c: Cleanup): { data: Floa
     if (comp) v *= comp.gainFor(Math.abs(v))
     y[i - lag] = v
   }
+  beat?.()
   const lufs = c.loud ? measureLoudness(y, rate, 1) : null
   const gainDb = lufs !== null ? loudnessGain(lufs) : 0
   const gain = Math.pow(10, gainDb / 20)
   const lim = new Limiter(rate)
   const limit = gain > 1 || comp !== null
+  beat?.()
   for (let i = 0; i < y.length; i++) {
     const v = y[i] * gain
     y[i] = Math.max(-1, Math.min(1, soft(v * (limit ? lim.gainFor(Math.abs(v)) : 1))))

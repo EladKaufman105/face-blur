@@ -17,7 +17,10 @@ const [, , url, video, out] = process.argv
   // The audio worker, failing: every request is answered with an error that is not "no sound".
   // The code is 'failed' or 'undecodable' (a sound the browser can't decode: never taken for no sound).
   let mode = 'failed'
-  await ctx.route(/audio\.worker[^/]*\.js/, (r) => r.fulfill({ contentType: 'text/javascript', body: `self.onmessage = (e) => self.postMessage({ type: 'error', id: e.data.id, code: '${mode}', message: 'forced failure' })` }))
+  // Mode 'slow': a long job that is alive, answering "started" and then a heartbeat every 0.5 s for 7 s (the page's
+  // watchdog is shortened to 2.5 s by ?audiowd), and only then done. 'silent': it says "started" and then nothing.
+  const slowBody = (silent) => `self.onmessage = (e) => { const id = e.data.id; self.postMessage({ type: 'started', id }); if (${silent}) return; let n = 0; const h = setInterval(() => { self.postMessage({ type: 'progress', id }); if (++n >= 14) { clearInterval(h); const d = new Float32Array(48000); self.postMessage({ type: 'done', id, rate: 48000, data: d, lufs: null, gainDb: 0 }, [d.buffer]) } }, 500) }`
+  await ctx.route(/audio\.worker[^/]*\.js/, (r) => r.fulfill({ contentType: 'text/javascript', body: mode === 'slow' ? slowBody(false) : mode === 'silent' ? slowBody(true) : `self.onmessage = (e) => self.postMessage({ type: 'error', id: e.data.id, code: '${mode}', message: 'forced failure' })` }))
   await ctx.addInitScript(() => {
     // Whether the editor's export button was ever enabled while watched.
     window.__watch = false
@@ -101,6 +104,43 @@ const [, , url, video, out] = process.argv
       await p.screenshot({ path: `${out}/2_batch_failed_${code}.png` })
 
     }
+    // A slow job that keeps sending heartbeats never shows the failure card, and exports once done.
+    const slow = async () => {
+      mode = 'slow'
+      await p.goto(url + '&audiowd=2500')
+      await p.waitForTimeout(600)
+      await p.setInputFiles('.hero input[type=file]', video)
+      await p.waitForSelector('.ready .tpl-card')
+      await p.click('.tpl-card[data-tpl="look.clean"]')
+      await p.click('.blur-faces')
+      await p.waitForSelector('.editor .tabs', { timeout: 60000 })
+      const t0 = Date.now()
+      let sawFail = false, early = false
+      while (Date.now() - t0 < 30000) {
+        if (await p.$('.sound-error')) sawFail = true
+        const dis = await p.isDisabled('.export-bar .btn.primary')
+        if (!dis) { early = Date.now() - t0 < 4000 ? true : early; break }
+        await p.waitForTimeout(250)
+      }
+      if (sawFail) fail('the failure card showed for a slow job that was sending heartbeats')
+      if (early) fail('export enabled before the slow job was done')
+      if (await p.isDisabled('.export-bar .btn.primary')) fail('export still disabled after the slow job was done')
+      if (await p.$('.sound-error')) fail('the failure card is showing after the slow job was done')
+      console.log('slow: no failure card, export enabled after done in ' + (Date.now() - t0) + ' ms')
+    }
+    await slow()
+    // A worker that says "started" and then goes silent trips the watchdog (hard card, blocked).
+    mode = 'silent'
+    await p.goto(url + '&audiowd=2500')
+    await p.waitForTimeout(600)
+    await p.setInputFiles('.hero input[type=file]', video)
+    await p.waitForSelector('.ready .tpl-card')
+    await p.click('.tpl-card[data-tpl="look.clean"]')
+    await p.click('.blur-faces')
+    await p.waitForSelector('.editor .tabs', { timeout: 60000 })
+    await p.waitForSelector('.sound-error[data-hard="1"]', { timeout: 15000 })
+    if (!(await p.isDisabled('.export-bar .btn.primary'))) fail('export enabled while a silent worker was in flight')
+    console.log('silent: watchdog fired, export blocked')
     await scenario('failed')
     await scenario('undecodable')
     console.log('OK')
