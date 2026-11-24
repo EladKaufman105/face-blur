@@ -321,7 +321,7 @@ fun WatermarkPanel(w: Watermark, onChange: (Watermark) -> Unit, onDone: () -> Un
                 .padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            WatermarkControls(w, onChange)
+            WatermarkControls(w, onChange = onChange)
             Spacer(Modifier.height(4.dp))
         }
     }
