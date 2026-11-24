@@ -32,6 +32,7 @@ enum class WatermarkLook { PLAIN, SHADOW, OUTLINE, BOX }
  *
  * @param image use the picked logo image (see [Watermark.imageFile]) instead of [text].
  * @param size multiplier of the base size (logo: 10% of the short side high; text: 4%).
+ * @param logo path of the logo file this watermark owns (a template's or a project's); null: the app's own logo ([Watermark.imageFile]).
  * @param stamp changes when a new logo is picked (so its preview reloads).
  * @param font, [color], [look]: the text's font, color and how it stands out.
  */
@@ -48,14 +49,19 @@ data class Watermark(
     /** Weight of a variable [font] (0: its default) and Allo's roundness. */
     val weight: Int = 0,
     val round: Int = SubFont.ROUND_DEFAULT,
+    val logo: String? = null,
 ) {
-    fun enabled(context: Context) = if (image) imageFile(context).exists() else text.isNotBlank()
+    /** The logo picture this watermark draws: its own file if it has one, else the app's logo. */
+    fun logoFile(context: Context): File = logo?.let { File(it) } ?: imageFile(context)
+
+    fun enabled(context: Context) = if (image) logoFile(context).exists() else text.isNotBlank()
 
     fun toJson(): String = JSONObject()
         .put("text", text).put("image", image).put("corner", position.name)
         .put("size", size.toDouble()).put("opacity", opacity.toDouble()).put("stamp", stamp)
         .put("font", font.name).put("color", color).put("look", look.name)
         .put("weight", weight).put("round", round)
+        .apply { if (logo != null) put("logo", logo) }
         .toString()
 
     companion object {
@@ -77,6 +83,7 @@ data class Watermark(
                     look = runCatching { WatermarkLook.valueOf(o.optString("look")) }.getOrDefault(WatermarkLook.SHADOW),
                     weight = o.optInt("weight", 0),
                     round = o.optInt("round", SubFont.ROUND_DEFAULT).coerceIn(0, 100),
+                    logo = o.optString("logo").ifBlank { null },
                 )
             } catch (e: Exception) {
                 Watermark()
@@ -84,14 +91,32 @@ data class Watermark(
         }
 
         /** Keeps a copy of the picked logo (at most 1024 px, PNG keeps its transparency). */
-        fun importImage(context: Context, uri: Uri): Boolean {
+        fun importImage(context: Context, uri: Uri): Boolean = importImageTo(context, uri, imageFile(context))
+
+        /** The same, into [f] (a template's own logo or its staging file) instead of the app's logo. */
+        fun importImageTo(context: Context, uri: Uri, f: File): Boolean {
             val bmp = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) } ?: return false
             val s = min(1f, 1024f / maxOf(bmp.width, bmp.height))
             val small = if (s < 1f) Bitmap.createScaledBitmap(bmp, (bmp.width * s).roundToInt().coerceAtLeast(1), (bmp.height * s).roundToInt().coerceAtLeast(1), true) else bmp
-            val f = imageFile(context)
+            f.parentFile?.mkdirs()
             val tmp = File(f.parentFile, f.name + ".tmp")
             tmp.outputStream().use { small.compress(Bitmap.CompressFormat.PNG, 100, it) }
             return tmp.renameTo(f)
+        }
+
+        /**
+         * A copy of the logo of [w] in [dir] (a project's own folder), so the project keeps it when the
+         * template is changed or deleted. [w] as it is if it has no logo of its own (or no logo picture).
+         */
+        fun withOwnCopy(w: Watermark, dir: File): Watermark {
+            val path = w.logo ?: return w
+            if (!w.image) return w.copy(logo = null)
+            val src = File(path)
+            if (!src.exists()) return w
+            dir.mkdirs()
+            val dst = File(dir, "watermark.png")
+            if (src.absolutePath != dst.absolutePath) src.copyTo(dst, overwrite = true)
+            return w.copy(logo = dst.absolutePath)
         }
 
         /** Left (or top) edge of something [len] long along a side of [total], in grid cell [cell]. */
@@ -109,7 +134,7 @@ data class Watermark(
             val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { this.alpha = alpha }
             val pos = w.position
             if (w.image) {
-                val logo = BitmapFactory.decodeFile(imageFile(context).path) ?: return
+                val logo = BitmapFactory.decodeFile(w.logoFile(context).path) ?: return
                 var lh = short * 0.10f * w.size
                 var lw = lh * logo.width / logo.height
                 if (lw > width * 0.6f) {

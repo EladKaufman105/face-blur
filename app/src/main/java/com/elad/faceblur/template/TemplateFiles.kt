@@ -6,7 +6,8 @@ import java.io.File
 /**
  * The template files under [root], with no Android in it (so it can be tested): the user's
  * templates are `<id>.json`; the user's changes to a built-in look (an override, same id) are in
- * `builtin/<id>.json`. A background picture a template uses sits beside its file as `<id>.bg.jpg`.
+ * `builtin/<id>.json`. A background picture a template uses sits beside its file as `<id>.bg.jpg`, and a logo for its
+ * watermark as `<id>.wm.png` (the app's own logo is never touched by a template).
  */
 class TemplateFiles(private val root: File) {
     private fun userDir(): File = root.apply { mkdirs() }
@@ -24,6 +25,7 @@ class TemplateFiles(private val root: File) {
     fun deleteUser(id: String) {
         File(userDir(), "$id.json").delete()
         File(userDir(), "$id.bg.jpg").delete()
+        File(userDir(), "$id.wm.png").delete()
     }
 
     /**
@@ -49,16 +51,46 @@ class TemplateFiles(private val root: File) {
     fun deleteOverride(id: String) {
         File(overrideDir(), "$id.json").delete()
         File(overrideDir(), "$id.bg.jpg").delete()
+        File(overrideDir(), "$id.wm.png").delete()
     }
 
     /** Where the background picture of template [id] is kept. */
     fun imageFile(id: String): File =
         if (BuiltInTemplates.byId(id) != null) File(overrideDir(), "$id.bg.jpg") else File(userDir(), "$id.bg.jpg")
 
-    /** Deletes the pictures of user templates that are gone (only [ids] are kept). */
+    /** Where the watermark logo of template [id] is kept. */
+    fun logoFile(id: String): File =
+        if (BuiltInTemplates.byId(id) != null) File(overrideDir(), "$id.wm.png") else File(userDir(), "$id.wm.png")
+
+    /**
+     * Puts the logo of template [id] in place when the template is saved. [picked] is the logo the
+     * template has now: a staging file (copied in, replacing the old logo), the template's own file
+     * (kept) or null (no logo: the old file is removed). Returns the path the template keeps, or null.
+     * Discarding the edit never gets here, so the saved logo stays as it was.
+     */
+    fun commitLogo(id: String, picked: String?): String? {
+        val own = logoFile(id)
+        if (picked == null) {
+            own.delete()
+            return null
+        }
+        val src = File(picked)
+        if (src.absolutePath == own.absolutePath) return if (own.exists()) own.path else null
+        if (!src.exists()) return if (own.exists()) own.path else null
+        own.parentFile?.mkdirs()
+        val tmp = File(own.parentFile, own.name + ".tmp")
+        src.copyTo(tmp, overwrite = true)
+        if (!tmp.renameTo(own)) {
+            own.delete()
+            tmp.renameTo(own)
+        }
+        return own.path
+    }
+
+    /** Deletes the pictures and logos of user templates that are gone (only [ids] are kept). */
     fun pruneImages(ids: Set<String>) {
-        userDir().listFiles { f -> f.name.endsWith(".bg.jpg") }?.forEach { f ->
-            if (f.name.removeSuffix(".bg.jpg") !in ids) f.delete()
+        userDir().listFiles { f -> f.name.endsWith(".bg.jpg") || f.name.endsWith(".wm.png") }?.forEach { f ->
+            if (f.name.removeSuffix(".bg.jpg").removeSuffix(".wm.png") !in ids) f.delete()
         }
     }
 

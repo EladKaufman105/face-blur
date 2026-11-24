@@ -34,7 +34,7 @@ An imported font that is no longer on the phone falls back to the default font, 
 
 ### Built-in templates (looks)
 
-A few design presets ship with the app, each with a preview. If the Hebrew speech model isn't on the phone but the multilingual one is, a look uses that one instead of waiting for a download. They are subtitle designs with a blur look, and **applying one turns subtitle creation on** (Hebrew-tuned model, burned in) unless the user turns it off with the switch under the picker. They do not set the frame shape, size or encoding: those stay as they are.
+A few design presets ship with the app, each with a preview. If the Hebrew speech model isn't on the phone but the multilingual one is, a look uses that one instead of waiting for a download (and the other way round only when the spoken language is Hebrew; otherwise the model is offered for download). With the Hebrew model the spoken-language choice is Hebrew only. They are subtitle designs with a blur look, and **applying one turns subtitle creation on** (Hebrew-tuned model, burned in) unless the user turns it off with the switch under the picker. They do not set the frame shape, size or encoding: those stay as they are.
 
 - **Clean:** white subtle text.
 - **Bold:** the current word pops, highlighted in yellow.
@@ -60,6 +60,8 @@ One full-screen page edits any template, built-in or the user's, on every proper
 - **Save** or **discard**; leaving with unsaved changes asks first.
 - **Built-in looks are editable.** Saving one stores the user's version under the same id (`templates/builtin/<id>.json`), which replaces the shipped look everywhere (cards, manager, the Ready screen, batches). "Restore the original" (in the editor's menu and in the manager) deletes it and brings the shipped look back. Built-ins still can't be deleted. A user's version is a full copy, so when a later app version changes a shipped look, the user's version wins until it is restored. Its file format is the template JSON as before (older files, with or without `v` / `group`, unknown fields and the old platform field all still load).
 - User templates: rename, duplicate and delete stay in the manager.
+
+A template's watermark logo is its own file (`<id>.wm.png`, in `builtin/` for a look the user changed), picked into a staging file in the editor and copied in only on Save (Discard leaves the saved logo alone; Restore original removes it). The app's own logo is never changed from the template editor. A video or batch item that uses a template with a logo gets its own copy in its project.
 
 Templates are stored as JSON in app storage, reusing the existing `toJson`/`fromJson` of `SubtitleStyle`, `AudioEdit`, `Background`, `Watermark` and the export options.
 

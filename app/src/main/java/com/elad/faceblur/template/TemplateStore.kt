@@ -12,7 +12,7 @@ import java.util.UUID
 
 /**
  * The user's templates, one JSON file each in the app's own storage (templates/<id>.json); a
- * background picture a template uses is copied beside it (templates/<id>.bg.jpg). The built-in
+ * background picture a template uses is copied beside it (templates/<id>.bg.jpg); a watermark logo too (templates/<id>.wm.png). The built-in
  * looks are in [BuiltInTemplates]; the user's changes to one are saved as an override beside the
  * user's own (see [TemplateFiles]) and survive app updates until the look is restored.
  */
@@ -76,9 +76,21 @@ class TemplateStore(private val context: Context) {
         val src = find(id) ?: return null
         val newId = newId()
         val bg = src.background?.let { withOwnImage(it, newId) }
-        val copy = src.copy(id = newId, name = name, group = TemplateGroup.USER, builtIn = false, background = bg)
+        val copy = withOwnLogo(src.copy(id = newId, name = name, group = TemplateGroup.USER, builtIn = false, background = bg))
         save(copy)
         return copy
+    }
+
+    /**
+     * [tpl] with the logo of its watermark in the template's own storage (copied in from where it was
+     * picked or from the template it was copied from); no logo, no file. Run it before saving.
+     */
+    fun withOwnLogo(tpl: Template): Template {
+        val e = tpl.export
+        val w = e?.watermark
+        val path = files.commitLogo(tpl.id, w?.logo?.takeIf { w.image })
+        if (e == null || w == null) return tpl
+        return tpl.copy(export = e.copy(watermark = w.copy(logo = path)))
     }
 
     /** [b] with its picture copied into the template [id]'s own storage (so deleting the original doesn't break the template). */

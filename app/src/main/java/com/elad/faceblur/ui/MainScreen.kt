@@ -61,6 +61,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -142,7 +143,8 @@ fun MainScreen(vm: MainViewModel) {
     vm.editingTemplate?.let { id ->
         val tpl = vm.templates.find(id)
         if (tpl == null) {
-            vm.closeTemplateEditor()
+            // The template is gone: leave the editor (not while composing).
+            LaunchedEffect(id) { vm.closeTemplateEditor() }
         } else {
             TemplateEditorScreen(
                 vm.templates, tpl,
@@ -189,6 +191,7 @@ fun MainScreen(vm: MainViewModel) {
         TemplateManagerSheet(
             vm.templates,
             onEdit = { showTemplates = false; backToManager = true; vm.editTemplate(it.id) },
+            onRestored = vm::templateSaved,
             onDismiss = { showTemplates = false },
         )
     }
@@ -271,7 +274,7 @@ fun MainScreen(vm: MainViewModel) {
                             VideoCard(s.info, onReplace = pick)
                             MessageCard(
                                 title = t("לא זוהו פנים בסרטון"),
-                                body = t("אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב, או סמן אותן ידנית."),
+                                body = t("אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב, או סמן אותן ידנית.") + (s.note?.let { "\n\n" + it } ?: ""),
                                 primary = if (s.canEdit) t("סמן טשטוש ידנית") to vm::edit else t("נסה עם זיהוי מורחב") to vm::retrySensitive,
                                 secondary = if (s.canEdit) t("נסה עם זיהוי מורחב") to vm::retrySensitive else t("חזרה") to vm::backToSettings,
                                 icon = AppIcons.Face,

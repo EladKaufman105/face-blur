@@ -765,4 +765,6 @@ internal val English: Map<String, String> = mapOf(
     "קובץ קטן" to "Small file",
     "איכות מקורית" to "Original quality",
     "בלי שינוי בגודל ובאיכות" to "No change to size or quality",
+    "התבנית לא נשמרה" to "Template not saved",
+    "לא הצלחנו לשמור את התבנית. נסה שוב." to "Couldn't save the template. Try again.",
 )

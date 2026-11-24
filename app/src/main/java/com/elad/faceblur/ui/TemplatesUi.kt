@@ -306,7 +306,7 @@ internal fun SaveTemplateDialog(inUse: Set<TemplateCategory>, onSave: (String, S
 /** All templates: the user's own (rename, duplicate, edit, delete) and the built-in ones (duplicate). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TemplateManagerSheet(store: TemplateStore, onEdit: (Template) -> Unit, onDismiss: () -> Unit) {
+internal fun TemplateManagerSheet(store: TemplateStore, onEdit: (Template) -> Unit, onRestored: (Template) -> Unit, onDismiss: () -> Unit) {
     var renaming by remember { mutableStateOf<Template?>(null) }
     var deleting by remember { mutableStateOf<Template?>(null) }
     var restoring by remember { mutableStateOf<Template?>(null) }
@@ -378,7 +378,12 @@ internal fun TemplateManagerSheet(store: TemplateStore, onEdit: (Template) -> Un
         )
     }
     restoring?.let { tpl ->
-        RestoreOriginalDialog(templateName(tpl), onConfirm = { store.restoreBuiltIn(tpl.id); restoring = null }, onDismiss = { restoring = null })
+        RestoreOriginalDialog(templateName(tpl), onConfirm = {
+            store.restoreBuiltIn(tpl.id)
+            restoring = null
+            // A screen that has this template chosen takes the shipped one again.
+            store.find(tpl.id)?.let(onRestored)
+        }, onDismiss = { restoring = null })
     }
 }
 

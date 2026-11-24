@@ -6,6 +6,7 @@ import com.elad.faceblur.edit.EditSession
 import com.elad.faceblur.edit.EditorController
 import com.elad.faceblur.pipeline.FaceBlurProcessor
 import com.elad.faceblur.pipeline.ProcessingErrors
+import com.elad.faceblur.pipeline.Watermark
 import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
 import com.elad.faceblur.prefs.AppPrefs
@@ -55,6 +56,8 @@ object BatchRunner {
         var session: EditSession? = null
         var ctrl: EditorController? = null
         var projectId: String? = null
+        // The export of this video: the template's, with a logo the project owns a copy of.
+        var export = batch.settings.export
         item.startedAt = SystemClock.elapsedRealtime()
         try {
             item.begin(ItemStatus.ANALYZING)
@@ -92,8 +95,12 @@ object BatchRunner {
             // The project exists from here on, so a failure later can still be opened in the editor.
             val id = ProjectStore.newId()
             projectId = id
-            sess.projectDir = ProjectStore.dir(ctx, id)
-            val first = c.projectFields(s.subStyle, s.export)
+            val dir = ProjectStore.dir(ctx, id)
+            sess.projectDir = dir
+            export = withContext(Dispatchers.IO) {
+                runCatching { s.export.copy(watermark = Watermark.withOwnCopy(s.export.watermark, dir)) }.getOrDefault(s.export)
+            }
+            val first = c.projectFields(s.subStyle, export)
                 .put("v", 1)
                 .put("name", info.name)
                 .put("uri", item.uri.toString())
@@ -120,7 +127,7 @@ object BatchRunner {
             val noFaces = !s.blurOff && sess.model.tracks.isEmpty()
             if (noFaces && !worthSaving(ctx, batch, c)) {
                 // Nothing would change in the video: no copy is saved; the project is there to open.
-                saveProject(ctx, id, c, batch)
+                saveProject(ctx, id, c, batch, export)
                 item.status = ItemStatus.NO_FACES
                 item.progress = 1f
                 return
@@ -130,12 +137,12 @@ object BatchRunner {
             item.progress = ANALYSIS_SHARE + PROCESSING_SHARE
             onChange()
             val saved = FaceBlurProcessor(ctx).render(
-                info, sess.settings, analysis, sess.model, analysisMs, s.export, s.subStyle, c.audio, c.background, sess.masks,
+                info, sess.settings, analysis, sess.model, analysisMs, export, s.subStyle, c.audio, c.background, sess.masks,
                 stabilizer = c.stabilizer,
             ) { p -> item.progress = ANALYSIS_SHARE + PROCESSING_SHARE + p * (1f - ANALYSIS_SHARE - PROCESSING_SHARE); onChange() }
             if (analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / analysisMs
             item.output = saved.uri
-            saveProject(ctx, id, c, batch)
+            saveProject(ctx, id, c, batch, export)
             item.progress = 1f
             item.status = if (noFaces) ItemStatus.NO_FACES else ItemStatus.SAVED
         } catch (e: CancellationException) {
@@ -154,7 +161,7 @@ object BatchRunner {
             val c = ctrl
             if (id != null && c != null) {
                 try {
-                    saveProject(ctx, id, c, batch)
+                    saveProject(ctx, id, c, batch, export)
                 } catch (ce: CancellationException) {
                     throw ce
                 } catch (ignored: Exception) {
@@ -188,8 +195,8 @@ object BatchRunner {
     }
 
     /** What's in the editor now, into the project (on the IO thread; the state is copied first). */
-    private suspend fun saveProject(ctx: Context, id: String, c: EditorController, batch: Batch) {
-        val fields: JSONObject = c.projectFields(batch.settings.subStyle, batch.settings.export)
+    private suspend fun saveProject(ctx: Context, id: String, c: EditorController, batch: Batch, export: com.elad.faceblur.pipeline.ExportOptions) {
+        val fields: JSONObject = c.projectFields(batch.settings.subStyle, export)
         val edits = c.model.exportState()
         withContext(Dispatchers.IO) { ProjectStore.save(ctx, id, fields, edits) }
     }

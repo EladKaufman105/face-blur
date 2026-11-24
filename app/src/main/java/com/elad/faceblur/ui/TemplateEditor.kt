@@ -41,6 +41,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -166,15 +167,42 @@ internal fun TemplateEditorScreen(store: TemplateStore, template: Template, onCl
     // A built-in keeps its Hebrew name (shown translated) unless the user typed another.
     fun nameToSave(): String = if (draft.builtIn && nameText.trim() == templateName(draft)) draft.name else nameText.trim().take(60)
 
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
+    var saveFailed by remember { mutableStateOf(false) }
+    var styleOpen by rememberSaveable { mutableStateOf(false) }
+    // A logo picked here waits in a file of its own: the template's logo (and the app's) change only on save.
+    val stage = remember(template.id) { java.io.File(context.cacheDir, "wm_stage_${template.id}.png") }
+    DisposableEffect(stage) { onDispose { stage.delete() } }
+
     val save: () -> Unit = {
-        val bg = draft.background?.let { store.withOwnImage(it, draft.id) }
-        val out = draft.copy(name = nameToSave(), background = bg)
-        if (out.builtIn) store.saveBuiltIn(out) else store.save(out)
-        onSaved(out)
-        onClose()
+        if (!saving) {
+            saving = true
+            val snapshot = draft
+            val name = nameToSave()
+            scope.launch {
+                val out = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val bg = snapshot.background?.let { store.withOwnImage(it, snapshot.id) }
+                        val own = store.withOwnLogo(snapshot.copy(name = name, background = bg))
+                        if (own.builtIn) store.saveBuiltIn(own) else store.save(own)
+                        own
+                    }.getOrNull()
+                }
+                saving = false
+                if (out == null) {
+                    saveFailed = true
+                } else {
+                    onSaved(out)
+                    onClose()
+                }
+            }
+        }
     }
     val leave: () -> Unit = { if (dirty) { askLeave = true } else { onClose() } }
-    BackHandler(onBack = leave)
+    // Back closes the subtitle style panel first.
+    BackHandler { if (styleOpen) styleOpen = false else leave() }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { insets ->
         Column(Modifier.fillMaxSize().padding(insets)) {
@@ -193,7 +221,7 @@ internal fun TemplateEditorScreen(store: TemplateStore, template: Template, onCl
                         }
                     }
                 }
-                GradientButton(t("שמור"), save, Modifier.testTag(Tags.TEMPLATE_EDITOR_SAVE), height = 44.dp, enabled = canSave)
+                GradientButton(t("שמור"), save, Modifier.testTag(Tags.TEMPLATE_EDITOR_SAVE), height = 44.dp, enabled = canSave && !saving)
                 Spacer(Modifier.width(Space.S))
             }
             EditorPreview(store, draft)
@@ -234,12 +262,12 @@ internal fun TemplateEditorScreen(store: TemplateStore, template: Template, onCl
                     ) {
                         when (c) {
                             TemplateCategory.BLUR -> BlurEdit(draft.blur ?: BlurPart()) { draft = draft.copy(blur = it) }
-                            TemplateCategory.SUBTITLES -> SubsEdit(draft.subs ?: SubsPart()) { draft = draft.copy(subs = it) }
+                            TemplateCategory.SUBTITLES -> SubsEdit(draft.subs ?: SubsPart(), styleOpen, { styleOpen = it }) { draft = draft.copy(subs = it) }
                             TemplateCategory.VOICE -> VoiceEdit(draft.voice ?: VoicePart(AudioEdit())) { draft = draft.copy(voice = it) }
                             TemplateCategory.CUTS -> CutsEdit(draft.cuts ?: CutsPart(false, 800L, false)) { draft = draft.copy(cuts = it) }
                             TemplateCategory.BACKGROUND -> BackgroundEdit(draft.background ?: Background()) { draft = draft.copy(background = it) }
                             TemplateCategory.STABILIZE -> StabilizeEdit(draft.stabilize ?: 0) { draft = draft.copy(stabilize = it) }
-                            TemplateCategory.EXPORT -> ExportEdit(draft.export ?: ExportPart()) { draft = draft.copy(export = it) }
+                            TemplateCategory.EXPORT -> ExportEdit(draft.export ?: ExportPart(), stage) { draft = draft.copy(export = it) }
                         }
                     }
                 }
@@ -247,6 +275,14 @@ internal fun TemplateEditorScreen(store: TemplateStore, template: Template, onCl
         }
     }
 
+    if (saveFailed) {
+        AlertDialog(
+            onDismissRequest = { saveFailed = false },
+            title = { Text(t("התבנית לא נשמרה")) },
+            text = { Text(t("לא הצלחנו לשמור את התבנית. נסה שוב.")) },
+            confirmButton = { TextButton(onClick = { saveFailed = false }) { Text(t("סגור")) } },
+        )
+    }
     if (askLeave) {
         AlertDialog(
             onDismissRequest = { askLeave = false },
@@ -313,8 +349,7 @@ private fun BlurEdit(p: BlurPart, onChange: (BlurPart) -> Unit) {
 }
 
 @Composable
-private fun SubsEdit(p: SubsPart, onChange: (SubsPart) -> Unit) {
-    var styleOpen by rememberSaveable { mutableStateOf(false) }
+private fun SubsEdit(p: SubsPart, styleOpen: Boolean, onStyleOpen: (Boolean) -> Unit, onChange: (SubsPart) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
         SwitchRow(t("ליצור כתוביות אוטומטית"), p.create ?: false, t("זיהוי הדיבור במכשיר, לכל סרטון")) { onChange(p.copy(create = it)) }
         if (p.create == true) {
@@ -324,15 +359,16 @@ private fun SubsEdit(p: SubsPart, onChange: (SubsPart) -> Unit) {
                 p.model ?: SpeechModel.HEBREW,
             ) { onChange(p.copy(model = it, language = null)) }
             Caption(t("שפת הדיבור"))
-            Chips(
-                listOf<Pair<String?, String>>(null to t("לפי המודל"), "he" to t("עברית"), "en" to t("אנגלית"), "auto" to t("זיהוי אוטומטי")),
-                p.language,
-            ) { onChange(p.copy(language = it)) }
+            // The Hebrew model speaks Hebrew only: the other languages are for the multilingual one.
+            val languages = listOf<Pair<String?, String>>(null to t("לפי המודל"), "he" to t("עברית")) +
+                (if ((p.model ?: SpeechModel.HEBREW) == SpeechModel.HEBREW) emptyList<Pair<String?, String>>()
+                else listOf<Pair<String?, String>>("en" to t("אנגלית"), "auto" to t("זיהוי אוטומטי")))
+            Chips(languages, p.language) { onChange(p.copy(language = it)) }
             SwitchRow(t("הוסף תרגום"), p.translate ?: false, t("עברית לאנגלית ואנגלית לעברית, במכשיר")) { onChange(p.copy(translate = it)) }
         }
         // The same style panel as the editor's: styles, fonts (imported too), colors, effect, size and position.
         Row(
-            Modifier.fillMaxWidth().heightIn(min = MinTouch).clickable { styleOpen = !styleOpen },
+            Modifier.fillMaxWidth().heightIn(min = MinTouch).clickable { onStyleOpen(!styleOpen) },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(t("עיצוב הכתוביות"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
@@ -340,7 +376,7 @@ private fun SubsEdit(p: SubsPart, onChange: (SubsPart) -> Unit) {
         }
         if (styleOpen) {
             Box(Modifier.clip(MaterialTheme.shapes.medium)) {
-                SubtitleStylePanel(p.style ?: SubtitleStyle(), { onChange(p.copy(style = it)) }) { styleOpen = false }
+                SubtitleStylePanel(p.style ?: SubtitleStyle(), { onChange(p.copy(style = it)) }) { onStyleOpen(false) }
             }
         }
         SplitControls(SplitRule(p.splitWords ?: 0, p.splitChars ?: 0)) { r -> onChange(p.copy(splitWords = r.words, splitChars = r.chars)) }
@@ -446,7 +482,7 @@ private fun StabilizeEdit(level: Int, onChange: (Int) -> Unit) {
 }
 
 @Composable
-private fun ExportEdit(e: ExportPart, onChange: (ExportPart) -> Unit) {
+private fun ExportEdit(e: ExportPart, logoStage: java.io.File, onChange: (ExportPart) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
         Caption(t("פורמט"))
         Segments(
@@ -470,6 +506,6 @@ private fun ExportEdit(e: ExportPart, onChange: (ExportPart) -> Unit) {
         // The watermark's own controls (the editor's): off leaves the watermark as it is.
         val wm = e.watermark
         SwitchRow(t("סימן מים"), wm != null, t("כבוי: סימן המים נשאר כמו שהוא")) { onChange(e.copy(watermark = if (it) Watermark() else null)) }
-        if (wm != null) WatermarkControls(wm) { onChange(e.copy(watermark = it)) }
+        if (wm != null) WatermarkControls(wm, { onChange(e.copy(watermark = it)) }, ownLogo = logoStage)
     }
 }

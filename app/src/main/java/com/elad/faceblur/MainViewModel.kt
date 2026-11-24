@@ -20,6 +20,7 @@ import com.elad.faceblur.pipeline.Outcome
 import com.elad.faceblur.pipeline.ProcessingErrors
 import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
+import com.elad.faceblur.pipeline.Watermark
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +49,7 @@ import com.elad.faceblur.template.TemplateRunner
 import com.elad.faceblur.template.TemplateSettings
 import com.elad.faceblur.template.TemplateStore
 import com.elad.faceblur.template.applyAll
+import com.elad.faceblur.template.fitSpeechModel
 import com.elad.faceblur.batch.Batch
 import com.elad.faceblur.batch.BatchItem
 import com.elad.faceblur.batch.BatchMath
@@ -83,7 +85,8 @@ sealed interface UiState {
     data class Working(val info: VideoInfo, val stage: Int, val progress: Float, val subsOnly: Boolean = false, val auto: Boolean = false) : UiState
     data class Editing(val info: VideoInfo, val editor: EditorController) : UiState
     data class Done(val info: VideoInfo, val result: Outcome.Saved, val canEdit: Boolean, val subsOnly: Boolean = false) : UiState
-    data class NoFaces(val info: VideoInfo, val canEdit: Boolean) : UiState
+    /** [note]: what the template's processing could not do (shown beside the message). */
+    data class NoFaces(val info: VideoInfo, val canEdit: Boolean, val note: String? = null) : UiState
     /** A saved project whose video can't be read any more: pick it again. [wrong]: the last pick was another video. */
     data class Relink(val project: ProjectMeta, val wrong: Boolean = false) : UiState
     /**
@@ -288,14 +291,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * With subtitles to create and the template's speech model not on the phone but the other one
-     * there, the other one is used (the same fallback the editor's "save as template" assumes),
-     * instead of holding "blur and save directly" back for a download.
+     * there, the other one is used when it can do the job (see [fitSpeechModel]), instead of holding
+     * "blur and save directly" back for a download.
      */
-    private fun TemplateSettings.fitted(): TemplateSettings {
-        if (!createSubs || models.isReady(speechModel)) return this
-        val other = SpeechModel.entries.firstOrNull { it != speechModel && models.isReady(it) } ?: return this
-        return copy(speechModel = other, language = if (language == speechModel.language) other.language else language)
-    }
+    private fun TemplateSettings.fitted(): TemplateSettings = fitSpeechModel(this, models::isReady)
 
     /** Turns subtitle creation on or off for the batch being set up (the template had it the other way). */
     fun setBatchSubtitles(on: Boolean) {
@@ -523,6 +522,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val id = templates.newId()
         var tpl = settingsOf(ctrl).toTemplate(id, name.trim().take(60).ifBlank { t("תבנית חדשה") }, keep)
         tpl.background?.let { b -> tpl = tpl.copy(background = templates.withOwnImage(b, id)) }
+        tpl = templates.withOwnLogo(tpl)
         templates.save(tpl)
         return tpl
     }
@@ -541,7 +541,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val s = ctrl.session
         val id = ProjectStore.newId()
         projectId = id
-        s.projectDir = ProjectStore.dir(getApplication(), id)
+        val dir = ProjectStore.dir(getApplication(), id)
+        s.projectDir = dir
+        // A logo a template brought is copied into the project: it stays when the template changes or goes.
+        sessionExport?.let { e ->
+            if (e.watermark.logo != null) {
+                sessionExport = runCatching { e.copy(watermark = Watermark.withOwnCopy(e.watermark, dir)) }.getOrDefault(e)
+            }
+        }
         val json = ctrl.projectFields(subtitleStyle, sessionExport)
             .put("v", 1)
             .put("name", s.info.name)
@@ -808,14 +815,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     state = UiState.Editing(info, ctrl)
                     if (processing != null) applyTemplateAsync(ctrl, processing)
                 } else {
+                    var failure: String? = null
                     if (processing != null) {
                         state = UiState.Working(info, 4, 0f, auto = true)
-                        TemplateRunner.applyProcessing(ctrl, processing)
+                        failure = TemplateRunner.applyProcessing(ctrl, processing).failures.firstOrNull()
                     }
                     // No faces and nothing the template really changed: no copy of the same video is saved.
                     val changed = tpl != null && (TemplateRunner.changesVideo(ctrl, tpl) || TemplateRunner.exportChangesVideo(getApplication(), tpl.export))
                     if (session.model.tracks.isEmpty() && !changed) {
-                        state = UiState.NoFaces(info, canEdit = true)
+                        state = UiState.NoFaces(info, canEdit = true, note = failure)
                     } else {
                         render(ctrl, auto = true)
                     }

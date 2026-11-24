@@ -74,12 +74,19 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
+/** A logo picture is there to use: the app's, or (in a template) the template's own. */
+private fun hasLogo(context: android.content.Context, w: Watermark, ownLogo: java.io.File?): Boolean =
+    if (ownLogo != null) w.logo != null && w.logoFile(context).exists() else w.logoFile(context).exists()
+
 /**
  * Everything about the watermark: none / text / logo, where it sits (3x3, center included),
  * size and opacity, and for text its font, color and how it stands out.
+ *
+ * With [ownLogo] (the template editor) a picked logo goes to that file and the watermark keeps its
+ * path: the app's own logo is not touched. Without it, the pick is the app's logo.
  */
 @Composable
-fun WatermarkControls(w: Watermark, onChange: (Watermark) -> Unit) {
+fun WatermarkControls(w: Watermark, onChange: (Watermark) -> Unit, ownLogo: java.io.File? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // 0 none, 1 text, 2 logo.
@@ -96,8 +103,10 @@ fun WatermarkControls(w: Watermark, onChange: (Watermark) -> Unit) {
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) scope.launch {
-            val ok = withContext(Dispatchers.IO) { runCatching { Watermark.importImage(context, uri) }.getOrDefault(false) }
-            if (ok) change(w.copy(image = true, stamp = System.currentTimeMillis()))
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { if (ownLogo != null) Watermark.importImageTo(context, uri, ownLogo) else Watermark.importImage(context, uri) }.getOrDefault(false)
+            }
+            if (ok) change(w.copy(image = true, logo = ownLogo?.absolutePath, stamp = System.currentTimeMillis()))
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -106,7 +115,7 @@ fun WatermarkControls(w: Watermark, onChange: (Watermark) -> Unit) {
             when (k) {
                 0 -> change(w.copy(text = "", image = false))
                 1 -> change(w.copy(image = false, text = w.text.ifBlank { "@" }))
-                else -> if (Watermark.imageFile(context).exists()) change(w.copy(image = true)) else picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                else -> if (hasLogo(context, w, ownLogo)) change(w.copy(image = true)) else picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }
         }
         if (kind == 1) {
@@ -118,9 +127,9 @@ fun WatermarkControls(w: Watermark, onChange: (Watermark) -> Unit) {
             )
         }
         if (kind == 2) {
-            val logo by produceState<ImageBitmap?>(null, w.stamp) {
+            val logo by produceState<ImageBitmap?>(null, w.stamp, w.logo) {
                 value = withContext(Dispatchers.IO) {
-                    Watermark.imageFile(context).takeIf { it.exists() }?.let { android.graphics.BitmapFactory.decodeFile(it.path)?.asImageBitmap() }
+                    w.logoFile(context).takeIf { it.exists() && (ownLogo == null || w.logo != null) }?.let { android.graphics.BitmapFactory.decodeFile(it.path)?.asImageBitmap() }
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
