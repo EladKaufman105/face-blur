@@ -145,6 +145,11 @@ async function run({ file, language, repo, device, dtype }: SubsRequest) {
     const gc = asr.model?.generation_config
     const tsBegin: number = (typeof gc?.no_timestamps_token_id === 'number' ? gc.no_timestamps_token_id : 50363) + 1
     post({ type: 'transcribe', progress: 0 })
+    // The bar only moves forward (a restarted window would take it back a little).
+    let shown = 0
+    const progress = (v: number) => { shown = Math.max(shown, v); post({ type: 'transcribe', progress: shown }) }
+    // Restarts after a cut-off window, at most 2 per original window (a runaway on music can't multiply the work).
+    let restarts = 0
     for (let from = 0; from < x.length;) {
       const to = cutPoint(x, from)
       const winSec = (to - from) / RATE
@@ -161,7 +166,7 @@ async function run({ file, language, repo, device, dtype }: SubsRequest) {
             const now = Date.now()
             if (now - sent > 200) {
               sent = now
-              post({ type: 'transcribe', progress: Math.min(0.99, base + span * (at / winSec)) })
+              progress(Math.min(0.99, base + span * (at / winSec)))
             }
           },
           end() {},
@@ -180,27 +185,32 @@ async function run({ file, language, repo, device, dtype }: SubsRequest) {
           max_new_tokens: MAX_NEW,
         })
         const offset = from / RATE
-        let lastEnd = 0
-        for (const c of out.chunks ?? []) {
+        const chunks = (out.chunks ?? []).filter((c: { timestamp: [number | null, number | null] }) => c.timestamp[0] != null)
+        // The cap was hit: the output stopped mid-word, so its last word is cut off (and has no end).
+        const capped = tokens >= MAX_NEW - 2 && chunks.length > 1
+        const cutStart = capped ? (chunks[chunks.length - 1].timestamp[0] as number) : 0
+        // Restart there only when real speech filled the budget (fast speech fills it in no less than
+        // about 15 s; a loop on music or noise fills it early) and not too often.
+        const restart = capped && restarts < 2 && cutStart >= Math.min(10, winSec / 3) && cutStart < winSec - 1
+        for (const c of restart ? chunks.slice(0, -1) : chunks) {
           const [a, b] = c.timestamp as [number, number | null]
-          if (a == null) continue
-          const e = b ?? a + 0.3
-          lastEnd = Math.max(lastEnd, e)
-          words.push({ start: offset + a, end: offset + e, text: c.text })
+          const e = b ?? (a as number) + 0.3
+          words.push({ start: offset + (a as number), end: offset + e, text: c.text })
         }
-        // The cap was hit: the speech after the last word is still to do, so the next window starts
-        // there (at least 1 s on, so it always moves forward) and nothing is skipped.
-        if (tokens >= MAX_NEW - 2 && lastEnd < winSec - 1) {
-          const next = from + Math.floor(Math.max(1, lastEnd) * RATE)
+        if (restart) {
+          // The next window starts at the cut-off word, which is recognized again in full.
+          const next = from + Math.floor(cutStart * RATE)
           if (next > from && next < to) {
+            restarts++
             from = next
-            post({ type: 'transcribe', progress: Math.min(1, from / x.length) })
+            progress(Math.min(1, from / x.length))
             continue
           }
         }
       }
+      restarts = 0
       from = to
-      post({ type: 'transcribe', progress: Math.min(1, from / x.length) })
+      progress(Math.min(1, from / x.length))
     }
     // Free the processor and the memory before the page ends this worker.
     await Promise.race([asr.dispose?.(), sleep(3000)]).catch(() => {})

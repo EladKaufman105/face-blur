@@ -4,7 +4,7 @@
 // the job is over or cancelled, and a graphics processor that fails or hangs falls back to the CPU.
 import { signal } from '@preact/signals'
 import { storageKey } from './channel'
-import { t } from '../i18n'
+import { lang, t } from '../i18n'
 import type { SubsMessage, SubsRequest } from '../workers/subs.worker'
 import type { Word } from './subtitles'
 
@@ -268,7 +268,8 @@ function spokenLanguage(language: string | null): string {
     const l = localStorage.getItem(storageKey('subs.lang'))
     if (l) return l
   } catch {}
-  return (navigator.language || 'he').toLowerCase().startsWith('he') || !navigator.language ? 'hebrew' : 'english'
+  // The app's language as the person set it (not the phone's: many Hebrew speakers keep it in English).
+  return lang.value === 'he' ? 'hebrew' : 'english'
 }
 
 /**
