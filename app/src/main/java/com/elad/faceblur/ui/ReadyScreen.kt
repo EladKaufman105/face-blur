@@ -73,7 +73,7 @@ internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, on
                 if (blurOff) t("פתח בעורך") else t("טשטש פנים"),
                 { vm.review = true; vm.start() },
                 Modifier.fillMaxWidth().testTag(Tags.BLUR_FACES),
-                icon = if (blurOff) androidx.compose.material.icons.Icons.Filled.Edit else AppIcons.Face,
+                icon = if (blurOff) null else AppIcons.Face,
             )
             Text(
                 if (blurOff) t("בלי טשטוש פנים: ייפתח העורך, והתבנית תחול על הסרטון.")
