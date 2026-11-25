@@ -148,9 +148,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const narrow = useNarrow()
   const [subTab, setSubTab] = useState<Record<string, string>>({})
   const [styleTab, setStyleTab] = useState('looks')
-  // One panel body serves every group and tool: each opens at its top.
   const bodyRef = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => { bodyRef.current?.scrollTo(0, 0) }, [tab, subTab[tab], styleTab])
   const [cues, setCues] = useState<Cue[]>(saved?.cues ?? [])
   const [words, setWords] = useState<Word[]>(saved?.words ?? [])
   const [bleeped, setBleeped] = useState<Set<number>>(() => new Set(saved?.bleeped ?? []))
@@ -1010,6 +1008,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
 
   const subList = subsOf(tab, { hasCues: cues.length > 0, hasWords: words.length > 0, hasFaces: analyzed || tracks.length > 0 })
   const part = (subTab[tab] && subList.some(([id]) => id === subTab[tab]) ? subTab[tab] : subList[0]?.[0]) ?? ''
+  // One panel body serves every group and tool: each opens at its top.
+  useLayoutEffect(() => { bodyRef.current?.scrollTo(0, 0) }, [tab, part, styleTab])
   /** Whether a sub-tool's controls show: all of them on a wide screen, the open one on a phone. */
   const S = (k: string) => !narrow || part === k
   /** The group is changing the video now: a dot on its button (as in the app). */

@@ -374,6 +374,7 @@ export function SubtitlesTab({ part, stylePart, onPart, file, cues, onCues, word
   const show = (k: 'make' | 'list' | 'bleep' | 'style') => !part || part === k
   const [bleepMode, setBleepMode] = useState(false)
   // On a phone the word picking belongs to the bleep tool: the list shows plain text again when it is left.
+  useEffect(() => { if (part && part !== 'bleep') setBleepMode(false) }, [part])
   const bleeping = bleepMode && (!part || part === 'bleep')
   const [findOpen, setFindOpen] = useState(false)
   const [find, setFind] = useState('')

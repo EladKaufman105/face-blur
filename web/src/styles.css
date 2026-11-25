@@ -831,7 +831,7 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .editor.narrow { display: flex; flex-direction: column; gap: 6px; flex: 1 1 0; }
   .editor.narrow .player { display: flex; flex-direction: column; gap: 6px; flex: 1 1 0; }
   .editor.narrow .player > * { flex: none; }
-  .editor.narrow .player > .screen { flex: 1 1 0; min-height: 96px; container-type: size; --screen-h: 100cqh; }
+  .editor.narrow .player > .screen { flex: 1 1 0; min-height: 64px; container-type: size; --screen-h: 100cqh; }
   .app:has(.editor.narrow) { padding-top: max(8px, env(safe-area-inset-top)); }
   .app:has(.editor.narrow) .top { padding-bottom: 0; }
   .editor.narrow .transport .time { min-width: 0; white-space: nowrap; font-size: 13px; }
@@ -841,13 +841,15 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .app:has(.editor.narrow) .footer { display: none; }
   .editor.narrow .player > .row .export-bar { position: static; padding: 0; background: none; display: flex; align-items: center; gap: 2px; flex: none; }
   .editor.narrow .player > .row .export-bar .btn.primary { width: auto; min-height: 44px; padding-inline: 16px; }
-  .editor.narrow > .side { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 0 0 max(6px, env(safe-area-inset-bottom)); }
+  /* What does not fit is taken from the panel's body (it scrolls), never from the bar of groups. */
+  .editor.narrow > .side { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 0 0 max(6px, env(safe-area-inset-bottom)); }
   .editor.narrow .side > * { order: 1; }
   .editor.narrow .side > .panel { order: 2; }
-  .editor.narrow .side > .tabs { order: 3; position: static; padding: 2px; box-shadow: none; border-radius: var(--radius-card); }
+  .editor.narrow .side > .tabs { flex: none; order: 3; position: static; padding: 2px; box-shadow: none; border-radius: var(--radius-card); }
   .editor.narrow .tabs button { min-height: 54px; }
   .editor.narrow .keys { display: none; }
-  .panel { background: var(--surface); border: 1px solid var(--outline-soft); border-radius: var(--radius-panel); overflow: hidden; }
+  .panel { background: var(--surface); border: 1px solid var(--outline-soft); border-radius: var(--radius-panel); overflow: hidden; display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; }
+  .panel > * { flex: none; }
   .panel-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px 0; }
   .panel-head .subtabs { flex: 1; }
   .panel-title { margin: 0; flex: 1; min-height: 44px; display: flex; align-items: center; padding-inline: 6px; font: var(--text-heading); color: var(--g); }
@@ -855,7 +857,7 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .subtabs { flex-wrap: wrap; overflow: visible; }
   .panel .subtabs .chip { min-height: 44px; padding-inline: 11px; font-size: 13px; }
   .panel .subtabs .chip.on { background: color-mix(in srgb, var(--g) 22%, transparent); color: var(--g); border-color: var(--g); }
-  .panel-body { height: clamp(96px, 14dvh, 200px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 10px; display: grid; gap: 10px; align-content: start; }
+  .panel > .panel-body { flex: 0 1 var(--body-h); min-height: 56px; --body-h: clamp(96px, 14dvh, 200px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 10px; display: grid; gap: 10px; align-content: start; }
   .panel-body > * { min-width: 0; }
   .panel-body .card { background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; }
   .panel-body .card.confirm { padding: 10px 12px; border: 1px solid var(--outline-soft); border-radius: var(--radius-card); }
@@ -868,9 +870,9 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .panel-body .sub-fine > .caption.tab-name { display: none; }
   .panel-body .chips.wrap { flex-wrap: wrap; overflow: visible; }
   /* A message above the panel (a failed sound step, a template running): the panel gives it room. */
-  .editor.narrow .side:has(> .sound-error, > .tpl-run) .panel-body { height: clamp(64px, 8dvh, 100px); }
-  .editor.narrow .side > .card { padding: 8px 12px; margin: 0; }
-  .panel.has-inner .panel-body { height: clamp(96px, 14dvh, 200px); }
+  .editor.narrow .side:has(> .sound-error, > .tpl-run) .panel > .panel-body { --body-h: clamp(64px, 8dvh, 100px); }
+  .editor.narrow .side > .card { padding: 8px 12px; margin: 0; flex: none; }
+  .panel.has-inner > .panel-body { --body-h: clamp(96px, 13dvh, 200px); }
   .panel-body .caption { margin: 6px 0 2px; }
   .panel-body .slider-row { margin-top: 4px; }
   .panel-body .chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
