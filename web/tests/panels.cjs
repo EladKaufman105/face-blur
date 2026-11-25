@@ -163,7 +163,8 @@ const mkCheck = (p) => async (label) => {
 
       // a blur selected (its bar shows under the timeline): nothing overlaps; the other two phones, one page and one detection
       await withBlurSelected()
-      for (const vp of [{ width: 360, height: 740 }, { width: 412, height: 915 }, { width: 390, height: 664 }]) {
+      // 412 x 915 is the roomy one: Hebrew only (the shards are timed).
+      for (const vp of [{ width: 360, height: 740 }, { width: 412, height: 915 }, { width: 390, height: 664 }].filter((v) => he || v.width !== 412)) {
         await p.setViewportSize(vp)
         await p.waitForTimeout(500)
         console.log('==', vp.width, 'x', vp.height, locale)
