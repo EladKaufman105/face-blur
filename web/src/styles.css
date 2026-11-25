@@ -1014,6 +1014,8 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .cue-sheet-acts { gap: var(--space-2); }
 .editor.narrow .player > .cue-props { order: 6; }
 .editor.narrow .player > .cue-bar { order: 5; }
+.cue-bar .ctx-act { min-width: 52px; padding-inline: 3px; }
+@media (max-width: 600px) { .cue-bar .cue-bar-times { display: none; } .cue-bar .cue-name { min-width: 0; } .cue-bar .ctx-act { min-width: 48px; padding-inline: 1px; } }
 .tpl-leave { padding: var(--space-3); border: 1px solid var(--outline-soft); border-radius: var(--radius-card); background: var(--surface-2); }
 
 /* The safe zone's chooser: a strip of its own above the video, a pill of three equal logos with a highlight that slides. */
@@ -1031,4 +1033,5 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 @media (max-height: 479px) { .safe-strip { display: none; } }
 
 /* A phone's panel keeps a thin scrubber over it (as the app's), so the video can be moved through with the panel open. */
-.mini-scrubber { flex: none; width: calc(100% - 16px); height: 28px; margin: 2px 8px 0; accent-color: var(--primary); touch-action: none; }
+.mini-scrubber { flex: none; width: calc(100% - 16px); height: 24px; margin: 0 8px; accent-color: var(--primary); touch-action: none; }
+@media (max-height: 599px) { .mini-scrubber { display: none; } }

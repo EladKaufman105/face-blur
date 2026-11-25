@@ -5,7 +5,8 @@ import { CPU_SIDE, FaceDetector } from '../lib/detector'
 import { StatsHistory, summary, type AnalysisStats, type StatsSnapshot } from '../lib/analysis-stats'
 import { DetectorPool } from '../lib/detector-pool'
 import { CutDetector } from '../lib/cuts'
-import { track, lowConfidenceTracks } from '../lib/tracker'
+import { track } from '../lib/tracker'
+import { lowConfidenceTracks } from '../lib/lowconf'
 import type { Det, Track } from '../lib/types'
 
 export type AnalyzeRequest = { file: File; sensitive: boolean; base: string; backend?: 'webgpu' | 'wasm'; /** How many CPU detectors to run side by side (default: by core count). */ workers?: number }

@@ -46,6 +46,9 @@ case "${1:?shard}" in
     t subsimport.cjs "$U" $S/speech_two.mp4 $R/subsimport   # 8
     # Where it was filmed and on what phone don't go out with the export.
     t privacy.cjs "$U" $S/speech_two.mp4 $R/privacy   # 10
+    # Subtitles on the timeline, as the app's: a tap selects, the bar's Start / End here, split, merge, delete and text, the edges dragged, all undone; bleeps follow their words. Desktop and a phone.
+    t cues.cjs "$U" $S/speech_two.mp4 $R/cues   # TIME
+    t cues.cjs "$U" $S/speech_two.mp4 $R/cuesp phone   # TIME
     ;;
   3) # 217 s
     # Subtitle design: styles, fonts (one imported with Hebrew, one without), effects, burned into the export.
@@ -60,6 +63,10 @@ case "${1:?shard}" in
     t templates.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/templates   # 95
     # The speech model's flow with no download: faster / better quality kept, a stuck recognition ends with an error and a retry, Cancel ends the worker, a template asks before downloading.
     t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 40
+    # The watermark's logo kept between visits and a template's logo shown; the template editor asking before it drops changes, and "Edit" for the chosen template (ready screen, batch); the safe zone's switch, chooser and mock (9:16 only, never in the export); the thin scrubber over a phone's panel; the low-confidence rule.
+    t parity2.cjs "$U" $S/speech_two.mp4 $S/stress_cuts.mp4 $R/parity2   # TIME
+    # Two fingers on the video resize the selected blur, one undo step each.
+    t pinch.cjs "$U" $S/walk.mp4 $R/pinch   # TIME
     ;;
   4) # 222 s
     # The sound's cleanup, MP3 (from the editor and the home screen), a lower size and frame rate.

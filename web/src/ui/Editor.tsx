@@ -1445,28 +1445,6 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             onClose={() => setSelected(null)}
           />
         )}
-        {selCue && !selTrack && (
-          <CueBar
-            cue={selCue}
-            hasNext={cueAtIdx >= 0 && cueAtIdx < sortedCues.length - 1}
-            hasPrev={cueAtIdx > 0}
-            open={cueOpen}
-            onOpen={setCueOpen}
-            sheet={phone}
-            speakers={cueSpeakers > 1 ? cueSpeakers : 0}
-            color={subStyle.color}
-            chosen={subStyle.speakerColors}
-            onStart={() => cueEdgeHere(true)}
-            onEnd={() => cueEdgeHere(false)}
-            onSplit={splitSelCue}
-            onMerge={mergeSelCue}
-            onDelete={deleteCue}
-            onText={(text) => patchCue({ text })}
-            onTranslation={(tr) => patchCue({ tr })}
-            onSpeaker={(sp) => patchCue({ speaker: sp })}
-            onClose={() => setSelectedCue(null)}
-          />
-        )}
         <Timeline
           file={file}
           duration={dur}
@@ -1508,6 +1486,29 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           onMoveSfx={(id, at) => updateSfx(id, { at })}
           controls={timelineControls}
         />
+        {/* (After the timeline, so the timeline does not move when a subtitle is selected on a wide screen; on a phone and a tablet the layout orders it.) */}
+        {selCue && !selTrack && (
+          <CueBar
+            cue={selCue}
+            hasNext={cueAtIdx >= 0 && cueAtIdx < sortedCues.length - 1}
+            hasPrev={cueAtIdx > 0}
+            open={cueOpen}
+            onOpen={setCueOpen}
+            sheet={phone}
+            speakers={cueSpeakers > 1 ? cueSpeakers : 0}
+            color={subStyle.color}
+            chosen={subStyle.speakerColors}
+            onStart={() => cueEdgeHere(true)}
+            onEnd={() => cueEdgeHere(false)}
+            onSplit={splitSelCue}
+            onMerge={mergeSelCue}
+            onDelete={deleteCue}
+            onText={(text) => patchCue({ text })}
+            onTranslation={(tr) => patchCue({ tr })}
+            onSpeaker={(sp) => patchCue({ speaker: sp })}
+            onClose={() => setSelectedCue(null)}
+          />
+        )}
       </div>
 
       <aside class="side">
