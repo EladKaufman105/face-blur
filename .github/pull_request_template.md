@@ -24,6 +24,7 @@ Pick one (see `docs/parity.md`):
 - [ ] same change on both platforms
 - [ ] parity follow-up: #... (docs/parity.md updated)
 - [ ] platform-only (no user-facing change on the other)
+- [ ] no user-facing change (docs/CI/release)
 
 ## Release PRs only
 

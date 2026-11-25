@@ -24,12 +24,12 @@ One of:
 1. Read the source change and the matching code on the other platform. Find the matching code by feature, not by file name: the app is Kotlin/Compose in `app/src/main/java/com/elad/faceblur`, the web app is TypeScript/Preact in `web/src`.
 2. Read `docs/parity.md`: the current status of the feature, and the accepted exceptions.
 3. Plan the port. List what changes on the target platform: behaviour, UI structure and names, strings in both languages, privacy gates, tests. Note anything that cannot be ported, and why.
-4. Implement it in your own branch from `origin/develop` (`git fetch origin develop` first). Follow the branch, commit and PR rules in `CLAUDE.md`. Use the idioms of the target platform.
+4. Implement it on a branch from `origin/develop` (`git fetch origin develop` first): use the session's assigned branch if it is free; otherwise create a new branch in a separate git worktree from `origin/develop` (never switch branches in the caller's working tree). Follow the commit and PR rules in `CLAUDE.md`. Use the idioms of the target platform.
 5. Add tests on the target platform: instrumented or unit tests in the app, Chromium tests in `web/tests` for the web. Cover any privacy gate.
 6. Update `docs/parity.md`: set the rows you touched to `same` (or `exception` with a reason), and add rows for new differences you found.
 7. Open a PR into `develop`. Title it with the `Parity:` prefix, for example `Parity: web subtitle retiming`. Link the source PR in the body. Fill in `.github/pull_request_template.md`, with the Parity checklist.
 
-Run `python3 ci/i18n_check.py` before pushing. Every user-visible string needs English text on both platforms.
+Run `python3 ci/i18n_check.py` before pushing. It only checks the app. Check the web strings by hand against `web/src/i18n.ts` and `templates-en.ts`. Every user-visible string needs English text on both platforms.
 
 ## Audit mode
 
@@ -42,6 +42,7 @@ Input `audit`. Compare both platforms area by area: home, pick and analyze, Read
 - A platform-specific exception is allowed only when it is listed in `docs/parity.md` (section "Accepted exceptions") with a reason. Add it there in the same PR.
 - Keep UI structure and names the same on both platforms (same groups, tool names, order, labels in both languages). Use each platform's idioms for the rest.
 - Do not change the source platform's behaviour unless the change fixes a bug you can show. Report it instead.
+- Stop once the PR is open and its checks are green. Do not run the review loop and do not merge. The calling (main) session runs the `CLAUDE.md` review loop and merges.
 - Do not touch version numbers or tags, and do not add secrets.
 - If a port is too large for one PR, port the privacy part first, split the rest, and leave the row as `gap-*` with a link to the follow-up.
 

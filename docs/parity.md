@@ -34,7 +34,7 @@ Rows marked **privacy** must be closed first.
 | Low-confidence faces flag | Batch flags uncertain videos (`A/batch/BatchRunner.kt:101`) | Not flagged | gap-web | Port `lowConfidenceTracks` |
 | "No faces" path | "Mark by hand" / "Try extended detection" | Same (`W/ui/Ready.tsx:222`) | same | |
 | Template with face blur OFF, Ready screen (**privacy**) | Button still says "Blur faces"; no warning (`A/ui/ReadyScreen.kt:70`, `A/MainViewModel.kt:830`) | "Open in editor" and red alert "faces will NOT be blurred" (`Ready.tsx:136`) | gap-app | User can believe faces are blurred. Copy the web behaviour |
-| Blur-off template, "Blur and save straight" | `start()` opens the editor; nothing is saved (`ReadyScreen.kt:81`) | Label "Save straight", batch-of-one path runs (`Ready.tsx:138`, `app.tsx:138`) | differs | Possible app bug |
+| Blur-off template, "Blur and save straight" (**privacy**) | Saves straight (`start()` -> `startTool(null, tpl)` -> `render(auto=true)`), but the button still says "טשטש ושמור ישר" (`ReadyScreen.kt:81`, `MainViewModel.kt:830`) | Label "Save straight", batch-of-one path runs (`Ready.tsx:138`, `app.tsx:138`) | differs | The app's label claims blur that does not happen. PR #34 changes the label |
 | Template picker on Ready | Cards, "Edit" next to chosen template (`A/ui/TemplatesUi.kt:255`) | Cards, inline rename, no Edit (`W/ui/TemplatePicker.tsx:55`) | gap-web | Add Edit |
 | Speech model on Ready | Row with download button | Dialog with size (`W/ui/SpeechUi.tsx`) | differs | |
 | Blur and save straight | Export sheet, then auto flow | Same (`Ready.tsx:196`) | same | |
@@ -77,7 +77,7 @@ Rows marked **privacy** must be closed first.
 | Subtitles: find and replace, split rule | Yes | Yes | same | |
 | Subtitles: bleep words placement | Under Sound > Voice and bleeps, and list header | Under Subtitles > Bleep words | differs | Align placement or accept |
 | Subtitle style: looks (27), fonts (10 + import), effects (18), colors, outline, shadow, glow, box, size, position | `A/ui/SubtitleStylePanel.kt` | `W/ui/SubStyleCard.tsx` | same | |
-| Subtitle style: outline widths | 4 (none/thin/medium/thick) | 3 (none/thin/thick) | differs | Web: add medium. An app style with outline 0.16 has no chip on web (unverified) |
+| Subtitle style: outline widths | 4 (none/thin/medium/thick) | 3 (none/thin/thick) | differs | Web: add medium. Web maps an outline of 0.13 or more to "thick" (`SubStyleCard.tsx:38`), so an app style saved as medium shows as thick on web |
 | Sound: cleanup (noise, enhance, loudness) | `VoicePanel.kt:188` | `EditorTabs.tsx:40` | same | |
 | Sound: voice change | none, deep, high, robot, disguise, mute | Same functions; labels differ ("Low" vs "Deep", "No sound" vs "Mute") | differs | Unify labels |
 | Sound: effects library (51), My sounds (20 s) | Yes | Yes | same | |
@@ -119,7 +119,7 @@ Rows marked **privacy** must be closed first.
 | MP3 with edits (**privacy**) | MP3 tool converts the raw sound; no voice change or cuts (`A/audio/Mp3Encoder.kt:56`) | MP3 in export sheet applies cuts, cleanup, voice change, effects | gap-app | Raw voice can leave the device. Apply edits or warn |
 | Sound failure gate (**privacy**) | Audio processors run in the export pipeline, failure fails export (`A/pipeline/FaceBlurProcessor.kt:303`); unverified that every path is closed | Explicit: voice-change failure blocks export (`Editor.tsx:675`, `Exporting.tsx:39`) | differs | App: verify fail-closed, add a test |
 | Lost-bleeps warning | None; bleeps stored as time ranges | Warning when new subtitles drop bleeped words | exception | App design avoids the loss |
-| Location and phone metadata scrubbed (**privacy**) | `Mp4Privacy.scrub` | `allowTransformationMetadata:false`, `web/tests/privacy.cjs` | same | MP3 path unverified on both |
+| Location and phone metadata scrubbed (**privacy**) | `Mp4Privacy.scrub`, run as `runCatching { ... }.getOrDefault(-1)` and the file is saved anyway (`A/pipeline/FaceBlurProcessor.kt:364`) | `allowTransformationMetadata:false`, `web/tests/privacy.cjs` | differs | App scrub is fail-open (fix pending). MP3 path unverified on both |
 | Result screen | Share, Open, back to editing, face count, review note | Save, Share, SRT, back to editing, review note | differs | "Open" has no web equivalent |
 | Output location | `Movies/ONIT`, `Download/ONIT` | Browser download | exception | Platform |
 | Error handling | Friendly mapping, technical details, send-report dialog | Plain messages, no report | gap-web | Add copy-details |
@@ -216,6 +216,6 @@ Differences that are allowed. Add a row here, with a reason, before marking anyt
 - Privacy behaviour (blur, bleep, voice change, export gates, data staying on the device) must be identical or stricter on both sides. Never weaken a gate to match the other platform.
 - Keep UI structure and names the same; use each platform's idioms.
 - A platform-specific difference is allowed only when it is listed under "Accepted exceptions" with a reason.
-- Every user-visible string has Hebrew and English on both platforms. `ci/i18n_check.py` checks the app.
+- Every user-visible string has Hebrew and English on both platforms. `ci/i18n_check.py` checks only the app; check web strings by hand against `web/src/i18n.ts` and `templates-en.ts`.
 - Release PRs (develop to main) list the open `gap-*` rows in the release notes.
 - Run the `parity` agent with `audit` from time to time, and before a release, to refresh this file.
