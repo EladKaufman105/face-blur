@@ -24,7 +24,7 @@ One of:
 1. Read the source change and the matching code on the other platform. Find the matching code by feature, not by file name: the app is Kotlin/Compose in `app/src/main/java/com/elad/faceblur`, the web app is TypeScript/Preact in `web/src`.
 2. Read `docs/parity.md`: the current status of the feature, and the accepted exceptions.
 3. Plan the port. List what changes on the target platform: behaviour, UI structure and names, strings in both languages, privacy gates, tests. Note anything that cannot be ported, and why.
-4. Implement it on a branch from `origin/develop` (`git fetch origin develop` first): use the session's assigned branch if it is free; otherwise create a new branch in a separate git worktree from `origin/develop` (never switch branches in the caller's working tree). Follow the commit and PR rules in `CLAUDE.md`. Use the idioms of the target platform.
+4. Implement it on a branch from `origin/develop` (`git fetch origin develop` first): use the branch the caller gives you; otherwise create a new branch `feature/parity-<name>` in a separate git worktree from `origin/develop`. Never commit to the caller's branch or switch branches in its working tree. If the push of a new branch is refused, stop and report it; do not work around it. Follow the commit and PR rules in `CLAUDE.md`. Use the idioms of the target platform.
 5. Add tests on the target platform: instrumented or unit tests in the app, Chromium tests in `web/tests` for the web. Cover any privacy gate.
 6. Update `docs/parity.md`: set the rows you touched to `same` (or `exception` with a reason), and add rows for new differences you found.
 7. Open a PR into `develop`. Title it with the `Parity:` prefix, for example `Parity: web subtitle retiming`. Link the source PR in the body. Fill in `.github/pull_request_template.md`, with the Parity checklist.
@@ -33,7 +33,7 @@ Run `python3 ci/i18n_check.py` before pushing. It only checks the app. Check the
 
 ## Audit mode
 
-Input `audit`. Compare both platforms area by area: home, pick and analyze, Ready, editor (phone and tablet), selection bars, safe zone, export, templates, batch, settings, projects, messages, i18n. For each area, read the code on both sides and compare behaviour, strings, defaults and limits. Do not rely on `docs/parity.md` alone. Refresh `docs/parity.md`: fix statuses, add new rows, remove rows that are now `same` only if the whole area is `same`. Mark what you could not confirm from code as "unverified". Do not change app or web code in an audit; open a `Parity:` docs PR with the refreshed tracker. Report the privacy-related gaps first.
+Input `audit`. Compare both platforms area by area: home, pick and analyze, Ready, editor (phone and tablet), selection bars, safe zone, export, templates, batch, settings, projects, messages, i18n. For each area, read the code on both sides and compare behaviour, strings, defaults and limits. Do not rely on `docs/parity.md` alone. Refresh `docs/parity.md`: fix statuses, add new rows, keep `same` rows (do not delete rows). Mark what you could not confirm from code as "unverified". Do not change app or web code in an audit; open a `Parity:` docs PR with the refreshed tracker. Report the privacy-related gaps first.
 
 ## Rules
 

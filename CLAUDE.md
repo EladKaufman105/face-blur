@@ -50,7 +50,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 ## Parity
 
 - The app (`app/`) and the web app (`web/`) offer the same features. `docs/parity.md` tracks the differences and the accepted exceptions.
-- Every PR that changes user-facing behaviour on one platform either includes the same change on the other, or links a follow-up parity PR or issue and updates `docs/parity.md` (status `gap-web` or `gap-app`).
+- Every PR that changes user-facing behaviour on one platform either includes the same change on the other, or links a follow-up parity PR or issue and updates `docs/parity.md` (status `gap-web` or `gap-app`). Exceptions: a difference listed under "Accepted exceptions" in `docs/parity.md`, or a PR that ticks `platform-only` in the template.
 - Use the `parity` agent (`.claude/agents/parity.md`) to port. Its PRs start with `Parity:`. The agent stops when the PR is open and its checks are green: the calling session runs the review loop and merges.
 - Privacy behaviour must be identical or stricter on both platforms. Never weaken a gate to match the other one.
 - Releases (develop -> main) list the open `gap-*` rows in the release notes.
