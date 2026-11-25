@@ -36,14 +36,14 @@ function sameJson(a: Template, b: Template) {
   return JSON.stringify(templateToJson(only({ ...a, name: '', id: '' }, new Set(categoriesOf(a))))) === JSON.stringify(templateToJson(only({ ...b, name: '', id: '' }, new Set(categoriesOf(b)))))
 }
 
-type Props = { template: Template; onClose: () => void }
+type Props = { template: Template; onClose: () => void; /** Saved (or restored to the original): the screen using the template takes it again. */ onSaved?: (id: string) => void }
 
 /**
  * A template's editor: its name, a live preview, and each category's properties with its switch
  * ("include in template") - with the web app's own controls. A built-in look is edited here too
  * (and can be restored); the other templates can be renamed.
  */
-export function TemplateEditor({ template, onClose }: Props) {
+export function TemplateEditor({ template, onClose, onSaved }: Props) {
   const [draft, setDraft] = useState<Template>(template)
   const [name, setName] = useState(template.name)
   const [busy, setBusy] = useState(false)
@@ -51,9 +51,14 @@ export function TemplateEditor({ template, onClose }: Props) {
   // What a category held when it was switched off, to bring it back as it was.
   const stash = useRef<Partial<Template>>({})
   const base = useMemo(() => currentSettings({ sensitive: false, hebrewUi: lang.value === 'he', watermark: NO_WATERMARK, options: { ...DEFAULT_EXPORT } }), [])
+  // Leaving with changes that were not saved asks first (as the app's "Save changes?"): Esc, the backdrop and the X.
+  const [askLeave, setAskLeave] = useState(false)
+  const dirty = name !== template.name || !sameJson(draft, template)
+  const leave = useRef<() => void>(() => {})
+  leave.current = () => { if (askLeave) setAskLeave(false); else if (dirty) setAskLeave(true); else onClose() }
   useEffect(() => {
     // In the capture phase: this sheet closes alone (the settings under it stay).
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); leave.current() } }
     addEventListener('keydown', key, true)
     return () => removeEventListener('keydown', key, true)
   }, [])
@@ -75,6 +80,7 @@ export function TemplateEditor({ template, onClose }: Props) {
     const out: Template = { ...draft, name: template.builtIn ? template.name : name.trim() || template.name }
     if (template.builtIn && sameJson(out, builtIn(template.id)!)) await restoreTemplate(template.id)
     else await saveTemplate(out)
+    onSaved?.(template.id)
     onClose()
   }
 
@@ -103,11 +109,11 @@ export function TemplateEditor({ template, onClose }: Props) {
   const chip = (on: boolean, label: string, onClick: () => void) => <button class={'chip' + (on ? ' on' : '')} onClick={onClick}>{label}</button>
 
   return (
-    <div class="sheet-back tpl-back" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+    <div class="sheet-back tpl-back" onClick={(e) => { if (e.target === e.currentTarget) leave.current() }}>
       <div class="sheet tpl-sheet" role="dialog" aria-modal="true" aria-label={t('עריכת תבנית')}>
         <div class="row">
           <h3 class="section-title grow" style="margin:0">{t('עריכת תבנית')}</h3>
-          <button class="icon-btn" aria-label={t('סגור')} onClick={onClose}><CloseIcon size={20} /></button>
+          <button class="icon-btn tpl-x" aria-label={t('סגור')} onClick={() => leave.current()}><CloseIcon size={20} /></button>
         </div>
         <div class="sheet-body tpl-body">
           <div class="tpl-side">
@@ -236,11 +242,22 @@ export function TemplateEditor({ template, onClose }: Props) {
         </div>
         {storeFailed.value && <p class="small tpl-store-error" role="alert" style="margin:0;color:#e5484d">{t('לא ניתן לשמור בדפדפן (אין מקום פנוי?). השינוי יישמר עד שהדף ייסגר.')}</p>}
         <div class="tpl-foot">
-          {edited && <button class="btn tonal tpl-restore" onClick={async () => { await restoreTemplate(template.id); onClose() }}>{t('שחזר מקור')}</button>}
+          {edited && <button class="btn tonal tpl-restore" onClick={async () => { await restoreTemplate(template.id); onSaved?.(template.id); onClose() }}>{t('שחזר מקור')}</button>}
           <span class="grow" />
           <button class="btn ghost" onClick={onClose}>{t('ביטול')}</button>
           <button class="btn primary tpl-save" disabled={busy || (!template.builtIn && !name.trim())} onClick={save}>{t('שמור')}</button>
         </div>
+        {askLeave && (
+          <div class="confirm tpl-leave" role="alertdialog" aria-label={t('לשמור את השינויים?')}>
+            <strong class="small">{t('לשמור את השינויים?')}</strong>
+            <span class="small">{t('עשית שינויים בתבנית שלא נשמרו.')}</span>
+            <div class="row" style="flex-wrap:wrap">
+              <button class="btn small-btn primary tpl-leave-save" disabled={busy || (!template.builtIn && !name.trim())} onClick={save}>{t('שמור')}</button>
+              <button class="btn ghost small-btn tpl-leave-keep" onClick={() => setAskLeave(false)}>{t('המשך לערוך')}</button>
+              <button class="btn small-btn danger-btn tpl-leave-discard" onClick={onClose}>{t('בטל שינויים')}</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

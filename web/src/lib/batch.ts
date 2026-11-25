@@ -34,6 +34,8 @@ export type BatchItem = {
   error?: string
   /** Things that could not be done (the video was still saved). */
   notes: string[]
+  /** Some automatic blurs have no clear detection behind them: faces to look at again (as the app's flag). */
+  lowConfidence?: boolean
   projectId?: string
   output?: BatchOutput
   startedAt: number
@@ -67,7 +69,7 @@ export const doneCount = (b: Batch) => b.items.filter(isDone).length
 export const savedCount = (b: Batch) => b.items.filter((i) => !!i.output).length
 export const failedCount = (b: Batch) => b.items.filter((i) => i.status === 'failed').length
 /** Worth a look: no faces found, a step that didn't work out, or failed. */
-export const needsCheck = (i: BatchItem) => i.status === 'failed' || i.status === 'nofaces' || (i.notes.length > 0 && i.status !== 'skipped')
+export const needsCheck = (i: BatchItem) => i.status === 'failed' || i.status === 'nofaces' || (i.status !== 'skipped' && (i.notes.length > 0 || !!i.lowConfidence))
 export const checkCount = (b: Batch) => b.items.filter(needsCheck).length
 export const progressOf = (b: Batch) => (b.items.length ? b.items.reduce((s, i) => s + (isDone(i) ? 1 : i.progress), 0) / b.items.length : 1)
 
@@ -279,6 +281,7 @@ async function processOne(b: Batch, item: BatchItem) {
     }, item.controller.signal)
     mark('export')
     item.notes = p.notes
+    item.lowConfidence = !s.blurOff && (p.analysis.lowConfidence ?? 0) > 0
     const state = stateOf(s, p)
     const picture: ProjectPicture | null = p.picture ? { motion: p.picture.motion, cuts: p.picture.cuts, masks: p.picture.masks } : null
     const meta = (thumb: string | null) => ({ duration: p.analysis.times.length ? p.analysis.times[p.analysis.times.length - 1] : item.duration, thumb, ...summarize(state) })

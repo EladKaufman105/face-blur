@@ -587,6 +587,29 @@ const EN: Record<string, string> = {
   'פצל כאן': 'Split here',
   'עוד אפשרויות': 'More options',
   'ייבוא קובץ SRT': 'Import an SRT file',
+  // A selected subtitle (its bar and properties), as the app's.
+  'כתובית': 'Subtitle',
+  'עריכת כתובית': 'Edit subtitle',
+  'ערוך טקסט': 'Edit text',
+  'מזג עם הבאה': 'Merge with next',
+  'מזג עם הקודמת': 'Merge with previous',
+  'דובר': 'Speaker',
+  '%s שנ׳': '%s s',
+  // The safe zone, and the mock of a platform's screens drawn over the video.
+  'אזור בטוח': 'Safe zone',
+  'עוקבים': 'Following',
+  'בשבילך': 'For you',
+  'עקוב': 'Follow',
+  'הרשמה': 'Subscribe',
+  'סאונד מקורי': 'Original sound',
+  // The phone panel's scrubber, the batch's flag, leaving the template editor.
+  'מיקום בסרטון': 'Position in the video',
+  'זיהוי לא בטוח': 'Uncertain detection',
+  'כדאי לבדוק את הפנים בעורך.': 'Worth checking the faces in the editor.',
+  'לשמור את השינויים?': 'Save the changes?',
+  'עשית שינויים בתבנית שלא נשמרו.': "You made changes to the template that aren't saved.",
+  'המשך לערוך': 'Keep editing',
+  'בטל שינויים': 'Discard changes',
 }
 
 /** More English (the beta's own strings, see ui/Beta.tsx). */

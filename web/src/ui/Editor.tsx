@@ -4,13 +4,17 @@ import { t, duration, lang } from '../i18n'
 import { BlurRenderer, ellipseFor, type Ellipse } from '../lib/renderer'
 import { frameAt, loadLook, saveLook, trackBox, type Analysis, type BlurMode, type Look, type Track } from '../lib/types'
 import type { ExportJob } from './Exporting'
-import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIcon, FaceIcon, PictureIcon, MarkIcon, SettingsIcon, TemplateIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
+import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIcon, FaceIcon, PictureIcon, MarkIcon, SafeAreaIcon, SettingsIcon, TemplateIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
 import { FRAME, Timeline } from './Timeline'
 import { BlurBar } from './BlurBar'
+import { CueBar } from './CueBar'
+import { SafeZoneBar } from './SafeZoneBar'
+import { appliesTo, easeOut, GLIDE_MS, mixZone, zoneOf, type Platform, type Zone } from '../lib/safezone'
+import { drawSafeZone } from '../lib/safezonemock'
 import { CutTab, wordSpan } from './CutTab'
 import { addCuts, CutMap, cutAt, cutTotal, skipTarget, uncut, type Range } from '../lib/cutmap'
 import { isFiller } from '../lib/silence'
-import { applyFollow, boxNear, newTrack, nextTrackId, retime, setEnd, setStart, shift, split, type Box } from '../lib/tracks'
+import { applyFollow, boxNear, MAX_SCALE, MIN_SCALE, newTrack, nextTrackId, retime, setEnd, setStart, shift, split, type Box } from '../lib/tracks'
 import type { FollowMessage, FollowRequest } from '../workers/follow.worker'
 import { SfxScheduler, type SfxClip } from '../lib/sfx'
 import { drawWatermark, normalizeWatermark, watermarkOn, type Watermark } from '../lib/watermark'
@@ -29,7 +33,7 @@ import { cleanupOn, type Cleanup } from '../lib/cleanup'
 import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
 import { Analyzing } from './Analyzing'
 import { ChipTabs, PANEL_ID, STYLE_PARTS, subsOf, useNarrow, useTablet } from './panels'
-import { bleepRanges, cueAt, maskCue, shownText, type Cue, type SubStyle, type Word } from '../lib/subtitles'
+import { bleepRanges, cueAt, cueRoom, maskCue, mergeCues, retimeCue, shownText, splitCueAtTime, winEnd, winStart, type Cue, type SubStyle, type Word } from '../lib/subtitles'
 import { DEFAULT_SUB_STYLE, loadSubFont, normalizeStyle } from '../lib/substyle'
 import { cueWordTimes, drawCue } from '../lib/subrender'
 import { getFont } from '../lib/projects'
@@ -118,6 +122,11 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [exportOpen, setExportOpen] = useState(false)
   const [exportOpts, setExportOpts] = useState(() => (tpl ? exportOptionsOf(tpl, loadExportOptions()) : { ...loadExportOptions(), aspect: saved?.aspect ?? 'original' }))
   const [srcInfo, setSrcInfo] = useState<{ codec: string; fps: number } | null>(null)
+  // The safe zone, a view aid: where a short-video platform's own screens cover a vertical frame (drawn here only, never exported).
+  const safeAvailable = appliesTo(exportOpts.aspect, W, H)
+  const [safeOn, setSafeOn] = useState(false)
+  const [safePlatform, setSafePlatform] = useState<Platform>(() => { try { const p = localStorage.getItem(storageKey('safezone.platform')); return p === 'reels' || p === 'shorts' ? p : 'tiktok' } catch { return 'tiktok' } })
+  const safe = useRef<{ platform: Platform; from: Zone; at: number }>({ platform: safePlatform, from: zoneOf(safePlatform), at: -1e9 })
   // The picture tools: the camera's motion, the cuts and the people (from one pass over the video).
   const [picture, setPicture] = useState<ProjectPicture | null>(project?.picture ?? null)
   const [picBusy, setPicBusy] = useState<PictureBusy>(null)
@@ -133,6 +142,18 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   )
   const cutMap = useMemo(() => new CutMap(cuts), [cuts])
   const url = useMemo(() => URL.createObjectURL(file), [file])
+  // How wide the exported frame is on screen: the safe zone's chooser is as wide as it.
+  const viewBox = useRef<HTMLDivElement>(null)
+  const [viewW, setViewW] = useState(0)
+  useEffect(() => {
+    const el = viewBox.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => setViewW(el.clientWidth))
+    ro.observe(el)
+    setViewW(el.clientWidth)
+    return () => ro.disconnect()
+  }, [])
+  const frameW = viewW * crop[0]
   useEffect(() => () => URL.revokeObjectURL(url), [url])
   const video = useRef<HTMLVideoElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
@@ -183,6 +204,9 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [noAudio, setNoAudio] = useState(false)
   const [audioTry, setAudioTry] = useState(0)
   const [selectedSfx, setSelectedSfx] = useState<number | null>(null)
+  /** The subtitle selected on the timeline (its bar and its edges' handles), and whether its properties are open. */
+  const [selectedCue, setSelectedCue] = useState<number | null>(null)
+  const [cueOpen, setCueOpen] = useState(false)
   const [sfxLength, setSfxLength] = useState<Map<string, number>>(new Map())
   const [subStyle, setSubStyle] = useState<SubStyle>(() => {
     if (saved) return normalizeStyle(saved.subStyle)
@@ -193,7 +217,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [mark, setMark] = useState<Watermark>(() => (saved?.mark ? normalizeWatermark(saved.mark) : tpl ? normalizeWatermark(tpl.watermark) : loadWatermark()))
   const logo = useRef<HTMLImageElement | null>(null)
   const scheduler = useMemo(() => new SfxScheduler(), [])
-  const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, voiceBuf: null as AudioBuffer | null, tracks, selected, cuts, cutMap, fps: an.fps, times, steadied, crop, framePath, masks: null as PeopleMasks | null, background })
+  const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, voiceBuf: null as AudioBuffer | null, tracks, selected, cuts, cutMap, fps: an.fps, times, steadied, crop, framePath, masks: null as PeopleMasks | null, background, safeOn: false })
   // (The drawing runs in callbacks made once: it reads the frame times from here, as they can
   // arrive later, from a search for faces or a first blur by hand.)
   state.current.times = times
@@ -202,6 +226,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   state.current.framePath = framePath
   state.current.masks = picture?.masks ?? null
   state.current.background = background
+  state.current.safeOn = safeOn && safeAvailable
   state.current.tracks = tracks
   state.current.selected = selected
   state.current.cuts = cuts
@@ -233,6 +258,25 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       if (e) out.push(e)
     }
     return out
+  }
+
+  /** The safe zone's margins now: gliding from the last platform's to the chosen one's (260 ms, easing out). */
+  const zoneNow = (): Zone => {
+    const s = safe.current
+    return mixZone(s.from, zoneOf(s.platform), easeOut(Math.min(1, (performance.now() - s.at) / GLIDE_MS)))
+  }
+  const choosePlatform = (p: Platform) => {
+    if (p === safe.current.platform) return
+    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+    safe.current = { platform: p, from: zoneNow(), at: reduced ? -1e9 : performance.now() }
+    setSafePlatform(p)
+    try { localStorage.setItem(storageKey('safezone.platform'), p) } catch {}
+    // A paused video is redrawn through the glide (a playing one is drawn every frame anyway).
+    const step = () => {
+      if (video.current?.paused) draw()
+      if (performance.now() - safe.current.at < GLIDE_MS + 30) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
   }
 
   const draw = () => {
@@ -316,10 +360,12 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         const st = state.current.subStyle
         const text = state.current.subStyle.maskBleeped === false ? cue.text : maskCue(cue, state.current.words, state.current.bleeped)
         const blocks = shownText(cue, text, st.show).split('\n')
-        const times = st.show === 'tr' ? [] : [cueWordTimes(text, cue.start, cue.end, state.current.words)]
+        const times = st.show === 'tr' ? [] : [cueWordTimes(text, winStart(cue), winEnd(cue), state.current.words)]
         drawCue(tc, blocks, cue.start, cue.end, state.current.mediaTime, { ...st, color: speakerColor(st.color, cue.speaker, st.speakerColors) }, fw, fh, times)
       }
       tc.restore()
+      // The safe zone's mock of a platform's screens, over everything and only here (never in the export).
+      if (state.current.safeOn && fw >= 2 && fh >= 2) drawSafeZone(tc, safe.current.platform, zoneNow(), fx, fy, fw, fh)
     }
   }
 
@@ -408,7 +454,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   // Redraw the paused frame when the look, the faces or the watermark change.
   useEffect(() => {
     if (video.current?.paused) draw()
-  }, [off, look, mark, cues, subStyle, tracks, selected, background, picture, steadied, framePath, crop, bleeped, words])
+  }, [off, look, mark, cues, subStyle, tracks, selected, background, picture, steadied, framePath, crop, bleeped, words, safeOn, safeAvailable])
 
   // The background's picture, loaded once for the preview.
   useEffect(() => {
@@ -590,6 +636,9 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     if (!mark.image) { logo.current = null; return }
     const img = new Image()
     img.onload = () => { logo.current = img; if (video.current?.paused) draw() }
+    // A project saved before logos were kept as data has a dead object URL: no logo, rather than a blank one.
+    const dead = mark.image
+    img.onerror = () => { if (dead.startsWith('blob:')) setMark((m) => (m.image === dead ? { ...m, image: null } : m)) }
     img.src = mark.image
   }, [mark.image])
 
@@ -706,6 +755,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     setTracks(s.tracks)
     setCuts(s.cuts)
     if (s.tracks.every((tr) => tr.id !== state.current.selected)) setSelected(null)
+    setSelectedCue((id) => (id !== null && s.cues.some((c) => c.id === id) ? id : null))
     lastChange.current = 0
     setHistoryVersion((n) => n + 1)
   }
@@ -879,6 +929,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     setThumbOf((m) => new Map(m).set(tr.id, grabThumb(box!)))
     setSelected(tr.id)
     setSelectedSfx(null)
+    setSelectedCue(null)
     follow(tr, i, 0, tm, fps)
   }
 
@@ -911,8 +962,25 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     const r = canvas.current!.getBoundingClientRect()
     return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]
   }
+  // Two fingers on the video resize the selected blur (as the app's pinch; the slider in its bar does the same).
+  const touches = useRef(new Map<number, [number, number]>())
+  const pinch = useRef<{ id: number; dist: number; scale: number; recorded: boolean } | null>(null)
   const onScreenDown = (e: PointerEvent) => {
     if (!canvas.current) return
+    if (e.isPrimary) touches.current.clear()
+    touches.current.set(e.pointerId, [e.clientX, e.clientY])
+    if (touches.current.size === 2 && !adding && !following) {
+      const tr = state.current.tracks.find((x) => x.id === state.current.selected)
+      if (tr && trackBox(tr, frameAt(times, state.current.mediaTime))) {
+        const [a, b] = [...touches.current.values()]
+        // The first finger's tap is no tap any more, and nothing moves while the two are down.
+        press.current = null
+        pinch.current = { id: tr.id, dist: Math.max(20, Math.hypot(a[0] - b[0], a[1] - b[1])), scale: tr.scale ?? 1, recorded: false }
+        for (const id of touches.current.keys()) { try { (e.currentTarget as HTMLElement).setPointerCapture(id) } catch {} }
+        return
+      }
+    }
+    if (touches.current.size > 1) { press.current = null; return }
     const [fx, fy] = toFrac(e)
     const hit = adding ? null : blurAt(fx, fy)
     const base = hit !== null && hit === selected && !following ? state.current.tracks.find((x) => x.id === hit) ?? null : null
@@ -920,6 +988,17 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     if (base) (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   }
   const onScreenMove = (e: PointerEvent) => {
+    if (touches.current.has(e.pointerId)) touches.current.set(e.pointerId, [e.clientX, e.clientY])
+    const pc = pinch.current
+    if (pc) {
+      if (touches.current.size < 2) return
+      const [a, b] = [...touches.current.values()]
+      const sc = Math.min(MAX_SCALE, Math.max(MIN_SCALE, pc.scale * Math.hypot(a[0] - b[0], a[1] - b[1]) / pc.dist))
+      // One undo step for the whole pinch.
+      if (!pc.recorded) { pc.recorded = true; record(false) }
+      setTracks((ts) => ts.map((x) => (x.id === pc.id ? { ...x, scale: sc } : x)))
+      return
+    }
     const d = press.current
     if (!d?.base) return
     if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return
@@ -928,13 +1007,17 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     const moved = shift(d.base, fx - d.fx, fy - d.fy)
     setTracks((ts) => ts.map((x) => (x.id === moved.id ? moved : x)))
   }
-  const onScreenUp = () => {
+  const onScreenUp = (e?: PointerEvent) => {
+    if (e) touches.current.delete(e.pointerId)
+    if (pinch.current) { if (touches.current.size < 2) pinch.current = null; press.current = null; return }
+    if (touches.current.size > 0) { press.current = null; return }
     const d = press.current
     press.current = null
     if (!d || d.moved) return
     if (adding) { void addAt(d.fx, d.fy); return }
-    if (d.hit !== null) { setSelected(d.hit === selected ? null : d.hit); setSelectedSfx(null) }
+    if (d.hit !== null) { setSelected(d.hit === selected ? null : d.hit); setSelectedSfx(null); setSelectedCue(null) }
     else if (selected !== null) setSelected(null)
+    else if (selectedCue !== null) setSelectedCue(null)
     else playPause()
   }
 
@@ -980,7 +1063,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       const el = e.target as HTMLElement | null
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
       if (hidden || detecting) return
-      if (e.key === 'Escape') { setAdding(false); setSelected(null); setSelectedSfx(null); setCutStart(null); return }
+      if (e.key === 'Escape') { setAdding(false); setSelected(null); setSelectedSfx(null); setSelectedCue(null); setCutStart(null); return }
       const v = video.current
       if (!v) return
       const k = e.key
@@ -1001,12 +1084,49 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         case 'Delete': case 'Backspace':
           if (selectedSfx !== null) { setSfxH((list) => list.filter((c) => c.id !== selectedSfx)); setSelectedSfx(null) }
           else if (selected !== null && !following) deleteSel()
+          else if (selCue) deleteCue()
           break
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [hidden, detecting, selectedSfx, selected, following, tracks, dur, an])
+  }, [hidden, detecting, selectedSfx, selected, selectedCue, cues, following, tracks, dur, an])
+
+  // ---------------------------------------------------------------- the selected subtitle
+
+  const sortedCues = useMemo(() => [...cues].sort((a, b) => a.start - b.start), [cues])
+  const selCue = cues.find((c) => c.id === selectedCue) ?? null
+  const cueAtIdx = selCue ? sortedCues.findIndex((c) => c.id === selCue.id) : -1
+  const selectCue = (id: number | null) => { setSelectedCue(id); if (id !== null) { setSelected(null); setSelectedSfx(null); setCueOpen(!phone) } }
+  /** The selected subtitle now starts (or ends) at the playhead: the video's words stay where they were said. */
+  const cueEdgeHere = (start: boolean) => {
+    if (!selCue) return
+    const [lo, hi] = cueRoom(cues, selCue, dur)
+    setCuesH(cues.map((c) => (c.id === selCue.id ? retimeCue(c, start, state.current.mediaTime, lo, hi) : c)), true)
+  }
+  const splitSelCue = () => {
+    if (!selCue) return
+    video.current?.pause()
+    const parts = splitCueAtTime(selCue, state.current.mediaTime, words)
+    if (!parts) { setNotice(t('אפשר לפצל רק כתובית עם יותר ממילה אחת')); return }
+    setCuesH(cues.flatMap((c) => (c.id === selCue.id ? parts : [c])), true)
+  }
+  /** With the next subtitle; the last one with the one before it. */
+  const mergeSelCue = () => {
+    if (!selCue) return
+    const next = sortedCues[cueAtIdx + 1]
+    const prev = sortedCues[cueAtIdx - 1]
+    if (next) setCuesH(cues.filter((c) => c.id !== next.id).map((c) => (c.id === selCue.id ? mergeCues(selCue, next) : c)), true)
+    else if (prev) { setCuesH(cues.filter((c) => c.id !== selCue.id).map((c) => (c.id === prev.id ? mergeCues(prev, selCue) : c)), true); setSelectedCue(prev.id) }
+  }
+  function deleteCue() {
+    if (!selCue) return
+    setCuesH(cues.filter((c) => c.id !== selCue.id), true)
+    setSelectedCue(null)
+  }
+  const patchCue = (patch: Partial<Cue>) => { if (selCue) setCuesH(cues.map((c) => (c.id === selCue.id ? { ...c, ...patch } : c))) }
+  const bleepMarks = useMemo(() => bleepRanges(words, bleeped), [words, bleeped])
+  const cueSpeakers = cues.reduce((m, c) => Math.max(m, c.speaker ?? 0), 0)
 
   const enabled = tracks.filter((tr) => !off.has(tr.id))
   const setMode = (mode: BlurMode) => setLook({ ...look, mode })
@@ -1088,6 +1208,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const saveTplIcon = <button class="icon-btn save-template-btn" aria-label={t('שמור כתבנית')} title={t('שמור כתבנית')} onClick={() => setSaveTpl(true)}><TemplateIcon size={22} /></button>
   const editTools = (
     <div class="edit-tools">
+            {safeAvailable && <button class={'icon-btn safe-toggle' + (safeOn ? ' on' : '')} aria-pressed={safeOn} aria-label={t('אזור בטוח')} title={t('אזור בטוח')} onClick={() => setSafeOn(!safeOn)}><SafeAreaIcon /></button>}
             <button class="icon-btn" disabled={past.current.length === 0 || !!following} aria-label={t('בטל')} title={t('בטל') + ' (Ctrl+Z)'} onClick={undo}><span class="flip"><UndoIcon /></span></button>
             <button class="icon-btn" disabled={future.current.length === 0 || !!following} aria-label={t('בצע שוב')} title={t('בצע שוב') + ' (Ctrl+Shift+Z)'} onClick={redo}><span class="flip"><RedoIcon /></span></button>
           </div>
@@ -1272,8 +1393,9 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           {!narrow && editTools}
           {narrow && <div class="export-bar">{editTools}{saveTplIcon}<button class="icon-btn settings-open" onClick={() => window.dispatchEvent(new Event('onit:settings'))} aria-label={t('הגדרות')} title={t('הגדרות')}><SettingsIcon size={22} /></button>{exportBtn}</div>}
         </div>
-        <div class={'screen' + (adding ? ' adding' : '') + (selected !== null ? ' sel' : '')} onPointerDown={onScreenDown} onPointerMove={onScreenMove} onPointerUp={onScreenUp} onPointerCancel={() => { press.current = null }}>
-          <div class="view" style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc(var(--screen-h) * ${(W / H).toFixed(4)}))` }}>
+        {safeAvailable && <SafeZoneBar open={safeOn} platform={safePlatform} frameWidth={frameW} onPick={choosePlatform} />}
+        <div class={'screen' + (adding ? ' adding' : '') + (selected !== null ? ' sel' : '')} onPointerDown={onScreenDown} onPointerMove={onScreenMove} onPointerUp={onScreenUp} onPointerCancel={(e) => { press.current = null; touches.current.delete(e.pointerId); if (touches.current.size < 2) pinch.current = null }}>
+          <div class="view" ref={viewBox} style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc(var(--screen-h) * ${(W / H).toFixed(4)}))` }}>
             <canvas ref={canvas} width={W} height={H} />
             <canvas ref={rings} class="layer" width={W} height={H} />
             <canvas ref={overlay} class="layer" width={W} height={H} />
@@ -1323,6 +1445,28 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             onClose={() => setSelected(null)}
           />
         )}
+        {selCue && !selTrack && (
+          <CueBar
+            cue={selCue}
+            hasNext={cueAtIdx >= 0 && cueAtIdx < sortedCues.length - 1}
+            hasPrev={cueAtIdx > 0}
+            open={cueOpen}
+            onOpen={setCueOpen}
+            sheet={phone}
+            speakers={cueSpeakers > 1 ? cueSpeakers : 0}
+            color={subStyle.color}
+            chosen={subStyle.speakerColors}
+            onStart={() => cueEdgeHere(true)}
+            onEnd={() => cueEdgeHere(false)}
+            onSplit={splitSelCue}
+            onMerge={mergeSelCue}
+            onDelete={deleteCue}
+            onText={(text) => patchCue({ text })}
+            onTranslation={(tr) => patchCue({ tr })}
+            onSpeaker={(sp) => patchCue({ speaker: sp })}
+            onClose={() => setSelectedCue(null)}
+          />
+        )}
         <Timeline
           file={file}
           duration={dur}
@@ -1334,10 +1478,24 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           sfx={sfx}
           sfxLength={sfxLength}
           selectedSfx={selectedSfx}
+          selectedCue={selCue ? selCue.id : null}
+          onSelectCue={selectCue}
+          onTrimCueStart={() => record(false)}
+          onTrimCue={(id, start, at) => {
+            setCues((cs) => {
+              const c = cs.find((x) => x.id === id)
+              if (!c) return cs
+              const [lo, hi] = cueRoom(cs, c, dur)
+              return cs.map((x) => (x.id === id ? retimeCue(x, start, at, lo, hi) : x))
+            })
+            seek(Math.min(dur, Math.max(0, at)))
+          }}
+          bleeps={bleepMarks}
+          speakerColor={(sp) => speakerColor(subStyle.color, sp, subStyle.speakerColors)}
           onScrub={(at) => { const v = video.current; if (v) v.currentTime = at }}
           onScrubStart={() => video.current?.pause()}
           selectedTrack={selected}
-          onSelectTrack={(id) => { setSelected(id === selected ? null : id); setSelectedSfx(null) }}
+          onSelectTrack={(id) => { setSelected(id === selected ? null : id); setSelectedSfx(null); setSelectedCue(null) }}
           onTrimStart={() => record(false)}
           onTrim={(id, start, at) => {
             const i = frameAt(times, start ? at : at - FRAME)
@@ -1346,7 +1504,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           }}
           cuts={cuts}
           cutStart={cutStart}
-          onSelectSfx={(id) => { setSelectedSfx(id); if (id !== null) setSelected(null) }}
+          onSelectSfx={(id) => { setSelectedSfx(id); if (id !== null) { setSelected(null); setSelectedCue(null) } }}
           onMoveSfx={(id, at) => updateSfx(id, { at })}
           controls={timelineControls}
         />
@@ -1372,6 +1530,21 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         {!tablet && groupBar}
         {/* One tree on every screen size (a phone turned past 600 px keeps a running job): the phone's panel, or on a wide screen a wrapper that is not there to the layout. */}
           <div hidden={narrow && !panelOpen} class={narrow ? 'panel' + (tab === 'subs' && part === 'style' ? ' has-inner' : '') : 'panel-flat'} data-g={tab} style={{ '--g': groupColor } as any}>
+            {/* A phone's panel takes the timeline's place: this thin scrubber stays over it (as the app's MiniScrubber), so moving through the video never means closing the panel. */}
+            {phone && !tablet && panelOpen && (
+              <input
+                type="range"
+                class="mini-scrubber"
+                dir="ltr"
+                min={0}
+                max={Math.max(0.01, dur)}
+                step="any"
+                value={Math.min(time, dur)}
+                aria-label={t('מיקום בסרטון')}
+                onPointerDown={() => video.current?.pause()}
+                onInput={(e) => { const v = video.current; if (v) { v.pause(); v.currentTime = Number((e.currentTarget as HTMLInputElement).value) } }}
+              />
+            )}
             <div class="panel-head" hidden={!narrow}>
               {!narrow ? null : subList.length > 0
                 ? <ChipTabs items={subList} value={part} onPick={(id) => setSubTab({ ...subTab, [tab]: id })} label={t(groupName)} />

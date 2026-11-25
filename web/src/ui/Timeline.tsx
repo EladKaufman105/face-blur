@@ -10,7 +10,8 @@ import type { ThumbsMessage, ThumbsRequest } from '../workers/thumbs.worker'
  * The timeline, as in the app: a fixed playhead in the middle and lanes under it (the video's
  * frames, the faces, the subtitles, the sound effects). Drag it (or swipe) to move through the
  * video, pinch or use −/+ to zoom; drag a sound to move it, tap one to select it, tap a blur to
- * select it (and drag its ends to shorten or lengthen it), tap a subtitle to go to it. The cut
+ * select it (and drag its ends to shorten or lengthen it), tap a subtitle to select it (and drag its
+ * ends to retime it) and move to it. The cut
  * stretches are shaded. Runs left to right in any language.
  */
 type Props = {
@@ -24,6 +25,15 @@ type Props = {
   sfx: SfxClip[]
   sfxLength: Map<string, number>
   selectedSfx: number | null
+  /** The selected subtitle (its edges have handles), and the way to select one and to move its edges (one undo step per drag). */
+  selectedCue?: number | null
+  onSelectCue?: (id: number) => void
+  onTrimCueStart?: () => void
+  onTrimCue?: (id: number, start: boolean, at: number) => void
+  /** The bleeped stretches of the sound (a mark above the subtitles, as the app's). */
+  bleeps?: { start: number; end: number }[]
+  /** A speaker's color (a bar under its subtitles); none when the subtitles have no speakers found. */
+  speakerColor?: (speaker: number) => string
   onScrub: (t: number) => void
   onScrubStart: () => void
   selectedTrack: number | null
@@ -201,10 +211,21 @@ export function Timeline(p: Props) {
           </div>
           {p.cues.length > 0 && (
             <div class="tl-lane tl-subs">
+              {(p.bleeps ?? []).map((b) => (
+                <span class="tl-bleep" style={{ left: `${x(b.start)}px`, width: `${Math.max(2, (b.end - b.start) * pps)}px` }} />
+              ))}
               {p.cues.map((c) => (
-                <button class="tl-cue" style={{ left: `${x(c.start)}px`, width: `${Math.max(6, (c.end - c.start) * pps)}px` }} onClick={() => p.onScrub(c.start + 0.01)} dir="auto">
-                  {c.text}
-                </button>
+                <CueBlock
+                  cue={c}
+                  left={x(c.start)}
+                  width={Math.max(6, (c.end - c.start) * pps)}
+                  pps={pps}
+                  selected={p.selectedCue === c.id}
+                  bar={c.speaker && c.speaker > 0 && p.speakerColor ? p.speakerColor(c.speaker) : null}
+                  onSelect={() => { p.onSelectCue?.(c.id); p.onScrub(c.start + 0.01) }}
+                  onTrimStart={() => p.onTrimCueStart?.()}
+                  onTrim={(start, at) => p.onTrimCue?.(c.id, start, clamp(at, 0, dur))}
+                />
               ))}
             </div>
           )}
@@ -288,6 +309,54 @@ function FaceBlock(p: { track: Track; left: number; width: number; a: number; b:
       title={p.off ? t('גלוי') : t('מטושטש')}
     >
       #{p.track.id + 1}
+      {p.selected && (
+        <>
+          <span class="tl-handle start" aria-label={t('התחלה')} {...handle(true)} />
+          <span class="tl-handle end" aria-label={t('סוף')} {...handle(false)} />
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A subtitle on the timeline, as in the app: tap to select it (and go to it); the selected one has
+ * handles at its ends, dragged to set when it shows and when it goes. Its text and its words stay.
+ */
+function CueBlock(p: { cue: Cue; left: number; width: number; pps: number; selected: boolean; bar: string | null; onSelect: () => void; onTrimStart: () => void; onTrim: (start: boolean, at: number) => void }) {
+  const drag = useRef<{ x: number; at: number; start: boolean } | null>(null)
+  const handle = (start: boolean) => ({
+    onPointerDown: (e: PointerEvent) => {
+      e.stopPropagation()
+      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+      drag.current = { x: e.clientX, at: start ? p.cue.start : p.cue.end, start }
+      p.onTrimStart()
+    },
+    onPointerMove: (e: PointerEvent) => {
+      const d = drag.current
+      if (!d) return
+      e.stopPropagation()
+      p.onTrim(d.start, d.at + (e.clientX - d.x) / p.pps)
+    },
+    onPointerUp: () => { drag.current = null },
+    onPointerCancel: () => { drag.current = null },
+  })
+  return (
+    <div
+      class={'tl-cue' + (p.selected ? ' on' : '')}
+      role="button"
+      tabIndex={0}
+      aria-pressed={p.selected}
+      data-id={p.cue.id}
+      data-a={p.cue.start.toFixed(3)}
+      data-b={p.cue.end.toFixed(3)}
+      style={{ left: `${p.left}px`, width: `${p.width}px` }}
+      onClick={p.onSelect}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); p.onSelect() } }}
+      dir="auto"
+    >
+      <span class="tl-cue-text">{p.cue.text}</span>
+      {p.bar && <span class="tl-cue-speaker" style={{ background: p.bar }} />}
       {p.selected && (
         <>
           <span class="tl-handle start" aria-label={t('התחלה')} {...handle(true)} />

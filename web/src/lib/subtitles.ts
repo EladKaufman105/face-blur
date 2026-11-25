@@ -11,6 +11,53 @@ export interface Cue {
   tr?: string
   /** Who says it (1..; none: like speaker 1). */
   speaker?: number
+  /**
+   * The stretch of the video whose words this subtitle holds, once its edges were moved by hand (until then it is
+   * start..end). The words (and the bleeps on them) stay where they were said: moving an edge changes when the text
+   * shows, never which words it holds.
+   */
+  ws?: number
+  we?: number
+}
+
+/** Where the words of [c] start (see [Cue.ws]). */
+export const winStart = (c: Cue) => c.ws ?? c.start
+/** Where the words of [c] end. */
+export const winEnd = (c: Cue) => c.we ?? c.end
+/** Whether the word starting at [at] is one of [c]'s. */
+export const holds = (c: Cue, at: number) => at >= winStart(c) - 0.01 && at < winEnd(c)
+
+/** The shortest a subtitle can be made by hand (as the app: 100 ms). */
+export const MIN_CUE = 0.1
+
+/** [c] with its edge moved to [at] (clamped to the video and the neighbours [lo], [hi]), its words kept. */
+export function retimeCue(c: Cue, start: boolean, at: number, lo: number, hi: number): Cue {
+  const ws = winStart(c), we = winEnd(c)
+  if (start) return { ...c, ws, we, start: Math.min(c.end - MIN_CUE, Math.max(lo, at)) }
+  return { ...c, ws, we, end: Math.max(c.start + MIN_CUE, Math.min(hi, at)) }
+}
+
+/** The room [c] has to move its edges in: the end of the one before it and the start of the one after (or the video's ends). */
+export function cueRoom(cues: Cue[], c: Cue, duration: number): [number, number] {
+  let lo = 0, hi = duration
+  for (const x of cues) {
+    if (x.id === c.id) continue
+    if (x.end <= c.start + 0.001) lo = Math.max(lo, x.end)
+    else if (x.start >= c.end - 0.001) hi = Math.min(hi, x.start)
+  }
+  return [lo, hi]
+}
+
+/** [a] and the cue after it as one (the text and translation joined, the words of both). */
+export function mergeCues(a: Cue, b: Cue): Cue {
+  const tr = a.tr || b.tr ? [a.tr ?? '', b.tr ?? ''].join(' ').trim() : undefined
+  const merged: Cue = { ...a, end: b.end, text: (a.text + ' ' + b.text).trim(), tr }
+  const ws = Math.min(winStart(a), winStart(b)), we = Math.max(winEnd(a), winEnd(b))
+  if (ws !== merged.start) merged.ws = ws
+  else delete merged.ws
+  if (we !== merged.end) merged.we = we
+  else delete merged.we
+  return merged
 }
 
 export type { SubShow, SubStyle } from './substyle'
@@ -152,12 +199,30 @@ export function shownText(c: Cue, text: string, show: SubShow | undefined): stri
 export function splitCue(cue: Cue, at: number, words: Word[]): [Cue, Cue] | null {
   const a = cue.text.slice(0, at).trim(), b = cue.text.slice(at).trim()
   if (!a || !b) return null
-  const inCue = words.filter((w) => w.start >= cue.start - 0.01 && w.start < cue.end)
+  const inCue = words.filter((w) => holds(cue, w.start))
   const before = a.split(/\s+/).length
   const len = cue.end - cue.start
-  let t = inCue.length === a.split(/\s+/).length + b.split(/\s+/).length ? inCue[before].start : cue.start + len * (a.length / (a.length + b.length))
+  const exact = inCue.length === a.split(/\s+/).length + b.split(/\s+/).length ? inCue[before].start : null
+  let t = exact ?? cue.start + len * (a.length / (a.length + b.length))
   t = Math.min(cue.end - 0.2, Math.max(cue.start + 0.2, t))
-  return [{ ...cue, end: t, text: a, tr: undefined }, { ...cue, id: newCueId(), start: t, text: b, tr: undefined, speaker: cue.speaker }]
+  const first: Cue = { ...cue, end: t, text: a, tr: undefined }
+  const second: Cue = { ...cue, id: newCueId(), start: t, text: b, tr: undefined, speaker: cue.speaker }
+  // A cue whose edges were moved keeps its words' stretch: it is shared out at the word where the text splits.
+  if (cue.ws !== undefined || cue.we !== undefined) { const w = exact ?? t; first.we = w; second.ws = w }
+  return [first, second]
+}
+
+/** [cue] split at the playhead [time]: before the first word that starts at or after it (as the app's split at the word nearest to the playhead). */
+export function splitCueAtTime(cue: Cue, time: number, words: Word[]): [Cue, Cue] | null {
+  const tokens = [...cue.text.matchAll(/\S+/g)]
+  const inCue = words.filter((w) => holds(cue, w.start))
+  let k = inCue.filter((w) => w.start < time - 0.02).length
+  if (tokens.length < 2) return null
+  // With no timed words (or words that do not match the text): by the playhead's place in the time.
+  if (inCue.length !== tokens.length) k = Math.round(tokens.length * Math.min(1, Math.max(0, (time - cue.start) / Math.max(0.001, cue.end - cue.start))))
+  k = Math.min(tokens.length - 1, Math.max(1, k))
+  const at = tokens[k].index!
+  return splitCue(cue, at, words)
 }
 
 /** The cue's text with its bleeped words as **** (the words timed inside the cue). */
@@ -166,7 +231,7 @@ export function maskCue(cue: Cue, words: Word[], bleeped: Set<number>): string {
   let text = cue.text
   let from = 0
   words.forEach((w, k) => {
-    if (w.start < cue.start - 0.01 || w.start >= cue.end) return
+    if (!holds(cue, w.start)) return
     const word = w.text.trim()
     const at = text.indexOf(word, from)
     if (at < 0) return

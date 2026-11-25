@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { storageKey } from '../lib/channel'
+import { lastLogo, readLogo, saveLogo } from '../lib/logostore'
 import { t, duration } from '../i18n'
 import { decodeSound, forgetSfx, MAX_IMPORT_SEC, previewSfx, sfxName, SFX_GROUPS, USER_SFX, type SfxClip } from '../lib/sfx'
 import { NO_WATERMARK, normalizeWatermark, POSITIONS, type Watermark, type WatermarkLook } from '../lib/watermark'
@@ -7,7 +8,7 @@ import { fontFamily, SUB_COLORS, SUB_FONTS } from '../lib/substyle'
 import { FontAxes } from './FontAxes'
 import { AddIcon, CloseIcon, CutIcon, DeleteIcon, MergeIcon, PlayIcon } from './icons'
 import { deleteSound, listSounds, saveSound } from '../lib/projects'
-import { LANGUAGES, isNoise, newCueId, parseSrt, splitCue, toSrt, wordsToCues, type Cue, type SubShow, type SubStyle, type Word } from '../lib/subtitles'
+import { LANGUAGES, holds, isNoise, mergeCues, newCueId, parseSrt, splitCue, toSrt, wordsToCues, type Cue, type SubShow, type SubStyle, type Word } from '../lib/subtitles'
 import { SubStyleCard } from './SubStyleCard'
 import { canTranslate, guessLang, LANG_NAMES, translateAll } from '../lib/translate'
 import { MAX_SPEAKERS } from '../lib/speakers'
@@ -253,7 +254,8 @@ function TranslateCard({ cues, onCues, show, onShow, onBusy, onAttention }: { cu
 export function loadWatermark(): Watermark {
   try {
     const w = JSON.parse(localStorage.getItem(storageKey('watermark')) ?? 'null')
-    if (w && typeof w.text === 'string') return { ...normalizeWatermark(w), image: null }
+    // The logo's picture is kept apart (lib/logostore.ts): the choices say whether it is the one in use.
+    if (w && typeof w.text === 'string') return { ...normalizeWatermark(w), image: w.logo === true ? lastLogo() : null }
   } catch {}
   return NO_WATERMARK
 }
@@ -267,14 +269,18 @@ export function WatermarkTab({ mark, onChange, template }: { mark: Watermark; on
   const set = (patch: Partial<Watermark>) => {
     const w = { ...mark, ...patch }
     onChange(w)
-    if (!template) try { localStorage.setItem(storageKey('watermark'), JSON.stringify({ ...w, image: null })) } catch {}
+    if (!template) {
+      // The picture goes to the browser's storage (IndexedDB), the rest of the choices to localStorage.
+      if (w.image && w.image !== lastLogo()) void saveLogo(w.image)
+      try { localStorage.setItem(storageKey('watermark'), JSON.stringify({ ...w, image: null, logo: !!w.image })) } catch {}
+    }
   }
   return (
     <section class="card">
       <h3 class="section-title">{t('סימן מים')}</h3>
       <div class="seg" style="grid-template-columns:1fr 1fr">
         <button class={!mark.image ? 'on' : ''} onClick={() => set({ image: null })}>{t('טקסט')}</button>
-        <button class={mark.image ? 'on' : ''} onClick={() => file.current?.click()}>{t('לוגו')}</button>
+        <button class={mark.image ? 'on' : ''} onClick={() => { const last = lastLogo(); if (last && !mark.image) set({ image: last }); else file.current?.click() }}>{t('לוגו')}</button>
       </div>
       <input
         ref={file}
@@ -283,11 +289,8 @@ export function WatermarkTab({ mark, onChange, template }: { mark: Watermark; on
         hidden
         onChange={(e) => {
           const f = (e.currentTarget as HTMLInputElement).files?.[0]
-          if (f && template) {
-            const r = new FileReader()
-            r.onload = () => set({ image: String(r.result) })
-            r.readAsDataURL(f)
-          } else if (f) set({ image: URL.createObjectURL(f) })
+          // A data URL, not an object URL: it is kept with the project and the template, and comes back when the page is opened again.
+          if (f) readLogo(f).then((image) => set({ image })).catch(() => {})
           ;(e.currentTarget as HTMLInputElement).value = ''
         }}
       />
@@ -444,8 +447,7 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
     const k = sorted.findIndex((x) => x.id === c.id)
     const n = sorted[k + 1]
     if (!n) return
-    const tr = c.tr || n.tr ? [c.tr ?? '', n.tr ?? ''].join(' ').trim() : undefined
-    onCues(cues.filter((x) => x.id !== n.id).map((x) => (x.id === c.id ? { ...x, end: n.end, text: (x.text + ' ' + n.text).trim(), tr } : x)), true)
+    onCues(cues.filter((x) => x.id !== n.id).map((x) => (x.id === c.id ? mergeCues(x, n) : x)), true)
   }
   // How the subtitles are cut (as the app's): by spoken words or by characters, up to whole sentences.
   const [byChars, setByChars] = useState(false)
@@ -713,7 +715,7 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
                   </div>
                   {bleeping && words.length > 0 ? (
                     <div class="word-chips" dir="auto">
-                      {words.map((w, k) => (w.start >= c.start - 0.01 && w.start < c.end ? (
+                      {words.map((w, k) => (holds(c, w.start) ? (
                         <button class={'word' + (bleeped.has(k) ? ' on' : '')} onClick={() => {
                           const n = new Set(bleeped)
                           if (n.has(k)) n.delete(k)

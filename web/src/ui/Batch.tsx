@@ -145,7 +145,7 @@ export function BatchSetup({ onBack, onStarted, initial }: { onBack: () => void;
         <input ref={input} class="batch-input" type="file" accept="video/*" multiple hidden onChange={(e) => { add((e.currentTarget as HTMLInputElement).files); (e.currentTarget as HTMLInputElement).value = '' }} />
       </section>
 
-      <TemplatePicker frame={frame} base={baseline} current={tplId} onPick={pick} settings={settings} onSettings={setSettings} />
+      <TemplatePicker frame={frame} base={baseline} current={tplId} onPick={pick} settings={settings} onSettings={setSettings} onEdited={pick} />
 
       <section class="card batch-before">
         <h3 class="section-title">{t('לפני שמתחילים')}</h3>
@@ -268,6 +268,7 @@ export function BatchQueue({ onHome, onCheck }: { onHome: () => void; onCheck: (
             </div>
             {!isDone(i) && i.status !== 'waiting' && <div class="progress" style="margin-top:8px"><div style={{ width: `${Math.max(3, Math.floor(i.progress * 100))}%` }} /></div>}
             {i.status === 'failed' && i.error && <p class="small batch-error" style="margin:6px 0 0;color:#e5484d">{i.error}</p>}
+            {i.lowConfidence && i.status !== 'skipped' && i.status !== 'failed' && <p class="small batch-lowconf" style="margin:6px 0 0;color:var(--primary)">{t('זיהוי לא בטוח')}: {t('כדאי לבדוק את הפנים בעורך.')}</p>}
             {i.notes.map((n) => <p class="small batch-note" style="margin:6px 0 0;color:var(--primary)">{t('שלב בתבנית לא הושלם')}: {n}</p>)}
             {isDone(i) && i.status !== 'skipped' && (
               <div class="actions batch-item-acts" style="margin-top:8px">

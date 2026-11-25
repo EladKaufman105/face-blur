@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks'
 import { t, duration } from '../i18n'
 import { addCut, CUT_JOIN, covers, cutAt, cutTotal, uncut, type Range } from '../lib/cutmap'
-import type { Cue, Word } from '../lib/subtitles'
+import { holds, type Cue, type Word } from '../lib/subtitles'
 import { CutIcon } from './icons'
 
 /** A spoken word's stretch (a word without a length gets the app's 80 ms). */
@@ -9,7 +9,7 @@ export const wordSpan = (w: Word): Range => [w.start, Math.max(w.end, w.start + 
 
 /** The recognized words a subtitle shows. */
 export function cueWords(c: Cue, words: Word[]): Word[] {
-  return words.filter((w) => w.start >= c.start - 0.05 && w.start < c.end)
+  return words.filter((w) => holds(c, w.start))
 }
 
 type Props = {

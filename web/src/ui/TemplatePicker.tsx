@@ -5,6 +5,8 @@ import { allTemplates, findTemplate, isEdited, renameTemplate, storeFailed, temp
 import { applyTemplate, type Template, type TemplateSettings } from '../lib/template'
 import { storageKey } from '../lib/channel'
 import { SwitchRow } from './EditorTabs'
+import { TemplateEditor } from './TemplateEditor'
+import { EditIcon } from './icons'
 import { TemplatePreview } from './TemplatePreview'
 import './templates-en'
 
@@ -18,6 +20,8 @@ type Props = {
   /** The settings now (the template's laid over the base, and the user's changes). */
   settings: TemplateSettings
   onSettings: (s: TemplateSettings) => void
+  /** The chosen template was edited and saved here: take it again, with its new settings. */
+  onEdited?: (id: string) => void
 }
 
 /** The name of [t] as shown: the built-in looks' are Hebrew and translated. */
@@ -28,10 +32,11 @@ export const templateLabel = (tp: Template) => (tp.builtIn ? t(tp.name) : tp.nam
  * like (the web's own subtitle and blur drawing, on the video's frame). Under it, the switch for
  * creating subtitles that a look turns on, and the speech's language.
  */
-export function TemplatePicker({ frame, base, current, onPick, settings, onSettings }: Props) {
+export function TemplatePicker({ frame, base, current, onPick, settings, onSettings, onEdited }: Props) {
   void templatesLoaded.value
   const list = allTemplates.value
   const [renaming, setRenaming] = useState<string | null>(null)
+  const [editing, setEditing] = useState<Template | null>(null)
   const card = (id: string | null, name: string, s: TemplateSettings, subs: boolean, badge?: string) => (
     <button class={'tpl-card' + (current === id ? ' on' : '')} role="radio" aria-checked={current === id} data-tpl={id ?? 'none'} onClick={() => { setRenaming(null); onPick(id) }}>
       <TemplatePreview s={s} frame={frame} subs={subs} height={120} />
@@ -64,6 +69,12 @@ export function TemplatePicker({ frame, base, current, onPick, settings, onSetti
         <p class="small muted" style="margin:0">{t('בלי תבנית: ההגדרות נשארות כמו שהן.')}</p>
       ) : (
         <>
+          {own && (
+            <div class="row tpl-chosen">
+              <strong class="grow small tpl-chosen-name"><bdi>{templateLabel(own)}</bdi></strong>
+              <button class="btn tonal small-btn tpl-edit-chosen" onClick={() => { setRenaming(null); setEditing(own) }}><EditIcon size={18} /> {t('עריכה')}</button>
+            </div>
+          )}
           {ownName && (
             renaming === null ? (
               <div class="row tpl-own">
@@ -93,6 +104,7 @@ export function TemplatePicker({ frame, base, current, onPick, settings, onSetti
           )}
         </>
       )}
+      {editing && <TemplateEditor key={editing.id} template={editing} onClose={() => setEditing(null)} onSaved={(id) => onEdited?.(id)} />}
     </section>
   )
 }
