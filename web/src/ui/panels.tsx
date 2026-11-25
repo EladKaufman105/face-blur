@@ -28,6 +28,7 @@ export function subsOf(group: string, c: SubCtx): Sub[] {
   switch (group) {
     case 'faces': return c.hasFaces ? [['list', 'טשטוש פנים'], ['look', 'מראה'], ['manual', 'טשטוש ידני']] : [['list', 'טשטוש פנים'], ['manual', 'טשטוש ידני']]
     case 'edit': return [['cut', 'חיתוך'], ['steady', 'ייצוב']]
+    // 'רקע\u200E' (an invisible left-to-right mark after it) is its own translation key: plain 'רקע' is the subtitle "Box" in English, here it reads "Background" (the same trick as in Projects).
     case 'picture': return [['bg', 'רקע\u200E'], ['frame', 'פורמט']]
     case 'subs': return [['make', 'יצירה ותרגום'], ...(c.hasCues ? [['list', 'רשימה'] as Sub] : []), ...(c.hasCues && c.hasWords ? [['bleep', 'צפצוף מילים'] as Sub] : []), ['style', 'עיצוב']]
     case 'sound': return [['clean', 'ניקוי קול'], ['voice', 'שינוי קול'], ['sfx', 'אפקטים קוליים']]
@@ -55,7 +56,9 @@ export function ChipTabs({ items, value, onPick, cls, label }: { items: Sub[]; v
     // The next chip is the one further along the reading direction.
     const step = k === 'ArrowRight' ? (rtl ? -1 : 1) : k === 'ArrowLeft' ? (rtl ? 1 : -1) : 0
     const to = k === 'Home' ? 0 : k === 'End' ? items.length - 1 : (at + step + items.length) % items.length
+    // Not also a frame step of the video (the editor's own arrow keys).
     e.preventDefault()
+    e.stopPropagation()
     onPick(items[to][0])
     setTimeout(() => (row.querySelectorAll('[role=tab]')[to] as HTMLElement | undefined)?.focus(), 0)
   }

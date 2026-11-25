@@ -136,7 +136,7 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
           <button class="btn primary blur-faces" onClick={() => onBlur(look, current())}><FaceIcon /> {tpl?.blurOff ? t('פתח בעורך') : t('טשטש פנים')}</button>
           <p class="small muted">{tpl?.blurOff ? t('בלי טשטוש פנים: ייפתח העורך, והתבנית תחול על הסרטון.') : t('הפנים יזוהו ויטושטשו, ואז ייפתח העורך לבדיקה ולתיקון לפני השמירה.')}</p>
           <button class="btn ghost blur-save" disabled={!meta} onClick={() => setSheet(true)}>{tpl?.blurOff ? t('או: שמור ישר, בלי עורך') : t('או: טשטש ושמור ישר, בלי עורך')}</button>
-          {tpl?.blurOff && <p class="small batch-noblur ready-noblur" role="alert" style="margin:0;color:#e5484d;font-weight:700">{t('הפנים לא יטושטשו בסרטון הזה: בתבנית הזו אין טשטוש פנים.')}</p>}
+          {tpl?.blurOff && <p class="small batch-noblur ready-noblur" role="alert" style="margin:0;color:var(--danger-text);font-weight:700">{t('הפנים לא יטושטשו בסרטון הזה: בתבנית הזו אין טשטוש פנים.')}</p>}
         </section>
 
         {!tpl?.blurOff && <section class="card fold">

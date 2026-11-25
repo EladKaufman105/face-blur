@@ -71,35 +71,63 @@ async function open(b, viewport, mobile, locale = 'he-IL', tool) {
         if (m.screenTop < 0 || m.screenBottom > m.tabsTop || m.screenH < 90) fail(`${label}: the video is not in view: ${JSON.stringify(m)}`)
         if (m.bodyEmpty) fail(label + ': the panel is empty')
         if (m.moreOptions.some((n) => n === 0)) fail(label + ': "more options" is empty')
+        if (m.panelOver) fail(label + ': the panel body scrolls sideways')
         if (m.small.length) fail(`${label}: targets under 44 px: ${m.small.slice(0, 6)}`)
         await p.screenshot({ path: `${out}/${label.replace(/[^\w]+/g, '_')}.png` })
       }
-      const groups = ['faces', 'edit', 'picture', 'sound', 'mark', 'subs']
-      for (const g of groups) {
-        await p.click(`.tabs button[data-g=${g}]`)
+      // A tool opens at its top, whatever the one before was scrolled to.
+      const where = () => p.evaluate(() => [...document.querySelectorAll('.tabs [aria-selected=true], .panel [role=tab][aria-selected=true]')].map((e) => e.dataset.g || e.dataset.sub).join('/'))
+      const go = async (sel, label) => {
+        await p.evaluate(() => { const e = document.querySelector('.panel-body'); if (e) e.scrollTop = 1e5 })
+        const before = await where()
+        await p.click(sel)
         await p.waitForTimeout(300)
-        const subs = await p.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))
-        if (g === 'mark' && subs.length) fail('the watermark has tools of its own')
-        if (g !== 'mark' && subs.length < 2) fail(g + ': no tools to pick from')
-        await check(g)
-        for (const sub of subs) {
-          await p.click(`.panel-head [data-sub=${sub}]`)
-          await p.waitForTimeout(300)
-          await check(`${g}/${sub}`)
-          if (g === 'subs' && sub === 'style') {
-            for (const sp of await p.$$eval('.subtabs.inner [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
-              await p.click(`.subtabs.inner [data-sub=${sp}]`)
-              await p.waitForTimeout(300)
-              await check(`subs/style/${sp}`)
+        const top = await p.evaluate(() => document.querySelector('.panel-body').scrollTop)
+        if ((await where()) !== before && top !== 0) fail(`${label}: opened scrolled (${top} px)`)
+      }
+      const sweep = async () => {
+        for (const g of ['faces', 'edit', 'picture', 'sound', 'mark', 'subs']) {
+          await go(`.tabs button[data-g=${g}]`, g)
+          const subs = await p.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))
+          if (g === 'mark' && subs.length) fail('the watermark has tools of its own')
+          if (g !== 'mark' && subs.length < 2) fail(g + ': no tools to pick from')
+          await check(g)
+          for (const sub of subs) {
+            await go(`.panel-head [data-sub=${sub}]`, `${g}/${sub}`)
+            await check(`${g}/${sub}`)
+            if (g === 'subs' && sub === 'style') {
+              for (const sp of await p.$$eval('.subtabs.inner [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
+                await go(`.subtabs.inner [data-sub=${sp}]`, `subs/style/${sp}`)
+                await check(`subs/style/${sp}`)
+              }
             }
           }
         }
       }
+      const withBlurSelected = async () => {
+        await p.click('.tabs button[data-g=faces]')
+        await p.click('.tl-face >> nth=0')
+        await p.waitForSelector('.ctx-bar', { timeout: 5000 })
+        await check('faces with a blur selected')
+        const room = await p.evaluate(() => ({ bottom: document.querySelector('.tabs').getBoundingClientRect().bottom, vh: document.documentElement.clientHeight }))
+        if (room.bottom < room.vh - 8) fail('the editor does not fit the screen: ' + JSON.stringify(room))
+        await p.click('.ctx-bar button:last-child')
+      }
+      await sweep()
+      // The arrow keys move between tools, and do not also step the video.
+      await p.click('.tabs button[data-g=faces]')
+      await p.focus('.panel-head [role=tab][aria-selected=true]')
+      const t0 = await p.evaluate(() => document.querySelector('video').currentTime)
+      await p.keyboard.press('ArrowRight')
+      await p.waitForTimeout(300)
+      const arrow = await p.evaluate(() => ({ t: document.querySelector('video').currentTime, on: document.querySelector('.panel-head [role=tab][aria-selected=true]')?.dataset.sub }))
+      if (arrow.t !== t0) fail('an arrow key on a tool also stepped the video: ' + JSON.stringify([t0, arrow]))
+      if (arrow.on === 'list') fail('the arrow key did not move to another tool')
       // with subtitles (an SRT): the list shows, and the tools in "create and translate" are there
       await p.click('.tabs button[data-g=subs]')
       await p.click('.panel-head [data-sub=make]')
       await p.setInputFiles('.srt-import input', `${out}/in.srt`)
-      await p.waitForSelector('.panel-head [data-sub=list]')
+      await p.waitForSelector('.panel-head [data-sub=list][aria-selected=true]', { timeout: 5000 }).catch(() => fail('the list does not open after an SRT is imported'))
       for (const sub of ['make', 'list', 'style']) {
         await p.click(`.panel-head [data-sub=${sub}]`)
         await p.waitForTimeout(300)
@@ -114,19 +142,18 @@ async function open(b, viewport, mobile, locale = 'he-IL', tool) {
       if (he && !(await p.$('.panel-body .btn:has-text("מחק כתוביות")'))) fail('no "delete subtitles" in create and translate')
 
 
-      // a blur selected (the bar for it shows under the timeline): nothing overlaps
-      await p.click('.tabs button[data-g=faces]')
-      await p.click('.tl-face >> nth=0').catch(() => {})
-      await p.waitForTimeout(400)
-      await check('faces with a blur selected')
-      // the video keeps most of the room: no gap under the groups, a picture of a real size
-      const room = await p.evaluate(() => ({ bottom: document.querySelector('.tabs').getBoundingClientRect().bottom, vh: document.documentElement.clientHeight }))
-      if (room.bottom < room.vh - 8) fail('the editor does not fit the screen: ' + JSON.stringify(room))
+      // a blur selected (its bar shows under the timeline): nothing overlaps; the other two phones, one page and one detection
+      await withBlurSelected()
+      for (const vp of [{ width: 360, height: 740 }, { width: 412, height: 915 }]) {
+        await p.setViewportSize(vp)
+        await p.waitForTimeout(500)
+        console.log('==', vp.width, 'x', vp.height, locale)
+        await sweep()
+        await withBlurSelected()
+      }
       await p.context().close()
     }
-    for (const vp of [{ width: 390, height: 844 }, { width: 360, height: 740 }, { width: 412, height: 915 }]) {
-      for (const locale of ['he-IL', 'en-US']) await phone(vp, locale)
-    }
+    for (const locale of ['he-IL', 'en-US']) await phone({ width: 390, height: 844 }, locale)
 
     // ---- an editor opened with no face detection: no empty "look" tool, the rest as usual
     for (const locale of ['he-IL', 'en-US']) {

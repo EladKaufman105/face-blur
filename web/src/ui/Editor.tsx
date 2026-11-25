@@ -148,6 +148,9 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const narrow = useNarrow()
   const [subTab, setSubTab] = useState<Record<string, string>>({})
   const [styleTab, setStyleTab] = useState('looks')
+  // One panel body serves every group and tool: each opens at its top.
+  const bodyRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => { bodyRef.current?.scrollTo(0, 0) }, [tab, subTab[tab], styleTab])
   const [cues, setCues] = useState<Cue[]>(saved?.cues ?? [])
   const [words, setWords] = useState<Word[]>(saved?.words ?? [])
   const [bleeped, setBleeped] = useState<Set<number>>(() => new Set(saved?.bleeped ?? []))
@@ -1157,6 +1160,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           <SubtitlesTab
             part={narrow ? (part as 'make' | 'list' | 'bleep' | 'style') : undefined}
             stylePart={styleTab}
+            onPart={(p) => setSubTab((s) => ({ ...s, subs: p }))}
             file={file}
             cues={cues}
             onCues={setCuesH}
@@ -1200,7 +1204,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         }}
       />
     )}
-    <main class={'editor' + (narrow ? ' narrow' : '')} style={detecting || hidden ? 'display:none' : ''}>
+    <main class={'editor' + (narrow && !detecting && !hidden ? ' narrow' : '')} style={detecting || hidden ? 'display:none' : ''}>
       <div class="player">
         <div class="row">
           <button class="btn ghost" onClick={onClose} style="padding-inline:6px"><span class="flip"><BackIcon /></span> {t('סרטון חדש')}</button>
@@ -1323,7 +1327,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
                 : <h2 class="panel-title">{t(groupName)}</h2>}
             </div>
             {tab === 'subs' && part === 'style' && <ChipTabs items={STYLE_PARTS} value={styleTab} onPick={setStyleTab} cls="inner" label={t('עיצוב כתוביות')} />}
-            <div class="panel-body" id={PANEL_ID} role="tabpanel" aria-labelledby={subList.length > 0 ? `tab-${tab === 'subs' && part === 'style' ? 'inner' : 'tool'}-${tab === 'subs' && part === 'style' ? styleTab : part}` : undefined} aria-label={subList.length > 0 ? undefined : t(groupName)}>{panelBody}</div>
+            <div class="panel-body" ref={bodyRef} id={PANEL_ID} role="tabpanel" aria-labelledby={subList.length > 0 ? `tab-${tab === 'subs' && part === 'style' ? 'inner' : 'tool'}-${tab === 'subs' && part === 'style' ? styleTab : part}` : undefined} aria-label={subList.length > 0 ? undefined : t(groupName)}>{panelBody}</div>
           </div>
         ) : panelBody}
         <details class="keys">

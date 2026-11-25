@@ -102,7 +102,7 @@ export function SoundTab({ clips, time, onChange, onSeek, voice, onVoice, voiceB
     <>
       {(!part || part === 'voice') && <section class="card">
         <h3 class="section-title">{t('שינוי קול')}</h3>
-        <div class="chips">
+        <div class="chips wrap">
           {VOICES.map((v) => (
             <button class={'chip' + (voice === v.id ? ' on' : '')} onClick={() => onVoice(v.id)}>{t(v.label)}</button>
           ))}
@@ -111,7 +111,7 @@ export function SoundTab({ clips, time, onChange, onSeek, voice, onVoice, voiceB
       </section>}
       {(!part || part === 'sfx') && <section class="card">
         <h3 class="section-title">{t('אפקטים קוליים')}</h3>
-        <div class="chips">
+        <div class="chips wrap">
           {SFX_GROUPS.map((g, k) => (
             <button class={'chip' + (k === group ? ' on' : '')} onClick={() => setGroup(k)}>{t(g.label)}</button>
           ))}
@@ -361,9 +361,9 @@ function SpeechNote() {
 }
 
 /** Subtitles: made on the device from the speech, then edited, styled and saved as SRT too. */
-export function SubtitlesTab({ part, stylePart, file, cues, onCues, words, onReplace, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
+export function SubtitlesTab({ part, stylePart, onPart, file, cues, onCues, words, onReplace, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
   /** On a phone: the sub-tool shown ('make', 'list' or 'style'); on a wide screen all of them. */
-  part?: 'make' | 'list' | 'bleep' | 'style'; stylePart?: string
+  part?: 'make' | 'list' | 'bleep' | 'style'; stylePart?: string; onPart?: (p: 'list') => void
   /** [step]: a change of its own for undo (not merged with the typing around it). */
   file: File; cues: Cue[]; onCues: (c: Cue[], step?: boolean) => void; words: Word[]
   /** The subtitles, their words and the bleeped words replaced together, as one undo step. */
@@ -373,6 +373,8 @@ export function SubtitlesTab({ part, stylePart, file, cues, onCues, words, onRep
 }) {
   const show = (k: 'make' | 'list' | 'bleep' | 'style') => !part || part === k
   const [bleepMode, setBleepMode] = useState(false)
+  // On a phone the word picking belongs to the bleep tool: the list shows plain text again when it is left.
+  const bleeping = bleepMode && (!part || part === 'bleep')
   const [findOpen, setFindOpen] = useState(false)
   const [find, setFind] = useState('')
   const [repl, setRepl] = useState('')
@@ -509,6 +511,7 @@ export function SubtitlesTab({ part, stylePart, file, cues, onCues, words, onRep
     setBleepMode(false)
     onReplace(list, [], new Set())
     onSeek(Math.min(...list.map((c) => c.start)) + 0.01)
+    onPart?.('list')
   }
   const importSrt = busy ? null : (
     <>
@@ -683,7 +686,7 @@ export function SubtitlesTab({ part, stylePart, file, cues, onCues, words, onRep
                     <button class="time-btn" onClick={() => onSeek(c.start + 0.01)} dir="ltr">{duration(c.start)}</button>
                     {speakers > 1 && <SpeakerDot speaker={c.speaker} color={style.color} chosen={style.speakerColors} max={Math.min(MAX_SPEAKERS, speakers + 1)} onChange={(sp) => onCues(cues.map((x) => (x.id === c.id ? { ...x, speaker: sp } : x)), true)} />}
                   </div>
-                  {bleepMode && words.length > 0 ? (
+                  {bleeping && words.length > 0 ? (
                     <div class="word-chips" dir="auto">
                       {words.map((w, k) => (w.start >= c.start - 0.01 && w.start < c.end ? (
                         <button class={'word' + (bleeped.has(k) ? ' on' : '')} onClick={() => {
@@ -719,7 +722,7 @@ export function SubtitlesTab({ part, stylePart, file, cues, onCues, words, onRep
                     </div>
                   )}
                 </div>
-                {isOpen && !bleepMode && (
+                {isOpen && !bleeping && (
                   <div class="cue-acts">
                     <button class="btn tonal small-btn cue-split" onClick={() => splitAt(c)}><CutIcon size={18} /> {t('פצל כאן')}</button>
                     <button class="btn tonal small-btn cue-merge" onClick={() => mergeNext(c)}><MergeIcon size={18} /> {t('חבר עם הבאה')}</button>

@@ -57,7 +57,7 @@ function StyleCard({ style, onStyle, file, part }: { style: SubStyle; onStyle: (
       {!part && <summary>{t('כוונון ידני')}</summary>}
 
 {P('font') && <>
-      <h4 class="caption">{t('גופן')}</h4>
+      <h4 class="caption tab-name">{t('גופן')}</h4>
       <div class="chips fonts">
         {SUB_FONTS.map((f) => (
           <button class={'chip' + (!style.customFont && style.font === f.id ? ' on' : '')} style={{ fontFamily: fontFamily({ ...DEFAULT_SUB_STYLE, font: f.id }) }} onClick={() => set({ font: f.id, customFont: null, weight: 0, round: undefined })}>
@@ -90,7 +90,7 @@ function StyleCard({ style, onStyle, file, part }: { style: SubStyle; onStyle: (
 
 </>}
 {P('effect') && <>
-      <h4 class="caption">{t('אפקט')}</h4>
+      <h4 class="caption tab-name">{t('אפקט')}</h4>
       <div class="chips effects">
         {SUB_EFFECTS.map(([e, label]) => (
           <button class={'chip' + (style.effect === e ? ' on' : '')} onClick={() => set({ effect: e })}>{t(label)}</button>
@@ -146,7 +146,7 @@ function StyleCard({ style, onStyle, file, part }: { style: SubStyle; onStyle: (
 
 </>}
 {P('layout') && <>
-      <h4 class="caption">{t('גודל ומיקום')}</h4>
+      <h4 class="caption tab-name">{t('גודל ומיקום')}</h4>
       <div class="slider-row">
         <label>{t('גודל')}</label>
         <input type="range" min={0.6} max={2.2} step={0.05} value={style.size} onInput={(e) => set({ size: Number((e.currentTarget as HTMLInputElement).value) })} />
