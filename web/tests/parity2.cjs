@@ -287,6 +287,7 @@ function png(w, h, [r, g, b, a]) {
       // Off again: the mock goes.
       await p.click('.safe-toggle')
       await p.waitForFunction(() => document.querySelector('.safe-strip')?.getBoundingClientRect().height < 2)
+      await p.waitForTimeout(900)
       const off2 = await overlay(p)
       if (off2.n > off.n + 5) fail('the mock stays with the switch off')
       await p.context().close()
