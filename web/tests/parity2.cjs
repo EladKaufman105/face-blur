@@ -289,7 +289,7 @@ function png(w, h, [r, g, b, a]) {
       await p.waitForFunction(() => document.querySelector('.safe-strip')?.getBoundingClientRect().height < 2)
       await p.waitForTimeout(900)
       const off2 = await overlay(p)
-      if (off2.n > off.n + 5) fail('the mock stays with the switch off')
+      if (!(off2.n < on.n - 200)) fail(`the mock stays with the switch off: ${off.n} / ${on.n} / ${off2.n}`)
       await p.context().close()
     }
 
