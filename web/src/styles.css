@@ -859,8 +859,8 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .panel-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px 0; }
   .panel-head .subtabs { flex: 1; }
   .panel-title { margin: 0; flex: 1; min-height: 44px; display: flex; align-items: center; padding-inline: 6px; font: var(--text-heading); color: var(--g); }
-  .panel .subtabs.inner { padding: 4px 8px 0; flex-wrap: nowrap; gap: 3px; overflow-x: auto; scrollbar-width: none; }
-  .panel .subtabs.inner .chip { padding-inline: 7px; font-size: 12px; }
+  .panel .subtabs.inner { padding: 4px 8px 0; flex-wrap: nowrap; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+  .panel .subtabs.inner .chip { padding-inline: 6px; font-size: 12px; }
   .subtabs { flex-wrap: wrap; overflow: visible; }
   .panel .subtabs .chip { min-height: 44px; padding-inline: 11px; font-size: 13px; }
   .panel .subtabs .chip.on { background: color-mix(in srgb, var(--g) 22%, transparent); color: var(--g); border-color: var(--g); }

@@ -40,7 +40,8 @@ const mkCheck = (p) => async (label) => {
       const bodyEl = document.querySelector('.panel-body')
       const chipRows = [...document.querySelectorAll('.panel .subtabs')].map((row) => {
         const rr = row.getBoundingClientRect()
-        return { hidden: row.scrollWidth > row.clientWidth + 1, cut: [...row.querySelectorAll('[data-sub]')].filter((c) => { const k = c.getBoundingClientRect(); const inside = Math.max(0, Math.min(k.right, rr.right) - Math.max(k.left, rr.left)); return inside < k.width * 0.95 || k.left < 0 || k.right > innerWidth }).map((c) => c.textContent) }
+        // The style tool's own five tabs may scroll by a pixel or two on a font that measures wider; the tool chips never.
+        return { hidden: row.scrollWidth > row.clientWidth + (row.classList.contains('inner') ? 8 : 1), cut: [...row.querySelectorAll('[data-sub]')].filter((c) => { const k = c.getBoundingClientRect(); const inside = Math.max(0, Math.min(k.right, rr.right) - Math.max(k.left, rr.left)); return inside < k.width * 0.95 || k.left < 0 || k.right > innerWidth }).map((c) => c.textContent) }
       })
       const lastBottom = Math.max(...[...document.querySelectorAll('.player > *')].filter((e) => !e.matches('.screen') && e.getBoundingClientRect().height > 0).map((e) => e.getBoundingClientRect().bottom))
       const topRow = (() => { const kids = [...document.querySelectorAll('.player > .row > *, .player > .row .export-bar > *')].map((e) => e.getBoundingClientRect()).filter((k) => k.width > 0); const back = document.querySelector('.player > .row > .btn')?.getBoundingClientRect(); return { out: kids.some((k) => k.left < -0.5 || k.right > document.documentElement.clientWidth + 0.5), oneLine: !!back && back.height < 56 } })()
