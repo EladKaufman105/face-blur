@@ -126,7 +126,7 @@ const mkCheck = (p) => async (label) => {
       return {
         sideways: document.documentElement.scrollWidth > innerWidth, vh: innerHeight, alert: !!document.querySelector('.side > .sound-error, .side > .tpl-run'), clientH: document.documentElement.clientHeight, scrollH: document.documentElement.scrollHeight, tabsBottom: tabs?.bottom,
         panelH: panel?.height, bodyH: body?.height, tlShown: !!document.querySelector('.tl') && getComputedStyle(document.querySelector('.tl')).visibility !== 'hidden' && getComputedStyle(document.querySelector('.tl')).display !== 'none', ctx: !!document.querySelector('.ctx-bar'), panelTop2: panel?.top, tabsTop: tabs?.top, screenTop: screen?.top, screenBottom: screen?.bottom, screenH: screen?.height,
-        bodyEmpty: !bodyEl || bodyEl.children.length === 0 || !(bodyEl.textContent.trim() || bodyEl.querySelector('input, canvas, img, button')),
+        bodyEmpty: !bodyEl || bodyEl.children.length === 0 || !(bodyEl.innerText.trim() || [...bodyEl.querySelectorAll('input, canvas, img, button')].some((e) => e.offsetParent !== null)),
         moreOptions: [...document.querySelectorAll('.subs-more')].map((d) => d.querySelector('.subs-more-body')?.children.length ?? 0),
         topRow, chipRows, playerBottom: lastBottom, panelTop: panel?.top, tablist: [...document.querySelectorAll('.panel [role=tablist]')].every((t) => t.getAttribute('aria-label')), tabs: [...document.querySelectorAll('.panel [role=tab]')].every((t) => t.getAttribute('aria-controls') === 'panel-body' && (t.tabIndex === 0) === (t.getAttribute('aria-selected') === 'true')), tabpanel: document.querySelector('.panel-body')?.getAttribute('role'), small, panelOver: bodyEl ? [...bodyEl.querySelectorAll('*')].some((e) => { if (e.closest('.chips, .faces, .swatches, .preset-row, .scroll-row, .word-chips, .tl-scroll')) return false; const k = e.getBoundingClientRect(); const bb = bodyEl.getBoundingClientRect(); return k.width > 0 && (k.right > bb.right + 1 || k.left < bb.left - 1) }) : false,
       }
@@ -483,7 +483,7 @@ const mkCheck = (p) => async (label) => {
         if (fake) {
           await ctx.route(/\/__run$/, (r) => r.fulfill({ contentType: 'text/plain', body: String(++runs) }))
           await ctx.route(/subs\.worker[^/]*\.js/, (r) => r.fulfill({ contentType: 'text/javascript', body: `const W = [${JSON.stringify(W1)}, ${JSON.stringify(W2)}]
-self.onmessage = async () => { const n = Number(await (await fetch('/__run')).text()); self.postMessage({ type: 'audio' }); const tk = setInterval(() => self.postMessage({ type: 'tick' }), 500); setTimeout(() => { clearInterval(tk); self.postMessage({ type: 'done', device: 'wasm', words: W[n === 1 ? 0 : 1], ms: { load: 1, recognize: 1, first: 1, decode: 1, after: 1, tokens: 1 } }) }, n === 1 ? 800 : 6000) }` }))
+self.onmessage = async () => { const n = Number(await (await fetch('/__run')).text()); if (n === 3) { setTimeout(() => self.postMessage({ type: 'error', code: 'failed', message: 'boom' }), 1500); return } self.postMessage({ type: 'audio' }); const tk = setInterval(() => self.postMessage({ type: 'tick' }), 500); setTimeout(() => { clearInterval(tk); self.postMessage({ type: 'done', device: 'wasm', words: W[n === 1 ? 0 : 1], ms: { load: 1, recognize: 1, first: 1, decode: 1, after: 1, tokens: 1 } }) }, n === 1 ? 800 : 6000) }` }))
         }
         const p = await ctx.newPage()
         await p.goto(url + (url.includes('?') ? '&' : '?') + 'subsmodel=base')
@@ -537,11 +537,28 @@ self.onmessage = async () => { const n = Number(await (await fetch('/__run')).te
         await p.click('.panel-head [data-sub=make]')
         await p.click('.panel-body .btn:has-text("מחק כתוביות")')
         await p.click('.subs-create')
+        // The Style tool open, then another group, when the recognition ends: the notice is still seen, in whichever group.
+        await p.click('.panel-head [data-sub=style]')
         await grp(p, 'faces')
         await p.waitForSelector(busyDot, { state: 'attached', timeout: 5000 }).catch(() => fail('no busy mark while the subtitles are made'))
         await p.waitForSelector(busyDot, { state: 'detached', timeout: 30000 }).catch(() => fail('the busy mark stays after the recognition'))
+        await p.waitForSelector('.lost-bleeps', { state: 'visible', timeout: 5000 }).catch(() => fail('the lost-bleeps notice is not seen in the other group the recognition ended in'))
+        // the export sheet says it too
+        await p.click('.export-bar .btn')
+        await p.waitForSelector('.export-sheet .lost-note', { state: 'visible', timeout: 5000 }).catch(() => fail('the export sheet does not say bleeped words were lost'))
+        await p.keyboard.press('Escape')
+        await p.waitForSelector('.export-sheet', { state: 'detached', timeout: 5000 })
         await grp(p, 'subs')
-        await p.waitForSelector('.lost-bleeps', { state: 'visible', timeout: 5000 }).catch(() => fail('the lost-bleeps notice is gone after the recognition finished in another group'))
+        if (!(await p.isVisible('.lost-bleeps'))) fail('the lost-bleeps notice is gone in the Subtitles group')
+        // an error that comes while another group is open marks the Subtitles group, and the make tool shows it
+        await p.click('.panel-head [data-sub=make]')
+        await p.click('.panel-body .btn:has-text("מחק כתוביות")')
+        await p.click('.subs-create')
+        await grp(p, 'sound')
+        await p.waitForSelector('.tabs [data-g=subs] .dot.alert', { state: 'attached', timeout: 15000 }).catch(() => fail('no alert mark on the Subtitles group after an error in another group'))
+        await grp(p, 'subs')
+        await p.waitForSelector('.panel:not([hidden]) :text("boom")', { timeout: 5000 }).catch(() => fail('the error is not shown in the make tool'))
+        if (await p.$('.tabs [data-g=subs] .dot.alert')) fail('the alert mark stays after the group was opened')
         await p.screenshot({ path: `${out}/lost_bleeps.png` })
         await p.context().close()
       }

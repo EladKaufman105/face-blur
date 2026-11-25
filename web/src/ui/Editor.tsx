@@ -14,7 +14,7 @@ import { applyFollow, boxNear, newTrack, nextTrackId, retime, setEnd, setStart, 
 import type { FollowMessage, FollowRequest } from '../workers/follow.worker'
 import { SfxScheduler, type SfxClip } from '../lib/sfx'
 import { drawWatermark, normalizeWatermark, watermarkOn, type Watermark } from '../lib/watermark'
-import { CleanupCard, SoundTab, SubtitlesTab, WatermarkTab, loadWatermark } from './EditorTabs'
+import { CleanupCard, SoundTab, SubtitlesTab, WatermarkTab, loadWatermark, type LostBleeps } from './EditorTabs'
 import { ExportSheet } from './ExportSheet'
 import { BackgroundCard, FrameCard, StabilizeCard, type PictureBusy } from './PictureTab'
 import { maskAt, maskIndex, NO_BACKGROUND, type Background, type PeopleMasks } from '../lib/background'
@@ -151,6 +151,10 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [subsBusy, setSubsBusy] = useState(false)
   /** The subtitles tab was opened once: from then on it stays mounted (hidden when another group is open), so a job, its notice or its error is never lost. */
   const subsSeen = useRef(initTab === 'subs')
+  /** Bleeped words the new subtitles had no word for: an alert in every group and a line in the export sheet, until dismissed or undone. */
+  const [lost, setLost] = useState<LostBleeps | null>(null)
+  /** An error came in the subtitles tab while another group was open: its group says so. */
+  const [subsAlert, setSubsAlert] = useState(false)
   const subsTime = useRef(0)
   // A phone shows one sub-tool of the open group at a time (as the app does); a wide screen shows them all.
   const narrow = useNarrow()
@@ -1017,6 +1021,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const subList = subsOf(tab, { hasCues: cues.length > 0, hasWords: words.length > 0, hasFaces: analyzed || tracks.length > 0 })
   const part = (subTab[tab] && subList.some(([id]) => id === subTab[tab]) ? subTab[tab] : subList[0]?.[0]) ?? ''
   if (tab === 'subs') subsSeen.current = true
+  useEffect(() => { if (tab === 'subs' && subsAlert) setSubsAlert(false) }, [tab, subsAlert])
+  const lostBleeps = lost && lost.words === words && lost.bleeped === bleeped ? lost.n : 0
   // The subtitles tab's own tool (the one the Subtitles group has open), whichever group is open now.
   const subsList = subsOf('subs', { hasCues: cues.length > 0, hasWords: words.length > 0, hasFaces: false })
   const subsPart = (subTab.subs && subsList.some(([id]) => id === subTab.subs) ? subTab.subs : subsList[0][0]) as 'make' | 'list' | 'bleep' | 'style'
@@ -1188,6 +1194,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           <div class="subs-keep" hidden={tab !== 'subs'}>
           <SubtitlesTab
             onBusy={setSubsBusy}
+            onLost={setLost}
+            onAttention={() => { setSubsAlert(true); setSubTab((s) => ({ ...s, subs: 'make' })) }}
             hidden={tab !== 'subs'}
             part={narrow ? subsPart : undefined}
             stylePart={styleTab}
@@ -1348,23 +1356,22 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         <div class="tabs" role="tablist">
           {GROUPS.map(([id, label, Icon, color], k) => (
             <button role="tab" data-g={id} class={tab === id && (!narrow || panelOpen) ? 'on' : ''} aria-selected={tab === id && (!narrow || panelOpen)} style={{ '--g': color } as any} title={`${t(label)} (${k + 1})`} onClick={() => pickGroup(id)}>
-              <span class="pill-ic"><Icon size={22} />{(groupOn(id) || (id === 'subs' && subsBusy)) && <span class={'dot' + (id === 'subs' && subsBusy ? ' busy' : '')} aria-hidden="true" />}</span>
+              <span class="pill-ic"><Icon size={22} />{(groupOn(id) || (id === 'subs' && (subsBusy || subsAlert))) && <span class={'dot' + (id === 'subs' && subsAlert ? ' alert' : id === 'subs' && subsBusy ? ' busy' : '')} aria-hidden="true" />}</span>
               <span>{t(label)}{id === 'sound' && sfx.length > 0 ? <span class="count"> · {sfx.length}</span> : id === 'edit' && cuts.length > 0 ? <span class="count"> · {cuts.length}</span> : null}</span>
             </button>
           ))}
         </div>
-        {narrow ? (
-          <div hidden={!panelOpen} class={'panel' + (tab === 'subs' && part === 'style' ? ' has-inner' : '')} data-g={tab} style={{ '--g': groupColor } as any}>
-            <div class="panel-head">
-              {subList.length > 0
+        {/* One tree on every screen size (a phone turned past 600 px keeps a running job): the phone's panel, or on a wide screen a wrapper that is not there to the layout. */}
+          <div hidden={narrow && !panelOpen} class={narrow ? 'panel' + (tab === 'subs' && part === 'style' ? ' has-inner' : '') : 'panel-flat'} data-g={tab} style={{ '--g': groupColor } as any}>
+            <div class="panel-head" hidden={!narrow}>
+              {!narrow ? null : subList.length > 0
                 ? <ChipTabs items={subList} value={part} onPick={(id) => setSubTab({ ...subTab, [tab]: id })} label={t(groupName)} />
                 : <h2 class="panel-title">{t(groupName)}</h2>}
-              <button class="icon-btn panel-close" onClick={closePanel} aria-label={t('סגור')} title={t('סגור')}><CloseIcon size={22} /></button>
+              {narrow && <button class="icon-btn panel-close" onClick={closePanel} aria-label={t('סגור')} title={t('סגור')}><CloseIcon size={22} /></button>}
             </div>
-            {tab === 'subs' && part === 'style' && <ChipTabs items={STYLE_PARTS} value={styleTab} onPick={setStyleTab} cls="inner" label={t('עיצוב כתוביות')} />}
-            <div class="panel-body" ref={bodyRef} id={PANEL_ID} role="tabpanel" aria-labelledby={subList.length > 0 ? `tab-${tab === 'subs' && part === 'style' ? 'inner' : 'tool'}-${tab === 'subs' && part === 'style' ? styleTab : part}` : undefined} aria-label={subList.length > 0 ? undefined : t(groupName)}>{panelBody}</div>
+            {narrow && tab === 'subs' && part === 'style' && <ChipTabs items={STYLE_PARTS} value={styleTab} onPick={setStyleTab} cls="inner" label={t('עיצוב כתוביות')} />}
+            <div class="panel-body" ref={bodyRef} id={PANEL_ID} role={narrow ? 'tabpanel' : undefined} aria-labelledby={narrow && subList.length > 0 ? `tab-${tab === 'subs' && part === 'style' ? 'inner' : 'tool'}-${tab === 'subs' && part === 'style' ? styleTab : part}` : undefined} aria-label={narrow && subList.length === 0 ? t(groupName) : undefined}>{panelBody}</div>
           </div>
-        ) : panelBody}
         <details class="keys">
           <summary>{t('קיצורי מקלדת')}</summary>
           <dl>
@@ -1378,6 +1385,12 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             <dt><kbd>Esc</kbd></dt><dd>{t('ביטול הבחירה')}</dd>
           </dl>
         </details>
+        {lostBleeps > 0 && (
+          <div class="lost-bleeps card confirm" role="alert">
+            <p class="small" style="margin:0">{lostBleeps === 1 ? t('מילה מצופצפת אחת לא נמצאה בכתוביות החדשות, ולכן היא לא מצופצפת. בטל את הפעולה או צפצף אותה שוב.') : t('%d מילים מצופצפות לא נמצאו בכתוביות החדשות, ולכן הן לא מצופצפות. בטל את הפעולה או צפצף אותן שוב.', lostBleeps)}</p>
+            <div class="row"><button class="btn ghost small-btn" onClick={() => setLost(null)}>{t('הבנתי')}</button></div>
+          </div>
+        )}
         {soundFail && (
           <div class="sound-error card" role="alert" data-hard={soundFail.hard ? '1' : '0'}>
             <p class="small" style="margin:0">{soundFail.hard ? t('שינוי הקול נכשל, ולכן אי אפשר לייצא (כדי שהקול המקורי לא יישמר בטעות)') : t('עיבוד הסאונד נכשל. הסרטון ייוצא עם הסאונד המקורי')}</p>
@@ -1414,6 +1427,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         fps={srcInfo?.fps ?? (analyzed ? an.fps : null)}
         sourceHevc={srcInfo?.codec === 'hevc'}
         hasCues={cues.length > 0}
+        lostBleeps={lostBleeps}
         options={exportOpts}
         onChange={setExportOpts}
         onClose={() => setExportOpen(false)}

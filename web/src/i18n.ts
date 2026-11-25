@@ -441,6 +441,8 @@ const EN: Record<string, string> = {
   '%d מילים מצופצפות. בכתוביות חדשות יצופצפו המילים שבאותו זמן.': '%d bleeped words. New subtitles bleep the words at the same time.',
   'מילה מצופצפת אחת לא נמצאה בכתוביות החדשות, ולכן היא לא מצופצפת. בטל את הפעולה או צפצף אותה שוב.': '1 bleeped word was not found in the new subtitles, so it is not bleeped. Undo, or bleep it again.',
   '%d מילים מצופצפות לא נמצאו בכתוביות החדשות, ולכן הן לא מצופצפות. בטל את הפעולה או צפצף אותן שוב.': '%d bleeped words were not found in the new subtitles, so they are not bleeped. Undo, or bleep them again.',
+  'מילה מצופצפת אחת לא נמצאה בכתוביות החדשות ולא תצופצף': '1 bleeped word was not found in the new subtitles and will not be bleeped',
+  '%d מילים מצופצפות לא נמצאו בכתוביות החדשות ולא יצופצפו': '%d bleeped words were not found in the new subtitles and will not be bleeped',
   'השאר את הקיימות': 'Keep the current ones',
   'זיהוי דוברים': 'Find speakers',
   'נמצאו %d דוברים. הקש על הנקודה ליד כתובית כדי להחליף דובר.': '%d speakers found. Tap the dot next to a subtitle to change its speaker.',

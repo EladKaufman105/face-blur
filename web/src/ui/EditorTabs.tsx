@@ -177,7 +177,7 @@ export function SoundTab({ clips, time, onChange, onSeek, voice, onVoice, voiceB
  * Translating the subtitles on the device (the browser's own translator), and what the video
  * shows: the text, the translation or both.
  */
-function TranslateCard({ cues, onCues, show, onShow, onBusy }: { cues: Cue[]; onCues: (c: Cue[], step?: boolean) => void; show: SubShow; onShow: (s: SubShow) => void; onBusy?: (b: boolean) => void }) {
+function TranslateCard({ cues, onCues, show, onShow, onBusy, onAttention }: { cues: Cue[]; onCues: (c: Cue[], step?: boolean) => void; show: SubShow; onShow: (s: SubShow) => void; onBusy?: (b: boolean) => void; onAttention?: () => void }) {
   const latest = useRef(cues)
   latest.current = cues
   const from = guessLang(cues.map((c) => c.text).join(' '))
@@ -202,6 +202,7 @@ function TranslateCard({ cues, onCues, show, onShow, onBusy }: { cues: Cue[]; on
       onCues(latest.current.map((c) => ({ ...c, tr: byId.get(c.id) ?? c.tr })), true)
       if (shown.current === 'src') onShow('both')
     } catch (e) {
+      onAttention?.()
       setError(String((e as Error)?.message) === 'unavailable' ? t('הדפדפן לא מתרגם בין השפות האלה.') : t('התרגום נכשל: %s', String((e as Error)?.message ?? e)))
     } finally {
       setRun(null)
@@ -370,7 +371,10 @@ function SpeechNote() {
 }
 
 /** Subtitles: made on the device from the speech, then edited, styled and saved as SRT too. */
-export function SubtitlesTab({ onBusy, hidden, part, stylePart, onPart, file, cues, onCues, words, onReplace, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
+/** Bleeped words that the new subtitles had no word for, with the words and bleeps they were found for (a later change makes them stale). */
+export type LostBleeps = { n: number; words: Word[]; bleeped: Set<number> }
+
+export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, stylePart, onPart, file, cues, onCues, words, onReplace, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
   /** On a phone: the sub-tool shown ('make', 'list' or 'style'); on a wide screen all of them. */
   part?: 'make' | 'list' | 'bleep' | 'style'; stylePart?: string; onPart?: (p: 'list') => void
   /** [step]: a change of its own for undo (not merged with the typing around it). */
@@ -383,7 +387,12 @@ export function SubtitlesTab({ onBusy, hidden, part, stylePart, onPart, file, cu
   onBusy?: (b: boolean) => void
   /** Another group is open: the tab stays mounted for its jobs, and does not move the video. */
   hidden?: boolean
+  /** Bleeped words the new subtitles did not have (the editor shows them in every group). */
+  onLost: (l: LostBleeps | null) => void
+  /** An error arrived while the tab is hidden: the editor marks the group and brings the make tool up. */
+  onAttention?: () => void
 }) {
+  const attention = () => { if (isHidden.current) onAttention?.() }
   const isHidden = useRef(!!hidden)
   isHidden.current = !!hidden
   const styleNow = useRef(style)
@@ -452,17 +461,15 @@ export function SubtitlesTab({ onBusy, hidden, part, stylePart, onPart, file, cu
   // The words and bleeps as they are now (undo or a tap may change them while the speech model runs).
   const live = useRef({ words, bleeped })
   live.current = { words, bleeped }
-  // Bleeped words that the new subtitles had no word for. Shown while those subtitles and bleeps are
-  // the current ones (undo or a new bleep hides it), until the next run or dismissed.
-  const [lost, setLost] = useState<{ n: number; words: Word[]; bleeped: Set<number> } | null>(null)
-  const lostBleeps = lost && lost.words === words && lost.bleeped === bleeped ? lost.n : 0
+  // Bleeped words that the new subtitles had no word for are reported to the editor (onLost), which shows them in an alert
+  // in every group and in the export sheet, while those subtitles and bleeps are the current ones, until dismissed.
   // The speech worker goes when the tab is left (it must not go on heating the device unseen).
   useEffect(() => () => ctl.current?.abort(), [])
   const start = async () => {
     ctl.current?.abort()
     setImportErr(null)
     setPendingImport(null)
-    setLost(null)
+    onLost(null)
     const c = new AbortController()
     ctl.current = c
     setRun({ stage: 'audio' })
@@ -500,11 +507,12 @@ export function SubtitlesTab({ onBusy, hidden, part, stylePart, onPart, file, cu
       }
       const n = old.filter((o) => !covered(o)).length
       onReplace(made, r.words, kept)
-      setLost(n ? { n, words: r.words, bleeped: kept } : null)
+      onLost(n ? { n, words: r.words, bleeped: kept } : null)
       if (made.length && !isHidden.current) onSeek(Math.min(...made.map((c) => c.start)) + 0.01)
       setRun(null)
     } catch (e) {
       if (e instanceof SpeechAborted || ctl.current !== c) return
+      attention()
       setRun({ stage: 'error', message: (e as any)?.code === 'no-audio' ? t('לסרטון אין פס קול.') : String((e as Error)?.message ?? e) })
     }
   }
@@ -617,8 +625,8 @@ export function SubtitlesTab({ onBusy, hidden, part, stylePart, onPart, file, cu
   )) : (
     <>
       {part && importSrt}
-      <TranslateCard cues={cues} onCues={onCues} show={style.show ?? 'src'} onShow={(v) => set({ show: v })} onBusy={(b) => setKid('tr', b)} />
-      <SpeakersCard file={file} cues={cues} onCues={onCues} color={style.color} chosen={style.speakerColors} onBusy={(b) => setKid('spk', b)} />
+      <TranslateCard cues={cues} onCues={onCues} show={style.show ?? 'src'} onShow={(v) => set({ show: v })} onBusy={(b) => setKid('tr', b)} onAttention={attention} />
+      <SpeakersCard file={file} cues={cues} onCues={onCues} color={style.color} chosen={style.speakerColors} onBusy={(b) => setKid('spk', b)} onAttention={attention} />
       <button class="btn ghost" onClick={() => { onReplace([], words, bleeped); setOpenId(null); setBleepMode(false); setPendingImport(null) }}>{t('מחק כתוביות')}</button>
     </>
   )
@@ -639,12 +647,6 @@ export function SubtitlesTab({ onBusy, hidden, part, stylePart, onPart, file, cu
   ) : null
   return (
     <>
-      {part !== 'style' && lostBleeps > 0 && (
-        <div class="card confirm lost-bleeps" role="alert">
-          <span class="small">{lostBleeps === 1 ? t('מילה מצופצפת אחת לא נמצאה בכתוביות החדשות, ולכן היא לא מצופצפת. בטל את הפעולה או צפצף אותה שוב.') : t('%d מילים מצופצפות לא נמצאו בכתוביות החדשות, ולכן הן לא מצופצפות. בטל את הפעולה או צפצף אותן שוב.', lostBleeps)}</span>
-          <div class="row"><button class="btn ghost small-btn" onClick={() => setLost(null)}>{t('הבנתי')}</button></div>
-        </div>
-      )}
       {show('make') && cues.length === 0 && (
         <section class="card subs-start">
           <h3 class="section-title">{t('כתוביות')}</h3>

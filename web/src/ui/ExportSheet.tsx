@@ -12,6 +12,8 @@ type Props = {
   /** The source's codec ('hevc' or another). */
   sourceHevc: boolean
   hasCues: boolean
+  /** Bleeped words the subtitles no longer have (they would be heard): said before exporting. */
+  lostBleeps?: number
   options: ExportOptions
   onChange: (o: ExportOptions) => void
   onGo: () => void
@@ -46,6 +48,7 @@ export function ExportSheet(p: Props) {
           <button class="icon-btn" aria-label={t('סגור')} onClick={p.onClose}><CloseIcon size={20} /></button>
         </div>
         <div class="sheet-body">
+          {(p.lostBleeps ?? 0) > 0 && <p class="small lost-note" role="note" style="margin:0;color:var(--primary)">{p.lostBleeps === 1 ? t('מילה מצופצפת אחת לא נמצאה בכתוביות החדשות ולא תצופצף') : t('%d מילים מצופצפות לא נמצאו בכתוביות החדשות ולא יצופצפו', p.lostBleeps ?? 0)}</p>}
           <h4 class="caption">{t('מה לשמור')}</h4>
           <div class="seg seg2 export-format" role="radiogroup">
             <button class={o.format === 'mp4' ? 'on' : ''} role="radio" aria-checked={o.format === 'mp4'} onClick={() => set({ format: 'mp4' })}>{t('סרטון')}</button>
