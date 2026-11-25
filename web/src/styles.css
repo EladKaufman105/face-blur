@@ -818,6 +818,11 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 
 /* A group's dot: it is changing the video (as the app's group bar). */
 .tabs button .pill-ic { position: relative; }
+.subs-keep { display: contents; }
+.subs-keep[hidden] { display: none; }
+.tabs .dot.busy { animation: dot-busy 1s ease-in-out infinite alternate; }
+@keyframes dot-busy { from { opacity: 1; transform: scale(1); } to { opacity: 0.35; transform: scale(1.4); } }
+@media (prefers-reduced-motion: reduce) { .tabs .dot.busy { animation: none; } }
 .tabs .dot { position: absolute; top: 3px; inset-inline-end: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--g); }
 
 /* The editor on a phone, as the app's: the video and the timeline on top, the open group's panel
@@ -889,7 +894,7 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .panel-body .card { background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; }
   .panel-body .card.confirm { padding: 10px 12px; border: 1px solid var(--outline-soft); border-radius: var(--radius-card); }
   /* A card that is the tool's only one is named by its chip: its title stays for screen readers only. */
-  .panel-body > .card:only-child > .section-title:not(.keep) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); margin: 0; }
+  .panel-body > .card:only-child > .section-title:not(.keep), .panel-body > .subs-keep > .card:only-child > .section-title:not(.keep) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); margin: 0; }
   .panel-body .section-title:not(.keep) { margin: 0 0 6px; font-size: 14px; }
   .panel-body .section-title:not(.keep)::before { display: none; }
   .panel-body .section-title.keep { margin: 0 0 8px; font-size: 14px; }
@@ -932,6 +937,9 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .panel { min-height: 0; }
   .panel .subtabs .chip { min-height: 40px; }
   .panel-body { padding-block: 4px 6px; }
+  /* With a blur's bar under the video, the panel gives up more: it must not reach the bar. */
+  .editor.narrow.panel-open:has(.player > .ctx-bar) { --slot-h: clamp(110px, calc(100dvh - 400px), 300px); }
+  .editor.narrow:has(.player > .ctx-bar) .player > .screen { min-height: 56px; }
 }
 @media (max-width: 600px) and (max-height: 470px) {
   .editor.narrow { --slot-h: clamp(110px, calc(100dvh - 250px), 300px); }
@@ -940,4 +948,6 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .editor.narrow .tabs button { min-height: 44px; }
   .editor.narrow .tabs button > span:last-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .editor.narrow .tabs button .pill-ic { height: 32px; }
+  .editor.narrow.panel-open:has(.player > .ctx-bar) { --slot-h: clamp(100px, calc(100dvh - 300px), 300px); }
+  .editor.narrow:has(.player > .ctx-bar) .player > .screen { min-height: 40px; }
 }

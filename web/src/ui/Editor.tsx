@@ -147,6 +147,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [tab, setTab] = useState<EditorTab>(initialTab)
   // On a phone the timeline and a group's panel share one place (as in the app): the timeline shows, and a group opens its panel in its place (a tool picked from the home screen opens its panel).
   const [panelOpen, setPanelOpen] = useState(initTab !== undefined)
+  /** Speech, speakers or translation is running in the subtitles tab: it stays mounted (hidden) when another group is open, so the job goes on. */
+  const [subsBusy, setSubsBusy] = useState(false)
   // A phone shows one sub-tool of the open group at a time (as the app does); a wide screen shows them all.
   const narrow = useNarrow()
   const [subTab, setSubTab] = useState<Record<string, string>>({})
@@ -1024,7 +1026,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   /** A group's button: on a phone it opens the panel in the timeline's place, and a second tap closes it (as the app's group bar). */
   function pickGroup(g: EditorTab, keyboard = false) {
     if (narrow && panelOpen && tab === g && !keyboard) { setPanelOpen(false); return }
-    if (narrow) { video.current?.pause(); setSelected(null); setSelectedSfx(null); setAdding(false) }
+    // (A blur being followed keeps its bar, with the progress and Cancel.)
+    if (narrow) { video.current?.pause(); if (!following) setSelected(null); setSelectedSfx(null); setAdding(false) }
     setTab(g)
     setPanelOpen(true)
   }
@@ -1172,8 +1175,10 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           </>
         )}
         {tab === 'mark' && <WatermarkTab mark={mark} onChange={setMark} />}
-        {tab === 'subs' && (
+        {(tab === 'subs' || subsBusy) && (
+          <div class="subs-keep" hidden={tab !== 'subs'}>
           <SubtitlesTab
+            onBusy={setSubsBusy}
             part={narrow ? (part as 'make' | 'list' | 'bleep' | 'style') : undefined}
             stylePart={styleTab}
             onPart={(p) => setSubTab((s) => ({ ...s, subs: p }))}
@@ -1191,6 +1196,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             time={time}
             onSeek={(at) => { const v = video.current; if (v) v.currentTime = at }}
           />
+          </div>
         )}
 
     </>
@@ -1332,7 +1338,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         <div class="tabs" role="tablist">
           {GROUPS.map(([id, label, Icon, color], k) => (
             <button role="tab" data-g={id} class={tab === id && (!narrow || panelOpen) ? 'on' : ''} aria-selected={tab === id && (!narrow || panelOpen)} style={{ '--g': color } as any} title={`${t(label)} (${k + 1})`} onClick={() => pickGroup(id)}>
-              <span class="pill-ic"><Icon size={22} />{groupOn(id) && <span class="dot" aria-hidden="true" />}</span>
+              <span class="pill-ic"><Icon size={22} />{(groupOn(id) || (id === 'subs' && subsBusy)) && <span class={'dot' + (id === 'subs' && subsBusy ? ' busy' : '')} aria-hidden="true" />}</span>
               <span>{t(label)}{id === 'sound' && sfx.length > 0 ? <span class="count"> · {sfx.length}</span> : id === 'edit' && cuts.length > 0 ? <span class="count"> · {cuts.length}</span> : null}</span>
             </button>
           ))}

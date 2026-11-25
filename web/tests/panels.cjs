@@ -31,8 +31,7 @@ const tapSelect = async (p) => {
   for (let j = 1; j < 12; j++) for (let i = 1; i < 12; i++) {
     await p.evaluate(() => document.querySelector('video').pause())
     await p.touchscreen.tap(k[0] + (k[2] * i) / 12, k[1] + (k[3] * j) / 12)
-    await p.waitForTimeout(60)
-    if (await p.$('.ctx-bar')) return true
+    if (await p.waitForSelector('.ctx-bar', { timeout: 120 }).then(() => true, () => false)) return true
   }
   return false
 }
@@ -61,7 +60,7 @@ const checkShort = async (p, label, panel) => {
   const m = await p.evaluate(() => {
     const r = (s) => { const e = document.querySelector(s); if (!e) return null; const k = e.getBoundingClientRect(); return { top: k.top, bottom: k.bottom, left: k.left, right: k.right, h: k.height } }
     const pn = r('.panel:not([hidden])')
-    return { vw: innerWidth, vh: innerHeight, clientH: document.documentElement.clientHeight, scrollH: document.documentElement.scrollHeight, sideways: document.documentElement.scrollWidth > innerWidth, bar: r('.player > .top-row'), screen: r('.screen'), transport: r('.transport'), tl: r('.tl'), panel: pn, tabs: r('.tabs'), close: r('.panel:not([hidden]) .panel-close'), head: r('.panel:not([hidden]) .panel-head'), chips: [...document.querySelectorAll('.panel:not([hidden]) .panel-head [data-sub]')].map((e) => { const k = e.getBoundingClientRect(); return { top: k.top, bottom: k.bottom, left: k.left, right: k.right } }) }
+    return { vw: innerWidth, vh: innerHeight, clientH: document.documentElement.clientHeight, scrollH: document.documentElement.scrollHeight, sideways: document.documentElement.scrollWidth > innerWidth, bar: r('.player > .top-row'), screen: r('.screen'), transport: r('.transport'), tl: r('.tl'), panel: pn, tabs: r('.tabs'), ctx: r('.ctx-bar'), closeHit: (() => { const c = document.querySelector('.panel:not([hidden]) .panel-close'); if (!c) return null; const k = c.getBoundingClientRect(); const at = document.elementFromPoint(k.left + k.width / 2, k.top + k.height / 2); return !!at && c.contains(at) })(), close: r('.panel:not([hidden]) .panel-close'), head: r('.panel:not([hidden]) .panel-head'), chips: [...document.querySelectorAll('.panel:not([hidden]) .panel-head [data-sub]')].map((e) => { const k = e.getBoundingClientRect(); return { top: k.top, bottom: k.bottom, left: k.left, right: k.right } }) }
   })
   console.log(label, JSON.stringify({ video: Math.round(m.screen.h), panel: m.panel && Math.round(m.panel.h), tl: m.tl && Math.round(m.tl.h) }))
   const e = 1.5
@@ -75,6 +74,9 @@ const checkShort = async (p, label, panel) => {
     if (!m.panel) fail(label + ': no panel')
     if (m.panel.top < m.transport.bottom - e) fail(`${label}: the panel covers the transport (${m.panel.top} < ${m.transport.bottom})`)
     if (m.panel.bottom > m.tabs.top + e) fail(label + ': the panel is under the bar of groups')
+    if (m.ctx && m.ctx.bottom > m.panel.top + e) fail(`${label}: the panel reaches the blur's bar (${m.ctx.bottom} > ${m.panel.top})`)
+    if (m.ctx && m.ctx.top < m.transport.bottom - e) fail(label + ': the blur\'s bar covers the transport')
+    if (!m.closeHit) fail(label + ': the close button is covered at its center')
     if (m.close.top < m.panel.top - e || m.close.bottom > m.panel.bottom + e) fail(label + ': the close button is cut: ' + JSON.stringify([m.close, m.panel]))
     if (m.chips.some((c) => c.top < m.panel.top - e || c.bottom > m.panel.bottom + e || c.right > m.vw + e || c.left < -e)) fail(label + ': the panel\'s tool chips are cut')
   } else if (m.tl.top < m.transport.bottom - e || m.tl.bottom > m.tabs.top + e) fail(label + ': the timeline overlaps its neighbours')
@@ -418,7 +420,7 @@ const mkCheck = (p) => async (label) => {
       }
 
       // Short screens: a small phone, and a tall one with the keyboard up.
-      if (locale === 'he-IL' || true) for (const vp of [{ width: 375, height: 548 }, { width: 390, height: 500 }, { width: 390, height: 400 }]) {
+      for (const vp of [{ width: 375, height: 548 }, { width: 390, height: 500 }, { width: 390, height: 400 }]) {
         await p.setViewportSize(vp)
         await p.waitForTimeout(500)
         const label = `${vp.width}x${vp.height} ${locale}`
@@ -432,6 +434,15 @@ const mkCheck = (p) => async (label) => {
         await p.click('.panel-head [data-sub=style]')
         await checkShort(p, `${label} subs/style`, true)
         await p.screenshot({ path: `${out}/short_${vp.width}x${vp.height}_${locale}.png` })
+        // a blur selected on the video with a panel open: its bar and the panel do not overlap
+        for (const g of ['faces', 'subs']) {
+          await grp(p, g)
+          if (!(await tapSelect(p))) fail(`${label}: no blur could be selected with the ${g} panel open`)
+          await checkShort(p, `${label} blur selected + ${g}`, true)
+          if (g === 'subs') { await p.click('.panel-head [data-sub=style]'); await checkShort(p, `${label} blur selected + subs/style`, true) }
+          if (g === 'faces') await p.screenshot({ path: `${out}/short_selected_${vp.width}x${vp.height}_${locale}.png` })
+          await p.keyboard.press('Escape')
+        }
       }
       // The BETA mark in the bar (forced here: this build is the release): the bar still fits, every target 44 px, Export in view.
       await p.setViewportSize({ width: 390, height: 780 })

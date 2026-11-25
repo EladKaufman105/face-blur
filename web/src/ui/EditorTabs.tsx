@@ -177,10 +177,13 @@ export function SoundTab({ clips, time, onChange, onSeek, voice, onVoice, voiceB
  * Translating the subtitles on the device (the browser's own translator), and what the video
  * shows: the text, the translation or both.
  */
-function TranslateCard({ cues, onCues, show, onShow }: { cues: Cue[]; onCues: (c: Cue[], step?: boolean) => void; show: SubShow; onShow: (s: SubShow) => void }) {
+function TranslateCard({ cues, onCues, show, onShow, onBusy }: { cues: Cue[]; onCues: (c: Cue[], step?: boolean) => void; show: SubShow; onShow: (s: SubShow) => void; onBusy?: (b: boolean) => void }) {
+  const latest = useRef(cues)
+  latest.current = cues
   const from = guessLang(cues.map((c) => c.text).join(' '))
   const [to, setTo] = useState(from === 'en' ? 'he' : 'en')
   const [run, setRun] = useState<{ stage: 'download' | 'translate'; p: number } | null>(null)
+  useEffect(() => { onBusy?.(run !== null) }, [run !== null])
   const [error, setError] = useState<string | null>(null)
   const translated = cues.some((c) => c.tr !== undefined)
   const go = async () => {
@@ -190,7 +193,7 @@ function TranslateCard({ cues, onCues, show, onShow }: { cues: Cue[]; onCues: (c
       const ordered = [...cues].sort((a, b) => a.start - b.start)
       const out = await translateAll(ordered.map((c) => c.text), from, to, (stage, p) => setRun({ stage, p }))
       const byId = new Map(ordered.map((c, k) => [c.id, out[k]]))
-      onCues(cues.map((c) => ({ ...c, tr: byId.get(c.id) ?? c.tr })), true)
+      onCues(latest.current.map((c) => ({ ...c, tr: byId.get(c.id) ?? c.tr })), true)
       if (show === 'src') onShow('both')
     } catch (e) {
       setError(String((e as Error)?.message) === 'unavailable' ? t('הדפדפן לא מתרגם בין השפות האלה.') : t('התרגום נכשל: %s', String((e as Error)?.message ?? e)))
@@ -361,7 +364,7 @@ function SpeechNote() {
 }
 
 /** Subtitles: made on the device from the speech, then edited, styled and saved as SRT too. */
-export function SubtitlesTab({ part, stylePart, onPart, file, cues, onCues, words, onReplace, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
+export function SubtitlesTab({ onBusy, part, stylePart, onPart, file, cues, onCues, words, onReplace, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
   /** On a phone: the sub-tool shown ('make', 'list' or 'style'); on a wide screen all of them. */
   part?: 'make' | 'list' | 'bleep' | 'style'; stylePart?: string; onPart?: (p: 'list') => void
   /** [step]: a change of its own for undo (not merged with the typing around it). */
@@ -370,7 +373,11 @@ export function SubtitlesTab({ part, stylePart, onPart, file, cues, onCues, word
   onReplace: (c: Cue[], w: Word[], b: Set<number>) => void
   bleeped: Set<number>; onBleeped: (b: Set<number>) => void; tone: boolean; onTone: (t: boolean) => void
   style: SubStyle; onStyle: (s: SubStyle) => void; time: number; onSeek: (t: number) => void
+  /** Something here is running (speech, speakers, translation): the editor keeps this tab mounted while it does, and marks its group. */
+  onBusy?: (b: boolean) => void
 }) {
+  const [kids, setKids] = useState({ spk: false, tr: false })
+  const setKid = (k: 'spk' | 'tr', b: boolean) => setKids((o) => (o[k] === b ? o : { ...o, [k]: b }))
   const show = (k: 'make' | 'list' | 'bleep' | 'style') => !part || part === k
   const [bleepMode, setBleepMode] = useState(false)
   // On a phone the word picking belongs to the bleep tool: the list shows plain text again when it is left.
@@ -501,6 +508,8 @@ export function SubtitlesTab({ part, stylePart, onPart, file, cues, onCues, word
     setTimeout(() => URL.revokeObjectURL(a.href), 5000)
   }
   const busy = run !== null && run.stage !== 'error'
+  const anyBusy = busy || kids.spk || kids.tr
+  useEffect(() => { onBusy?.(anyBusy) }, [anyBusy])
   // The subtitle being edited (its actions show; the video shows it too).
   const [openId, setOpenId] = useState<number | null>(null)
   // An SRT replaces the subtitles: with some there (or bleeped words, which go with them) it asks first.
@@ -596,8 +605,8 @@ export function SubtitlesTab({ part, stylePart, onPart, file, cues, onCues, word
   )) : (
     <>
       {part && importSrt}
-      <TranslateCard cues={cues} onCues={onCues} show={style.show ?? 'src'} onShow={(v) => set({ show: v })} />
-      <SpeakersCard file={file} cues={cues} onCues={onCues} color={style.color} chosen={style.speakerColors} />
+      <TranslateCard cues={cues} onCues={onCues} show={style.show ?? 'src'} onShow={(v) => set({ show: v })} onBusy={(b) => setKid('tr', b)} />
+      <SpeakersCard file={file} cues={cues} onCues={onCues} color={style.color} chosen={style.speakerColors} onBusy={(b) => setKid('spk', b)} />
       <button class="btn ghost" onClick={() => { onReplace([], words, bleeped); setOpenId(null); setBleepMode(false); setPendingImport(null) }}>{t('מחק כתוביות')}</button>
     </>
   )

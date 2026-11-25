@@ -1,4 +1,4 @@
-import { useRef, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { t } from '../i18n'
 import { MAX_SPEAKERS, speakerColor } from '../lib/speakers'
 import type { Cue } from '../lib/subtitles'
@@ -9,11 +9,16 @@ import { releaseSpeechForExport } from '../lib/speech'
  * Who speaks, as in the app: found on the device (each subtitle's voice), each speaker in a color
  * of its own; how many, if the user knows.
  */
-export function SpeakersCard({ file, cues, onCues, color, chosen }: { file: File; cues: Cue[]; onCues: (c: Cue[], step?: boolean) => void; color: string; chosen?: string[] }) {
+export function SpeakersCard({ file, cues, onCues, color, chosen, onBusy }: { file: File; cues: Cue[]; onCues: (c: Cue[], step?: boolean) => void; color: string; chosen?: string[]; onBusy?: (b: boolean) => void }) {
   const [count, setCount] = useState<number | null>(null)
   const [run, setRun] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const worker = useRef<Worker | null>(null)
+  // The subtitles as they are when the answer comes (they may have changed while it ran), and the worker ends with the card.
+  const latest = useRef(cues)
+  latest.current = cues
+  useEffect(() => () => { worker.current?.terminate(); worker.current = null }, [])
+  useEffect(() => { onBusy?.(run !== null) }, [run !== null])
   const found = new Set(cues.map((c) => c.speaker ?? 0).filter((s) => s > 0))
   const start = () => {
     worker.current?.terminate()
@@ -30,7 +35,7 @@ export function SpeakersCard({ file, cues, onCues, color, chosen }: { file: File
       end()
       if (m.type === 'done') {
         const by = new Map(sorted.map((c, k) => [c.id, m.speakers[k]]))
-        onCues(cues.map((c) => ({ ...c, speaker: by.get(c.id) ?? c.speaker })), true)
+        onCues(latest.current.map((c) => ({ ...c, speaker: by.get(c.id) ?? c.speaker })), true)
       } else setError(m.code === 'no-audio' ? t('לסרטון אין פס קול.') : t('משהו השתבש') + ': ' + m.message)
     }
     w.onerror = (e) => { end(); setError(t('משהו השתבש') + ': ' + (e.message || '')) }
