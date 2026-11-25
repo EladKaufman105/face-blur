@@ -530,6 +530,13 @@ const EN: Record<string, string> = {
   'סגנונות': 'Styles',
   'גופן': 'Font',
   'של המכשיר': 'Device font',
+  'הגופנים שלי': 'My fonts',
+  'גופנים מובנים': 'Built-in fonts',
+  // The tool chips' short names (a narrow panel's row of them must fit, whole).
+  'יצירה': 'Create',
+  'אפקטים': 'Effects',
+  'ניקוי': 'Cleanup',
+  'קול': 'Voice',
   'ייבוא גופן מהמכשיר (TTF / OTF)': 'Import a font (TTF / OTF)',
   'לא הצלחתי לייבא: צריך קובץ גופן TTF או OTF.': "Couldn't import: pick a TTF or OTF font file.",
   'הגופן נוסף.': 'Font added.',

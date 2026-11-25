@@ -60,7 +60,7 @@ const layer = () => {
 
     // Every style and font offered, each name in its own font, all loaded.
     const presets = await p.evaluate(() => document.querySelectorAll('.sub-style .presets .chip').length)
-    const fonts = await on('.sub-style .fonts .chip')
+    const fonts = await on('.sub-style .fonts .chip .font-name')
     await p.waitForFunction(() => ['Rubik', 'Allo', 'Heebo', 'Assistant', 'Secular One', 'Suez One', 'Varela Round', 'Fredoka', 'Karantina', 'Amatic SC'].every((f) => document.fonts.check(`20px 'ONIT ${f}'`, 'שלום')), null, { timeout: 30000 })
     console.log('styles:', presets, '· fonts:', fonts.join(', '), '· all loaded')
     if (presets !== 28 || fonts.length !== 11) throw new Error('styles / fonts offered')
@@ -70,7 +70,7 @@ const layer = () => {
     const classic = await p.evaluate(layer)
     await chip('presets', 'טיקטוק')
     await p.waitForTimeout(300)
-    const tiktok = { font: await on('.sub-style .fonts .chip.on'), effect: await on('.sub-style .effects .chip.on') }
+    const tiktok = { font: await on('.sub-style .fonts .chip.on .font-name'), effect: await on('.sub-style .effects .chip.on') }
     console.log('TikTok style →', JSON.stringify(tiktok))
     if (tiktok.font[0] !== 'Rubik' || tiktok.effect[0] !== 'קפיצה') throw new Error('style')
     await chip('presets', 'ויראלי צהוב')
@@ -125,10 +125,10 @@ const layer = () => {
     await p.waitForFunction(() => document.querySelector('.sub-style p.small')?.textContent.includes('אין בו'))
     await p.setInputFiles('.sub-style input[type=file]', `${out}/Hebrew Sans.ttf`)
     await p.waitForFunction(() => document.querySelector('.sub-style p.small')?.textContent === 'הגופן נוסף.')
-    const custom = await on('.sub-style .custom-font.on')
+    const custom = await on('.sub-style .custom-font.on .font-name')
     await seek(1.6)
     const imported = await p.evaluate(layer)
-    console.log('imported fonts:', JSON.stringify(await on('.sub-style .custom-font')), '· chosen', JSON.stringify(custom), '· drawn', imported.n, '≠', boxed.n)
+    console.log('imported fonts:', JSON.stringify(await on('.sub-style .custom-font .font-name')), '· chosen', JSON.stringify(custom), '· drawn', imported.n, '≠', boxed.n)
     if (!custom[0]?.startsWith('Hebrew Sans') || imported.hash === boxed.hash) throw new Error('imported font')
     await p.screenshot({ path: `${out}/2_imported.png` })
     // Removed again, the other one.
@@ -189,7 +189,7 @@ const layer = () => {
     await p.click('.tabs button[data-g=subs]')
     await p.waitForSelector('.sub-style')
     await p.evaluate(() => document.querySelectorAll('details.subs-more, details.sub-fine').forEach((d) => { d.open = true }))
-    const kept = { font: await on('.sub-style .custom-font.on'), effect: await on('.sub-style .effects .chip.on'), box: await p.isChecked('.sub-style .box-check') }
+    const kept = { font: await on('.sub-style .custom-font.on .font-name'), effect: await on('.sub-style .effects .chip.on'), box: await p.isChecked('.sub-style .box-check') }
     await p.waitForFunction(() => document.fonts.check("20px 'ONIT custom Hebrew Sans'", 'שלום'), null, { timeout: 10000 })
     console.log('opened again:', JSON.stringify(kept))
     if (!kept.font[0]?.startsWith('Hebrew Sans') || kept.effect[0] !== 'קפיצה' || !kept.box) throw new Error('the style was not kept')

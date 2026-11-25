@@ -19,7 +19,7 @@ t() {
 }
 
 case "${1:?shard}" in
-  1) # 196 s
+  1) # 258 s
     # The picture: a green screen, a 9:16 frame, a steadied camera, the people's background.
     t picture.cjs "$U" $S/green_screen.mp4 $S/classroom.mp4 $S/walk.mp4 $S/speech_two.mp4 $R/picture   # 107
     # Settings: language, light / dark / the device's, the color palette; kept after a reload.
@@ -34,6 +34,8 @@ case "${1:?shard}" in
     t cutskip.cjs "$U" $S/speech_two.mp4 $R/cutskip   # 25
     # The ready screen: the video first, the blur's settings, "blur and save" without the editor.
     t ready.cjs "$U" $S/walk.mp4 $S/classroom.mp4 $R/ready   # 39
+    # The editor as the app's, part two: effect cards that play (still with less motion), font cards each in its font, a group's tool chips on one row (360-412 px, he and en), the tablet layouts (upright under 840 px: one column; the rail of groups and the panel beside the video).
+    t parity.cjs "$U" $S/speech_two.mp4 $R/parity ../app/src/main/assets/fonts/heebo.ttf   # 62
     ;;
   2) # 235 s
     # Subtitles on a phone (390 px): the one button on the first screen, the looks as drawn cards, one tap applies one, a subtitle edited where it is, 44 px targets. No model.
