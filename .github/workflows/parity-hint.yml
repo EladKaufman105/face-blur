@@ -1,0 +1,35 @@
+name: Parity hint
+
+# Advisory only: it never fails. Do not add it to the required checks.
+# Warns when a PR changes UI code on one platform and touches neither the other platform nor docs/parity.md.
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  parity-hint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - name: Check parity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          files=$(gh api "repos/${{ github.repository }}/pulls/$PR/files" --paginate --jq '.[].filename') || exit 0
+          app=$(printf '%s\n' "$files" | grep -E '^app/src/main/java/.*/ui/' || true)
+          web=$(printf '%s\n' "$files" | grep -E '^web/src/ui/' || true)
+          doc=$(printf '%s\n' "$files" | grep -Fx 'docs/parity.md' || true)
+          [ -n "$doc" ] && exit 0
+          if [ -n "$app" ] && [ -z "$web" ]; then
+            echo "::warning title=Parity::This PR changes app UI but not web/src/ui or docs/parity.md. Port it, or link a follow-up and mark the row gap-web."
+          elif [ -n "$web" ] && [ -z "$app" ]; then
+            echo "::warning title=Parity::This PR changes web UI but not app UI or docs/parity.md. Port it, or link a follow-up and mark the row gap-app."
+          fi
+          exit 0
