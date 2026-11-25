@@ -118,11 +118,12 @@ async function open(b, viewport, mobile, locale = 'he-IL', tool) {
       await p.click('.tabs button[data-g=faces]')
       await p.focus('.panel-head [role=tab][aria-selected=true]')
       const t0 = await p.evaluate(() => document.querySelector('video').currentTime)
+      const on0 = await p.evaluate(() => document.querySelector('.panel-head [role=tab][aria-selected=true]')?.dataset.sub)
       await p.keyboard.press('ArrowRight')
       await p.waitForTimeout(300)
       const arrow = await p.evaluate(() => ({ t: document.querySelector('video').currentTime, on: document.querySelector('.panel-head [role=tab][aria-selected=true]')?.dataset.sub }))
       if (arrow.t !== t0) fail('an arrow key on a tool also stepped the video: ' + JSON.stringify([t0, arrow]))
-      if (arrow.on === 'list') fail('the arrow key did not move to another tool')
+      if (arrow.on === on0) fail('the arrow key did not move to another tool')
       // with subtitles (an SRT): the list shows, and the tools in "create and translate" are there
       await p.click('.tabs button[data-g=subs]')
       await p.click('.panel-head [data-sub=make]')
