@@ -1,0 +1,42 @@
+name: Parity hint
+
+# Advisory only: it never fails. Do not add it to the required checks.
+# Warns when a PR changes app or web source and touches neither the other platform nor docs/parity.md.
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: parity-hint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  parity-hint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - name: Check parity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # The PR body is data: it is only read from the environment.
+          case "${PR_BODY,,}" in *'[x] platform-only'*|*'[x] no user-facing change'*) exit 0;; esac
+          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate --jq '.[].filename') || exit 0
+          app=$(printf '%s\n' "$files" | grep -E '^app/src/main/java/' || true)
+          web=$(printf '%s\n' "$files" | grep -E '^web/src/' || true)
+          doc=$(printf '%s\n' "$files" | grep -Fx 'docs/parity.md' || true)
+          [ -n "$doc" ] && exit 0
+          if [ -n "$app" ] && [ -z "$web" ]; then
+            echo "::warning title=Parity::This PR changes app code but not web/src or docs/parity.md. Port it, or link a follow-up and mark the row gap-web. Tick 'platform-only' in the PR if it does not apply."
+          elif [ -n "$web" ] && [ -z "$app" ]; then
+            echo "::warning title=Parity::This PR changes web code but not app code or docs/parity.md. Port it, or link a follow-up and mark the row gap-app. Tick 'platform-only' in the PR if it does not apply."
+          fi
+          exit 0
