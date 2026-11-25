@@ -3,7 +3,7 @@
 // view; nothing scrolls sideways; every tool of every group can be opened and has something in
 // it; the targets are 44 px; "more options" is never an empty fold (on a wide screen it holds
 // something or is not there). The speech model is blocked (the subtitles come from an SRT).
-// Run: node tests/panels.cjs <url> <video> <out dir>
+// Run: node tests/panels.cjs <url> <video> <out dir> [a video with at least 3 face tracks, for the crowded case; default: the first video]
 const { chromium } = require('playwright')
 const fs = require('fs')
 const [, , url, video, out] = process.argv
@@ -114,6 +114,19 @@ const mkCheck = (p) => async (label) => {
         await p.click('.tl-face >> nth=0')
         await p.waitForSelector('.ctx-bar', { timeout: 5000 })
         await check('faces with a blur selected')
+        // the selection stays when the group changes: the style tool (the tallest) with it
+        await p.click('.tabs button[data-g=subs]')
+        for (const sub of await p.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
+          await p.click(`.panel-head [data-sub=${sub}]`)
+          await p.waitForTimeout(200)
+          await check(`blur selected + subs/${sub}`)
+          if (sub === 'style') for (const sp of await p.$$eval('.subtabs.inner [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
+            await p.click(`.subtabs.inner [data-sub=${sp}]`)
+            await p.waitForTimeout(200)
+            await check(`blur selected + subs/style/${sp}`)
+          }
+        }
+        await p.click('.tabs button[data-g=faces]')
         const room = await p.evaluate(() => ({ bottom: document.querySelector('.tabs').getBoundingClientRect().bottom, vh: document.documentElement.clientHeight }))
         if (room.bottom < room.vh - 8) fail('the editor does not fit the screen: ' + JSON.stringify(room))
         await p.click('.ctx-bar button:last-child')
@@ -150,7 +163,7 @@ const mkCheck = (p) => async (label) => {
 
       // a blur selected (its bar shows under the timeline): nothing overlaps; the other two phones, one page and one detection
       await withBlurSelected()
-      for (const vp of [{ width: 360, height: 740 }, { width: 412, height: 915 }]) {
+      for (const vp of [{ width: 360, height: 740 }, { width: 412, height: 915 }, { width: 390, height: 664 }]) {
         await p.setViewportSize(vp)
         await p.waitForTimeout(500)
         console.log('==', vp.width, 'x', vp.height, locale)
@@ -167,6 +180,7 @@ const mkCheck = (p) => async (label) => {
       const chk = mkCheck(q)
       const tracks = await q.$$eval('.tl-face', (e) => e.length)
       console.log('face tracks:', tracks)
+      if (tracks < 3) fail('the many-tracks case needs a video with at least 3 face tracks: ' + tracks)
       for (const g of ['faces', 'subs', 'sound']) {
         await q.click(`.tabs button[data-g=${g}]`)
         for (const sub of await q.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
@@ -175,9 +189,31 @@ const mkCheck = (p) => async (label) => {
           await chk(`many tracks ${g}/${sub}`)
         }
       }
+      // subtitles in, a blur selected, every style tab, on the two small screens
       await q.click('.tabs button[data-g=subs]')
-      await q.click('.panel-head [data-sub=style]')
-      await chk('many tracks subs/style')
+      await q.click('.panel-head [data-sub=make]')
+      await q.setInputFiles('.srt-import input', `${out}/in.srt`)
+      await q.waitForSelector('.panel-head [data-sub=list][aria-selected=true]', { timeout: 5000 })
+      await q.click('.tabs button[data-g=faces]')
+      await q.click('.tl-face >> nth=0')
+      await q.waitForSelector('.ctx-bar', { timeout: 5000 })
+      for (const vp of [{ width: 360, height: 740 }, { width: 390, height: 664 }]) {
+        await q.setViewportSize(vp)
+        await q.waitForTimeout(400)
+        for (const g of ['faces', 'subs']) {
+          await q.click(`.tabs button[data-g=${g}]`)
+          for (const sub of await q.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
+            await q.click(`.panel-head [data-sub=${sub}]`)
+            await q.waitForTimeout(200)
+            await chk(`${vp.width}x${vp.height} 4 tracks + SRT + blur selected ${g}/${sub}`)
+            if (g === 'subs' && sub === 'style') for (const sp of await q.$$eval('.subtabs.inner [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
+              await q.click(`.subtabs.inner [data-sub=${sp}]`)
+              await q.waitForTimeout(200)
+              await chk(`${vp.width}x${vp.height} 4 tracks + SRT + blur selected subs/style/${sp}`)
+            }
+          }
+        }
+      }
       await q.context().close()
       const r = await open(b, { width: 360, height: 740 }, true, 'he-IL', undefined, video, true)
       await r.click('.tabs button[data-g=sound]')
@@ -190,6 +226,17 @@ const mkCheck = (p) => async (label) => {
       await r.click('.panel-head [data-sub=style]')
       await chk2('sound error subs/style')
       await r.screenshot({ path: `${out}/sound_error_style.png` })
+      await r.setViewportSize({ width: 390, height: 664 })
+      await r.waitForTimeout(400)
+      for (const g of ['sound', 'faces', 'subs']) {
+        await r.click(`.tabs button[data-g=${g}]`)
+        for (const sub of await r.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
+          await r.click(`.panel-head [data-sub=${sub}]`)
+          await r.waitForTimeout(200)
+          await chk2(`390x664 sound error ${g}/${sub}`)
+        }
+      }
+      await r.screenshot({ path: `${out}/sound_error_664.png` })
       await r.context().close()
     }
 

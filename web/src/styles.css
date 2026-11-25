@@ -828,10 +828,16 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 @media (max-width: 600px) {
   /* The editor fits the screen: the video takes what the timeline, the panel and the groups leave. */
   .app:has(.editor.narrow) { padding-bottom: 0; height: 100dvh; min-height: 0; }
-  .editor.narrow { display: flex; flex-direction: column; gap: 6px; flex: 1 1 0; }
-  .editor.narrow .player { display: flex; flex-direction: column; gap: 6px; flex: 1 1 0; }
+  .editor.narrow { display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; }
+  .editor.narrow .player { display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; }
   .editor.narrow .player > * { flex: none; }
-  .editor.narrow .player > .screen { flex: 1 1 0; min-height: 64px; container-type: size; --screen-h: 100cqh; }
+  /* The sum can never pass the screen: the fixed chrome (top row, transport, the groups) stays, and
+     what varies (the video, the timeline's lanes, the panel's body) gives way and scrolls. */
+  .editor.narrow { min-height: 0; }
+  .editor.narrow .player { min-height: 0; }
+  .editor.narrow .player > .screen { flex: 1 1 0; min-height: 90px; container-type: size; --screen-h: 100cqh; }
+  .editor.narrow .player > .tl { flex: 0 1 auto; min-height: 64px; display: flex; flex-direction: column; }
+  .editor.narrow .tl-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; touch-action: pan-x pan-y; }
   .app:has(.editor.narrow) { padding-top: max(8px, env(safe-area-inset-top)); }
   .app:has(.editor.narrow) .top { padding-bottom: 0; }
   .editor.narrow .transport .time { min-width: 0; white-space: nowrap; font-size: 13px; }
@@ -842,18 +848,19 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .editor.narrow .player > .row .export-bar { position: static; padding: 0; background: none; display: flex; align-items: center; gap: 2px; flex: none; }
   .editor.narrow .player > .row .export-bar .btn.primary { width: auto; min-height: 44px; padding-inline: 16px; }
   /* What does not fit is taken from the panel's body (it scrolls), never from the bar of groups. */
-  .editor.narrow > .side { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 0 0 max(6px, env(safe-area-inset-bottom)); }
+  .editor.narrow > .side { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; padding: 0 0 max(6px, env(safe-area-inset-bottom)); }
   .editor.narrow .side > * { order: 1; }
   .editor.narrow .side > .panel { order: 2; }
   .editor.narrow .side > .tabs { flex: none; order: 3; position: static; padding: 2px; box-shadow: none; border-radius: var(--radius-card); }
-  .editor.narrow .tabs button { min-height: 54px; }
+  .editor.narrow .tabs button { min-height: 50px; }
   .editor.narrow .keys { display: none; }
   .panel { background: var(--surface); border: 1px solid var(--outline-soft); border-radius: var(--radius-panel); overflow: hidden; display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; }
   .panel > * { flex: none; }
   .panel-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px 0; }
   .panel-head .subtabs { flex: 1; }
   .panel-title { margin: 0; flex: 1; min-height: 44px; display: flex; align-items: center; padding-inline: 6px; font: var(--text-heading); color: var(--g); }
-  .panel .subtabs.inner { padding: 6px 8px 0; }
+  .panel .subtabs.inner { padding: 4px 8px 0; flex-wrap: nowrap; gap: 3px; overflow-x: auto; scrollbar-width: none; }
+  .panel .subtabs.inner .chip { padding-inline: 7px; font-size: 12px; }
   .subtabs { flex-wrap: wrap; overflow: visible; }
   .panel .subtabs .chip { min-height: 44px; padding-inline: 11px; font-size: 13px; }
   .panel .subtabs .chip.on { background: color-mix(in srgb, var(--g) 22%, transparent); color: var(--g); border-color: var(--g); }
@@ -876,6 +883,8 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .editor.narrow .side > .card { padding: 6px 10px; margin: 0; flex: none; gap: 4px; }
   .editor.narrow .side > .sound-error p { font-size: 13px; line-height: 1.3; }
   .editor.narrow:has(.side > .sound-error, .side > .tpl-run) .player > .screen { min-height: 40px; }
+  .editor.narrow:has(.side > .sound-error, .side > .tpl-run) .player > .tl { min-height: 48px; }
+  .editor.narrow:has(.side > .sound-error, .side > .tpl-run) .panel > .panel-body { min-height: 40px; }
   .panel.has-inner > .panel-body { --body-h: clamp(96px, 13dvh, 200px); }
   .panel-body .caption { margin: 6px 0 2px; }
   .panel-body .slider-row { margin-top: 4px; }
