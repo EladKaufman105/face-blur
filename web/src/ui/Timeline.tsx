@@ -91,15 +91,17 @@ export function Timeline(p: Props) {
     const el = scroller.current
     if (!el || pps === 0 || performance.now() < userUntil.current) return
     const x = p.time * pps
+    // (A scroller with no width, hidden, cannot scroll: it follows again when it has one.)
     if (Math.abs(el.scrollLeft - x) > 0.5) {
       lastSet.current = Math.round(x)
       el.scrollLeft = x
     }
-  }, [p.time, pps])
+  }, [p.time, pps, viewW])
 
   const onScroll = () => {
     const el = scroller.current
-    if (!el || pps === 0) return
+    // Not a user's scroll: the scroller is hidden (no width), or its width has just come back and the follow has not run yet.
+    if (!el || pps === 0 || el.clientWidth === 0 || el.clientWidth !== viewW) return
     if (Math.abs(el.scrollLeft - lastSet.current) <= 1) return
     userUntil.current = performance.now() + 400
     p.onScrub(clamp(el.scrollLeft / pps, 0, dur))

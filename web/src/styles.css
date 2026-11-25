@@ -838,23 +838,30 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .editor.narrow .player > .screen { flex: 1 1 0; min-height: max(96px, 30dvh); container-type: size; --screen-h: 100cqh; }
   /* The timeline takes the panel's place and size: the video stays as it is when one gives way to the other. */
   .editor.narrow .player > .tl { flex: 0 1 var(--slot-h); min-height: 150px; display: flex; flex-direction: column; }
-  .editor.narrow.panel-open .player > .tl { display: none; }
+  /* Hidden, not removed: it keeps its width, so it goes on following the video (a scroller with no width ignores scrolling). */
+  .editor.narrow .player { position: relative; }
+  .editor.narrow.panel-open .player > .tl { visibility: hidden; position: absolute; inset: 0; pointer-events: none; min-height: 0; }
+  .panel[hidden] { display: none; }
   /* The selected blur's bar sits under the timeline (over the panel's place when a panel is open, which gives up its height for it). */
   .editor.narrow .player > .ctx-bar { order: 5; }
   .editor.narrow.panel-open:has(.player > .ctx-bar) { --slot-h: clamp(190px, calc(68dvh - 250px), 400px); }
   .editor.narrow .tl-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; touch-action: pan-x pan-y; }
   /* The top bar: back, BETA, and on the other side undo, redo, save template, settings, export. */
   .editor.narrow .player > .top-row { height: 56px; min-height: 56px; flex-wrap: nowrap; gap: 0; align-items: center; }
-  .editor.narrow .top-row .icon-btn, .editor.narrow .top-row .edit-tools .icon-btn { width: 42px; height: 42px; flex: none; color: var(--text); }
+  .editor.narrow .player > .top-row { container-type: inline-size; min-width: 0; }
+  .editor.narrow .top-row .icon-btn, .editor.narrow .top-row .edit-tools .icon-btn { width: 44px; height: 44px; flex: none; color: var(--text); }
   .editor.narrow .top-row .edit-tools { gap: 0; }
   .editor.narrow .top-row .detect-info { display: none; }
-  .editor.narrow .beta-mini { margin-inline-start: 4px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--outline); color: var(--muted); font-size: 10px; line-height: 14px; font-weight: 600; letter-spacing: 0.6px; direction: ltr; }
+  .editor.narrow .beta-mini { flex: none; margin-inline-start: 4px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--outline); color: var(--muted); font-size: 10px; line-height: 14px; font-weight: 600; letter-spacing: 0.6px; direction: ltr; }
   .editor.narrow .transport .time { min-width: 0; white-space: nowrap; font-size: 13px; }
   .editor.narrow .transport { gap: 6px; }
-  .editor.narrow .transport .icon-btn { width: 40px; height: 40px; }
+  .editor.narrow .transport .icon-btn { width: 44px; height: 44px; }
   .editor.narrow .transport .round { width: 44px; height: 44px; }
   .editor.narrow .player > .row .export-bar { position: static; padding: 0; background: none; display: flex; align-items: center; gap: 0; flex: none; }
-  .editor.narrow .player > .row .export-bar .btn.primary { width: auto; min-height: 42px; padding-inline: 14px; margin-inline-start: 4px; }
+  .editor.narrow .player > .row .export-bar .btn.primary { width: auto; min-height: 44px; padding-inline: 14px; margin-inline-start: 4px; }
+  /* Short of room (a narrow phone, or the BETA mark in the bar), Export keeps only its icon: its name stays for screen readers. */
+  @container (max-width: 359px) { .editor.narrow .top-row .btn.primary { width: 44px; padding-inline: 0; justify-content: center; } .editor.narrow .top-row .exp-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } }
+  @container (max-width: 405px) { .editor.narrow .top-row.beta .btn.primary { width: 44px; padding-inline: 0; justify-content: center; } .editor.narrow .top-row.beta .exp-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } }
   .editor.narrow .player > .row .export-bar .save-template-btn { padding-inline: 0; }
   /* What does not fit is taken from the panel (its body scrolls), never from the bar of groups. */
   .editor.narrow > .side { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; padding: 0 0 max(4px, env(safe-area-inset-bottom)); }
@@ -913,4 +920,24 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   /* The one primary button first (the panel is short), the language it listens for under it. */
   .panel-body .subs-start { display: flex; flex-direction: column; }
   .panel-body .subs-start .subs-create { order: -1; margin: 0 0 10px !important; }
+}
+
+/* A short phone screen (a small one, or a tall one with the keyboard up): less around the video and the panel,
+   so the top bar, the transport, the panel with its header and the bar of groups all fit with nothing over another. */
+@media (max-width: 600px) and (max-height: 640px) {
+  .editor.narrow { --slot-h: clamp(120px, calc(100dvh - 340px), 300px); }
+  .editor.narrow .player > .screen { min-height: 72px; }
+  .editor.narrow .player > .tl { min-height: 72px; }
+  .editor.narrow .player > .top-row { height: 52px; min-height: 52px; }
+  .panel { min-height: 0; }
+  .panel .subtabs .chip { min-height: 40px; }
+  .panel-body { padding-block: 4px 6px; }
+}
+@media (max-width: 600px) and (max-height: 470px) {
+  .editor.narrow { --slot-h: clamp(110px, calc(100dvh - 250px), 300px); }
+  .editor.narrow .player > .top-row { height: 48px; min-height: 48px; }
+  .editor.narrow .player > .screen { min-height: 56px; }
+  .editor.narrow .tabs button { min-height: 44px; }
+  .editor.narrow .tabs button > span:last-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .editor.narrow .tabs button .pill-ic { height: 32px; }
 }

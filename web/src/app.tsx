@@ -178,7 +178,7 @@ export function App() {
               return
             }
             if (!save) {
-              setScreen({ name: 'editor', file: screen.file, analysis, thumbs, template, info: t('זמן עיבוד: %s', duration(ms / 1000)) + ' · ' + t('הזיהוי רץ על %s', backend === 'webgpu' ? t('המעבד הגרפי') : t('המעבד')) })
+              setScreen({ name: 'editor', file: screen.file, analysis, thumbs, template, tab: analysis.tracks.length > 0 && !template ? 'faces' : undefined, info: t('זמן עיבוד: %s', duration(ms / 1000)) + ' · ' + t('הזיהוי רץ על %s', backend === 'webgpu' ? t('המעבד הגרפי') : t('המעבד')) })
               return
             }
             // Saved straight away, as found: every face blurred, the watermark last used, and for

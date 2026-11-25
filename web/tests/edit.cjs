@@ -21,7 +21,7 @@ const PHONE = { viewport: { width: 393, height: 852 }, deviceScaleFactor: 2, isM
   const tap = (sel) => (device === 'phone' ? p.tap(sel) : p.click(sel))
   // On a phone a group's button opens its panel in the timeline's place, a second tap on it closes it, and the panel's close button brings the timeline back.
   const group = async (g) => { const s = `.tabs button[data-g=${g}]`; if (device === 'phone' && (await p.getAttribute(s, 'aria-selected')) === 'true') return; await tap(s) }
-  const timeline = async () => { if (device === 'phone' && (await p.$('.panel'))) await tap('.panel-close') }
+  const timeline = async () => { if (device === 'phone' && (await p.$('.panel:not([hidden])'))) await tap('.panel-close') }
   try {
     await p.goto(url)
     await p.waitForTimeout(1000)

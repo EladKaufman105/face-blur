@@ -1028,6 +1028,11 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     setTab(g)
     setPanelOpen(true)
   }
+  /** The panel's close button: the timeline is back, and the focus goes to the group's button. */
+  function closePanel() {
+    setPanelOpen(false)
+    setTimeout(() => (document.querySelector(`.tabs [data-g=${tab}]`) as HTMLElement | null)?.focus(), 0)
+  }
   const groupName = GROUPS.find((g) => g[0] === tab)![1]
   const groupColor = GROUPS.find((g) => g[0] === tab)![3]
   const exportBtn = (
@@ -1042,7 +1047,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         if (!srcInfo) probe()
       }}
     >
-      <SaveIcon /> {t('ייצוא')}
+      <SaveIcon /> <span class="exp-label">{t('ייצוא')}</span>
     </button>
   )
   const saveTplBtn = <button class="btn ghost save-template-btn" onClick={() => setSaveTpl(true)}>{t('שמור כתבנית')}</button>
@@ -1216,11 +1221,11 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     )}
     <main class={'editor' + (narrow && !detecting && !hidden ? ' narrow' : '') + (narrow && panelOpen ? ' panel-open' : '')} style={detecting || hidden ? 'display:none' : ''}>
       <div class="player">
-        <div class="row top-row">
+        <div class={'row top-row' + (BETA ? ' beta' : '')}>
           {narrow
             ? <button class="icon-btn back-btn" onClick={onClose} aria-label={t('סרטון חדש')} title={t('סרטון חדש')}><span class="flip"><BackIcon /></span></button>
             : <button class="btn ghost" onClick={onClose} style="padding-inline:6px"><span class="flip"><BackIcon /></span> {t('סרטון חדש')}</button>}
-          {narrow && BETA && <span class="beta-mini" aria-label="Beta">BETA</span>}
+          {narrow && BETA && <span class="beta-mini">BETA</span>}
           <div class="grow" />
           <span class="small muted detect-info">{detectInfo}</span>
           {!narrow && editTools}
@@ -1331,13 +1336,13 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             </button>
           ))}
         </div>
-        {narrow ? (panelOpen &&
-          <div class={'panel' + (tab === 'subs' && part === 'style' ? ' has-inner' : '')} data-g={tab} style={{ '--g': groupColor } as any}>
+        {narrow ? (
+          <div hidden={!panelOpen} class={'panel' + (tab === 'subs' && part === 'style' ? ' has-inner' : '')} data-g={tab} style={{ '--g': groupColor } as any}>
             <div class="panel-head">
               {subList.length > 0
                 ? <ChipTabs items={subList} value={part} onPick={(id) => setSubTab({ ...subTab, [tab]: id })} label={t(groupName)} />
                 : <h2 class="panel-title">{t(groupName)}</h2>}
-              <button class="icon-btn panel-close" onClick={() => setPanelOpen(false)} aria-label={t('סגור')} title={t('סגור')}><CloseIcon size={22} /></button>
+              <button class="icon-btn panel-close" onClick={closePanel} aria-label={t('סגור')} title={t('סגור')}><CloseIcon size={22} /></button>
             </div>
             {tab === 'subs' && part === 'style' && <ChipTabs items={STYLE_PARTS} value={styleTab} onPick={setStyleTab} cls="inner" label={t('עיצוב כתוביות')} />}
             <div class="panel-body" ref={bodyRef} id={PANEL_ID} role="tabpanel" aria-labelledby={subList.length > 0 ? `tab-${tab === 'subs' && part === 'style' ? 'inner' : 'tool'}-${tab === 'subs' && part === 'style' ? styleTab : part}` : undefined} aria-label={subList.length > 0 ? undefined : t(groupName)}>{panelBody}</div>
