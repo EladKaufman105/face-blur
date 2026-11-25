@@ -958,6 +958,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             exportMp3(ctrl)
             return
         }
+        // The people background has no masks (yet): saving would leave it out without a word.
+        if (com.elad.faceblur.edit.MaskPolicy.exportBlocked(ctrl.background, ctrl.masksReady)) {
+            ctrl.notice = t("הרקע של האנשים עדיין לא מוכן: קודם מזהים את האנשים בלשונית הרקע, או מכבים את הרקע.")
+            return
+        }
         state = UiState.Working(info, 2, 0f)
         job = viewModelScope.launch {
             guard(info, onCancel = { UiState.Editing(info, ctrl) }) { render(ctrl) }
@@ -982,7 +987,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     Unit
                 }
                 val r = when (route) {
-                    com.elad.faceblur.audio.Mp3Plan.Route.NO_SOUND -> error(t("אין סאונד לשמירה: הסאונד מושתק"))
+                    com.elad.faceblur.audio.Mp3Plan.Route.NO_SOUND -> throw com.elad.faceblur.pipeline.MutedSoundException()
                     com.elad.faceblur.audio.Mp3Plan.Route.RAW -> withContext(Dispatchers.IO) {
                         com.elad.faceblur.audio.Mp3Export.convert(getApplication(), info.uri, base, isActive = { isActive }, onProgress = progress(0f, 1f))
                     }

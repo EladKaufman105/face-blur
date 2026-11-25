@@ -55,7 +55,7 @@ internal fun FacesList(ctrl: EditorController) {
     @Suppress("UNUSED_VARIABLE") val v = ctrl.version
     val tracks = ctrl.model.tracks
     val progress = ctrl.findFacesProgress
-    if (ctrl.session.subtitlesOnly && tracks.isEmpty()) {
+    if (ctrl.session.subtitlesOnly) {
         Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
             Text(
                 t("הפנים בסרטון עוד לא זוהו. אפשר לזהות ולטשטש אותן עכשיו; הכתוביות, הסאונד וסימן המים יישארו."),
@@ -72,7 +72,7 @@ internal fun FacesList(ctrl: EditorController) {
                 FilledTonalButton(onClick = ctrl::findFaces, modifier = Modifier.fillMaxWidth().testTag(Tags.FIND_FACES)) { Text(t("זהה פנים")) }
             }
         }
-        return
+        if (tracks.isEmpty()) return
     }
     if (tracks.isEmpty()) {
         Text(t("לא נמצאו פנים בסרטון."), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -1081,16 +1081,22 @@ class EditorController(
         pauser()
         addMode = false
         findFacesProgress = 0f
-        findJob = scope.launch {
+        // ATOMIC: the body (and its finally) runs even if cancelled before it starts, so the progress is always cleared.
+        findJob = scope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
             try {
                 val found = FaceBlurProcessor(ctx).analyze(session.info, session.settings) { p -> main.post { if (findFacesProgress != null) findFacesProgress = p } }
+                val keep = session.masks != null && MaskPolicy.keepMasks(session.analysis.times, found.times)
                 session.adoptDetection(found)
-                // What was made from the old frames goes: the people's masks, and the background's frame times.
-                session.masks?.close()
-                session.masks = null
-                session.projectDir?.let { d -> java.io.File(d, "masks.bin").delete(); java.io.File(d, "masks.bin.idx").delete() }
-                masksReady = false
-                bgState = BackgroundState(background, null, session.analysis.times)
+                if (!keep) {
+                    // What was made from the old frames goes: the people's masks, and the background's frame times.
+                    val old = session.masks
+                    session.masks = null
+                    bgState.masks = null
+                    old?.close()
+                    session.projectDir?.let { d -> java.io.File(d, "masks.bin").delete(); java.io.File(d, "masks.bin.idx").delete() }
+                    masksReady = false
+                }
+                bgState = BackgroundState(background, session.masks, session.analysis.times)
                 previewAvailable = true
                 frame = 0
                 selectedId = null
@@ -1099,6 +1105,11 @@ class EditorController(
                 playerEpoch++
                 onFacesFound?.invoke()
                 notice = if (model.tracks.isEmpty()) t("לא זוהו פנים. אפשר לסמן ידנית עם \"הוסף טשטוש\".") else null
+                if (MaskPolicy.rerunPeople(background, keep)) {
+                    // The people background can't be drawn without masks for these frames: find them again.
+                    findPeople()
+                    notice = t("הפריימים השתנו, אז האנשים מזוהים מחדש בשביל הרקע")
+                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {

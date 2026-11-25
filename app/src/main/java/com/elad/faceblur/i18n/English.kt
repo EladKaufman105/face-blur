@@ -777,6 +777,8 @@ internal val English: Map<String, String> = mapOf(
     "התבנית לא נשמרה" to "Template not saved",
     "לא הצלחנו לשמור את התבנית. נסה שוב." to "Couldn't save the template. Try again.",
     "אין סאונד לשמירה: הסאונד מושתק" to "No sound to save: the sound is muted",
+    "הפריימים השתנו, אז האנשים מזוהים מחדש בשביל הרקע" to "The frames changed, so the people are being found again for the background",
+    "הרקע של האנשים עדיין לא מוכן: קודם מזהים את האנשים בלשונית הרקע, או מכבים את הרקע." to "The people background isn't ready: find the people in the Background tab first, or turn the background off.",
     "זיהוי הפנים נכשל" to "Finding the faces failed",
     "הפנים לא יטושטשו בסרטונים האלה: בתבנית הזו אין טשטוש פנים." to "Faces will not be blurred in these videos: this template has no face blur.",
     "מזהה פנים… %d%%" to "Finding faces… %d%%",
