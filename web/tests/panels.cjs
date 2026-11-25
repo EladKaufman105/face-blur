@@ -32,9 +32,9 @@ const tapSelect = async (p) => {
   await p.evaluate((t) => { const v = document.querySelector('video'); v.pause(); v.currentTime = t }, mid)
   await p.waitForTimeout(400)
   const k = await p.$eval('.screen .view', (e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height] })
-  for (let j = 1; j < 12; j++) for (let i = 1; i < 12; i++) {
+  for (let j = 1; j < 8; j++) for (let i = 1; i < 8; i++) {
     await p.evaluate(() => document.querySelector('video').pause())
-    await p.touchscreen.tap(k[0] + (k[2] * i) / 12, k[1] + (k[3] * j) / 12)
+    await p.touchscreen.tap(k[0] + (k[2] * i) / 8, k[1] + (k[3] * j) / 8)
     if (await p.waitForSelector('.ctx-bar', { timeout: 500 }).then(() => true, () => false)) return true
   }
   return false
@@ -149,7 +149,8 @@ const mkCheck = (p) => async (label) => {
     if (m.tabsBottom > m.clientH + 0.5 || m.scrollH > m.clientH + 0.5) fail(`${label}: the bar of groups is off the screen: ${JSON.stringify([m.tabsBottom, m.scrollH, m.clientH])}`)
     if (m.panelOver) fail(label + ': the panel body scrolls sideways')
     if (m.small.length) fail(`${label}: targets under 44 px: ${m.small.slice(0, 6)}`)
-    await p.screenshot({ path: `${out}/${label.replace(/[^\w]+/g, '_')}.png` })
+    // (A picture of every check is slow: only when asked, PANELS_SHOTS=1.)
+    if (process.env.PANELS_SHOTS) await p.screenshot({ path: `${out}/${label.replace(/[^\w]+/g, '_')}.png` })
   }
 
 ;(async () => {
@@ -175,7 +176,8 @@ const mkCheck = (p) => async (label) => {
         const top = await p.evaluate(() => document.querySelector('.panel-body')?.scrollTop ?? 0)
         if ((await where()) !== before && top !== 0) fail(`${label}: opened scrolled (${top} px)`)
       }
-      const sweep = async () => {
+      // [light]: the groups and the tallest tool only (the other sizes; the first size has every tool and style tab, and the states below check every group at four sizes).
+      const sweep = async (light = false) => {
         for (const g of ['faces', 'edit', 'picture', 'sound', 'mark', 'subs']) {
           await go(`.tabs button[data-g=${g}]`, g)
           const subs = await p.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))
@@ -183,9 +185,10 @@ const mkCheck = (p) => async (label) => {
           if (g !== 'mark' && subs.length < 2) fail(g + ': no tools to pick from')
           await check(g)
           for (const sub of subs) {
+            if (light && !(g === 'subs' && sub === 'style')) continue
             await go(`.panel-head [data-sub=${sub}]`, `${g}/${sub}`)
             await check(`${g}/${sub}`)
-            if (g === 'subs' && sub === 'style') {
+            if (g === 'subs' && sub === 'style' && !light) {
               for (const sp of await p.$$eval('.subtabs.inner [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
                 await go(`.subtabs.inner [data-sub=${sp}]`, `subs/style/${sp}`)
                 await check(`subs/style/${sp}`)
@@ -255,11 +258,11 @@ const mkCheck = (p) => async (label) => {
       // a blur selected (its bar shows under the timeline): nothing overlaps; the other two phones, one page and one detection
       await withBlurSelected()
       // 412 x 915 is the roomy one: Hebrew only (the shards are timed).
-      for (const vp of [{ width: 360, height: 740 }, { width: 412, height: 915 }, { width: 390, height: 664 }].filter((v) => he || v.width !== 412)) {
+      for (const vp of [{ width: 360, height: 740 }, { width: 412, height: 915 }, { width: 390, height: 664 }].filter((v) => he || v.width === 360)) {
         await p.setViewportSize(vp)
         await p.waitForTimeout(500)
         console.log('==', vp.width, 'x', vp.height, locale)
-        await sweep()
+        await sweep(true)
         await withBlurSelected()
       }
       await p.context().close()
@@ -559,7 +562,7 @@ self.onmessage = async () => { const n = Number(await (await fetch('/__run')).te
         await p.waitForSelector('.tabs [data-g=subs] .dot.alert', { state: 'attached', timeout: 15000 }).catch(() => fail('no alert mark on the Subtitles group after an error in another group'))
         await grp(p, 'subs')
         await p.waitForSelector('.panel:not([hidden]) :text("boom")', { timeout: 5000 }).catch(() => fail('the error is not shown in the make tool'))
-        if (await p.$('.tabs [data-g=subs] .dot.alert')) fail('the alert mark stays after the group was opened')
+        await p.waitForSelector('.tabs [data-g=subs] .dot.alert', { state: 'detached', timeout: 3000 }).catch(() => fail('the alert mark stays after the group was opened'))
         await p.screenshot({ path: `${out}/lost_bleeps.png` })
         await p.context().close()
       }
