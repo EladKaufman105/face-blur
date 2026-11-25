@@ -546,6 +546,7 @@ self.onmessage = async () => { const n = Number(await (await fetch('/__run')).te
         // the export sheet says it too
         await p.click('.export-bar .btn')
         await p.waitForSelector('.export-sheet .lost-note', { state: 'visible', timeout: 5000 }).catch(() => fail('the export sheet does not say bleeped words were lost'))
+        await p.waitForTimeout(300)
         await p.keyboard.press('Escape')
         await p.waitForSelector('.export-sheet', { state: 'detached', timeout: 5000 })
         await grp(p, 'subs')
