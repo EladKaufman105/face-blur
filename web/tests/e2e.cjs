@@ -18,6 +18,8 @@ const DEVICES = {
   const p = await ctx.newPage()
   // On a phone a group's tools are tabs of its panel (as the app's): open one before using its controls.
   const sub = async (id) => { if (device === 'phone') await p.click(`.panel-head [data-sub=${id}]`) }
+  // On a phone a group's button opens its panel in the timeline's place, and a second tap closes it: an open group is left as it is.
+  const group = async (g) => { const s = `.tabs button[data-g=${g}]`; if (device === 'phone' && (await p.getAttribute(s, 'aria-selected')) === 'true') return; await p.click(s) }
   const logs = []
   p.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`))
   p.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`))
@@ -35,6 +37,8 @@ const DEVICES = {
     const error = await p.evaluate(() => document.querySelector('.card.error')?.textContent)
     if (error) throw new Error('analysis: ' + error)
     console.log('analysis', ((Date.now() - t0) / 1000).toFixed(1), 's')
+    // The faces' list is in the faces group's panel (on a phone it is closed at first, the timeline showing).
+    await group('faces')
     const faces = await p.evaluate(() => document.querySelectorAll('.face').length)
     console.log('faces', faces)
     await p.evaluate(() => { const v = document.querySelector('video'); v.currentTime = v.duration / 2 })
@@ -52,18 +56,20 @@ const DEVICES = {
     await p.screenshot({ path: `${out}/5_pixelate.png` })
     await p.click('.seg:not(.tabs) button >> nth=0')
     // A sound effect at the playhead, and a text watermark.
-    await p.click('.tabs button[data-g=sound]')
+    await group('sound')
     await sub('sfx')
     await p.click('.sound .name >> nth=0')
-    await p.waitForSelector('.tl-sound', { timeout: 5000 })
     if (process.env.VOICE) {
       // A voice change (the chip by its English name is not shown: pick by position).
       await p.click(`.chip >> nth=${process.env.VOICE}`)
       await p.waitForFunction(() => !document.body.textContent.includes('מעבד את הקול'), null, { timeout: 120000 })
     }
+    // On a phone the timeline takes the panel's place back when the panel is closed: the new clip is on it.
+    if (device === 'phone') await p.click('.panel-close')
+    await p.waitForSelector('.tl-sound', { timeout: 5000 })
     await p.waitForTimeout(600)
     await p.screenshot({ path: `${out}/5b_sound.png` })
-    await p.click('.tabs button[data-g=mark]')
+    await group('mark')
     await p.fill('.text-in', '@onit')
     await p.waitForTimeout(600)
     await p.screenshot({ path: `${out}/5c_watermark.png` })

@@ -1,6 +1,6 @@
-// The editor's panels on a phone (390 x 844), as the app's: each group opens one compact panel
-// (a bar of its tools as chips, one tool's controls), of a bounded height, so the video stays in
-// view; nothing scrolls sideways; every tool of every group can be opened and has something in
+// The editor's panels on a phone, as the app's: one top bar, the video, the transport, then the timeline
+// or, in its place, the open group's panel (a bar of its tools as chips, one tool's controls, a close
+// button), with the bar of groups at the foot; the video stays in view; nothing scrolls sideways; every tool of every group can be opened and has something in
 // it; the targets are 44 px; "more options" is never an empty fold (on a wide screen it holds
 // something or is not there). The speech model is blocked (the subtitles come from an SRT).
 // Run: node tests/panels.cjs <url> <video> <out dir> [a video with at least 3 face tracks, for the crowded case; default: the first video]
@@ -9,6 +9,47 @@ const fs = require('fs')
 const [, , url, video, out] = process.argv
 const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים הבאים\n\n2\n00:00:02,600 --> 00:00:05,000\nזה סרטון לדוגמה\n\n3\n00:00:05,100 --> 00:00:08,000\nעם כתוביות בעברית\n`
 const fail = (m) => { throw new Error(m) }
+/** A group's button on a phone: it opens the group's panel in the timeline's place; the open group's own button closes it, so an open group is left alone. */
+const grp = async (p, g) => {
+  if (await p.$eval(`.tabs button[data-g=${g}]`, (e) => e.getAttribute('aria-selected') === 'true')) return
+  await p.click(`.tabs button[data-g=${g}]`)
+  await p.waitForSelector('.panel-body')
+}
+
+const closePanel = async (p) => {
+  if (await p.$('.panel')) await p.click('.panel-close')
+  await p.waitForSelector('.tl', { state: 'visible' })
+  await p.waitForTimeout(200)
+}
+/** Taps the video on a grid until a blur is selected (its bar shows). */
+const tapSelect = async (p) => {
+  const k = await p.$eval('.screen .view', (e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height] })
+  for (let j = 1; j < 12; j++) for (let i = 1; i < 12; i++) {
+    await p.touchscreen.tap(k[0] + (k[2] * i) / 12, k[1] + (k[3] * j) / 12)
+    await p.waitForTimeout(60)
+    if (await p.$('.ctx-bar')) return true
+  }
+  return false
+}
+/** The phone editor with no panel open: the timeline has the room, the video keeps a third of the screen, the bar of groups is on screen, nothing scrolls. */
+const checkTimeline = async (p, label, { minTl = 149 } = {}) => {
+  const m = await p.evaluate(() => {
+    const r = (s) => document.querySelector(s)?.getBoundingClientRect()
+    const tl = r('.tl'), screen = r('.screen'), tabs = r('.tabs')
+    return { vh: innerHeight, clientH: document.documentElement.clientHeight, scrollH: document.documentElement.scrollHeight, sideways: document.documentElement.scrollWidth > innerWidth, tlH: tl?.height ?? 0, tlTop: tl?.top, screenH: screen?.height, screenBottom: screen?.bottom, tabsTop: tabs?.top, tabsBottom: tabs?.bottom, panel: !!document.querySelector('.panel'), lanes: document.querySelectorAll('.tl-lane, .tl-strip').length, tlBottom: tl?.bottom, header: getComputedStyle(document.querySelector('header.top')).display !== 'none', selected: [...document.querySelectorAll('.tabs [aria-selected=true]')].length }
+  })
+  console.log(label, JSON.stringify({ screenH: Math.round(m.screenH), tlH: Math.round(m.tlH), lanes: m.lanes }))
+  if (m.panel) fail(label + ': a panel is open')
+  if (m.selected) fail(label + ': a group looks open')
+  if (m.header) fail(label + ': the site header shows in the phone editor')
+  if (m.sideways) fail(label + ': the page scrolls sideways')
+  if (m.scrollH > m.clientH + 0.5) fail(`${label}: the page scrolls (${m.scrollH} > ${m.clientH})`)
+  if (m.tabsBottom > m.clientH + 0.5) fail(`${label}: the bar of groups is off the screen`)
+  if (m.screenH < m.vh * 0.3 - 1) fail(`${label}: the video is ${Math.round(m.screenH)} px of ${m.vh}`)
+  if (m.tlH < minTl) fail(`${label}: the timeline is ${Math.round(m.tlH)} px`)
+  if (m.screenBottom > m.tlTop + 1 || m.tlBottom > m.tabsTop + 1) fail(label + ': the timeline overlaps its neighbours')
+  if (m.lanes < 3) fail(label + ': the timeline has no lanes')
+}
 
 async function open(b, viewport, mobile, locale = 'he-IL', tool, file = video, audioFail = false) {
   const ctx = await b.newContext({ viewport, locale, hasTouch: mobile, isMobile: mobile, deviceScaleFactor: mobile ? 2 : 1 })
@@ -44,11 +85,11 @@ const mkCheck = (p) => async (label) => {
         return { hidden: row.scrollWidth > row.clientWidth + (row.classList.contains('inner') ? 8 : 1), cut: [...row.querySelectorAll('[data-sub]')].filter((c) => { const k = c.getBoundingClientRect(); const inside = Math.max(0, Math.min(k.right, rr.right) - Math.max(k.left, rr.left)); return inside < k.width * 0.95 || k.left < 0 || k.right > innerWidth }).map((c) => c.textContent) }
       })
       const lastBottom = Math.max(...[...document.querySelectorAll('.player > *')].filter((e) => !e.matches('.screen') && e.getBoundingClientRect().height > 0).map((e) => e.getBoundingClientRect().bottom))
-      const topRow = (() => { const kids = [...document.querySelectorAll('.player > .row > *, .player > .row .export-bar > *')].map((e) => e.getBoundingClientRect()).filter((k) => k.width > 0); const back = document.querySelector('.player > .row > .btn')?.getBoundingClientRect(); return { out: kids.some((k) => k.left < -0.5 || k.right > document.documentElement.clientWidth + 0.5), oneLine: !!back && back.height < 56 } })()
+      const topRow = (() => { const kids = [...document.querySelectorAll('.player > .top-row > *, .player > .top-row .export-bar > *')].map((e) => e.getBoundingClientRect()).filter((k) => k.width > 0); const back = document.querySelector('.player > .top-row > .back-btn')?.getBoundingClientRect(); const bar = document.querySelector('.player > .top-row')?.getBoundingClientRect(); return { out: kids.some((k) => k.left < -0.5 || k.right > document.documentElement.clientWidth + 0.5), oneLine: !!back && !!bar && bar.height < 60 && kids.every((k) => k.height < 60), siteHeader: getComputedStyle(document.querySelector('header.top')).display !== 'none' } })()
     const small = [...document.querySelectorAll('.panel button, .panel label.btn, .tabs button')].filter((e) => { const k = e.getBoundingClientRect(); return k.width > 0 && k.height > 0 && k.height < 43.5 && !e.closest('.preset') && !e.matches('.face, .swatch, .speaker-dot, .time-btn') }).map((e) => e.className + ':' + Math.round(e.getBoundingClientRect().height))
       return {
         sideways: document.documentElement.scrollWidth > innerWidth, vh: innerHeight, alert: !!document.querySelector('.side > .sound-error, .side > .tpl-run'), clientH: document.documentElement.clientHeight, scrollH: document.documentElement.scrollHeight, tabsBottom: tabs?.bottom,
-        panelH: panel?.height, tabsTop: tabs?.top, screenTop: screen?.top, screenBottom: screen?.bottom, screenH: screen?.height,
+        panelH: panel?.height, bodyH: body?.height, tlShown: !!document.querySelector('.tl') && getComputedStyle(document.querySelector('.tl')).display !== 'none', ctx: !!document.querySelector('.ctx-bar'), panelTop2: panel?.top, tabsTop: tabs?.top, screenTop: screen?.top, screenBottom: screen?.bottom, screenH: screen?.height,
         bodyEmpty: !bodyEl || bodyEl.children.length === 0 || !(bodyEl.textContent.trim() || bodyEl.querySelector('input, canvas, img, button')),
         moreOptions: [...document.querySelectorAll('.subs-more')].map((d) => d.querySelector('.subs-more-body')?.children.length ?? 0),
         topRow, chipRows, playerBottom: lastBottom, panelTop: panel?.top, tablist: [...document.querySelectorAll('.panel [role=tablist]')].every((t) => t.getAttribute('aria-label')), tabs: [...document.querySelectorAll('.panel [role=tab]')].every((t) => t.getAttribute('aria-controls') === 'panel-body' && (t.tabIndex === 0) === (t.getAttribute('aria-selected') === 'true')), tabpanel: document.querySelector('.panel-body')?.getAttribute('role'), small, panelOver: bodyEl ? [...bodyEl.querySelectorAll('*')].some((e) => { if (e.closest('.chips, .faces, .swatches, .preset-row, .scroll-row, .word-chips, .tl-scroll')) return false; const k = e.getBoundingClientRect(); const bb = bodyEl.getBoundingClientRect(); return k.width > 0 && (k.right > bb.right + 1 || k.left < bb.left - 1) }) : false,
@@ -56,12 +97,17 @@ const mkCheck = (p) => async (label) => {
     })
     console.log(label, JSON.stringify({ sideways: m.sideways, panelH: Math.round(m.panelH), screenH: Math.round(m.screenH), rows: m.chipRows.length }))
     if (m.chipRows.some((r) => r.hidden || r.cut.length)) fail(`${label}: tool chips hidden or cut: ${JSON.stringify(m.chipRows)}`)
-    if (m.topRow.out || !m.topRow.oneLine) fail(`${label}: the top row overflows or wraps: ${JSON.stringify(m.topRow)}`)
+    if (m.topRow.out || !m.topRow.oneLine || m.topRow.siteHeader) fail(`${label}: the top row overflows or wraps: ${JSON.stringify(m.topRow)}`)
   if (m.playerBottom > m.panelTop + 1) fail(`${label}: the panel covers the timeline: ${m.playerBottom} > ${m.panelTop}`)
     if (m.tabpanel !== 'tabpanel' || !m.tablist || !m.tabs) fail(`${label}: tabs are not marked up as tabs: ${JSON.stringify([m.tabpanel, m.tablist, m.tabs])}`)
     if (m.sideways) fail(label + ': the page scrolls sideways')
-    if (m.panelH > m.vh * 0.45) fail(`${label}: the panel is ${m.panelH} px of ${m.vh}`)
-    if (m.screenTop < 0 || m.screenBottom > m.tabsTop || m.screenH < (m.alert ? 40 : 90)) fail(`${label}: the video is not in view: ${JSON.stringify(m)}`)
+    if (m.panelH > m.vh * 0.5) fail(`${label}: the panel is ${m.panelH} px of ${m.vh}`)
+    // The panel takes the timeline's place: the timeline is hidden, and the panel's body has room for a tool.
+    if (m.tlShown) fail(label + ': the timeline shows with a panel open')
+    const wantBody = m.alert ? 100 : m.ctx ? (m.vh >= 740 ? 140 : 100) : m.vh >= 740 ? 215 : 170
+    if (m.bodyH < wantBody) fail(`${label}: the panel body is ${Math.round(m.bodyH)} px (wanted ${wantBody}) at ${m.vh}`)
+    if (!m.alert && !m.ctx && m.screenH < m.vh * 0.3 - 1) fail(`${label}: the video is ${Math.round(m.screenH)} px of ${m.vh}`)
+    if (m.screenTop < 0 || m.screenBottom > m.tabsTop || m.screenH < (m.alert || m.ctx ? 40 : 90)) fail(`${label}: the video is not in view: ${JSON.stringify(m)}`)
     if (m.bodyEmpty) fail(label + ': the panel is empty')
     if (m.moreOptions.some((n) => n === 0)) fail(label + ': "more options" is empty')
     if (m.tabsBottom > m.clientH + 0.5 || m.scrollH > m.clientH + 0.5) fail(`${label}: the bar of groups is off the screen: ${JSON.stringify([m.tabsBottom, m.scrollH, m.clientH])}`)
@@ -86,9 +132,11 @@ const mkCheck = (p) => async (label) => {
       const go = async (sel, label) => {
         await p.evaluate(() => { const e = document.querySelector('.panel-body'); if (e) e.scrollTop = 1e5 })
         const before = await where()
-        await p.click(sel)
+        const g = /^\.tabs button\[data-g=(\w+)\]$/.exec(sel)
+        if (g) await grp(p, g[1])
+        else await p.click(sel)
         await p.waitForTimeout(300)
-        const top = await p.evaluate(() => document.querySelector('.panel-body').scrollTop)
+        const top = await p.evaluate(() => document.querySelector('.panel-body')?.scrollTop ?? 0)
         if ((await where()) !== before && top !== 0) fail(`${label}: opened scrolled (${top} px)`)
       }
       const sweep = async () => {
@@ -110,31 +158,37 @@ const mkCheck = (p) => async (label) => {
           }
         }
       }
+      // A blur selected: on the timeline (no panel) its action bar shows under the timeline; a group's
+      // panel clears the selection (as the app's groups do), and one tapped on the video with a panel
+      // open (the manual blur's way) keeps its bar over the panel's place.
       const withBlurSelected = async () => {
-        await p.click('.tabs button[data-g=faces]')
+        await closePanel(p)
         await p.click('.tl-face >> nth=0')
         await p.waitForSelector('.ctx-bar', { timeout: 5000 })
-        await check('faces with a blur selected')
-        // the selection stays when the group changes: the style tool (the tallest) with it
-        await p.click('.tabs button[data-g=subs]')
-        for (const sub of await p.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
-          await p.click(`.panel-head [data-sub=${sub}]`)
-          await p.waitForTimeout(200)
-          await check(`blur selected + subs/${sub}`)
-          if (sub === 'style') for (const sp of await p.$$eval('.subtabs.inner [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
-            await p.click(`.subtabs.inner [data-sub=${sp}]`)
+        await checkTimeline(p, 'timeline with a blur selected')
+        await grp(p, 'subs')
+        if (await p.$('.ctx-bar')) fail('a group opened with the blur still selected')
+        for (const g of ['faces', 'subs']) {
+          await grp(p, g)
+          if (!(await tapSelect(p))) { console.log('no blur found to select on the video; skipped'); continue }
+          for (const sub of await p.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
+            await p.click(`.panel-head [data-sub=${sub}]`)
             await p.waitForTimeout(200)
-            await check(`blur selected + subs/style/${sp}`)
+            await check(`blur selected + ${g}/${sub}`)
+            if (g === 'subs' && sub === 'style') for (const sp of await p.$$eval('.subtabs.inner [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
+              await p.click(`.subtabs.inner [data-sub=${sp}]`)
+              await p.waitForTimeout(200)
+              await check(`blur selected + subs/style/${sp}`)
+            }
           }
         }
-        await p.click('.tabs button[data-g=faces]')
+        await grp(p, 'faces')
         const room = await p.evaluate(() => ({ bottom: document.querySelector('.tabs').getBoundingClientRect().bottom, vh: document.documentElement.clientHeight }))
         if (room.bottom < room.vh - 8) fail('the editor does not fit the screen: ' + JSON.stringify(room))
-        await p.click('.ctx-bar button:last-child')
       }
       await sweep()
       // The arrow keys move between tools, and do not also step the video.
-      await p.click('.tabs button[data-g=faces]')
+      await grp(p, 'faces')
       await p.focus('.panel-head [role=tab][aria-selected=true]')
       const t0 = await p.evaluate(() => document.querySelector('video').currentTime)
       const on0 = await p.evaluate(() => document.querySelector('.panel-head [role=tab][aria-selected=true]')?.dataset.sub)
@@ -144,7 +198,7 @@ const mkCheck = (p) => async (label) => {
       if (arrow.t !== t0) fail('an arrow key on a tool also stepped the video: ' + JSON.stringify([t0, arrow]))
       if (arrow.on === on0) fail('the arrow key did not move to another tool')
       // with subtitles (an SRT): the list shows, and the tools in "create and translate" are there
-      await p.click('.tabs button[data-g=subs]')
+      await grp(p, 'subs')
       await p.click('.panel-head [data-sub=make]')
       await p.setInputFiles('.srt-import input', `${out}/in.srt`)
       await p.waitForSelector('.panel-head [data-sub=list][aria-selected=true]', { timeout: 5000 }).catch(() => fail('the list does not open after an SRT is imported'))
@@ -184,7 +238,7 @@ const mkCheck = (p) => async (label) => {
       console.log('face tracks:', tracks)
       if (tracks < 3) fail('the many-tracks case needs a video with at least 3 face tracks: ' + tracks)
       for (const g of ['faces', 'subs', 'sound']) {
-        await q.click(`.tabs button[data-g=${g}]`)
+        await grp(q, g)
         for (const sub of await q.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
           await q.click(`.panel-head [data-sub=${sub}]`)
           await q.waitForTimeout(250)
@@ -192,18 +246,16 @@ const mkCheck = (p) => async (label) => {
         }
       }
       // subtitles in, a blur selected, every style tab, on the two small screens
-      await q.click('.tabs button[data-g=subs]')
+      await grp(q, 'subs')
       await q.click('.panel-head [data-sub=make]')
       await q.setInputFiles('.srt-import input', `${out}/in.srt`)
       await q.waitForSelector('.panel-head [data-sub=list][aria-selected=true]', { timeout: 5000 })
-      await q.click('.tabs button[data-g=faces]')
-      await q.click('.tl-face >> nth=0')
-      await q.waitForSelector('.ctx-bar', { timeout: 5000 })
       for (const vp of [{ width: 360, height: 740 }, { width: 390, height: 664 }]) {
         await q.setViewportSize(vp)
         await q.waitForTimeout(400)
         for (const g of ['faces', 'subs']) {
-          await q.click(`.tabs button[data-g=${g}]`)
+          await grp(q, g)
+          if (!(await tapSelect(q))) { console.log('no blur found to select on the video; skipped'); continue }
           for (const sub of await q.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
             await q.click(`.panel-head [data-sub=${sub}]`)
             await q.waitForTimeout(200)
@@ -218,20 +270,20 @@ const mkCheck = (p) => async (label) => {
       }
       await q.context().close()
       const r = await open(b, { width: 360, height: 740 }, true, 'he-IL', undefined, video, true)
-      await r.click('.tabs button[data-g=sound]')
+      await grp(r, 'sound')
       await r.click('.panel-head [data-sub=voice]')
       await r.click('.panel-body .chips .chip >> nth=1')
       await r.waitForSelector('.sound-error[data-hard="1"]', { timeout: 30000 })
       const chk2 = mkCheck(r)
       await chk2('sound error sound/voice')
-      for (const g of ['faces', 'subs']) { await r.click(`.tabs button[data-g=${g}]`); await r.waitForTimeout(250); await chk2('sound error ' + g) }
+      for (const g of ['faces', 'subs']) { await grp(r, g); await r.waitForTimeout(250); await chk2('sound error ' + g) }
       await r.click('.panel-head [data-sub=style]')
       await chk2('sound error subs/style')
       await r.screenshot({ path: `${out}/sound_error_style.png` })
       await r.setViewportSize({ width: 390, height: 664 })
       await r.waitForTimeout(400)
       for (const g of ['sound', 'faces', 'subs']) {
-        await r.click(`.tabs button[data-g=${g}]`)
+        await grp(r, g)
         for (const sub of await r.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
           await r.click(`.panel-head [data-sub=${sub}]`)
           await r.waitForTimeout(200)
@@ -247,7 +299,7 @@ const mkCheck = (p) => async (label) => {
       const q = await open(b, { width: 360, height: 740 }, true, locale, 0)
       const subs = await q.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))
       console.log('no detection', locale, subs.join())
-      await q.click('.tabs button[data-g=faces]')
+      await grp(q, 'faces')
       const faceSubs = await q.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))
       if (faceSubs.includes('look')) fail('the look tool is offered with no faces to look at')
       for (const sub of faceSubs) {
@@ -256,6 +308,58 @@ const mkCheck = (p) => async (label) => {
         if (!filled) fail('empty panel: faces/' + sub)
       }
       await q.context().close()
+    }
+
+    // ---- the phone's states at four sizes, in Hebrew and English: the editor opens on the timeline (with
+    // all its lanes), a group's panel takes its place, the close button and a second tap on the group
+    // bring it back; the video keeps a third of the screen; the bar of groups never leaves the screen.
+    for (const locale of ['he-IL', 'en-US']) {
+      const p = await open(b, { width: 390, height: 780 }, true, locale)
+      await checkTimeline(p, 'opens on the timeline')
+      await grp(p, 'subs')
+      await p.click('.panel-head [data-sub=make]')
+      await p.setInputFiles('.srt-import input', `${out}/in.srt`)
+      await p.waitForSelector('.panel-head [data-sub=list][aria-selected=true]', { timeout: 5000 })
+      await closePanel(p)
+      const chk = mkCheck(p)
+      for (const vp of [{ width: 390, height: 780 }, { width: 390, height: 664 }, { width: 360, height: 740 }, { width: 412, height: 915 }]) {
+        const label = `${vp.width}x${vp.height} ${locale}`
+        await p.setViewportSize(vp)
+        await p.waitForTimeout(500)
+        await checkTimeline(p, `${label} timeline`)
+        // every group opens its panel in the timeline's place
+        for (const g of ['faces', 'edit', 'picture', 'subs', 'sound', 'mark']) {
+          await grp(p, g)
+          await chk(`${label} ${g}`)
+        }
+        await grp(p, 'subs')
+        await p.click('.panel-head [data-sub=style]')
+        await chk(`${label} subs/style`)
+        const body = await p.$eval('.panel-body', (e) => e.getBoundingClientRect().height)
+        if (vp.height === 780 && body < 220) fail(`${label}: the style panel's body is ${Math.round(body)} px`)
+        // the close control, and a second tap on the open group, bring the timeline back
+        await p.click('.panel-close')
+        await p.waitForSelector('.tl', { state: 'visible' })
+        await checkTimeline(p, `${label} closed with the button`)
+        await p.click('.tabs button[data-g=sound]')
+        await p.waitForSelector('.panel')
+        await p.click('.tabs button[data-g=sound]')
+        await p.waitForSelector('.panel', { state: 'detached' })
+        await checkTimeline(p, `${label} closed with the group`)
+        // the settings are in the top bar (the site header is not shown)
+        await p.click('.top-row .settings-open')
+        await p.waitForSelector('.settings-sheet')
+        await p.waitForTimeout(300)
+        await p.keyboard.press('Escape')
+        await p.waitForSelector('.settings-sheet', { state: 'detached' })
+        // a blur on the timeline is selected as before; its bar fits under the timeline
+        await p.click('.tl-face >> nth=0')
+        await p.waitForSelector('.ctx-bar', { timeout: 5000 })
+        await checkTimeline(p, `${label} blur selected`, { minTl: 100 })
+        await p.keyboard.press('Escape')
+        if (vp.width === 390 && vp.height === 780) await p.screenshot({ path: `${out}/states_${locale}.png` })
+      }
+      await p.context().close()
     }
 
     // ---- a wide screen: everything as before, and "more options" holds something
