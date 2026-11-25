@@ -46,7 +46,7 @@ const mkCheck = (p) => async (label) => {
       const topRow = (() => { const kids = [...document.querySelectorAll('.player > .row > *, .player > .row .export-bar > *')].map((e) => e.getBoundingClientRect()).filter((k) => k.width > 0); const back = document.querySelector('.player > .row > .btn')?.getBoundingClientRect(); return { out: kids.some((k) => k.left < -0.5 || k.right > document.documentElement.clientWidth + 0.5), oneLine: !!back && back.height < 56 } })()
     const small = [...document.querySelectorAll('.panel button, .panel label.btn, .tabs button')].filter((e) => { const k = e.getBoundingClientRect(); return k.width > 0 && k.height > 0 && k.height < 43.5 && !e.closest('.preset') && !e.matches('.face, .swatch, .speaker-dot, .time-btn') }).map((e) => e.className + ':' + Math.round(e.getBoundingClientRect().height))
       return {
-        sideways: document.documentElement.scrollWidth > innerWidth, vh: innerHeight, clientH: document.documentElement.clientHeight, scrollH: document.documentElement.scrollHeight, tabsBottom: tabs?.bottom,
+        sideways: document.documentElement.scrollWidth > innerWidth, vh: innerHeight, alert: !!document.querySelector('.side > .sound-error, .side > .tpl-run'), clientH: document.documentElement.clientHeight, scrollH: document.documentElement.scrollHeight, tabsBottom: tabs?.bottom,
         panelH: panel?.height, tabsTop: tabs?.top, screenTop: screen?.top, screenBottom: screen?.bottom, screenH: screen?.height,
         bodyEmpty: !bodyEl || bodyEl.children.length === 0 || !(bodyEl.textContent.trim() || bodyEl.querySelector('input, canvas, img, button')),
         moreOptions: [...document.querySelectorAll('.subs-more')].map((d) => d.querySelector('.subs-more-body')?.children.length ?? 0),
@@ -60,7 +60,7 @@ const mkCheck = (p) => async (label) => {
     if (m.tabpanel !== 'tabpanel' || !m.tablist || !m.tabs) fail(`${label}: tabs are not marked up as tabs: ${JSON.stringify([m.tabpanel, m.tablist, m.tabs])}`)
     if (m.sideways) fail(label + ': the page scrolls sideways')
     if (m.panelH > m.vh * 0.45) fail(`${label}: the panel is ${m.panelH} px of ${m.vh}`)
-    if (m.screenTop < 0 || m.screenBottom > m.tabsTop || m.screenH < 90) fail(`${label}: the video is not in view: ${JSON.stringify(m)}`)
+    if (m.screenTop < 0 || m.screenBottom > m.tabsTop || m.screenH < (m.alert ? 40 : 90)) fail(`${label}: the video is not in view: ${JSON.stringify(m)}`)
     if (m.bodyEmpty) fail(label + ': the panel is empty')
     if (m.moreOptions.some((n) => n === 0)) fail(label + ': "more options" is empty')
     if (m.tabsBottom > m.clientH + 0.5 || m.scrollH > m.clientH + 0.5) fail(`${label}: the bar of groups is off the screen: ${JSON.stringify([m.tabsBottom, m.scrollH, m.clientH])}`)

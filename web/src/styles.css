@@ -857,8 +857,10 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .subtabs { flex-wrap: wrap; overflow: visible; }
   .panel .subtabs .chip { min-height: 44px; padding-inline: 11px; font-size: 13px; }
   .panel .subtabs .chip.on { background: color-mix(in srgb, var(--g) 22%, transparent); color: var(--g); border-color: var(--g); }
-  .panel > .panel-body { flex: 0 1 var(--body-h); min-height: 56px; --body-h: clamp(96px, 14dvh, 200px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 10px; display: grid; gap: 10px; align-content: start; }
+  .panel > .panel-body { flex: 0 1 var(--body-h); min-height: 56px; --body-h: clamp(96px, 14dvh, 200px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 10px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-content: start; }
   .panel-body > * { min-width: 0; }
+  .panel-body .card, .panel-body .sub-fine { grid-template-columns: minmax(0, 1fr); }
+  .panel-body .card > *, .panel-body .sub-fine > * { min-width: 0; }
   .panel-body .card { background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; }
   .panel-body .card.confirm { padding: 10px 12px; border: 1px solid var(--outline-soft); border-radius: var(--radius-card); }
   /* A card that is the tool's only one is named by its chip: its title stays for screen readers only. */
@@ -871,7 +873,9 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .panel-body .chips.wrap { flex-wrap: wrap; overflow: visible; }
   /* A message above the panel (a failed sound step, a template running): the panel gives it room. */
   .editor.narrow .side:has(> .sound-error, > .tpl-run) .panel > .panel-body { --body-h: clamp(64px, 8dvh, 100px); }
-  .editor.narrow .side > .card { padding: 8px 12px; margin: 0; flex: none; }
+  .editor.narrow .side > .card { padding: 6px 10px; margin: 0; flex: none; gap: 4px; }
+  .editor.narrow .side > .sound-error p { font-size: 13px; line-height: 1.3; }
+  .editor.narrow:has(.side > .sound-error, .side > .tpl-run) .player > .screen { min-height: 40px; }
   .panel.has-inner > .panel-body { --body-h: clamp(96px, 13dvh, 200px); }
   .panel-body .caption { margin: 6px 0 2px; }
   .panel-body .slider-row { margin-top: 4px; }
