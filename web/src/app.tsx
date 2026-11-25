@@ -234,7 +234,14 @@ export function App() {
 
 function Header() {
   const [open, setOpen] = useState(false)
+  // The phone editor has no header of its own (its top bar has a settings button that asks for this sheet).
+  useEffect(() => {
+    const on = () => setOpen(true)
+    addEventListener('onit:settings', on)
+    return () => removeEventListener('onit:settings', on)
+  }, [])
   return (
+    <>
     <header class="top">
       <div class="brand">
         {BETA ? <BetaLogo /> : (
@@ -250,8 +257,9 @@ function Header() {
         </div>
       </div>
       <button class="icon-btn settings-btn" onClick={() => setOpen(true)} aria-label={t('הגדרות')} title={t('הגדרות')}><SettingsIcon /></button>
-      {open && <Settings onClose={() => setOpen(false)} />}
     </header>
+    {open && <Settings onClose={() => setOpen(false)} />}
+    </>
   )
 }
 

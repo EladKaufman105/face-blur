@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { storageKey } from '../lib/channel'
+import { BETA, storageKey } from '../lib/channel'
 import { t, duration, lang } from '../i18n'
 import { BlurRenderer, ellipseFor, type Ellipse } from '../lib/renderer'
 import { frameAt, loadLook, saveLook, trackBox, type Analysis, type BlurMode, type Look, type Track } from '../lib/types'
 import type { ExportJob } from './Exporting'
-import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIcon, FaceIcon, PictureIcon, MarkIcon, TemplateIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
+import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIcon, FaceIcon, PictureIcon, MarkIcon, SettingsIcon, TemplateIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
 import { FRAME, Timeline } from './Timeline'
 import { BlurBar } from './BlurBar'
 import { CutTab, wordSpan } from './CutTab'
@@ -83,7 +83,8 @@ function maskKey(m: PeopleMasks, k: number): string {
 /** Width of a new blur when there's no face under the tap, in frame widths (as in the app). */
 const NEW_BLUR = 0.12
 
-export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClose, initialTab = 'faces', hidden = false, project, template: tpl0 }: Props) {
+export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClose, initialTab: initTab, hidden = false, project, template: tpl0 }: Props) {
+  const initialTab: EditorTab = initTab ?? 'faces'
   // A project opened again starts as it was left.
   const saved = project?.state ?? null
   // A template applies to a new video only (a project opened again is as it was left).
@@ -144,6 +145,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [time, setTime] = useState(0)
   const [dur, setDur] = useState(times.length ? times[times.length - 1] : 0)
   const [tab, setTab] = useState<EditorTab>(initialTab)
+  // On a phone the timeline and a group's panel share one place (as in the app): the timeline shows, and a group opens its panel in its place (a tool picked from the home screen opens its panel).
+  const [panelOpen, setPanelOpen] = useState(initTab !== undefined)
   // A phone shows one sub-tool of the open group at a time (as the app does); a wide screen shows them all.
   const narrow = useNarrow()
   const [subTab, setSubTab] = useState<Record<string, string>>({})
@@ -980,7 +983,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         case 'ArrowRight': e.preventDefault(); stepFrame(1); break
         case '-': case '_': timelineControls.zoom?.(1 / 1.5); break
         case '+': case '=': timelineControls.zoom?.(1.5); break
-        case '1': case '2': case '3': case '4': case '5': case '6': setTab(GROUPS[Number(k) - 1][0]); break
+        case '1': case '2': case '3': case '4': case '5': case '6': pickGroup(GROUPS[Number(k) - 1][0], true); break
         case 'Delete': case 'Backspace':
           if (selectedSfx !== null) { setSfxH((list) => list.filter((c) => c.id !== selectedSfx)); setSelectedSfx(null) }
           else if (selected !== null && !following) deleteSel()
@@ -1018,6 +1021,13 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     : g === 'subs' ? cues.length > 0
     : g === 'sound' ? voice !== 'none' || cleanupOn(clean) || loudOn || sfx.length > 0 || bleeped.size > 0
     : g === 'mark' ? watermarkOn(mark) : false
+  /** A group's button: on a phone it opens the panel in the timeline's place, and a second tap closes it (as the app's group bar). */
+  function pickGroup(g: EditorTab, keyboard = false) {
+    if (narrow && panelOpen && tab === g && !keyboard) { setPanelOpen(false); return }
+    if (narrow) { video.current?.pause(); setSelected(null); setSelectedSfx(null); setAdding(false) }
+    setTab(g)
+    setPanelOpen(true)
+  }
   const groupName = GROUPS.find((g) => g[0] === tab)![1]
   const groupColor = GROUPS.find((g) => g[0] === tab)![3]
   const exportBtn = (
@@ -1144,7 +1154,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             busy={cutBusy}
             onSilences={cutSilences}
             onFillers={cutFillers}
-            onMakeSubtitles={() => { setTab('subs'); setSubTab({ ...subTab, subs: 'make' }) }}
+            onMakeSubtitles={() => { setTab('subs'); setPanelOpen(true); setSubTab({ ...subTab, subs: 'make' }) }}
             onPause={() => video.current?.pause()}
           />
         )}
@@ -1204,14 +1214,17 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         }}
       />
     )}
-    <main class={'editor' + (narrow && !detecting && !hidden ? ' narrow' : '')} style={detecting || hidden ? 'display:none' : ''}>
+    <main class={'editor' + (narrow && !detecting && !hidden ? ' narrow' : '') + (narrow && panelOpen ? ' panel-open' : '')} style={detecting || hidden ? 'display:none' : ''}>
       <div class="player">
-        <div class="row">
-          <button class="btn ghost" onClick={onClose} style="padding-inline:6px"><span class="flip"><BackIcon /></span> {t('סרטון חדש')}</button>
+        <div class="row top-row">
+          {narrow
+            ? <button class="icon-btn back-btn" onClick={onClose} aria-label={t('סרטון חדש')} title={t('סרטון חדש')}><span class="flip"><BackIcon /></span></button>
+            : <button class="btn ghost" onClick={onClose} style="padding-inline:6px"><span class="flip"><BackIcon /></span> {t('סרטון חדש')}</button>}
+          {narrow && BETA && <span class="beta-mini" aria-label="Beta">BETA</span>}
           <div class="grow" />
           <span class="small muted detect-info">{detectInfo}</span>
           {!narrow && editTools}
-          {narrow && <div class="export-bar">{saveTplIcon}{exportBtn}</div>}
+          {narrow && <div class="export-bar">{editTools}{saveTplIcon}<button class="icon-btn settings-open" onClick={() => window.dispatchEvent(new Event('onit:settings'))} aria-label={t('הגדרות')} title={t('הגדרות')}><SettingsIcon size={22} /></button>{exportBtn}</div>}
         </div>
         <div class={'screen' + (adding ? ' adding' : '') + (selected !== null ? ' sel' : '')} onPointerDown={onScreenDown} onPointerMove={onScreenMove} onPointerUp={onScreenUp} onPointerCancel={() => { press.current = null }}>
           <div class="view" style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc(var(--screen-h) * ${(W / H).toFixed(4)}))` }}>
@@ -1237,7 +1250,6 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           </div>
           <span class="time">{duration(time)} / {duration(dur)}</span>
           <div class="grow" />
-          {narrow && editTools}
           {selectedClip && (
             <div class="sel-sfx">
               <strong>{sfxName(selectedClip.sound)}</strong>
@@ -1313,18 +1325,19 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         )}
         <div class="tabs" role="tablist">
           {GROUPS.map(([id, label, Icon, color], k) => (
-            <button role="tab" data-g={id} class={tab === id ? 'on' : ''} aria-selected={tab === id} style={{ '--g': color } as any} title={`${t(label)} (${k + 1})`} onClick={() => setTab(id)}>
+            <button role="tab" data-g={id} class={tab === id && (!narrow || panelOpen) ? 'on' : ''} aria-selected={tab === id && (!narrow || panelOpen)} style={{ '--g': color } as any} title={`${t(label)} (${k + 1})`} onClick={() => pickGroup(id)}>
               <span class="pill-ic"><Icon size={22} />{groupOn(id) && <span class="dot" aria-hidden="true" />}</span>
               <span>{t(label)}{id === 'sound' && sfx.length > 0 ? <span class="count"> · {sfx.length}</span> : id === 'edit' && cuts.length > 0 ? <span class="count"> · {cuts.length}</span> : null}</span>
             </button>
           ))}
         </div>
-        {narrow ? (
+        {narrow ? (panelOpen &&
           <div class={'panel' + (tab === 'subs' && part === 'style' ? ' has-inner' : '')} data-g={tab} style={{ '--g': groupColor } as any}>
             <div class="panel-head">
               {subList.length > 0
                 ? <ChipTabs items={subList} value={part} onPick={(id) => setSubTab({ ...subTab, [tab]: id })} label={t(groupName)} />
                 : <h2 class="panel-title">{t(groupName)}</h2>}
+              <button class="icon-btn panel-close" onClick={() => setPanelOpen(false)} aria-label={t('סגור')} title={t('סגור')}><CloseIcon size={22} /></button>
             </div>
             {tab === 'subs' && part === 'style' && <ChipTabs items={STYLE_PARTS} value={styleTab} onPick={setStyleTab} cls="inner" label={t('עיצוב כתוביות')} />}
             <div class="panel-body" ref={bodyRef} id={PANEL_ID} role="tabpanel" aria-labelledby={subList.length > 0 ? `tab-${tab === 'subs' && part === 'style' ? 'inner' : 'tool'}-${tab === 'subs' && part === 'style' ? styleTab : part}` : undefined} aria-label={subList.length > 0 ? undefined : t(groupName)}>{panelBody}</div>
