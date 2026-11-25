@@ -60,10 +60,12 @@
   --hero-1: #2b1e66;
   --hero-2: #1a1442;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.35);
+  --danger-text: #ff6b70;
   color-scheme: dark;
 }
 
 :root[data-theme='light'] {
+  --danger-text: #c4262b;
   --bg: #f7f6fb;
   --surface: #ffffff;
   --surface-2: #f0eff7;
@@ -89,6 +91,7 @@
 
 @media (prefers-color-scheme: light) {
   :root[data-theme='system'] {
+    --danger-text: #c4262b;
     --bg: #f7f6fb;
     --surface: #ffffff;
     --surface-2: #f0eff7;
@@ -812,3 +815,93 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .stat-tip { position: absolute; z-index: 5; width: max-content; max-width: min(240px, calc(100% - 8px)); transform: translateY(-100%); background: var(--text); color: var(--bg); font: var(--text-body); font-size: 13px; line-height: 18px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-control); box-shadow: var(--shadow); pointer-events: auto; }
 .stat-tip.below { transform: none; }
 @media (prefers-reduced-motion: reduce) { .sfold, .sfold.open, .stats-actions .chev { transition: none; } }
+
+/* A group's dot: it is changing the video (as the app's group bar). */
+.tabs button .pill-ic { position: relative; }
+.tabs .dot { position: absolute; top: 3px; inset-inline-end: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--g); }
+
+/* The editor on a phone, as the app's: the video and the timeline on top, the open group's panel
+   (a bar of its sub-tools and one tool's controls, of a fixed height) over the bar of groups. */
+.subtabs { display: flex; gap: 6px; overflow-x: auto; min-width: 0; scrollbar-width: none; }
+.subtabs::-webkit-scrollbar { display: none; }
+.subtabs .chip { flex: none; }
+@media (max-width: 600px) {
+  /* The editor fits the screen: the video takes what the timeline, the panel and the groups leave. */
+  .app:has(.editor.narrow) { padding-bottom: 0; height: 100dvh; min-height: 0; }
+  .editor.narrow { display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; }
+  .editor.narrow .player { display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; }
+  .editor.narrow .player > * { flex: none; }
+  /* The sum can never pass the screen: the fixed chrome (top row, transport, the groups) stays, and
+     what varies (the video, the timeline's lanes, the panel's body) gives way and scrolls. */
+  .editor.narrow { min-height: 0; }
+  .editor.narrow .player { min-height: 0; }
+  .editor.narrow .player > .screen { flex: 1 1 0; min-height: 90px; container-type: size; --screen-h: 100cqh; }
+  .editor.narrow .player > .tl { flex: 0 1 auto; min-height: 64px; display: flex; flex-direction: column; }
+  .editor.narrow .tl-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; touch-action: pan-x pan-y; }
+  .app:has(.editor.narrow) { padding-top: max(8px, env(safe-area-inset-top)); }
+  .app:has(.editor.narrow) .top { padding-bottom: 0; }
+  .editor.narrow .transport .time { min-width: 0; white-space: nowrap; font-size: 13px; }
+  .editor.narrow .transport { gap: 6px; }
+  .editor.narrow .player > .row { flex-wrap: nowrap; gap: 2px; }
+  .editor.narrow .player > .row > .btn { white-space: nowrap; flex: none; }
+  .app:has(.editor.narrow) .footer { display: none; }
+  .editor.narrow .player > .row .export-bar { position: static; padding: 0; background: none; display: flex; align-items: center; gap: 2px; flex: none; }
+  .editor.narrow .player > .row .export-bar .btn.primary { width: auto; min-height: 44px; padding-inline: 16px; }
+  /* What does not fit is taken from the panel's body (it scrolls), never from the bar of groups. */
+  .editor.narrow > .side { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; padding: 0 0 max(6px, env(safe-area-inset-bottom)); }
+  .editor.narrow .side > * { order: 1; }
+  .editor.narrow .side > .panel { order: 2; }
+  .editor.narrow .side > .tabs { flex: none; order: 3; position: static; padding: 2px; box-shadow: none; border-radius: var(--radius-card); }
+  .editor.narrow .tabs button { min-height: 50px; }
+  .editor.narrow .keys { display: none; }
+  .panel { background: var(--surface); border: 1px solid var(--outline-soft); border-radius: var(--radius-panel); overflow: hidden; display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; }
+  .panel > * { flex: none; }
+  .panel-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px 0; }
+  .panel-head .subtabs { flex: 1; }
+  .panel-title { margin: 0; flex: 1; min-height: 44px; display: flex; align-items: center; padding-inline: 6px; font: var(--text-heading); color: var(--g); }
+  .panel .subtabs.inner { padding: 4px 8px 0; flex-wrap: nowrap; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+  .panel .subtabs.inner .chip { padding-inline: 6px; font-size: 12px; }
+  .subtabs { flex-wrap: wrap; overflow: visible; }
+  .panel .subtabs .chip { min-height: 44px; padding-inline: 11px; font-size: 13px; }
+  .panel .subtabs .chip.on { background: color-mix(in srgb, var(--g) 22%, transparent); color: var(--g); border-color: var(--g); }
+  .panel > .panel-body { flex: 0 1 var(--body-h); min-height: 56px; --body-h: clamp(96px, 14dvh, 200px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 10px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-content: start; }
+  .panel-body > * { min-width: 0; }
+  .panel-body .card, .panel-body .sub-fine { grid-template-columns: minmax(0, 1fr); }
+  .panel-body .card > *, .panel-body .sub-fine > * { min-width: 0; }
+  .panel-body .card { background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; }
+  .panel-body .card.confirm { padding: 10px 12px; border: 1px solid var(--outline-soft); border-radius: var(--radius-card); }
+  /* A card that is the tool's only one is named by its chip: its title stays for screen readers only. */
+  .panel-body > .card:only-child > .section-title:not(.keep) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); margin: 0; }
+  .panel-body .section-title:not(.keep) { margin: 0 0 6px; font-size: 14px; }
+  .panel-body .section-title:not(.keep)::before { display: none; }
+  .panel-body .section-title.keep { margin: 0 0 8px; font-size: 14px; }
+  .panel-body .section-title.keep::before { display: none; }
+  .panel-body .sub-fine > .caption.tab-name { display: none; }
+  .panel-body .chips.wrap { flex-wrap: wrap; overflow: visible; }
+  /* A message above the panel (a failed sound step, a template running): the panel gives it room. */
+  .editor.narrow .side:has(> .sound-error, > .tpl-run) .panel > .panel-body { --body-h: clamp(64px, 8dvh, 100px); }
+  .editor.narrow .side > .card { padding: 6px 10px; margin: 0; flex: none; gap: 4px; }
+  .editor.narrow .side > .sound-error p { font-size: 13px; line-height: 1.3; }
+  .editor.narrow:has(.side > .sound-error, .side > .tpl-run) .player > .screen { min-height: 40px; }
+  .editor.narrow:has(.side > .sound-error, .side > .tpl-run) .player > .tl { min-height: 48px; }
+  .editor.narrow:has(.side > .sound-error, .side > .tpl-run) .panel > .panel-body { min-height: 40px; }
+  .panel.has-inner > .panel-body { --body-h: clamp(96px, 13dvh, 200px); }
+  .panel-body .caption { margin: 6px 0 2px; }
+  .panel-body .slider-row { margin-top: 4px; }
+  .panel-body .chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .panel-body .chips .chip { flex: none; }
+  .panel-body .chips.presets.preset-row { padding-bottom: 6px; }
+  .panel-body .faces { display: flex; overflow-x: auto; gap: 10px; padding: 8px 8px 4px; }
+  .panel-body .faces .face { flex: 0 0 68px; }
+  .panel-body .swatches { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .panel-body .swatches .swatch { flex: none; }
+  .panel-body .cue-list .clips { max-height: none; }
+  .positions { grid-template-columns: repeat(3, 44px); }
+  .positions button { width: 44px; height: 44px; }
+  .panel-body .word { min-height: 44px; padding-inline: 12px; }
+  .panel-body .sound .play, .panel-body .sound .name { height: 44px; }
+  .panel-body .btn.primary[style*='width:100%'] { min-height: 48px; }
+  /* The one primary button first (the panel is short), the language it listens for under it. */
+  .panel-body .subs-start { display: flex; flex-direction: column; }
+  .panel-body .subs-start .subs-create { order: -1; margin: 0 0 10px !important; }
+}

@@ -1,9 +1,10 @@
 // The subtitles flow on a phone (390 x 844, Hebrew), without the speech model (Hugging Face is
 // blocked; the subtitles come from an SRT, the one way that needs no download): the one primary
-// button is on the first screen, not under the export bar; the look cards are pictures drawn by the
+// button is on the first screen, not under the bar of groups; the look cards are pictures drawn by the
 // renderer, in a row that scrolls; one tap applies a look and the video shows it; a subtitle is
 // edited where it is (its actions show on the one tapped); nothing overflows sideways; the
 // buttons and chips are 44 px tall at least.
+// The editor is the app's: the video on top, the open group's panel (its sub-tools as chips, one tool's controls) over the bar of groups.
 // Run: node tests/subsmobile.cjs <url> <video with speech> <out dir>
 const { chromium } = require('playwright')
 const fs = require('fs')
@@ -37,7 +38,7 @@ const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים 
     // ---- the first screen: the primary action is there, whole, above the export bar; nothing scrolls sideways.
     const first = await p.evaluate(() => {
       const r = document.querySelector('.subs-create').getBoundingClientRect()
-      const e = document.querySelector('.export-bar').getBoundingClientRect()
+      const e = document.querySelector('.tabs').getBoundingClientRect()
       return { top: r.top, bottom: r.bottom, h: r.height, barTop: e.top, vh: innerHeight, sideways: document.documentElement.scrollWidth > innerWidth }
     })
     console.log('first screen:', JSON.stringify(first))
@@ -45,7 +46,8 @@ const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים 
     if (first.sideways) fail('the page scrolls sideways')
     await p.screenshot({ path: `${out}/1_start.png` })
 
-    // ---- the look cards: drawn, in a row that scrolls, many of them
+    // ---- the look cards (the panel's style tool): drawn, in a row that scrolls, many of them
+    await p.click('.panel-head [data-sub=style]')
     await p.waitForSelector('.preset-row .chip.preset canvas')
     if (await p.evaluate(() => scrollY) !== 0) fail('the page jumped when the row of looks showed')
     // The cards are drawn as they come near the screen: go along the row, as a finger does.
@@ -70,8 +72,11 @@ const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים 
     const scrolls = await p.evaluate(() => { const r = document.querySelector('.preset-row'); return r.scrollWidth > r.clientWidth + 50 })
     if (!scrolls) fail('the row of looks does not scroll')
 
-    // ---- the subtitles (from an SRT: no model); the video shows the first at once
+    // ---- the subtitles (from an SRT: no model, imported in the creation tool); the video shows the first at once
+    await p.click('.panel-head [data-sub=make]')
     await p.setInputFiles('.srt-import input', `${out}/in.srt`)
+    await p.waitForSelector('.panel-head [data-sub=list]')
+    await p.click('.panel-head [data-sub=list]')
     await p.waitForSelector('.cue-list .clip')
     await p.waitForTimeout(800)
     const t0 = await p.evaluate(() => document.querySelector('video').currentTime)
@@ -81,6 +86,8 @@ const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים 
     await p.screenshot({ path: `${out}/2_cues.png` })
 
     // ---- one tap on a card: it is the chosen one and the video shows the new look
+    await p.click('.panel-head [data-sub=style]')
+    await p.waitForSelector('.preset-row')
     await p.click('.preset-row .chip.preset >> text=ויראלי צהוב')
     await p.waitForSelector('.preset-row .chip.preset.on >> text=ויראלי צהוב')
     await seek(t0)
@@ -94,7 +101,8 @@ const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים 
     if (kept.join() !== 'רקע לבן') fail('highlight: ' + kept)
     await p.screenshot({ path: `${out}/3_look.png` })
 
-    // ---- editing where it is: tap a subtitle, its actions show on it alone
+    // ---- editing where it is (the list tool): tap a subtitle
+    await p.click('.panel-head [data-sub=list]')
     if (await p.$('.cue-split')) fail('actions shown before a subtitle is tapped')
     await seek(3)
     const before = await frame()
@@ -109,23 +117,25 @@ const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים 
     // The subtitle being edited is above the export bar (the page leaves room for it).
     await p.waitForTimeout(900)
     const room = await p.evaluate(() => {
-      const c = document.querySelector('.clip.open').getBoundingClientRect()
-      const e = document.querySelector('.export-bar').getBoundingClientRect()
-      return { bottom: c.bottom, barTop: e.top }
+      // The panel's body scrolls: the field being typed in is whole inside what shows of it, above the bar of groups.
+      const c = document.querySelector('.clip.open .cue-text').getBoundingClientRect()
+      const body = document.querySelector('.panel-body').getBoundingClientRect()
+      const e = document.querySelector('.tabs').getBoundingClientRect()
+      return { top: c.top, bottom: c.bottom, bodyTop: body.top, bodyBottom: body.bottom, barTop: e.top }
     })
-    if (room.bottom > room.barTop + 1) fail('the edited subtitle is under the export bar: ' + JSON.stringify(room))
+    if (room.bottom > room.barTop + 1 || room.bottom > room.bodyBottom + 1 || room.top < room.bodyTop - 1) fail('the edited subtitle is out of sight or under the bar of groups: ' + JSON.stringify(room))
     await p.screenshot({ path: `${out}/4_edit.png` })
 
-    // ---- the rest is folded, and opens; fine-tuning is folded too
-    if (await p.isVisible('.sub-fine .fonts')) fail('the fine-tuning is open from the start')
-    if (await p.isVisible('.subs-more-body')) fail('"more options" is open from the start')
-    await p.click('.subs-more > summary')
-    await p.waitForSelector('.subs-more-body .translate-go', { state: 'visible' })
-    await p.click('.sub-fine > summary')
+    // ---- nothing is folded away behind "more options": the tools are tabs of their own, each with its own controls
+    if (await p.$('.subs-more')) fail('"more options" is still there on a phone')
+    await p.click('.panel-head [data-sub=make]')
+    await p.waitForSelector('.panel-body .translate-go, .panel-body .translate-unsupported', { state: 'visible' })
+    await p.click('.panel-head [data-sub=style]')
+    await p.click('.subtabs.inner [data-sub=font]')
     await p.waitForSelector('.sub-fine .fonts', { state: 'visible' })
 
     // ---- taps: every button and chip on the screen at least 44 px tall
-    const small = await p.evaluate(() => [...document.querySelectorAll('.side .btn, .side .chip:not(.preset), .tabs button, .side summary, .cue-list textarea')]
+    const small = await p.evaluate(() => [...document.querySelectorAll('.side .btn, .side .chip:not(.preset), .tabs button, .cue-list textarea')]
       .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && e.offsetParent && r.height < 43.5 })
       .map((e) => `${e.className}:${Math.round(e.getBoundingClientRect().height)}`))
     console.log('under 44 px:', JSON.stringify(small))

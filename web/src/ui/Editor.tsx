@@ -4,7 +4,7 @@ import { t, duration, lang } from '../i18n'
 import { BlurRenderer, ellipseFor, type Ellipse } from '../lib/renderer'
 import { frameAt, loadLook, saveLook, trackBox, type Analysis, type BlurMode, type Look, type Track } from '../lib/types'
 import type { ExportJob } from './Exporting'
-import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIcon, FaceIcon, PictureIcon, MarkIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
+import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIcon, FaceIcon, PictureIcon, MarkIcon, TemplateIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
 import { FRAME, Timeline } from './Timeline'
 import { BlurBar } from './BlurBar'
 import { CutTab, wordSpan } from './CutTab'
@@ -28,6 +28,7 @@ import { speechLine } from './SpeechUi'
 import { cleanupOn, type Cleanup } from '../lib/cleanup'
 import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
 import { Analyzing } from './Analyzing'
+import { ChipTabs, PANEL_ID, STYLE_PARTS, subsOf, useNarrow } from './panels'
 import { bleepRanges, cueAt, maskCue, shownText, type Cue, type SubStyle, type Word } from '../lib/subtitles'
 import { DEFAULT_SUB_STYLE, loadSubFont, normalizeStyle } from '../lib/substyle'
 import { cueWordTimes, drawCue } from '../lib/subrender'
@@ -143,6 +144,11 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [time, setTime] = useState(0)
   const [dur, setDur] = useState(times.length ? times[times.length - 1] : 0)
   const [tab, setTab] = useState<EditorTab>(initialTab)
+  // A phone shows one sub-tool of the open group at a time (as the app does); a wide screen shows them all.
+  const narrow = useNarrow()
+  const [subTab, setSubTab] = useState<Record<string, string>>({})
+  const [styleTab, setStyleTab] = useState('looks')
+  const bodyRef = useRef<HTMLDivElement>(null)
   const [cues, setCues] = useState<Cue[]>(saved?.cues ?? [])
   const [words, setWords] = useState<Word[]>(saved?.words ?? [])
   const [bleeped, setBleeped] = useState<Set<number>>(() => new Set(saved?.bleeped ?? []))
@@ -1000,6 +1006,179 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   /** A subtitle's text with the bleeped words hidden (unless they're to show as said). */
   const masked = (c: Cue) => (subStyle.maskBleeped === false ? c.text : maskCue(c, words, bleeped))
 
+  const subList = subsOf(tab, { hasCues: cues.length > 0, hasWords: words.length > 0, hasFaces: analyzed || tracks.length > 0 })
+  const part = (subTab[tab] && subList.some(([id]) => id === subTab[tab]) ? subTab[tab] : subList[0]?.[0]) ?? ''
+  // One panel body serves every group and tool: each opens at its top.
+  useLayoutEffect(() => { bodyRef.current?.scrollTo(0, 0) }, [tab, part, styleTab])
+  /** Whether a sub-tool's controls show: all of them on a wide screen, the open one on a phone. */
+  const S = (k: string) => !narrow || part === k
+  /** The group is changing the video now: a dot on its button (as in the app). */
+  const groupOn = (g: EditorTab) => g === 'edit' ? cuts.length > 0 || steadyLevel > 0
+    : g === 'picture' ? background.fill !== 'none' || exportOpts.aspect !== 'original'
+    : g === 'subs' ? cues.length > 0
+    : g === 'sound' ? voice !== 'none' || cleanupOn(clean) || loudOn || sfx.length > 0 || bleeped.size > 0
+    : g === 'mark' ? watermarkOn(mark) : false
+  const groupName = GROUPS.find((g) => g[0] === tab)![1]
+  const groupColor = GROUPS.find((g) => g[0] === tab)![3]
+  const exportBtn = (
+    <button
+      class="btn primary"
+      // Not while a template is still being applied or the sound is being processed: the
+      // export would go out without the voice change (anonymity), the cleanup or the cuts.
+      disabled={!!following || tplBusy || soundBlocked}
+      onClick={() => {
+        video.current?.pause()
+        setExportOpen(true)
+        if (!srcInfo) probe()
+      }}
+    >
+      <SaveIcon /> {t('ייצוא')}
+    </button>
+  )
+  const saveTplBtn = <button class="btn ghost save-template-btn" onClick={() => setSaveTpl(true)}>{t('שמור כתבנית')}</button>
+  const saveTplIcon = <button class="icon-btn save-template-btn" aria-label={t('שמור כתבנית')} title={t('שמור כתבנית')} onClick={() => setSaveTpl(true)}><TemplateIcon size={22} /></button>
+  const editTools = (
+    <div class="edit-tools">
+            <button class="icon-btn" disabled={past.current.length === 0 || !!following} aria-label={t('בטל')} title={t('בטל') + ' (Ctrl+Z)'} onClick={undo}><span class="flip"><UndoIcon /></span></button>
+            <button class="icon-btn" disabled={future.current.length === 0 || !!following} aria-label={t('בצע שוב')} title={t('בצע שוב') + ' (Ctrl+Shift+Z)'} onClick={redo}><span class="flip"><RedoIcon /></span></button>
+          </div>
+  )
+  const panelBody = (
+    <>
+        {tab === 'faces' && S('list') && !analyzed && (
+          <section class="card">
+            <h3 class="section-title">{t('פנים')}</h3>
+            <p class="small muted" style="margin:0 0 12px">{t('הפנים בסרטון עוד לא זוהו. אפשר לזהות ולטשטש אותן עכשיו; הכתוביות, הסאונד וסימן המים יישארו.')}</p>
+            <button class="btn primary" style="width:100%" disabled={!!following} onClick={() => { video.current?.pause(); setSelected(null); setDetecting(true) }}>{t('זהה פנים')}</button>
+          </section>
+        )}
+        {tab === 'faces' && S('manual') && (
+          <section class="card">
+            <h3 class="section-title">{t('טשטוש ידני')}</h3>
+            <p class="small muted" style="margin:0 0 12px">{t('לפנים שלא נמצאו, לוחית רישוי או כל דבר אחר: הקש במקום, והטשטוש יעקוב אחריו.')}</p>
+            <button class={'btn ' + (adding ? 'ghost' : 'tonal') + ' add-blur'} style="width:100%" disabled={!!following} onClick={() => { video.current?.pause(); setAdding(!adding) }}>
+              {adding ? t('ביטול') : <><AddIcon size={20} /> {t('הוסף טשטוש')}</>}
+            </button>
+          </section>
+        )}
+        {tab === 'faces' && (analyzed || tracks.length > 0) && (
+          <>
+        {S('list') && <section class="card">
+          <h3 class="section-title keep">{t('טשטוש פנים')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{t('%d מתוך %d מטושטשות', enabled.length, tracks.length)}</span></h3>
+          {tracks.length === 0 ? (
+            <p class="muted small" style="margin:0">{t('לא נמצאו פנים בסרטון.')}</p>
+          ) : (
+            <>
+              <div class="faces">
+                {tracks.map((tr, k) => (
+                  <button class={'face' + (off.has(tr.id) ? ' off' : '') + (tr.id === selected ? ' sel' : '')} onClick={() => toggle(tr.id)} aria-pressed={!off.has(tr.id)} title={tr.manual ? t('טשטוש %d', tr.id + 1) : t('פנים %d', k + 1)}>
+                    {thumbOf.get(tr.id) ? <img src={thumbOf.get(tr.id)!} alt={t('פנים %d', k + 1)} /> : <div class="ph" />}
+                    <span class="badge">{off.has(tr.id) ? '–' : '✓'}</span>
+                    <span class="lbl">{off.has(tr.id) ? t('גלוי') : tr.manual ? t('ידני') : t('מטושטש')}</span>
+                  </button>
+                ))}
+              </div>
+              <p class="small muted" style="margin:12px 0 8px">{t('הקש על פנים כדי לבטל או להחזיר את הטשטוש שלהן. הקש על טשטוש בסרטון או בציר הזמן כדי לערוך אותו, וגרור אותו בסרטון כדי להזיז.')}</p>
+              <div class="actions">
+                <button class="btn tonal" onClick={() => setOffH(new Set())}>{t('הכל')}</button>
+                <button class="btn tonal" onClick={() => setOffH(new Set(tracks.map((x) => x.id)))}>{t('אף אחד')}</button>
+              </div>
+            </>
+          )}
+        </section>}
+
+        {S('look') && <section class="card">
+          <h3 class="section-title">{t('מראה')}</h3>
+          <div class="seg" role="radiogroup">
+            {(['blur', 'pixelate', 'solid'] as BlurMode[]).map((m) => (
+              <button class={look.mode === m ? 'on' : ''} role="radio" aria-checked={look.mode === m} onClick={() => setMode(m)}>
+                {m === 'blur' ? t('טשטוש') : m === 'pixelate' ? t('פיקסלים') : t('כיסוי')}
+              </button>
+            ))}
+          </div>
+          {look.mode !== 'solid' && (
+            <div class="slider-row">
+              <label>{t('עוצמה')}</label>
+              <input type="range" min={0} max={1} step={0.01} value={look.strength} onInput={(e) => setLook({ ...look, strength: Number((e.currentTarget as HTMLInputElement).value) })} />
+            </div>
+          )}
+          <div class="slider-row">
+            <label>{t('גודל')}</label>
+            <input type="range" min={1.1} max={2.4} step={0.01} value={look.padding} onInput={(e) => setLook({ ...look, padding: Number((e.currentTarget as HTMLInputElement).value) })} />
+          </div>
+        </section>}
+
+          </>
+        )}
+        {tab === 'sound' && S('clean') && (
+          <CleanupCard
+            clean={clean}
+            onClean={(c) => { setDenoise(c.denoise); setEnhance(c.enhance) }}
+            loud={{ on: loudOn, gainDb: loudGain }}
+            loudBusy={loudOn && voiceBusy}
+            onLoud={(on) => { setLoudOn(on); if (!on) setLoudGain(null) }}
+          />
+        )}
+        {tab === 'sound' && !(narrow && part === 'clean') && (
+          <SoundTab
+            part={narrow ? (part as 'voice' | 'sfx') : undefined}
+            voice={voice}
+            onVoice={setVoice}
+            voiceBusy={voiceBusy}
+            clips={sfx}
+            time={time}
+            onChange={setSfxH}
+            onSeek={(at) => { const v = video.current; if (v) v.currentTime = at }}
+          />
+        )}
+        {tab === 'edit' && S('cut') && (
+          <CutTab
+            cuts={cuts}
+            onCuts={setCutsH}
+            duration={dur}
+            time={time}
+            cues={cues}
+            words={words}
+            cutStart={cutStart}
+            onCutStart={setCutStart}
+            busy={cutBusy}
+            onSilences={cutSilences}
+            onFillers={cutFillers}
+            onMakeSubtitles={() => { setTab('subs'); setSubTab({ ...subTab, subs: 'make' }) }}
+            onPause={() => video.current?.pause()}
+          />
+        )}
+        {tab === 'edit' && S('steady') && <StabilizeCard level={steadyLevel} onLevel={chooseSteady} busy={picBusy} zoom={steadied ? Math.round((steadied.zoom - 1) * 100) : null} onCancel={() => { cancelPicture(); if (!picture) setSteadyLevel(0) }} />}
+        {tab === 'picture' && (
+          <>
+            {S('bg') && <BackgroundCard bg={background} onChange={setBackground} masksReady={!!picture?.masks} busy={picBusy} onFindPeople={() => runPicture(true)} onCancel={cancelPicture} />}
+            {S('frame') && <FrameCard aspect={exportOpts.aspect} onChange={(a) => setExportOpts((o) => ({ ...o, aspect: a }))} hasFaces={tracks.length > 0} />}
+          </>
+        )}
+        {tab === 'mark' && <WatermarkTab mark={mark} onChange={setMark} />}
+        {tab === 'subs' && (
+          <SubtitlesTab
+            part={narrow ? (part as 'make' | 'list' | 'bleep' | 'style') : undefined}
+            stylePart={styleTab}
+            onPart={(p) => setSubTab((s) => ({ ...s, subs: p }))}
+            file={file}
+            cues={cues}
+            onCues={setCuesH}
+            words={words}
+            onReplace={replaceSubs}
+            bleeped={bleeped}
+            onBleeped={setBleepedH}
+            tone={tone}
+            onTone={setTone}
+            style={subStyle}
+            onStyle={setSubStyle}
+            time={time}
+            onSeek={(at) => { const v = video.current; if (v) v.currentTime = at }}
+          />
+        )}
+
+    </>
+  )
   return (
     <>
     {detecting && (
@@ -1025,16 +1204,14 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         }}
       />
     )}
-    <main class="editor" style={detecting || hidden ? 'display:none' : ''}>
+    <main class={'editor' + (narrow && !detecting && !hidden ? ' narrow' : '')} style={detecting || hidden ? 'display:none' : ''}>
       <div class="player">
         <div class="row">
           <button class="btn ghost" onClick={onClose} style="padding-inline:6px"><span class="flip"><BackIcon /></span> {t('סרטון חדש')}</button>
           <div class="grow" />
           <span class="small muted detect-info">{detectInfo}</span>
-          <div class="edit-tools">
-            <button class="icon-btn" disabled={past.current.length === 0 || !!following} aria-label={t('בטל')} title={t('בטל') + ' (Ctrl+Z)'} onClick={undo}><span class="flip"><UndoIcon /></span></button>
-            <button class="icon-btn" disabled={future.current.length === 0 || !!following} aria-label={t('בצע שוב')} title={t('בצע שוב') + ' (Ctrl+Shift+Z)'} onClick={redo}><span class="flip"><RedoIcon /></span></button>
-          </div>
+          {!narrow && editTools}
+          {narrow && <div class="export-bar">{saveTplIcon}{exportBtn}</div>}
         </div>
         <div class={'screen' + (adding ? ' adding' : '') + (selected !== null ? ' sel' : '')} onPointerDown={onScreenDown} onPointerMove={onScreenMove} onPointerUp={onScreenUp} onPointerCancel={() => { press.current = null }}>
           <div class="view" style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc(var(--screen-h) * ${(W / H).toFixed(4)}))` }}>
@@ -1060,6 +1237,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           </div>
           <span class="time">{duration(time)} / {duration(dur)}</span>
           <div class="grow" />
+          {narrow && editTools}
           {selectedClip && (
             <div class="sel-sfx">
               <strong>{sfxName(selectedClip.sound)}</strong>
@@ -1136,139 +1314,22 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         <div class="tabs" role="tablist">
           {GROUPS.map(([id, label, Icon, color], k) => (
             <button role="tab" data-g={id} class={tab === id ? 'on' : ''} aria-selected={tab === id} style={{ '--g': color } as any} title={`${t(label)} (${k + 1})`} onClick={() => setTab(id)}>
-              <span class="pill-ic"><Icon size={22} /></span>
+              <span class="pill-ic"><Icon size={22} />{groupOn(id) && <span class="dot" aria-hidden="true" />}</span>
               <span>{t(label)}{id === 'sound' && sfx.length > 0 ? <span class="count"> · {sfx.length}</span> : id === 'edit' && cuts.length > 0 ? <span class="count"> · {cuts.length}</span> : null}</span>
             </button>
           ))}
         </div>
-        {tab === 'faces' && !analyzed && (
-          <section class="card">
-            <h3 class="section-title">{t('פנים')}</h3>
-            <p class="small muted" style="margin:0 0 12px">{t('הפנים בסרטון עוד לא זוהו. אפשר לזהות ולטשטש אותן עכשיו; הכתוביות, הסאונד וסימן המים יישארו.')}</p>
-            <button class="btn primary" style="width:100%" disabled={!!following} onClick={() => { video.current?.pause(); setSelected(null); setDetecting(true) }}>{t('זהה פנים')}</button>
-          </section>
-        )}
-        {tab === 'faces' && (
-          <section class="card">
-            <h3 class="section-title">{t('טשטוש ידני')}</h3>
-            <p class="small muted" style="margin:0 0 12px">{t('לפנים שלא נמצאו, לוחית רישוי או כל דבר אחר: הקש במקום, והטשטוש יעקוב אחריו.')}</p>
-            <button class={'btn ' + (adding ? 'ghost' : 'tonal') + ' add-blur'} style="width:100%" disabled={!!following} onClick={() => { video.current?.pause(); setAdding(!adding) }}>
-              {adding ? t('ביטול') : <><AddIcon size={20} /> {t('הוסף טשטוש')}</>}
-            </button>
-          </section>
-        )}
-        {tab === 'faces' && (analyzed || tracks.length > 0) && (
-          <>
-        <section class="card">
-          <h3 class="section-title">{t('טשטוש פנים')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{t('%d מתוך %d מטושטשות', enabled.length, tracks.length)}</span></h3>
-          {tracks.length === 0 ? (
-            <p class="muted small" style="margin:0">{t('לא נמצאו פנים בסרטון.')}</p>
-          ) : (
-            <>
-              <div class="faces">
-                {tracks.map((tr, k) => (
-                  <button class={'face' + (off.has(tr.id) ? ' off' : '') + (tr.id === selected ? ' sel' : '')} onClick={() => toggle(tr.id)} aria-pressed={!off.has(tr.id)} title={tr.manual ? t('טשטוש %d', tr.id + 1) : t('פנים %d', k + 1)}>
-                    {thumbOf.get(tr.id) ? <img src={thumbOf.get(tr.id)!} alt={t('פנים %d', k + 1)} /> : <div class="ph" />}
-                    <span class="badge">{off.has(tr.id) ? '–' : '✓'}</span>
-                    <span class="lbl">{off.has(tr.id) ? t('גלוי') : tr.manual ? t('ידני') : t('מטושטש')}</span>
-                  </button>
-                ))}
-              </div>
-              <p class="small muted" style="margin:12px 0 8px">{t('הקש על פנים כדי לבטל או להחזיר את הטשטוש שלהן. הקש על טשטוש בסרטון או בציר הזמן כדי לערוך אותו, וגרור אותו בסרטון כדי להזיז.')}</p>
-              <div class="actions">
-                <button class="btn tonal" onClick={() => setOffH(new Set())}>{t('הכל')}</button>
-                <button class="btn tonal" onClick={() => setOffH(new Set(tracks.map((x) => x.id)))}>{t('אף אחד')}</button>
-              </div>
-            </>
-          )}
-        </section>
-
-        <section class="card">
-          <h3 class="section-title">{t('מראה')}</h3>
-          <div class="seg" role="radiogroup">
-            {(['blur', 'pixelate', 'solid'] as BlurMode[]).map((m) => (
-              <button class={look.mode === m ? 'on' : ''} role="radio" aria-checked={look.mode === m} onClick={() => setMode(m)}>
-                {m === 'blur' ? t('טשטוש') : m === 'pixelate' ? t('פיקסלים') : t('כיסוי')}
-              </button>
-            ))}
-          </div>
-          {look.mode !== 'solid' && (
-            <div class="slider-row">
-              <label>{t('עוצמה')}</label>
-              <input type="range" min={0} max={1} step={0.01} value={look.strength} onInput={(e) => setLook({ ...look, strength: Number((e.currentTarget as HTMLInputElement).value) })} />
+        {narrow ? (
+          <div class={'panel' + (tab === 'subs' && part === 'style' ? ' has-inner' : '')} data-g={tab} style={{ '--g': groupColor } as any}>
+            <div class="panel-head">
+              {subList.length > 0
+                ? <ChipTabs items={subList} value={part} onPick={(id) => setSubTab({ ...subTab, [tab]: id })} label={t(groupName)} />
+                : <h2 class="panel-title">{t(groupName)}</h2>}
             </div>
-          )}
-          <div class="slider-row">
-            <label>{t('גודל')}</label>
-            <input type="range" min={1.1} max={2.4} step={0.01} value={look.padding} onInput={(e) => setLook({ ...look, padding: Number((e.currentTarget as HTMLInputElement).value) })} />
+            {tab === 'subs' && part === 'style' && <ChipTabs items={STYLE_PARTS} value={styleTab} onPick={setStyleTab} cls="inner" label={t('עיצוב כתוביות')} />}
+            <div class="panel-body" ref={bodyRef} id={PANEL_ID} role="tabpanel" aria-labelledby={subList.length > 0 ? `tab-${tab === 'subs' && part === 'style' ? 'inner' : 'tool'}-${tab === 'subs' && part === 'style' ? styleTab : part}` : undefined} aria-label={subList.length > 0 ? undefined : t(groupName)}>{panelBody}</div>
           </div>
-        </section>
-
-          </>
-        )}
-        {tab === 'sound' && (
-          <CleanupCard
-            clean={clean}
-            onClean={(c) => { setDenoise(c.denoise); setEnhance(c.enhance) }}
-            loud={{ on: loudOn, gainDb: loudGain }}
-            loudBusy={loudOn && voiceBusy}
-            onLoud={(on) => { setLoudOn(on); if (!on) setLoudGain(null) }}
-          />
-        )}
-        {tab === 'sound' && (
-          <SoundTab
-            voice={voice}
-            onVoice={setVoice}
-            voiceBusy={voiceBusy}
-            clips={sfx}
-            time={time}
-            onChange={setSfxH}
-            onSeek={(at) => { const v = video.current; if (v) v.currentTime = at }}
-          />
-        )}
-        {tab === 'edit' && (
-          <CutTab
-            cuts={cuts}
-            onCuts={setCutsH}
-            duration={dur}
-            time={time}
-            cues={cues}
-            words={words}
-            cutStart={cutStart}
-            onCutStart={setCutStart}
-            busy={cutBusy}
-            onSilences={cutSilences}
-            onFillers={cutFillers}
-            onMakeSubtitles={() => setTab('subs')}
-            onPause={() => video.current?.pause()}
-          />
-        )}
-        {tab === 'edit' && <StabilizeCard level={steadyLevel} onLevel={chooseSteady} busy={picBusy} zoom={steadied ? Math.round((steadied.zoom - 1) * 100) : null} onCancel={() => { cancelPicture(); if (!picture) setSteadyLevel(0) }} />}
-        {tab === 'picture' && (
-          <>
-            <BackgroundCard bg={background} onChange={setBackground} masksReady={!!picture?.masks} busy={picBusy} onFindPeople={() => runPicture(true)} onCancel={cancelPicture} />
-            <FrameCard aspect={exportOpts.aspect} onChange={(a) => setExportOpts((o) => ({ ...o, aspect: a }))} hasFaces={tracks.length > 0} />
-          </>
-        )}
-        {tab === 'mark' && <WatermarkTab mark={mark} onChange={setMark} />}
-        {tab === 'subs' && (
-          <SubtitlesTab
-            file={file}
-            cues={cues}
-            onCues={setCuesH}
-            words={words}
-            onReplace={replaceSubs}
-            bleeped={bleeped}
-            onBleeped={setBleepedH}
-            tone={tone}
-            onTone={setTone}
-            style={subStyle}
-            onStyle={setSubStyle}
-            time={time}
-            onSeek={(at) => { const v = video.current; if (v) v.currentTime = at }}
-          />
-        )}
-
+        ) : panelBody}
         <details class="keys">
           <summary>{t('קיצורי מקלדת')}</summary>
           <dl>
@@ -1292,22 +1353,10 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             </div>
           </div>
         )}
-        <div class="export-bar">
-          <button
-            class="btn primary"
-            // Not while a template is still being applied or the sound is being processed: the
-            // export would go out without the voice change (anonymity), the cleanup or the cuts.
-            disabled={!!following || tplBusy || soundBlocked}
-            onClick={() => {
-              video.current?.pause()
-              setExportOpen(true)
-              if (!srcInfo) probe()
-            }}
-          >
-            <SaveIcon /> {t('ייצוא')}
-          </button>
-          <button class="btn ghost save-template-btn" onClick={() => setSaveTpl(true)}>{t('שמור כתבנית')}</button>
-        </div>
+        {!narrow && <div class="export-bar">
+          {exportBtn}
+          {saveTplBtn}
+        </div>}
       </aside>
     </main>
     {saveTpl && (
