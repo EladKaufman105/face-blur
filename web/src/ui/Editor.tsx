@@ -28,7 +28,7 @@ import { speechLine } from './SpeechUi'
 import { cleanupOn, type Cleanup } from '../lib/cleanup'
 import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
 import { Analyzing } from './Analyzing'
-import { ChipTabs, PANEL_ID, STYLE_PARTS, subsOf, useNarrow } from './panels'
+import { ChipTabs, PANEL_ID, STYLE_PARTS, subsOf, useNarrow, useTablet } from './panels'
 import { bleepRanges, cueAt, maskCue, shownText, type Cue, type SubStyle, type Word } from '../lib/subtitles'
 import { DEFAULT_SUB_STYLE, loadSubFont, normalizeStyle } from '../lib/substyle'
 import { cueWordTimes, drawCue } from '../lib/subrender'
@@ -146,7 +146,9 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [dur, setDur] = useState(times.length ? times[times.length - 1] : 0)
   const [tab, setTab] = useState<EditorTab>(initialTab)
   // On a phone the timeline and a group's panel share one place (as in the app): the timeline shows, and a group opens its panel in its place (a tool picked from the home screen opens its panel).
-  const [panelOpen, setPanelOpen] = useState(initTab !== undefined)
+  // On a tablet a panel is always open beside the video (until its X); on a phone it opens in the timeline's place.
+  const tabletNow = useTablet()
+  const [panelOpen, setPanelOpen] = useState(initTab !== undefined || tabletNow)
   /** Speech, speakers or translation is running in the subtitles tab: it stays mounted (hidden) when another group is open, so the job goes on. */
   const [subsBusy, setSubsBusy] = useState(false)
   /** The subtitles tab was opened once: from then on it stays mounted (hidden when another group is open), so a job, its notice or its error is never lost. */
@@ -157,7 +159,10 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [subsAlert, setSubsAlert] = useState(false)
   const subsTime = useRef(0)
   // A phone shows one sub-tool of the open group at a time (as the app does); a wide screen shows them all.
-  const narrow = useNarrow()
+  const phone = useNarrow()
+  const tablet = useTablet()
+  /** One group's panel at a time, its tools as chips, one top bar: a phone and a tablet (the page as before on a wider screen). */
+  const narrow = phone || tablet
   const [subTab, setSubTab] = useState<Record<string, string>>({})
   const [styleTab, setStyleTab] = useState('looks')
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -1038,11 +1043,11 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     : g === 'mark' ? watermarkOn(mark) : false
   /** A group's button: on a phone it opens the panel in the timeline's place, and a second tap closes it (as the app's group bar). */
   function pickGroup(g: EditorTab, keyboard = false) {
-    if (narrow && panelOpen && tab === g && !keyboard) { setPanelOpen(false); return }
+    if (phone && panelOpen && tab === g && !keyboard) { setPanelOpen(false); return }
     // (A blur being followed keeps its bar, with the progress and Cancel.)
     // (Focus inside the subtitles tab, which is about to be hidden, goes to the group's button.)
     if ((document.activeElement as HTMLElement | null)?.closest('.subs-keep') && g !== 'subs') (document.querySelector(`.tabs [data-g=${g}]`) as HTMLElement | null)?.focus()
-    if (narrow) { video.current?.pause(); if (!following) setSelected(null); setSelectedSfx(null); setAdding(false) }
+    if (phone) { video.current?.pause(); if (!following) setSelected(null); setSelectedSfx(null); setAdding(false) }
     setTab(g)
     setPanelOpen(true)
   }
@@ -1054,6 +1059,16 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   }
   const groupName = GROUPS.find((g) => g[0] === tab)![1]
   const groupColor = GROUPS.find((g) => g[0] === tab)![3]
+  const groupBar = (
+    <div class="tabs" role="tablist">
+          {GROUPS.map(([id, label, Icon, color], k) => (
+            <button role="tab" data-g={id} class={tab === id && (!narrow || panelOpen) ? 'on' : ''} aria-selected={tab === id && (!narrow || panelOpen)} style={{ '--g': color } as any} title={`${t(label)} (${k + 1})`} onClick={() => pickGroup(id)}>
+              <span class="pill-ic"><Icon size={22} />{(groupOn(id) || (id === 'subs' && (subsBusy || subsAlert))) && <span class={'dot' + (id === 'subs' && subsAlert ? ' alert' : id === 'subs' && subsBusy ? ' busy' : '')} aria-hidden="true" />}</span>
+              <span>{t(label)}{id === 'sound' && sfx.length > 0 ? <span class="count"> · {sfx.length}</span> : id === 'edit' && cuts.length > 0 ? <span class="count"> · {cuts.length}</span> : null}</span>
+            </button>
+          ))}
+        </div>
+  )
   const exportBtn = (
     <button
       class="btn primary"
@@ -1244,7 +1259,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         }}
       />
     )}
-    <main class={'editor' + (narrow && !detecting && !hidden ? ' narrow' : '') + (narrow && panelOpen ? ' panel-open' : '')} style={detecting || hidden ? 'display:none' : ''}>
+    <main class={'editor' + (narrow && !detecting && !hidden ? ' narrow' : '') + (tablet && !detecting && !hidden ? ' tablet' : '') + (phone && panelOpen ? ' panel-open' : '') + (tablet && panelOpen ? ' panel-shown' : '')} style={detecting || hidden ? 'display:none' : ''}>
+      {tablet && groupBar}
       <div class="player">
         <div class={'row top-row' + (BETA ? ' beta' : '')}>
           {narrow
@@ -1353,14 +1369,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             {tplRun.notes.map((n) => <p class="small tpl-note" style="margin:0;color:var(--primary)">{n}</p>)}
           </section>
         )}
-        <div class="tabs" role="tablist">
-          {GROUPS.map(([id, label, Icon, color], k) => (
-            <button role="tab" data-g={id} class={tab === id && (!narrow || panelOpen) ? 'on' : ''} aria-selected={tab === id && (!narrow || panelOpen)} style={{ '--g': color } as any} title={`${t(label)} (${k + 1})`} onClick={() => pickGroup(id)}>
-              <span class="pill-ic"><Icon size={22} />{(groupOn(id) || (id === 'subs' && (subsBusy || subsAlert))) && <span class={'dot' + (id === 'subs' && subsAlert ? ' alert' : id === 'subs' && subsBusy ? ' busy' : '')} aria-hidden="true" />}</span>
-              <span>{t(label)}{id === 'sound' && sfx.length > 0 ? <span class="count"> · {sfx.length}</span> : id === 'edit' && cuts.length > 0 ? <span class="count"> · {cuts.length}</span> : null}</span>
-            </button>
-          ))}
-        </div>
+        {!tablet && groupBar}
         {/* One tree on every screen size (a phone turned past 600 px keeps a running job): the phone's panel, or on a wide screen a wrapper that is not there to the layout. */}
           <div hidden={narrow && !panelOpen} class={narrow ? 'panel' + (tab === 'subs' && part === 'style' ? ' has-inner' : '') : 'panel-flat'} data-g={tab} style={{ '--g': groupColor } as any}>
             <div class="panel-head" hidden={!narrow}>

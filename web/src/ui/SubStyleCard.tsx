@@ -4,8 +4,9 @@ import { t } from '../i18n'
 import { deleteFont, listFonts, saveFont } from '../lib/projects'
 import { FontAxes } from './FontAxes'
 import { MAX_SPEAKERS, speakerColor, withSpeakerColor } from '../lib/speakers'
-import { ACCENT_EFFECTS, DEFAULT_SUB_STYLE, fontFamily, loadSubFont, SUB_COLORS, SUB_EFFECTS, SUB_FONTS, type SubStyle } from '../lib/substyle'
+import { ACCENT_EFFECTS, DEFAULT_SUB_STYLE, loadSubFont, SUB_COLORS, SUB_EFFECTS, SUB_FONTS, type SubStyle } from '../lib/substyle'
 import { SubPresetRow } from './SubPresets'
+import { EffectCards, FontCard } from './StyleCards'
 
 const BOX_COLORS = ['#000000b8', '#000000e6', '#fffffff2', '#ff2d55e6', '#4d8dffe6', '#34e07ae6']
 const POSITIONS: [number, string][] = [[0.14, 'למעלה'], [0.5, 'באמצע'], [0.7, 'שליש תחתון'], [0.86, 'למטה']]
@@ -30,21 +31,10 @@ function StyleCard({ style, onStyle, file, part }: { style: SubStyle; onStyle: (
   const set = (patch: Partial<SubStyle>) => onStyle({ ...style, ...patch })
   const [custom, setCustom] = useState<string[]>([])
   const [note, setNote] = useState<string | null>(null)
-  const [, setReady] = useState(0)
   const [speaker, setSpeaker] = useState(2)
   const input = useRef<HTMLInputElement>(null)
-  // The fonts load when the manual fine-tuning opens (not with the tab), so each name shows in its own font.
-  const [fine, setFine] = useState(false)
-  // The imported fonts' names are listed at once (they are the user's own, small); their files load with the rest.
+  // The imported fonts' names are listed at once (they are the user's own, small); each card loads its font when it is near the screen.
   useEffect(() => { listFonts().then((list) => setCustom(list.map((f) => f.name))) }, [])
-  const loadFonts = fine || part === 'font'
-  useEffect(() => {
-    if (!loadFonts) return
-    for (const f of SUB_FONTS) loadSubFont({ ...DEFAULT_SUB_STYLE, font: f.id }, document.fonts, document.baseURI).then(() => setReady((n) => n + 1))
-    listFonts().then((list) => {
-      for (const f of list) loadSubFont({ ...DEFAULT_SUB_STYLE, customFont: f.name }, document.fonts, document.baseURI, f.data).then(() => setReady((n) => n + 1))
-    })
-  }, [loadFonts])
   const outline = style.outline <= 0 ? 0 : style.outline < 0.13 ? 1 : 2
   return (
     <section class="card sub-style">
@@ -53,22 +43,24 @@ function StyleCard({ style, onStyle, file, part }: { style: SubStyle; onStyle: (
       {P('looks') && <SubPresetRow style={style} onStyle={onStyle} file={file ?? null} />}
 
       {(() => { const Fine = (part ? 'div' : 'details') as 'details'; return (
-      <Fine class="sub-fine" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) setFine(true) }}>
+      <Fine class="sub-fine">
       {!part && <summary>{t('כוונון ידני')}</summary>}
 
 {P('font') && <>
       <h4 class="caption tab-name">{t('גופן')}</h4>
-      <div class="chips fonts">
+      {custom.length > 0 && <h4 class="caption">{t('הגופנים שלי')}</h4>}
+      {custom.length > 0 && (
+        <div class="cards fonts custom-fonts" role="radiogroup" aria-label={t('הגופנים שלי')}>
+          {custom.map((name) => (
+            <FontCard key={name} choice={{ ...DEFAULT_SUB_STYLE, customFont: name }} label={name} on={style.customFont === name} onPick={() => set({ customFont: name })}
+              onDelete={async () => { await deleteFont(name); setCustom(custom.filter((x) => x !== name)); if (style.customFont === name) set({ customFont: null }) }} />
+          ))}
+        </div>
+      )}
+      {custom.length > 0 && <h4 class="caption">{t('גופנים מובנים')}</h4>}
+      <div class="cards fonts builtin-fonts" role="radiogroup" aria-label={t('גופן')}>
         {SUB_FONTS.map((f) => (
-          <button class={'chip' + (!style.customFont && style.font === f.id ? ' on' : '')} style={{ fontFamily: fontFamily({ ...DEFAULT_SUB_STYLE, font: f.id }) }} onClick={() => set({ font: f.id, customFont: null, weight: 0, round: undefined })}>
-            {f.id === 'system' ? t('של המכשיר') : f.label}
-          </button>
-        ))}
-        {custom.map((name) => (
-          <span class={'chip custom-font' + (style.customFont === name ? ' on' : '')}>
-            <button class="link-btn" style={{ fontFamily: fontFamily({ ...DEFAULT_SUB_STYLE, customFont: name }) }} onClick={() => set({ customFont: name })}>{name}</button>
-            <button class="link-btn" aria-label={t('מחק')} onClick={async () => { await deleteFont(name); setCustom(custom.filter((x) => x !== name)); if (style.customFont === name) set({ customFont: null }) }}>×</button>
-          </span>
+          <FontCard key={f.id} choice={{ ...DEFAULT_SUB_STYLE, font: f.id }} label={f.id === 'system' ? t('של המכשיר') : f.label} on={!style.customFont && style.font === f.id} onPick={() => set({ font: f.id, customFont: null, weight: 0, round: undefined })} />
         ))}
       </div>
       <button class="btn ghost small-btn font-import" onClick={() => input.current?.click()}>{t('ייבוא גופן מהמכשיר (TTF / OTF)')}</button>
@@ -91,11 +83,7 @@ function StyleCard({ style, onStyle, file, part }: { style: SubStyle; onStyle: (
 </>}
 {P('effect') && <>
       <h4 class="caption tab-name">{t('אפקט')}</h4>
-      <div class="chips effects">
-        {SUB_EFFECTS.map(([e, label]) => (
-          <button class={'chip' + (style.effect === e ? ' on' : '')} onClick={() => set({ effect: e })}>{t(label)}</button>
-        ))}
-      </div>
+      <EffectCards style={style} effects={SUB_EFFECTS} onPick={(e) => set({ effect: e })} />
 
 </>}
 {P('color') && <>

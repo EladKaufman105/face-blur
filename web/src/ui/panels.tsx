@@ -1,22 +1,35 @@
-import { useEffect, useState } from 'preact/hooks'
-import { t } from '../i18n'
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
+import { t, lang } from '../i18n'
 
-/** The phone layout (as the app's): one group's panel at a time, its sub-tools as chips. */
-const QUERY = '(max-width: 600px)'
+/**
+ * The editor's layouts, as the app's (isWide in Adaptive.kt):
+ * - a phone, and a tablet held upright and under 840 px (the app keeps phones and these in one column): the video, the
+ *   compact transport, the timeline or (in its place) the open group's panel, and the group bar at the foot;
+ * - a tablet (a screen at least 600 px both ways, up to about 1100 px wide): a rail of groups at the side, the panel
+ *   always beside the video (closed with its X, opened by any group), the timeline under the video;
+ * - anything wider, or a short landscape screen: the page as before.
+ */
+export const PHONE_QUERY = '(max-width: 600px), (min-width: 601px) and (max-width: 839px) and (orientation: portrait)'
+export const TABLET_QUERY = '(min-width: 840px) and (max-width: 1100px) and (min-height: 600px), (min-width: 601px) and (max-width: 839px) and (min-height: 600px) and (orientation: landscape)'
 
-export function useNarrow(): boolean {
-  const mq = () => (typeof matchMedia === 'function' ? matchMedia(QUERY) : null)
-  const [narrow, setNarrow] = useState(() => !!mq()?.matches)
+function useMedia(query: string): boolean {
+  const mq = () => (typeof matchMedia === 'function' ? matchMedia(query) : null)
+  const [on, setOn] = useState(() => !!mq()?.matches)
   useEffect(() => {
     const m = mq()
     if (!m) return
-    const on = () => setNarrow(m.matches)
-    on()
-    m.addEventListener('change', on)
-    return () => m.removeEventListener('change', on)
-  }, [])
-  return narrow
+    const f = () => setOn(m.matches)
+    f()
+    m.addEventListener('change', f)
+    return () => m.removeEventListener('change', f)
+  }, [query])
+  return on
 }
+
+/** The phone layout (see above). */
+export const useNarrow = () => useMedia(PHONE_QUERY)
+/** The tablet layout: a rail of groups, the panel beside the video. */
+export const useTablet = () => useMedia(TABLET_QUERY)
 
 export type Sub = [id: string, label: string]
 
@@ -42,16 +55,41 @@ export const STYLE_PARTS: Sub[] = [['looks', 'סגנונות'], ['font', 'גופ
 /** The id of the panel body the chips control. */
 export const PANEL_ID = 'panel-body'
 
+/** A tool's shorter name, for a row too narrow for the whole names (each is its own translation). */
+const SHORT: Record<string, string> = {
+  'יצירה ותרגום': 'יצירה', 'צפצוף מילים': 'צפצוף', 'אפקטים קוליים': 'אפקטים', 'ניקוי קול': 'ניקוי', 'שינוי קול': 'קול',
+  'טשטוש פנים': 'פנים', 'טשטוש ידני': 'ידני', 'גודל ומיקום': 'גודל',
+}
+
 /**
- * A row of chips, as tabs: the open one in the tab order, the others reached with the arrow keys
- * (Home and End too); the row wraps instead of hiding chips behind a sideways scroll.
+ * A row of chips, as tabs: the open one in the tab order, the others reached with the arrow keys (Home and End too).
+ * The row is never scrolled: its chips share its width; with names too long for it the short names are used, and
+ * (a last resort) the names are cut short with an ellipsis. Every chip stays whole in view.
  */
 export function ChipTabs({ items, value, onPick, cls, label }: { items: Sub[]; value: string; onPick: (id: string) => void; cls?: string; label: string }) {
+  const row = useRef<HTMLDivElement>(null)
+  // 0: the whole names, 1: the short ones, 2: the short ones cut to fit.
+  const [fit, setFit] = useState(0)
+  const names = items.map(([, n]) => n).join('|') + lang.value
+  // A new row (other tools, another language) or a new width starts again from the whole names.
+  useEffect(() => { setFit(0) }, [names])
+  useEffect(() => {
+    const r = row.current
+    if (!r || typeof ResizeObserver === 'undefined') return
+    let w = r.clientWidth
+    const ro = new ResizeObserver(() => { if (Math.abs(r.clientWidth - w) > 0.5) { w = r.clientWidth; setFit(0) } })
+    ro.observe(r)
+    return () => ro.disconnect()
+  }, [])
+  useLayoutEffect(() => {
+    const r = row.current
+    if (r && fit < 2 && r.scrollWidth > r.clientWidth + 0.5) setFit(fit + 1)
+  })
   const key = (e: KeyboardEvent) => {
     const k = e.key
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(k)) return
-    const row = e.currentTarget as HTMLElement
-    const rtl = getComputedStyle(row).direction === 'rtl'
+    const el = e.currentTarget as HTMLElement
+    const rtl = getComputedStyle(el).direction === 'rtl'
     const at = items.findIndex(([id]) => id === value)
     // The next chip is the one further along the reading direction.
     const step = k === 'ArrowRight' ? (rtl ? -1 : 1) : k === 'ArrowLeft' ? (rtl ? 1 : -1) : 0
@@ -60,13 +98,16 @@ export function ChipTabs({ items, value, onPick, cls, label }: { items: Sub[]; v
     e.preventDefault()
     e.stopPropagation()
     onPick(items[to][0])
-    setTimeout(() => (row.querySelectorAll('[role=tab]')[to] as HTMLElement | undefined)?.focus(), 0)
+    setTimeout(() => (el.querySelectorAll('[role=tab]')[to] as HTMLElement | undefined)?.focus(), 0)
   }
   return (
-    <div class={'subtabs ' + (cls ?? '')} role="tablist" aria-label={label} onKeyDown={key}>
-      {items.map(([id, name]) => (
-        <button role="tab" id={`tab-${cls ?? 'tool'}-${id}`} data-sub={id} aria-selected={value === id} aria-controls={PANEL_ID} tabIndex={value === id ? 0 : -1} class={'chip' + (value === id ? ' on' : '')} onClick={() => onPick(id)}>{t(name)}</button>
-      ))}
+    <div ref={row} class={'subtabs ' + (cls ?? '') + (fit === 2 ? ' tight' : '')} data-fit={fit} role="tablist" aria-label={label} onKeyDown={key}>
+      {items.map(([id, name]) => {
+        const shown = fit > 0 && SHORT[name] ? SHORT[name] : name
+        return (
+          <button role="tab" id={`tab-${cls ?? 'tool'}-${id}`} data-sub={id} aria-selected={value === id} aria-controls={PANEL_ID} aria-label={shown !== name ? t(name) : undefined} tabIndex={value === id ? 0 : -1} class={'chip' + (value === id ? ' on' : '')} onClick={() => onPick(id)}>{t(shown)}</button>
+        )
+      })}
     </div>
   )
 }
