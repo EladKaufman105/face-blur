@@ -779,6 +779,8 @@ internal val English: Map<String, String> = mapOf(
     "אין סאונד לשמירה: הסאונד מושתק" to "No sound to save: the sound is muted",
     "הפריימים השתנו, אז האנשים מזוהים מחדש בשביל הרקע" to "The frames changed, so the people are being found again for the background",
     "הרקע של האנשים עדיין לא מוכן: קודם מזהים את האנשים בלשונית הרקע, או מכבים את הרקע." to "The people background isn't ready: find the people in the Background tab first, or turn the background off.",
+    "אי אפשר לזהות פנים בזמן שהאנשים מזוהים. חכה שהזיהוי יסתיים או בטל אותו." to "Faces can't be found while the people are being found. Wait for it to finish or cancel it.",
+    "הרקע של האנשים עדיין לא מוכן, ולכן הסרטון לא נשמר. זהה את האנשים או כבה את הרקע ונסה שוב." to "The people background isn't ready, so the video was not saved. Find the people or turn the background off, then try again.",
     "זיהוי הפנים נכשל" to "Finding the faces failed",
     "הפנים לא יטושטשו בסרטונים האלה: בתבנית הזו אין טשטוש פנים." to "Faces will not be blurred in these videos: this template has no face blur.",
     "מזהה פנים… %d%%" to "Finding faces… %d%%",

@@ -33,4 +33,11 @@ class MaskPolicyTest {
         assertFalse(MaskPolicy.exportBlocked(Background(), masksReady = false))
         assertFalse(MaskPolicy.exportBlocked(person.copy(key = BgKey.BLUE), masksReady = false))
     }
+
+    @Test
+    fun exportRefusesWhilePeopleAreBeingFoundAgain() {
+        assertTrue(MaskPolicy.exportBlocked(person, masksReady = true, segmenting = true))
+        assertFalse(MaskPolicy.exportBlocked(person, masksReady = true, segmenting = false))
+        assertFalse(MaskPolicy.exportBlocked(Background(), masksReady = false, segmenting = true))
+    }
 }

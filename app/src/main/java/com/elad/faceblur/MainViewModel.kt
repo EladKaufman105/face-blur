@@ -959,7 +959,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         // The people background has no masks (yet): saving would leave it out without a word.
-        if (com.elad.faceblur.edit.MaskPolicy.exportBlocked(ctrl.background, ctrl.masksReady)) {
+        if (com.elad.faceblur.edit.MaskPolicy.exportBlocked(ctrl.background, ctrl.peopleMasksOk, false)) {
             ctrl.notice = t("הרקע של האנשים עדיין לא מוכן: קודם מזהים את האנשים בלשונית הרקע, או מכבים את הרקע.")
             return
         }
@@ -1009,6 +1009,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun render(ctrl: EditorController, auto: Boolean = false) {
         val s = ctrl.session
+        // Never save without a people background that is set up (also for templates and batches).
+        if (com.elad.faceblur.edit.MaskPolicy.exportBlocked(ctrl.background, ctrl.peopleMasksOk, false)) throw com.elad.faceblur.pipeline.MissingMasksException()
         // What the screens after it need, read before the work starts.
         val subsOnly = s.subtitlesOnly
         if (!auto) livePreview = null

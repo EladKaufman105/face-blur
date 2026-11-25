@@ -1078,6 +1078,10 @@ class EditorController(
     fun findFaces() {
         val ctx = appContext ?: return
         if (!session.subtitlesOnly || findJob?.isActive == true) return
+        if (segmentProgress != null || segmentJob?.isActive == true) {
+            notice = t("אי אפשר לזהות פנים בזמן שהאנשים מזוהים. חכה שהזיהוי יסתיים או בטל אותו.")
+            return
+        }
         pauser()
         addMode = false
         findFacesProgress = 0f
@@ -1274,6 +1278,7 @@ class EditorController(
                 val old = session.masks
                 session.masks = null
                 bgState.masks = null
+                masksReady = false
                 old?.close()
                 val store = FaceBlurProcessor(ctx).segment(session.info, session.analysis, java.io.File(dir, "masks.bin")) { p ->
                     main.post { if (segmentProgress != null) segmentProgress = p }
@@ -1288,9 +1293,13 @@ class EditorController(
                 notice = t("זיהוי האנשים נכשל: %s").format(e.message ?: e.javaClass.simpleName)
             } finally {
                 segmentProgress = null
+                masksReady = session.masks != null
             }
         }
     }
+
+    /** Whether a people background could be drawn right now (the masks are there and not being redone). */
+    val peopleMasksOk get() = session.masks != null && masksReady && segmentProgress == null
 
     fun cancelFindPeople() {
         segmentJob?.cancel()

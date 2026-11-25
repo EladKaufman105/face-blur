@@ -356,7 +356,7 @@ fun EditorScreen(
             GradientButton(
                 exportLabel,
                 onClick = { ctrl.pauser(); exportSheet = true },
-                enabled = !busy,
+                enabled = !busy && ctrl.segmentProgress == null,
                 icon = EditorIcons.ExportIcon,
                 height = 40.dp,
                 sidePadding = Space.M,

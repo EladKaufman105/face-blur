@@ -69,7 +69,7 @@ internal fun FacesList(ctrl: EditorController) {
                     TextButton(onClick = ctrl::cancelFindFaces) { Text(t("עצור")) }
                 }
             } else {
-                FilledTonalButton(onClick = ctrl::findFaces, modifier = Modifier.fillMaxWidth().testTag(Tags.FIND_FACES)) { Text(t("זהה פנים")) }
+                FilledTonalButton(onClick = ctrl::findFaces, enabled = ctrl.segmentProgress == null, modifier = Modifier.fillMaxWidth().testTag(Tags.FIND_FACES)) { Text(t("זהה פנים")) }
             }
         }
         if (tracks.isEmpty()) return
