@@ -149,6 +149,9 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [panelOpen, setPanelOpen] = useState(initTab !== undefined)
   /** Speech, speakers or translation is running in the subtitles tab: it stays mounted (hidden) when another group is open, so the job goes on. */
   const [subsBusy, setSubsBusy] = useState(false)
+  /** The subtitles tab was opened once: from then on it stays mounted (hidden when another group is open), so a job, its notice or its error is never lost. */
+  const subsSeen = useRef(initTab === 'subs')
+  const subsTime = useRef(0)
   // A phone shows one sub-tool of the open group at a time (as the app does); a wide screen shows them all.
   const narrow = useNarrow()
   const [subTab, setSubTab] = useState<Record<string, string>>({})
@@ -1013,6 +1016,10 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
 
   const subList = subsOf(tab, { hasCues: cues.length > 0, hasWords: words.length > 0, hasFaces: analyzed || tracks.length > 0 })
   const part = (subTab[tab] && subList.some(([id]) => id === subTab[tab]) ? subTab[tab] : subList[0]?.[0]) ?? ''
+  if (tab === 'subs') subsSeen.current = true
+  // The subtitles tab's own tool (the one the Subtitles group has open), whichever group is open now.
+  const subsList = subsOf('subs', { hasCues: cues.length > 0, hasWords: words.length > 0, hasFaces: false })
+  const subsPart = (subTab.subs && subsList.some(([id]) => id === subTab.subs) ? subTab.subs : subsList[0][0]) as 'make' | 'list' | 'bleep' | 'style'
   // One panel body serves every group and tool: each opens at its top.
   useLayoutEffect(() => { bodyRef.current?.scrollTo(0, 0) }, [tab, part, styleTab])
   /** Whether a sub-tool's controls show: all of them on a wide screen, the open one on a phone. */
@@ -1027,6 +1034,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   function pickGroup(g: EditorTab, keyboard = false) {
     if (narrow && panelOpen && tab === g && !keyboard) { setPanelOpen(false); return }
     // (A blur being followed keeps its bar, with the progress and Cancel.)
+    // (Focus inside the subtitles tab, which is about to be hidden, goes to the group's button.)
+    if ((document.activeElement as HTMLElement | null)?.closest('.subs-keep') && g !== 'subs') (document.querySelector(`.tabs [data-g=${g}]`) as HTMLElement | null)?.focus()
     if (narrow) { video.current?.pause(); if (!following) setSelected(null); setSelectedSfx(null); setAdding(false) }
     setTab(g)
     setPanelOpen(true)
@@ -1175,11 +1184,12 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           </>
         )}
         {tab === 'mark' && <WatermarkTab mark={mark} onChange={setMark} />}
-        {(tab === 'subs' || subsBusy) && (
+        {(tab === 'subs' || subsSeen.current) && (
           <div class="subs-keep" hidden={tab !== 'subs'}>
           <SubtitlesTab
             onBusy={setSubsBusy}
-            part={narrow ? (part as 'make' | 'list' | 'bleep' | 'style') : undefined}
+            hidden={tab !== 'subs'}
+            part={narrow ? subsPart : undefined}
             stylePart={styleTab}
             onPart={(p) => setSubTab((s) => ({ ...s, subs: p }))}
             file={file}
@@ -1193,7 +1203,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             onTone={setTone}
             style={subStyle}
             onStyle={setSubStyle}
-            time={time}
+            time={tab === 'subs' ? (subsTime.current = time) : subsTime.current}
             onSeek={(at) => { const v = video.current; if (v) v.currentTime = at }}
           />
           </div>

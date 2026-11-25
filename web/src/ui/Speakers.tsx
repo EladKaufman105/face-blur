@@ -19,6 +19,7 @@ export function SpeakersCard({ file, cues, onCues, color, chosen, onBusy }: { fi
   latest.current = cues
   useEffect(() => () => { worker.current?.terminate(); worker.current = null }, [])
   useEffect(() => { onBusy?.(run !== null) }, [run !== null])
+  useEffect(() => () => onBusy?.(false), [])
   const found = new Set(cues.map((c) => c.speaker ?? 0).filter((s) => s > 0))
   const start = () => {
     worker.current?.terminate()

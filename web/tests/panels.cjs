@@ -9,6 +9,10 @@ const fs = require('fs')
 const [, , url, video, out] = process.argv
 const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים הבאים\n\n2\n00:00:02,600 --> 00:00:05,000\nזה סרטון לדוגמה\n\n3\n00:00:05,100 --> 00:00:08,000\nעם כתוביות בעברית\n`
 const fail = (m) => { throw new Error(m) }
+// Two voices (the sample's first half is one voice, its second half the same pitched up), for the speaker search.
+const SPANS = [[0.3, 2.1], [3.3, 4.3], [5.4, 7.5], [8.2, 11.0], [11.3, 13.1], [14.3, 15.3], [16.4, 18.5], [19.2, 21.3]]
+const ts = (t) => new Date(t * 1000).toISOString().slice(11, 23).replace('.', ',')
+const SPK_SRT = SPANS.map(([a, b], i) => `${i + 1}\n${ts(a)} --> ${ts(b)}\nמשפט ${i + 1}\n`).join('\n')
 /** A group's button on a phone: it opens the group's panel in the timeline's place; the open group's own button closes it, so an open group is left alone. */
 const grp = async (p, g) => {
   if (await p.$eval(`.tabs button[data-g=${g}]`, (e) => e.getAttribute('aria-selected') === 'true')) return
@@ -31,7 +35,7 @@ const tapSelect = async (p) => {
   for (let j = 1; j < 12; j++) for (let i = 1; i < 12; i++) {
     await p.evaluate(() => document.querySelector('video').pause())
     await p.touchscreen.tap(k[0] + (k[2] * i) / 12, k[1] + (k[3] * j) / 12)
-    if (await p.waitForSelector('.ctx-bar', { timeout: 120 }).then(() => true, () => false)) return true
+    if (await p.waitForSelector('.ctx-bar', { timeout: 500 }).then(() => true, () => false)) return true
   }
   return false
 }
@@ -60,7 +64,7 @@ const checkShort = async (p, label, panel) => {
   const m = await p.evaluate(() => {
     const r = (s) => { const e = document.querySelector(s); if (!e) return null; const k = e.getBoundingClientRect(); return { top: k.top, bottom: k.bottom, left: k.left, right: k.right, h: k.height } }
     const pn = r('.panel:not([hidden])')
-    return { vw: innerWidth, vh: innerHeight, clientH: document.documentElement.clientHeight, scrollH: document.documentElement.scrollHeight, sideways: document.documentElement.scrollWidth > innerWidth, bar: r('.player > .top-row'), screen: r('.screen'), transport: r('.transport'), tl: r('.tl'), panel: pn, tabs: r('.tabs'), ctx: r('.ctx-bar'), closeHit: (() => { const c = document.querySelector('.panel:not([hidden]) .panel-close'); if (!c) return null; const k = c.getBoundingClientRect(); const at = document.elementFromPoint(k.left + k.width / 2, k.top + k.height / 2); return !!at && c.contains(at) })(), close: r('.panel:not([hidden]) .panel-close'), head: r('.panel:not([hidden]) .panel-head'), chips: [...document.querySelectorAll('.panel:not([hidden]) .panel-head [data-sub]')].map((e) => { const k = e.getBoundingClientRect(); return { top: k.top, bottom: k.bottom, left: k.left, right: k.right } }) }
+    return { vw: innerWidth, vh: innerHeight, clientH: document.documentElement.clientHeight, scrollH: document.documentElement.scrollHeight, sideways: document.documentElement.scrollWidth > innerWidth, bar: r('.player > .top-row'), screen: r('.screen'), transport: r('.transport'), tl: r('.tl'), panel: pn, tabs: r('.tabs'), bodyH: r('.panel:not([hidden]) .panel-body')?.h ?? 0, ctx: r('.ctx-bar'), closeHit: (() => { const c = document.querySelector('.panel:not([hidden]) .panel-close'); if (!c) return null; const k = c.getBoundingClientRect(); const at = document.elementFromPoint(k.left + k.width / 2, k.top + k.height / 2); return !!at && c.contains(at) })(), close: r('.panel:not([hidden]) .panel-close'), head: r('.panel:not([hidden]) .panel-head'), chips: [...document.querySelectorAll('.panel:not([hidden]) .panel-head [data-sub]')].map((e) => { const k = e.getBoundingClientRect(); return { top: k.top, bottom: k.bottom, left: k.left, right: k.right } }) }
   })
   console.log(label, JSON.stringify({ video: Math.round(m.screen.h), panel: m.panel && Math.round(m.panel.h), tl: m.tl && Math.round(m.tl.h) }))
   const e = 1.5
@@ -76,6 +80,7 @@ const checkShort = async (p, label, panel) => {
     if (m.panel.bottom > m.tabs.top + e) fail(label + ': the panel is under the bar of groups')
     if (m.ctx && m.ctx.bottom > m.panel.top + e) fail(`${label}: the panel reaches the blur's bar (${m.ctx.bottom} > ${m.panel.top})`)
     if (m.ctx && m.ctx.top < m.transport.bottom - e) fail(label + ': the blur\'s bar covers the transport')
+    if (m.bodyH < 40) fail(`${label}: the panel body is ${Math.round(m.bodyH)} px: nothing to see`)
     if (!m.closeHit) fail(label + ': the close button is covered at its center')
     if (m.close.top < m.panel.top - e || m.close.bottom > m.panel.bottom + e) fail(label + ': the close button is cut: ' + JSON.stringify([m.close, m.panel]))
     if (m.chips.some((c) => c.top < m.panel.top - e || c.bottom > m.panel.bottom + e || c.right > m.vw + e || c.left < -e)) fail(label + ': the panel\'s tool chips are cut')
@@ -463,6 +468,83 @@ const mkCheck = (p) => async (label) => {
         await p.screenshot({ path: `${out}/beta_bar_${w}_${locale}.png` })
       }
       await p.context().close()
+    }
+
+    // ---- jobs that outlive a group switch (a phone, Hebrew): speakers found while another group (or another tool) is open are
+    // applied and the busy mark goes; the notice of bleeps the new subtitles lost is there when the subtitles are back.
+    {
+      const openToolPhone = async (fake) => {
+        const ctx = await b.newContext({ viewport: { width: 390, height: 780 }, locale: 'he-IL', hasTouch: true, isMobile: true })
+        await ctx.route(/huggingface\.co|\.hf\.co/, (r) => r.abort())
+        let runs = 0
+        const W1 = [{ text: 'שלום', start: 1, end: 1.5 }, { text: 'עולם', start: 1.6, end: 2.1 }, { text: 'יפה', start: 2.2, end: 2.8 }]
+        const W2 = [{ text: 'בוקר', start: 5, end: 5.5 }, { text: 'טוב', start: 5.6, end: 6.1 }]
+        // The worker may be cached by the browser: it asks the page's side which run it is (a counter the test keeps).
+        if (fake) {
+          await ctx.route(/\/__run$/, (r) => r.fulfill({ contentType: 'text/plain', body: String(++runs) }))
+          await ctx.route(/subs\.worker[^/]*\.js/, (r) => r.fulfill({ contentType: 'text/javascript', body: `const W = [${JSON.stringify(W1)}, ${JSON.stringify(W2)}]
+self.onmessage = async () => { const n = Number(await (await fetch('/__run')).text()); self.postMessage({ type: 'audio' }); const tk = setInterval(() => self.postMessage({ type: 'tick' }), 500); setTimeout(() => { clearInterval(tk); self.postMessage({ type: 'done', device: 'wasm', words: W[n === 1 ? 0 : 1], ms: { load: 1, recognize: 1, first: 1, decode: 1, after: 1, tokens: 1 } }) }, n === 1 ? 800 : 6000) }` }))
+        }
+        const p = await ctx.newPage()
+        await p.goto(url + (url.includes('?') ? '&' : '?') + 'subsmodel=base')
+        await p.waitForTimeout(800)
+        const chooser = p.waitForEvent('filechooser')
+        await p.click('.tool >> nth=0')
+        await (await chooser).setFiles(video)
+        await p.waitForSelector('.editor .tabs', { timeout: 60000 })
+        await p.waitForSelector('.panel:not([hidden]) .panel-body')
+        return p
+      }
+      const busyDot = '.tabs [data-g=subs] .dot.busy'
+      // speakers
+      {
+        const p = await openToolPhone(false)
+        fs.writeFileSync(`${out}/spk.srt`, SPK_SRT)
+        await p.setInputFiles('.srt-import input', `${out}/spk.srt`)
+        await p.waitForSelector('.panel-head [data-sub=list][aria-selected=true]', { timeout: 5000 })
+        await p.click('.panel-head [data-sub=make]')
+        await p.click('.speakers-go')
+        await grp(p, 'faces')
+        await p.waitForSelector(busyDot, { state: 'attached', timeout: 5000 }).catch(() => fail('no busy mark on the Subtitles group while speakers are found'))
+        await grp(p, 'sound')
+        await p.waitForSelector(busyDot, { state: 'detached', timeout: 300000 }).catch(() => fail('the busy mark stays after the group switch'))
+        await grp(p, 'subs')
+        await p.click('.panel-head [data-sub=list]')
+        const sp = await p.$$eval('.cue-speaker', (e) => e.map((x) => Number(x.textContent)))
+        console.log('speakers after a group switch:', JSON.stringify(sp))
+        if (sp.length !== 8 || sp[0] !== 1 || sp[7] !== 2) fail('the speakers were not applied after a group switch: ' + JSON.stringify(sp))
+        // a tool switch inside Subtitles
+        await p.click('.cue-speaker >> nth=0')
+        if ((await p.$eval('.cue-speaker', (e) => Number(e.textContent))) !== 2) fail('the speaker did not change by hand')
+        await p.click('.panel-head [data-sub=make]')
+        await p.click('.speakers-go')
+        await p.click('.panel-head [data-sub=list]')
+        await p.waitForSelector(busyDot, { state: 'attached', timeout: 5000 }).catch(() => fail('no busy mark while speakers are found (tool switch)'))
+        await p.waitForSelector(busyDot, { state: 'detached', timeout: 300000 }).catch(() => fail('the busy mark stays after the tool switch'))
+        const again = await p.$eval('.cue-speaker', (e) => Number(e.textContent))
+        if (again !== 1) fail('the speakers found during a tool switch were not applied: ' + again)
+        await p.context().close()
+      }
+      // the bleeps a new recognition loses
+      {
+        const p = await openToolPhone(true)
+        await p.click('.subs-create')
+        await p.waitForSelector('.panel-head [data-sub=list]', { timeout: 20000 })
+        await p.click('.panel-head [data-sub=bleep]')
+        await p.click('.panel-body .btn:has-text("בחר מילים")')
+        await p.click('.word >> nth=1')
+        await p.click('.panel-body .btn:has-text("סיום")')
+        await p.click('.panel-head [data-sub=make]')
+        await p.click('.panel-body .btn:has-text("מחק כתוביות")')
+        await p.click('.subs-create')
+        await grp(p, 'faces')
+        await p.waitForSelector(busyDot, { state: 'attached', timeout: 5000 }).catch(() => fail('no busy mark while the subtitles are made'))
+        await p.waitForSelector(busyDot, { state: 'detached', timeout: 30000 }).catch(() => fail('the busy mark stays after the recognition'))
+        await grp(p, 'subs')
+        await p.waitForSelector('.lost-bleeps', { state: 'visible', timeout: 5000 }).catch(() => fail('the lost-bleeps notice is gone after the recognition finished in another group'))
+        await p.screenshot({ path: `${out}/lost_bleeps.png` })
+        await p.context().close()
+      }
     }
 
     // ---- a wide screen: everything as before, and "more options" holds something

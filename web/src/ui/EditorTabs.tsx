@@ -184,6 +184,11 @@ function TranslateCard({ cues, onCues, show, onShow, onBusy }: { cues: Cue[]; on
   const [to, setTo] = useState(from === 'en' ? 'he' : 'en')
   const [run, setRun] = useState<{ stage: 'download' | 'translate'; p: number } | null>(null)
   useEffect(() => { onBusy?.(run !== null) }, [run !== null])
+  // The card going away (the subtitles were deleted, or an undo took them): no busy mark left behind, and the answer is not applied.
+  const alive = useRef(true)
+  useEffect(() => () => { alive.current = false; onBusy?.(false) }, [])
+  const shown = useRef(show)
+  shown.current = show
   const [error, setError] = useState<string | null>(null)
   const translated = cues.some((c) => c.tr !== undefined)
   const go = async () => {
@@ -192,9 +197,10 @@ function TranslateCard({ cues, onCues, show, onShow, onBusy }: { cues: Cue[]; on
     try {
       const ordered = [...cues].sort((a, b) => a.start - b.start)
       const out = await translateAll(ordered.map((c) => c.text), from, to, (stage, p) => setRun({ stage, p }))
+      if (!alive.current) return
       const byId = new Map(ordered.map((c, k) => [c.id, out[k]]))
       onCues(latest.current.map((c) => ({ ...c, tr: byId.get(c.id) ?? c.tr })), true)
-      if (show === 'src') onShow('both')
+      if (shown.current === 'src') onShow('both')
     } catch (e) {
       setError(String((e as Error)?.message) === 'unavailable' ? t('הדפדפן לא מתרגם בין השפות האלה.') : t('התרגום נכשל: %s', String((e as Error)?.message ?? e)))
     } finally {
@@ -364,7 +370,7 @@ function SpeechNote() {
 }
 
 /** Subtitles: made on the device from the speech, then edited, styled and saved as SRT too. */
-export function SubtitlesTab({ onBusy, part, stylePart, onPart, file, cues, onCues, words, onReplace, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
+export function SubtitlesTab({ onBusy, hidden, part, stylePart, onPart, file, cues, onCues, words, onReplace, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
   /** On a phone: the sub-tool shown ('make', 'list' or 'style'); on a wide screen all of them. */
   part?: 'make' | 'list' | 'bleep' | 'style'; stylePart?: string; onPart?: (p: 'list') => void
   /** [step]: a change of its own for undo (not merged with the typing around it). */
@@ -375,7 +381,13 @@ export function SubtitlesTab({ onBusy, part, stylePart, onPart, file, cues, onCu
   style: SubStyle; onStyle: (s: SubStyle) => void; time: number; onSeek: (t: number) => void
   /** Something here is running (speech, speakers, translation): the editor keeps this tab mounted while it does, and marks its group. */
   onBusy?: (b: boolean) => void
+  /** Another group is open: the tab stays mounted for its jobs, and does not move the video. */
+  hidden?: boolean
 }) {
+  const isHidden = useRef(!!hidden)
+  isHidden.current = !!hidden
+  const styleNow = useRef(style)
+  styleNow.current = style
   const [kids, setKids] = useState({ spk: false, tr: false })
   const setKid = (k: 'spk' | 'tr', b: boolean) => setKids((o) => (o[k] === b ? o : { ...o, [k]: b }))
   const show = (k: 'make' | 'list' | 'bleep' | 'style') => !part || part === k
@@ -489,7 +501,7 @@ export function SubtitlesTab({ onBusy, part, stylePart, onPart, file, cues, onCu
       const n = old.filter((o) => !covered(o)).length
       onReplace(made, r.words, kept)
       setLost(n ? { n, words: r.words, bleeped: kept } : null)
-      if (made.length) onSeek(Math.min(...made.map((c) => c.start)) + 0.01)
+      if (made.length && !isHidden.current) onSeek(Math.min(...made.map((c) => c.start)) + 0.01)
       setRun(null)
     } catch (e) {
       if (e instanceof SpeechAborted || ctl.current !== c) return
@@ -498,7 +510,7 @@ export function SubtitlesTab({ onBusy, part, stylePart, onPart, file, cues, onCu
   }
   /** Cancel ends the worker on the spot. */
   const cancel = () => { ctl.current?.abort(); ctl.current = null; setRun(null) }
-  const set = (patch: Partial<SubStyle>) => onStyle({ ...style, ...patch })
+  const set = (patch: Partial<SubStyle>) => onStyle({ ...styleNow.current, ...patch })
   const edit = (id: number, patch: Partial<Cue>) => onCues(cues.map((c) => (c.id === id ? { ...c, ...patch } : c)))
   const srt = () => {
     const a = document.createElement('a')
@@ -613,7 +625,8 @@ export function SubtitlesTab({ onBusy, part, stylePart, onPart, file, cues, onCu
   const more = part ? (
     <>
       {part === 'make' && cues.length === 0 && makeBlock && <section class="card subs-make-more">{makeBlock}</section>}
-      {part === 'make' && cues.length > 0 && <div class="subs-make-more">{makeBlock}</div>}
+      {/* Kept (hidden) while another tool is open: a running translation or speaker search goes on. */}
+      {cues.length > 0 && <div class="subs-make-more" hidden={part !== 'make'}>{makeBlock}</div>}
       {part === 'list' && cues.length > 0 && <section class="card subs-list-tools">{findBlock}</section>}
     </>
   ) : (cues.length > 0 || makeBlock) ? (
