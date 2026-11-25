@@ -1031,7 +1031,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   /** The panel's close button: the timeline is back, and the focus goes to the group's button. */
   function closePanel() {
     setPanelOpen(false)
-    setTimeout(() => (document.querySelector(`.tabs [data-g=${tab}]`) as HTMLElement | null)?.focus(), 0)
+    // (The group's button is on screen all along: focused at once, not after a render.)
+    ;(document.querySelector(`.tabs [data-g=${tab}]`) as HTMLElement | null)?.focus()
   }
   const groupName = GROUPS.find((g) => g[0] === tab)![1]
   const groupColor = GROUPS.find((g) => g[0] === tab)![3]
