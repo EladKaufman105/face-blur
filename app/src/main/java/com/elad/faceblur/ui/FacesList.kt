@@ -41,6 +41,7 @@ import com.elad.faceblur.edit.EditorController
 import com.elad.faceblur.edit.FaceThumbs
 import com.elad.faceblur.i18n.t
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
 /**
@@ -81,7 +82,10 @@ internal fun FacesList(ctrl: EditorController) {
     val ids = tracks.map { it.id }
     // The pictures come from the video, once for the set of blurs.
     val pictures by produceState<Map<Int, Bitmap>>(emptyMap(), ctrl.session, ids) {
-        value = withContext(Dispatchers.IO) { FaceThumbs.load(context, ctrl.session.info.uri, ctrl.model, ids) }
+        // Where each face is, read here; the pictures are cut on another thread, which stops if this is left.
+        val specs = FaceThumbs.specs(ctrl.model, ids)
+        val uri = ctrl.session.info.uri
+        value = withContext(Dispatchers.IO) { FaceThumbs.load(context, uri, specs, isActive = { isActive }) }
     }
     Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
         Text(

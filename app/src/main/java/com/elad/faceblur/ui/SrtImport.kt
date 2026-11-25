@@ -40,28 +40,45 @@ internal fun SrtImportButton(ctrl: EditorController, modifier: Modifier = Modifi
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
+    var note by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf<List<NewCue>?>(null) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         error = null
+        note = null
         pending = null
         scope.launch {
+            var truncated = false
             val text = withContext(Dispatchers.IO) {
                 runCatching {
-                    context.contentResolver.openInputStream(uri)?.use { it.readBytes().let { b -> if (b.size > MAX_SRT_BYTES) b.copyOf(MAX_SRT_BYTES) else b }.toString(Charsets.UTF_8) }
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        // At most one byte more than the limit is read: enough to know the file is longer.
+                        val buf = java.io.ByteArrayOutputStream()
+                        val chunk = ByteArray(1 shl 14)
+                        while (buf.size() <= MAX_SRT_BYTES) {
+                            val n = input.read(chunk, 0, minOf(chunk.size, MAX_SRT_BYTES + 1 - buf.size()))
+                            if (n < 0) break
+                            buf.write(chunk, 0, n)
+                        }
+                        val all = buf.toByteArray()
+                        truncated = all.size > MAX_SRT_BYTES
+                        Srt.cutUtf8(all, MAX_SRT_BYTES).toString(Charsets.UTF_8)
+                    }
                 }.getOrNull()
             }
-            val list = text?.let { Srt.toNewCues(Srt.parse(it)) }.orEmpty()
+            val list = withContext(Dispatchers.Default) { text?.let { Srt.toNewCues(Srt.parse(it)) }.orEmpty() }
             when {
                 list.isEmpty() -> error = t("לא נמצאו כתוביות בקובץ")
                 ctrl.model.cues.isNotEmpty() || ctrl.model.bleeps.isNotEmpty() -> pending = list
                 else -> ctrl.importSubtitles(list)
             }
+            if (truncated && list.isNotEmpty()) note = t("הקובץ גדול מדי: נקרא רק החלק הראשון שלו.")
         }
     }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.S)) {
         // Any file type: SRT files have no one MIME type across the pickers of different phones.
         FilledTonalButton(onClick = { picker.launch(arrayOf("*/*")) }, modifier = Modifier.testTag(Tags.SRT_IMPORT)) { Text(t("ייבוא קובץ SRT")) }
+        note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
         error?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive })
         }

@@ -292,7 +292,7 @@ class FaceBlurProcessor(private val context: Context) {
      */
     suspend fun renderAudio(info: VideoInfo, model: EditModel, audio: AudioEdit, onProgress: (Float) -> Unit): File {
         val chain = audioChain(model, audio)
-        check(!chain.removeAudio) { "no sound" }
+        check(!chain.removeAudio) { t("אין סאונד לשמירה: הסאונד מושתק") }
         val out = temp("audio")
         out.delete()
         val item = EditedMediaItem.Builder(MediaItem.fromUri(info.uri))
@@ -395,8 +395,8 @@ class FaceBlurProcessor(private val context: Context) {
                 export(composition(item, hdrMode, forceAudio = sfx.isNotEmpty()), out, bitrate, mime = export.mimeType(), onProgress)
             }
             withContext(Dispatchers.IO) {
-                // No location or phone details in what's shared.
-                lastScrubbed = runCatching { Mp4Privacy.scrub(out) }.getOrDefault(-1)
+                // No location or phone details in what's shared: if they can't be taken out, nothing is saved (the temp file goes below).
+                lastScrubbed = Mp4Privacy.scrubOrFail(out)
                 saveToGallery(out, base)
             }
         } finally {

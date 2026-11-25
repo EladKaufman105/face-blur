@@ -246,7 +246,7 @@ fun EditorScreen(
         }
     }
     @Suppress("UNUSED_VARIABLE") val version = ctrl.version
-    val busy = ctrl.trackingProgress != null
+    val busy = ctrl.trackingProgress != null || ctrl.findFacesProgress != null
     // The filmstrip is loaded once per editor: the timeline leaves the screen while a panel is open.
     val context = LocalContext.current
     val stripSize = with(LocalDensity.current) { STRIP.roundToPx() }
@@ -572,6 +572,7 @@ fun EditorScreen(
             onSaveTemplate = onSaveTemplate?.let { save -> { exportSheet = false; save() } },
             audioOnly = audioOnly,
             onAudioOnly = onAudioOnly,
+            noBlur = ctrl.model.blursOn == 0,
         )
     }
 }
@@ -636,7 +637,7 @@ private fun VideoWithOverlay(
     val settings = ctrl.session.settings
     val aspect = if (analysis.uprightH > 0) analysis.uprightW.toFloat() / analysis.uprightH else 9f / 16f
     val times = ctrl.model.times
-    val preview = remember(ctrl) { PreviewSource(if (times.isEmpty()) 0L else times[0]) }
+    val preview = remember(ctrl, ctrl.playerEpoch) { PreviewSource(if (times.isEmpty()) 0L else times[0]) }
     // Made again with fewer GPU effects if they fail on this device (see effectsLevel).
     val level = ctrl.effectsLevel
     val player = remember(ctrl, level, ctrl.playerEpoch) {

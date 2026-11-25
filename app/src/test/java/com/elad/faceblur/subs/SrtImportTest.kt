@@ -54,3 +54,20 @@ class SrtImportTest {
         assertNull(cues[1].words)
     }
 }
+
+class SrtLimitsTest {
+    @Test
+    fun aTimeTooBigToBeATimeSkipsItsBlockInsteadOfCrashing() {
+        val list = Srt.parse("1\n99999999999999999999:00:00,000 --> 99999999999999999999:00:01,000\nhuge\n\n2\n00:00:01,000 --> 00:00:02,000\nfine\n")
+        assertEquals(listOf("fine"), list.map { it.text })
+    }
+
+    @Test
+    fun aLongFileIsCutBeforeACharacterNotInTheMiddleOfIt() {
+        // "שלום" is 2 bytes a letter: a cut after 3 bytes would split the second letter.
+        val bytes = "שלום".toByteArray(Charsets.UTF_8)
+        assertEquals("ש", Srt.cutUtf8(bytes, 3).toString(Charsets.UTF_8))
+        assertEquals("של", Srt.cutUtf8(bytes, 4).toString(Charsets.UTF_8))
+        assertEquals(bytes.size, Srt.cutUtf8(bytes, 8).size)
+    }
+}

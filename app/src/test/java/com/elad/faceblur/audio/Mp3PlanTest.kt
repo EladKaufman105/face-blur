@@ -2,8 +2,6 @@ package com.elad.faceblur.audio
 
 import com.elad.faceblur.audio.Mp3Plan.Route
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class Mp3PlanTest {
@@ -34,13 +32,5 @@ class Mp3PlanTest {
         assertEquals(Route.NO_SOUND, route(AudioEdit(voice = VoiceFx.MUTE), bleeps = 3, cuts = true))
         // Sound effects still play over the silence, as in the video.
         assertEquals(Route.EDITED, route(AudioEdit(voice = VoiceFx.MUTE), sfx = 1))
-    }
-
-    @Test
-    fun onlyTheRawRouteMayEverFallBackToTheOriginalSound() {
-        assertTrue(Mp3Plan.mayFallBackToRaw(Route.RAW))
-        // A failed voice change (anonymity) must fail the export, never save the original voice.
-        assertFalse(Mp3Plan.mayFallBackToRaw(Route.EDITED))
-        assertFalse(Mp3Plan.mayFallBackToRaw(Route.NO_SOUND))
     }
 }

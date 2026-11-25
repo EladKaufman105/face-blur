@@ -87,4 +87,42 @@ class FaceListAndImportTest {
         assertTrue(c[0] >= 0 && c[1] >= 0)
         assertTrue(c[0] + c[2] <= 1000 && c[1] + c[2] <= 500)
     }
+
+    @Test
+    fun foundFacesKeepTheSubtitlesBleepsSoundsCutsAndTheBlursPlacedByHand() {
+        val old = model(0)
+        old.setSentences(listOf(NewCue(1000, 2000, "", "kept", "en", null)))
+        old.bleeps[1200L] = 1400L
+        old.addSfx("builtin:whoosh", 500, 300)
+        old.removed[3000L] = 3500L
+        val hand = old.add(5, 0.3f, 0.3f, 0.1f, 0.1f)
+        val v = old.version
+        val fresh = model(2)
+        val m = EditModel.withDetection(old, fresh)
+        assertEquals(listOf("kept"), m.cues.map { it.en })
+        assertEquals(1, m.bleeps.size)
+        assertEquals(1, m.sfx.size)
+        assertEquals(3500L, m.removed[3000L])
+        // The two found faces, then the one placed by hand with a number of its own.
+        assertEquals(3, m.tracks.size)
+        assertEquals(3, m.tracks.map { it.id }.toSet().size)
+        assertTrue(m.tracks.last().manual)
+        assertEquals(old.track(hand)!!.start, m.tracks.last().start)
+        assertTrue(m.tracks.dropLast(1).none { it.manual })
+        // The number a watcher sees always goes up across the swap, even when both models are new.
+        assertTrue(m.version > v)
+        assertFalse(m.canUndo)
+    }
+
+    @Test
+    fun aHandPlacedBlurFollowsItsMomentWhenTheFramesDiffer() {
+        val from = LongArray(10) { it * 100_000L }
+        val to = LongArray(20) { it * 50_000L }
+        val t = EditTrack(4, true, path(2, 4), 2, 4)
+        val r = EditModel.remapTrack(t, from, to, 9)
+        assertEquals(9, r.id)
+        assertEquals(listOf(4, 8), r.path.keys.toList())
+        assertEquals(4, r.start)
+        assertEquals(8, r.end)
+    }
 }

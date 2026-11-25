@@ -23,10 +23,4 @@ object Mp3Plan {
             bleeps > 0 || sfx > 0 || cuts
         return if (edited) Route.EDITED else Route.RAW
     }
-
-    /**
-     * An edited export that could not apply its edits must never save the original sound (the
-     * voice change is there for anonymity). Raw conversion is only for [Route.RAW].
-     */
-    fun mayFallBackToRaw(route: Route): Boolean = route == Route.RAW
 }

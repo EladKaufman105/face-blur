@@ -28,22 +28,30 @@ object FaceThumbs {
         return intArrayOf(left, top, side)
     }
 
-    /** One picture per blur (by id), cut from the video's own frames; a blur whose frame can't be read has none. */
-    fun load(context: Context, uri: Uri, model: EditModel, ids: List<Int>, size: Int = 160, isActive: () -> Boolean = { true }): Map<Int, Bitmap> {
+    /** What a picture needs of one blur: where its face is and when. Read on the main thread, used on another. */
+    class Spec(val id: Int, val box: Box, val timeUs: Long)
+
+    /** [Spec]s for the blurs [ids], taken from [model] as it is now. */
+    fun specs(model: EditModel, ids: List<Int>): List<Spec> = ids.mapNotNull { id ->
+        val t = model.track(id) ?: return@mapNotNull null
+        val f = frameOf(t)
+        val box = model.rawBox(t, f) ?: return@mapNotNull null
+        val us = model.times.getOrNull(f)?.coerceAtLeast(0L) ?: return@mapNotNull null
+        Spec(id, box, us)
+    }
+
+    /** One picture per blur (by id), cut from the video's own frames; a blur whose frame can't be read has none. Stops when [isActive] turns false. */
+    fun load(context: Context, uri: Uri, specs: List<Spec>, size: Int = 160, isActive: () -> Boolean = { true }): Map<Int, Bitmap> {
         val out = HashMap<Int, Bitmap>()
         val mmr = MediaMetadataRetriever()
         try {
             mmr.setDataSource(context, uri)
-            for (id in ids) {
+            for (spec in specs) {
                 if (!isActive()) break
-                val t = model.track(id) ?: continue
-                val f = frameOf(t)
-                val box = model.rawBox(t, f) ?: continue
-                val us = model.times.getOrNull(f)?.coerceAtLeast(0L) ?: continue
-                val frame = mmr.getFrameAtTime(us, MediaMetadataRetriever.OPTION_CLOSEST) ?: continue
-                val c = crop(box, frame.width, frame.height)
+                val frame = mmr.getFrameAtTime(spec.timeUs, MediaMetadataRetriever.OPTION_CLOSEST) ?: continue
+                val c = crop(spec.box, frame.width, frame.height)
                 val cut = Bitmap.createBitmap(frame, c[0], c[1], c[2], c[2])
-                out[id] = if (cut.width > size) Bitmap.createScaledBitmap(cut, size, size, true) else cut
+                out[spec.id] = if (cut.width > size) Bitmap.createScaledBitmap(cut, size, size, true) else cut
                 if (cut !== frame) frame.recycle()
             }
         } catch (e: Exception) {

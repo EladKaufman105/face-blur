@@ -25,7 +25,4 @@ object StartRoute {
         save -> Route.DETECT_THEN_SAVE
         else -> Route.DETECT_THEN_EDIT
     }
-
-    /** A video saved by the route must say what it did: only a route that detects faces blurs them. */
-    fun blursFaces(route: Route): Boolean = route == Route.DETECT_THEN_EDIT || route == Route.DETECT_THEN_SAVE
 }

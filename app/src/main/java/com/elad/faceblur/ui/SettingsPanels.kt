@@ -307,6 +307,8 @@ fun ExportSheet(
     /** In the editor: the sound alone as an MP3, with the same edits as the video. Null: no such choice. */
     audioOnly: Boolean = false,
     onAudioOnly: ((Boolean) -> Unit)? = null,
+    /** In the editor: no blur is on, so the faces in the video stay as they are. */
+    noBlur: Boolean = false,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
@@ -339,6 +341,7 @@ fun ExportSheet(
                     SubtitleExportOptions(options, onChange, hasTranslation)
                 }
             }
+            if (noBlur && !audioOnly) NoBlurWarning(t("אין טשטוש פעיל: הפנים בסרטון לא יטושטשו."), Modifier.testTag(Tags.NO_BLUR_WARNING))
             // The one place the video leaves the editor: the brand's main button.
             GradientButton(if (audioOnly) t("שמור MP3") else action, onExport, Modifier.fillMaxWidth().testTag(Tags.EXPORT_GO), icon = EditorIcons.ExportIcon)
             if (onSaveTemplate != null) {

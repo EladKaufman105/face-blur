@@ -806,4 +806,7 @@ internal val English: Map<String, String> = mapOf(
     "הכתוביות הקיימות יוחלפו בקובץ, והצפצופים (%d) יוסרו. אפשר לבטל את הפעולה." to "The current subtitles will be replaced by the file, and the bleeps (%d) will be removed. Undo brings them back.",
     "הכתוביות הקיימות יוחלפו בקובץ. אפשר לבטל את הפעולה." to "The current subtitles will be replaced by the file. Undo brings them back.",
     "השאר את הקיימות" to "Keep the current ones",
+    "לא הצלחתי להסיר מהסרטון את פרטי המיקום והמכשיר, ולכן הוא לא נשמר. נסה שוב." to "Couldn't remove the location and device details from the video, so it wasn't saved. Try again.",
+    "אין טשטוש פעיל: הפנים בסרטון לא יטושטשו." to "No blur is on: the faces in the video will not be blurred.",
+    "הקובץ גדול מדי: נקרא רק החלק הראשון שלו." to "The file is too big: only its first part was read.",
 )

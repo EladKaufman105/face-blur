@@ -1026,7 +1026,51 @@ class EditModel(
         t.path.putAll(m)
     }
 
+    /** Makes [version] at least [v] (a model that takes over from another must never repeat its numbers). */
+    fun raiseVersionTo(v: Int) {
+        if (version < v) version = v
+    }
+
     companion object {
+        /**
+         * The model of a new detection ([fresh], from the found analysis) carrying over everything
+         * [old] had that doesn't depend on the analysis: subtitles, bleeps, sounds and cuts (all in
+         * milliseconds), and the blurs placed by hand (moved to the same moments in the new frames,
+         * and numbered after the new ones). The undo history starts again; the version goes on
+         * above the old one so nothing watching it misses the swap.
+         */
+        fun withDetection(old: EditModel, fresh: EditModel): EditModel {
+            val kept = old.exportState()
+            val blurs = fresh.exportState()
+            var next = blurs.nextId
+            val manual = kept.tracks.filter { it.manual }.map { remapTrack(it, old.times, fresh.times, next++) }
+            fresh.restore(EditState(blurs.tracks + manual, kept.cues, kept.bleeps, next, kept.nextCueId, kept.sfx, kept.removed))
+            fresh.raiseVersionTo(old.version + 1)
+            return fresh
+        }
+
+        private fun nearest(times: LongArray, us: Long): Int {
+            if (times.isEmpty()) return 0
+            var lo = 0
+            var hi = times.size - 1
+            while (lo < hi) {
+                val mid = (lo + hi) / 2
+                if (times[mid] < us) lo = mid + 1 else hi = mid
+            }
+            return if (lo > 0 && us - times[lo - 1] <= times[lo] - us) lo - 1 else lo
+        }
+
+        /** [t] with its frames moved from [from]'s times to [to]'s (the same frames if they are the same times), as a new blur [id]. */
+        fun remapTrack(t: EditTrack, from: LongArray, to: LongArray, id: Int): EditTrack {
+            fun f(i: Int): Int = if (from.contentEquals(to)) i else nearest(to, from[i.coerceIn(0, from.size - 1)])
+            val path = TreeMap<Int, Box>()
+            for ((k, b) in t.path) path[f(k)] = b
+            val keys = TreeMap<Int, FloatArray>()
+            for ((k, v) in t.keys) keys[f(k)] = v.copyOf()
+            val last = max(0, to.size - 1)
+            return EditTrack(id, true, path, f(t.start).coerceIn(0, last), f(t.end).coerceIn(0, last), t.scale, keys, t.off)
+        }
+
         /** Bleeped words closer than this sound as one beep. */
         const val BLEEP_JOIN_MS = 250L
         /** Cut words closer than this are cut as one stretch (no blip of sound between them). */

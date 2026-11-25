@@ -613,11 +613,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val id = projectId ?: return
         val app = getApplication<Application>()
         val analysis = ctrl.session.analysis
+        val fields = ctrl.projectFields(subtitleStyle, sessionExport)
+        val edits = ctrl.model.exportState()
+        // The edits (with the blurs) first, then the new analysis and the "no longer subtitles only" flag:
+        // a kill between the two leaves blurs that are saved, never a project that looks done but has none.
         saver.execute {
-            runCatching { ProjectStore.replaceAnalysis(app, id, analysis) }
-                .onFailure { android.util.Log.w("ONIT", "project analysis not saved", it) }
+            runCatching {
+                ProjectStore.save(app, id, fields, edits)
+                ProjectStore.replaceAnalysis(app, id, analysis)
+            }.onFailure { android.util.Log.w("ONIT", "project not saved", it) }
+            main.post { if (state !is UiState.Editing) refreshProjects() }
         }
-        saveProject(ctrl)
     }
 
     private fun startAutosave(ctrl: EditorController) {
@@ -942,6 +948,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun export() {
         val ctrl = editor ?: return
         if (blockedByBatch()) return
+        // While faces are being found the blurs are not all there yet: nothing is exported then.
+        if (ctrl.findFacesProgress != null) return
         ctrl.pauser()
         ctrl.cancelTracking()
         ctrl.cancelSubtitles()
@@ -996,17 +1004,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun render(ctrl: EditorController, auto: Boolean = false) {
         val s = ctrl.session
+        // What the screens after it need, read before the work starts.
+        val subsOnly = s.subtitlesOnly
         if (!auto) livePreview = null
-        state = UiState.Working(s.info, 2, 0f, s.subtitlesOnly, auto)
+        state = UiState.Working(s.info, 2, 0f, subsOnly, auto)
         saveProject(ctrl)
         val saved = FaceBlurProcessor(getApplication()).render(
             s.info, s.settings, s.analysis, s.model, s.analysisMs, exportOptions, subtitleStyle, ctrl.audio,
             ctrl.background, s.masks,
             stabilizer = ctrl.stabilizer,
             onPreview = { frame -> showLive(frame, emptyList()) },
-        ) { p -> state = UiState.Working(s.info, 2, p, s.subtitlesOnly, auto) }
+        ) { p -> state = UiState.Working(s.info, 2, p, subsOnly, auto) }
         if (s.analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / s.analysisMs
-        state = UiState.Done(s.info, saved, canEdit = true, subsOnly = s.subtitlesOnly)
+        state = UiState.Done(s.info, saved, canEdit = true, subsOnly = subsOnly)
     }
 
     private suspend fun guard(info: VideoInfo, onCancel: () -> UiState, block: suspend () -> Unit) {

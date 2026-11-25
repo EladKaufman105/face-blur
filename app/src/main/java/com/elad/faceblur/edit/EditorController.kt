@@ -65,13 +65,9 @@ class EditSession(
      * milliseconds) stays. The undo history starts again.
      */
     fun adoptDetection(found: AnalysisResult) {
-        val kept = model.exportState()
         val old = analysis
-        val fresh = found.toEditModel()
-        val blurs = fresh.exportState()
-        fresh.restore(EditState(blurs.tracks, kept.cues, kept.bleeps, blurs.nextId, kept.nextCueId, kept.sfx, kept.removed))
+        model = EditModel.withDetection(model, found.toEditModel())
         analysis = found
-        model = fresh
         subtitlesOnly = false
         old.close()
     }
@@ -1089,6 +1085,12 @@ class EditorController(
             try {
                 val found = FaceBlurProcessor(ctx).analyze(session.info, session.settings) { p -> main.post { if (findFacesProgress != null) findFacesProgress = p } }
                 session.adoptDetection(found)
+                // What was made from the old frames goes: the people's masks, and the background's frame times.
+                session.masks?.close()
+                session.masks = null
+                session.projectDir?.let { d -> java.io.File(d, "masks.bin").delete(); java.io.File(d, "masks.bin.idx").delete() }
+                masksReady = false
+                bgState = BackgroundState(background, null, session.analysis.times)
                 previewAvailable = true
                 frame = 0
                 selectedId = null
@@ -1229,7 +1231,8 @@ class EditorController(
     var masksReady by mutableStateOf(session.masks != null)
         private set
     /** What the player's background effect draws (changed live). */
-    val bgState = BackgroundState(Background(), session.masks, session.analysis.times)
+    var bgState = BackgroundState(Background(), session.masks, session.analysis.times)
+        private set
     private var segmentJob: Job? = null
 
     fun changeBackground(b: Background) {

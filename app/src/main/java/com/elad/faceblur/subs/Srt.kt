@@ -16,8 +16,26 @@ object Srt {
     private val TAGS = Regex("<[^>]+>")
     private val HEBREW = Regex("[\u0590-\u05FF]")
 
-    private fun ms(h: String, m: String, s: String, f: String): Long =
-        h.toLong() * 3_600_000 + m.toLong() * 60_000 + s.toLong() * 1000 + f.padEnd(3, '0').take(3).toLong()
+    /**
+     * The first [max] bytes of [bytes] (read up to max + 1), cut so no UTF-8 character is split:
+     * a cut inside a character goes back to where it began.
+     */
+    fun cutUtf8(bytes: ByteArray, max: Int): ByteArray {
+        if (bytes.size <= max) return bytes
+        var cut = max
+        while (cut > 0 && (bytes[cut].toInt() and 0xC0) == 0x80) cut--
+        return bytes.copyOf(cut)
+    }
+
+    /** Null when a number is too big to be a time. */
+    private fun ms(h: String, m: String, s: String, f: String): Long? {
+        val hh = h.toLongOrNull() ?: return null
+        val mm = m.toLongOrNull() ?: return null
+        val ss = s.toLongOrNull() ?: return null
+        val ff = f.padEnd(3, '0').take(3).toLongOrNull() ?: return null
+        if (hh > 99_999 || mm > 99_999_999 || ss > 99_999_999_999L) return null
+        return hh * 3_600_000 + mm * 60_000 + ss * 1000 + ff
+    }
 
     /**
      * The subtitles of SRT [text], as the web app reads them: blocks split at blank lines, the line
@@ -33,8 +51,8 @@ object Srt {
             val m = TIMES.find(lines[k]) ?: continue
             val body = lines.drop(k + 1).joinToString("\n").replace(TAGS, "").trim()
             if (body.isEmpty()) continue
-            val a = ms(m.groupValues[1], m.groupValues[2], m.groupValues[3], m.groupValues[4])
-            val b = ms(m.groupValues[5], m.groupValues[6], m.groupValues[7], m.groupValues[8])
+            val a = ms(m.groupValues[1], m.groupValues[2], m.groupValues[3], m.groupValues[4]) ?: continue
+            val b = ms(m.groupValues[5], m.groupValues[6], m.groupValues[7], m.groupValues[8]) ?: continue
             if (b > a) out += Item(a, b, body.replace("\n", " "))
         }
         return out.sortedBy { it.startMs }
