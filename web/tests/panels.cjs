@@ -10,15 +10,22 @@ const [, , url, video, out] = process.argv
 const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים הבאים\n\n2\n00:00:02,600 --> 00:00:05,000\nזה סרטון לדוגמה\n\n3\n00:00:05,100 --> 00:00:08,000\nעם כתוביות בעברית\n`
 const fail = (m) => { throw new Error(m) }
 
-async function open(b, viewport, mobile) {
-  const ctx = await b.newContext({ viewport, locale: 'he-IL', hasTouch: mobile, isMobile: mobile, deviceScaleFactor: mobile ? 2 : 1 })
+async function open(b, viewport, mobile, locale = 'he-IL', tool) {
+  const ctx = await b.newContext({ viewport, locale, hasTouch: mobile, isMobile: mobile, deviceScaleFactor: mobile ? 2 : 1 })
   await ctx.route(/huggingface\.co|\.hf\.co/, (r) => r.abort())
   const p = await ctx.newPage()
   await p.goto(url)
   await p.waitForTimeout(800)
-  await p.setInputFiles('.hero input[type=file]', video)
-  await p.waitForSelector('.ready')
-  await p.click('.blur-faces')
+  if (tool !== undefined) {
+    // A tool from the home screen: an editor with no face detection (nothing blurred, no look to set).
+    const chooser = p.waitForEvent('filechooser')
+    await p.click(`.tool >> nth=${tool}`)
+    await (await chooser).setFiles(video)
+  } else {
+    await p.setInputFiles('.hero input[type=file]', video)
+    await p.waitForSelector('.ready')
+    await p.click('.blur-faces')
+  }
   await p.waitForSelector('.editor .tabs', { timeout: 120000 })
   await p.waitForTimeout(800)
   return p
@@ -29,70 +36,113 @@ async function open(b, viewport, mobile) {
   fs.writeFileSync(`${out}/in.srt`, SRT)
   const b = await chromium.launch()
   try {
-    // ---- the phone
-    const p = await open(b, { width: 390, height: 844 }, true)
-    const check = async (label) => {
-      const m = await p.evaluate(() => {
-        const r = (s) => document.querySelector(s)?.getBoundingClientRect()
-        const panel = r('.panel'), body = r('.panel-body'), screen = r('.screen'), tabs = r('.tabs')
-        const bodyEl = document.querySelector('.panel-body')
+    // ---- the phone: 360 x 740, 390 x 844 and 412 x 915, in Hebrew and in English
+    const phone = async (viewport, locale) => {
+      const he = locale === 'he-IL'
+      const p = await open(b, viewport, true, locale)
+      console.log('==', viewport.width, 'x', viewport.height, locale)
+      const check = async (label) => {
+        const m = await p.evaluate(() => {
+          const r = (s) => document.querySelector(s)?.getBoundingClientRect()
+          const panel = r('.panel'), body = r('.panel-body'), screen = r('.screen'), tabs = r('.tabs')
+          const bodyEl = document.querySelector('.panel-body')
+          const chipRows = [...document.querySelectorAll('.panel .subtabs')].map((row) => {
+            const rr = row.getBoundingClientRect()
+            return { hidden: row.scrollWidth > row.clientWidth + 1, cut: [...row.querySelectorAll('[data-sub]')].filter((c) => { const k = c.getBoundingClientRect(); const inside = Math.max(0, Math.min(k.right, rr.right) - Math.max(k.left, rr.left)); return inside < k.width * 0.95 || k.left < 0 || k.right > innerWidth }).map((c) => c.textContent) }
+          })
+          const lastBottom = Math.max(...[...document.querySelectorAll('.player > *')].filter((e) => !e.matches('.screen') && e.getBoundingClientRect().height > 0).map((e) => e.getBoundingClientRect().bottom))
+          const topRow = (() => { const kids = [...document.querySelectorAll('.player > .row > *, .player > .row .export-bar > *')].map((e) => e.getBoundingClientRect()).filter((k) => k.width > 0); const back = document.querySelector('.player > .row > .btn')?.getBoundingClientRect(); return { out: kids.some((k) => k.left < -0.5 || k.right > document.documentElement.clientWidth + 0.5), oneLine: !!back && back.height < 56 } })()
         const small = [...document.querySelectorAll('.panel button, .panel label.btn, .tabs button')].filter((e) => { const k = e.getBoundingClientRect(); return k.width > 0 && k.height > 0 && k.height < 43.5 && !e.closest('.preset') && !e.matches('.face, .swatch, .speaker-dot, .time-btn') }).map((e) => e.className + ':' + Math.round(e.getBoundingClientRect().height))
-        return {
-          sideways: document.documentElement.scrollWidth > innerWidth, vh: innerHeight,
-          panelH: panel?.height, tabsTop: tabs?.top, screenTop: screen?.top, screenBottom: screen?.bottom, screenH: screen?.height,
-          bodyEmpty: !bodyEl || bodyEl.children.length === 0 || !(bodyEl.textContent.trim() || bodyEl.querySelector('input, canvas, img, button')),
-          moreOptions: [...document.querySelectorAll('.subs-more')].map((d) => d.querySelector('.subs-more-body')?.children.length ?? 0),
-          small, panelOver: bodyEl ? bodyEl.scrollWidth > bodyEl.clientWidth + 1 && !bodyEl.querySelector('.chips, .faces, .swatches, .preset-row, .scroll-row') : false,
-        }
-      })
-      console.log(label, JSON.stringify({ ...m, small: m.small.length }))
-      if (m.sideways) fail(label + ': the page scrolls sideways')
-      if (m.panelH > m.vh * 0.45) fail(`${label}: the panel is ${m.panelH} px of ${m.vh}`)
-      if (m.screenTop < 0 || m.screenBottom > m.tabsTop || m.screenH < 120) fail(`${label}: the video is not in view: ${JSON.stringify(m)}`)
-      if (m.bodyEmpty) fail(label + ': the panel is empty')
-      if (m.moreOptions.some((n) => n === 0)) fail(label + ': "more options" is empty')
-      if (m.small.length) fail(`${label}: targets under 44 px: ${m.small.slice(0, 6)}`)
-      await p.screenshot({ path: `${out}/${label.replace(/[^\w]+/g, '_')}.png` })
-    }
-    const groups = ['faces', 'edit', 'picture', 'sound', 'mark', 'subs']
-    for (const g of groups) {
-      await p.click(`.tabs button[data-g=${g}]`)
-      await p.waitForTimeout(300)
-      const subs = await p.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))
-      if (g === 'mark' && subs.length) fail('the watermark has tools of its own')
-      if (g !== 'mark' && subs.length < 2) fail(g + ': no tools to pick from')
-      await check(g)
-      for (const sub of subs) {
-        await p.click(`.panel-head [data-sub=${sub}]`)
+          return {
+            sideways: document.documentElement.scrollWidth > innerWidth, vh: innerHeight,
+            panelH: panel?.height, tabsTop: tabs?.top, screenTop: screen?.top, screenBottom: screen?.bottom, screenH: screen?.height,
+            bodyEmpty: !bodyEl || bodyEl.children.length === 0 || !(bodyEl.textContent.trim() || bodyEl.querySelector('input, canvas, img, button')),
+            moreOptions: [...document.querySelectorAll('.subs-more')].map((d) => d.querySelector('.subs-more-body')?.children.length ?? 0),
+            topRow, chipRows, playerBottom: lastBottom, panelTop: panel?.top, tablist: [...document.querySelectorAll('.panel [role=tablist]')].every((t) => t.getAttribute('aria-label')), tabs: [...document.querySelectorAll('.panel [role=tab]')].every((t) => t.getAttribute('aria-controls') === 'panel-body' && (t.tabIndex === 0) === (t.getAttribute('aria-selected') === 'true')), tabpanel: document.querySelector('.panel-body')?.getAttribute('role'), small, panelOver: bodyEl ? bodyEl.scrollWidth > bodyEl.clientWidth + 1 && !bodyEl.querySelector('.chips, .faces, .swatches, .preset-row, .scroll-row') : false,
+          }
+        })
+        console.log(label, JSON.stringify({ sideways: m.sideways, panelH: Math.round(m.panelH), screenH: Math.round(m.screenH), rows: m.chipRows.length }))
+        if (m.chipRows.some((r) => r.hidden || r.cut.length)) fail(`${label}: tool chips hidden or cut: ${JSON.stringify(m.chipRows)}`)
+        if (m.topRow.out || !m.topRow.oneLine) fail(`${label}: the top row overflows or wraps: ${JSON.stringify(m.topRow)}`)
+      if (m.playerBottom > m.panelTop + 1) fail(`${label}: the panel covers the timeline: ${m.playerBottom} > ${m.panelTop}`)
+        if (m.tabpanel !== 'tabpanel' || !m.tablist || !m.tabs) fail(`${label}: tabs are not marked up as tabs: ${JSON.stringify([m.tabpanel, m.tablist, m.tabs])}`)
+        if (m.sideways) fail(label + ': the page scrolls sideways')
+        if (m.panelH > m.vh * 0.45) fail(`${label}: the panel is ${m.panelH} px of ${m.vh}`)
+        if (m.screenTop < 0 || m.screenBottom > m.tabsTop || m.screenH < 90) fail(`${label}: the video is not in view: ${JSON.stringify(m)}`)
+        if (m.bodyEmpty) fail(label + ': the panel is empty')
+        if (m.moreOptions.some((n) => n === 0)) fail(label + ': "more options" is empty')
+        if (m.small.length) fail(`${label}: targets under 44 px: ${m.small.slice(0, 6)}`)
+        await p.screenshot({ path: `${out}/${label.replace(/[^\w]+/g, '_')}.png` })
+      }
+      const groups = ['faces', 'edit', 'picture', 'sound', 'mark', 'subs']
+      for (const g of groups) {
+        await p.click(`.tabs button[data-g=${g}]`)
         await p.waitForTimeout(300)
-        await check(`${g}/${sub}`)
-        if (g === 'subs' && sub === 'style') {
-          for (const sp of await p.$$eval('.subtabs.inner [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
-            await p.click(`.subtabs.inner [data-sub=${sp}]`)
-            await p.waitForTimeout(300)
-            await check(`subs/style/${sp}`)
+        const subs = await p.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))
+        if (g === 'mark' && subs.length) fail('the watermark has tools of its own')
+        if (g !== 'mark' && subs.length < 2) fail(g + ': no tools to pick from')
+        await check(g)
+        for (const sub of subs) {
+          await p.click(`.panel-head [data-sub=${sub}]`)
+          await p.waitForTimeout(300)
+          await check(`${g}/${sub}`)
+          if (g === 'subs' && sub === 'style') {
+            for (const sp of await p.$$eval('.subtabs.inner [data-sub]', (els) => els.map((e) => e.dataset.sub))) {
+              await p.click(`.subtabs.inner [data-sub=${sp}]`)
+              await p.waitForTimeout(300)
+              await check(`subs/style/${sp}`)
+            }
           }
         }
       }
+      // with subtitles (an SRT): the list shows, and the tools in "create and translate" are there
+      await p.click('.tabs button[data-g=subs]')
+      await p.click('.panel-head [data-sub=make]')
+      await p.setInputFiles('.srt-import input', `${out}/in.srt`)
+      await p.waitForSelector('.panel-head [data-sub=list]')
+      for (const sub of ['make', 'list', 'style']) {
+        await p.click(`.panel-head [data-sub=${sub}]`)
+        await p.waitForTimeout(300)
+        await check(`subs-with-cues/${sub}`)
+      }
+      if (await p.$('.subs-more')) fail('"more options" on a phone')
+      // the list's tools (find and replace, SRT, how they are cut) are in the list; translation, speakers and delete in create
+      await p.click('.panel-head [data-sub=list]')
+      if (he) for (const sel of ['.replace-all, .panel-body .btn:has-text("חפש והחלף")', '.panel-body .btn:has-text("הורד SRT")']) if (!(await p.$(sel))) fail('missing in the list: ' + sel)
+      await p.click('.panel-head [data-sub=make]')
+      if (!(await p.$('.panel-body .translate-go, .panel-body .translate-unsupported'))) fail('no translation in create and translate')
+      if (he && !(await p.$('.panel-body .btn:has-text("מחק כתוביות")'))) fail('no "delete subtitles" in create and translate')
+
+
+      // a blur selected (the bar for it shows under the timeline): nothing overlaps
+      await p.click('.tabs button[data-g=faces]')
+      await p.click('.tl-face >> nth=0').catch(() => {})
+      await p.waitForTimeout(400)
+      await check('faces with a blur selected')
+      // the video keeps most of the room: no gap under the groups, a picture of a real size
+      const room = await p.evaluate(() => ({ bottom: document.querySelector('.tabs').getBoundingClientRect().bottom, vh: document.documentElement.clientHeight }))
+      if (room.bottom < room.vh - 8) fail('the editor does not fit the screen: ' + JSON.stringify(room))
+      await p.context().close()
     }
-    // with subtitles (an SRT): the list shows, and the tools in "create and translate" are there
-    await p.click('.tabs button[data-g=subs]')
-    await p.click('.panel-head [data-sub=make]')
-    await p.setInputFiles('.srt-import input', `${out}/in.srt`)
-    await p.waitForSelector('.panel-head [data-sub=list]')
-    for (const sub of ['make', 'list', 'style']) {
-      await p.click(`.panel-head [data-sub=${sub}]`)
-      await p.waitForTimeout(300)
-      await check(`subs-with-cues/${sub}`)
+    for (const vp of [{ width: 390, height: 844 }, { width: 360, height: 740 }, { width: 412, height: 915 }]) {
+      for (const locale of ['he-IL', 'en-US']) await phone(vp, locale)
     }
-    if (await p.$('.subs-more')) fail('"more options" on a phone')
-    // the list's tools (find and replace, SRT, how they are cut) are in the list; translation, speakers and delete in create
-    await p.click('.panel-head [data-sub=list]')
-    for (const sel of ['.replace-all, .panel-body .btn:has-text("חפש והחלף")', '.panel-body .btn:has-text("הורד SRT")']) if (!(await p.$(sel))) fail('missing in the list: ' + sel)
-    await p.click('.panel-head [data-sub=make]')
-    if (!(await p.$('.panel-body .translate-go, .panel-body .translate-unsupported'))) fail('no translation in create and translate')
-    if (!(await p.$('.panel-body .btn:has-text("מחק כתוביות")'))) fail('no "delete subtitles" in create and translate')
-    await p.context().close()
+
+    // ---- an editor opened with no face detection: no empty "look" tool, the rest as usual
+    for (const locale of ['he-IL', 'en-US']) {
+      const q = await open(b, { width: 360, height: 740 }, true, locale, 0)
+      const subs = await q.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))
+      console.log('no detection', locale, subs.join())
+      await q.click('.tabs button[data-g=faces]')
+      const faceSubs = await q.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))
+      if (faceSubs.includes('look')) fail('the look tool is offered with no faces to look at')
+      for (const sub of faceSubs) {
+        await q.click(`.panel-head [data-sub=${sub}]`)
+        const filled = await q.evaluate(() => (document.querySelector('.panel-body')?.textContent.trim().length ?? 0) > 0 || !!document.querySelector('.panel-body button'))
+        if (!filled) fail('empty panel: faces/' + sub)
+      }
+      await q.context().close()
+    }
 
     // ---- a wide screen: everything as before, and "more options" holds something
     const w = await open(b, { width: 1366, height: 860 }, false)

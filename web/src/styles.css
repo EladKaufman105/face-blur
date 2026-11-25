@@ -823,14 +823,22 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .subtabs::-webkit-scrollbar { display: none; }
 .subtabs .chip { flex: none; }
 @media (max-width: 600px) {
-  .editor.narrow { display: flex; flex-direction: column; gap: 6px; }
-  .editor.narrow .screen { --screen-h: 22dvh; }
-  .app:has(.editor.narrow) { padding-bottom: 0; }
+  /* The editor fits the screen: the video takes what the timeline, the panel and the groups leave. */
+  .app:has(.editor.narrow) { padding-bottom: 0; height: 100dvh; min-height: 0; }
+  .editor.narrow { display: flex; flex-direction: column; gap: 6px; flex: 1 1 0; }
+  .editor.narrow .player { display: flex; flex-direction: column; gap: 6px; flex: 1 1 0; }
+  .editor.narrow .player > * { flex: none; }
+  .editor.narrow .player > .screen { flex: 1 1 0; min-height: 96px; container-type: size; --screen-h: 100cqh; }
+  .app:has(.editor.narrow) { padding-top: max(8px, env(safe-area-inset-top)); }
+  .app:has(.editor.narrow) .top { padding-bottom: 0; }
+  .editor.narrow .transport .time { min-width: 0; white-space: nowrap; font-size: 13px; }
+  .editor.narrow .transport { gap: 6px; }
+  .editor.narrow .player > .row { flex-wrap: nowrap; gap: 2px; }
+  .editor.narrow .player > .row > .btn { white-space: nowrap; flex: none; }
   .app:has(.editor.narrow) .footer { display: none; }
-  .editor.narrow { flex: 1; }
-  .editor.narrow .player > .row .export-bar { position: static; padding: 0; background: none; display: block; }
+  .editor.narrow .player > .row .export-bar { position: static; padding: 0; background: none; display: flex; align-items: center; gap: 2px; flex: none; }
   .editor.narrow .player > .row .export-bar .btn.primary { width: auto; min-height: 44px; padding-inline: 16px; }
-  .editor.narrow > .side { margin-top: auto; position: sticky; bottom: 0; z-index: 3; display: flex; flex-direction: column; gap: 6px; background: var(--bg); padding: 6px 0 env(safe-area-inset-bottom); }
+  .editor.narrow > .side { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 0 0 max(6px, env(safe-area-inset-bottom)); }
   .editor.narrow .side > * { order: 1; }
   .editor.narrow .side > .panel { order: 2; }
   .editor.narrow .side > .tabs { order: 3; position: static; padding: 2px; box-shadow: none; border-radius: var(--radius-card); }
@@ -839,19 +847,23 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .panel { background: var(--surface); border: 1px solid var(--outline-soft); border-radius: var(--radius-panel); overflow: hidden; }
   .panel-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px 0; }
   .panel-head .subtabs { flex: 1; }
-  .panel-head .save-template-btn { flex: none; width: auto; padding-inline: 10px; font-size: 13px; }
+  .panel-title { margin: 0; flex: 1; min-height: 44px; display: flex; align-items: center; padding-inline: 6px; font: var(--text-heading); color: var(--g); }
   .panel .subtabs.inner { padding: 6px 8px 0; }
-  .panel .subtabs .chip { min-height: 44px; }
+  .subtabs { flex-wrap: wrap; overflow: visible; }
+  .panel .subtabs .chip { min-height: 44px; padding-inline: 11px; font-size: 13px; }
   .panel .subtabs .chip.on { background: color-mix(in srgb, var(--g) 22%, transparent); color: var(--g); border-color: var(--g); }
-  .panel-body { height: clamp(150px, 22dvh, 260px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 10px; display: grid; gap: 10px; align-content: start; }
+  .panel-body { height: clamp(96px, 14dvh, 200px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 10px; display: grid; gap: 10px; align-content: start; }
   .panel-body > * { min-width: 0; }
   .panel-body .card { background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; }
   .panel-body .card.confirm { padding: 10px 12px; border: 1px solid var(--outline-soft); border-radius: var(--radius-card); }
-  .panel-body .section-title:not(.keep) { display: none; }
+  /* A card that is the tool's only one is named by its chip: its title stays for screen readers only. */
+  .panel-body > .card:only-child > .section-title:not(.keep) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); margin: 0; }
+  .panel-body .section-title:not(.keep) { margin: 0 0 6px; font-size: 14px; }
+  .panel-body .section-title:not(.keep)::before { display: none; }
   .panel-body .section-title.keep { margin: 0 0 8px; font-size: 14px; }
   .panel-body .section-title.keep::before { display: none; }
   .panel-body .sub-fine > .caption:first-child { display: none; }
-  .panel.has-inner .panel-body { height: clamp(130px, 19dvh, 220px); }
+  .panel.has-inner .panel-body { height: clamp(96px, 14dvh, 200px); }
   .panel-body .caption { margin: 6px 0 2px; }
   .panel-body .slider-row { margin-top: 4px; }
   .panel-body .chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
@@ -866,4 +878,7 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .positions button { width: 44px; height: 44px; }
   .panel-body .sound .play, .panel-body .sound .name { height: 44px; }
   .panel-body .btn.primary[style*='width:100%'] { min-height: 48px; }
+  /* The one primary button first (the panel is short), the language it listens for under it. */
+  .panel-body .subs-start { display: flex; flex-direction: column; }
+  .panel-body .subs-start .subs-create { order: -1; margin: 0 0 10px !important; }
 }

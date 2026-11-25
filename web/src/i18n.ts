@@ -188,6 +188,7 @@ const EN: Record<string, string> = {
   'צל': 'Shadow',
   'קו מתאר': 'Outline',
   'רקע': 'Box',
+  'רקע\u200E': 'Background',
   'שקיפות': 'Opacity',
   'ווש': 'Whoosh',
   'ווש מהיר': 'Swoosh',

@@ -30,7 +30,7 @@ export function BackgroundCard(p: { bg: Background; onChange: (b: Background) =>
   const people = p.busy?.what === 'people' ? p.busy : null
   return (
     <section class="card picture">
-      <h3 class="section-title">{t('רקע')}</h3>
+      <h3 class="section-title">{t('רקע\u200E')}</h3>
       <h4 class="caption">{t('מה נשאר בתמונה')}</h4>
       <div class="seg bg-key" role="radiogroup">
         {([['person', 'אנשים'], ['green', 'מסך ירוק'], ['blue', 'מסך כחול']] as [BgKey, string][]).map(([k, label]) => (

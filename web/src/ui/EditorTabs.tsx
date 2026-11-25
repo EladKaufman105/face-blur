@@ -363,7 +363,7 @@ function SpeechNote() {
 /** Subtitles: made on the device from the speech, then edited, styled and saved as SRT too. */
 export function SubtitlesTab({ part, stylePart, file, cues, onCues, words, onReplace, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
   /** On a phone: the sub-tool shown ('make', 'list' or 'style'); on a wide screen all of them. */
-  part?: 'make' | 'list' | 'style'; stylePart?: string
+  part?: 'make' | 'list' | 'bleep' | 'style'; stylePart?: string
   /** [step]: a change of its own for undo (not merged with the typing around it). */
   file: File; cues: Cue[]; onCues: (c: Cue[], step?: boolean) => void; words: Word[]
   /** The subtitles, their words and the bleeped words replaced together, as one undo step. */
@@ -371,7 +371,7 @@ export function SubtitlesTab({ part, stylePart, file, cues, onCues, words, onRep
   bleeped: Set<number>; onBleeped: (b: Set<number>) => void; tone: boolean; onTone: (t: boolean) => void
   style: SubStyle; onStyle: (s: SubStyle) => void; time: number; onSeek: (t: number) => void
 }) {
-  const show = (k: 'make' | 'list' | 'style') => !part || part === k
+  const show = (k: 'make' | 'list' | 'bleep' | 'style') => !part || part === k
   const [bleepMode, setBleepMode] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
   const [find, setFind] = useState('')
@@ -652,9 +652,9 @@ export function SubtitlesTab({ part, stylePart, file, cues, onCues, words, onRep
       {show('make') && cues.length > 0 && busy && run && <section class="card"><SpeechProgress status={run} onCancel={cancel} /></section>}
       {/* The looks, with a sample of each, show at once (also before the subtitles are made). */}
       {show('style') && <SubStyleCard file={file} style={style} onStyle={onStyle} part={part ? stylePart ?? 'looks' : undefined} />}
-      {show('list') && cues.length > 0 && words.length > 0 && (
+      {show('bleep') && cues.length > 0 && words.length > 0 && (
                 <section class="card bleep">
-                  <h3 class="section-title">{t('צפצוף מילים')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{bleeped.size === 1 ? t('מילה אחת') : bleeped.size > 1 ? t('%d מילים', bleeped.size) : ''}</span></h3>
+                  <h3 class="section-title keep">{t('צפצוף מילים')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{bleeped.size === 1 ? t('מילה אחת') : bleeped.size > 1 ? t('%d מילים', bleeped.size) : ''}</span></h3>
                   <p class="small muted" style="margin:0 0 10px">{t('בחר מילים בטקסט, והן יוחלפו בצפצוף או בשקט.')}</p>
                   <div class="actions">
                     <button class={'btn ' + (bleepMode ? 'primary' : 'tonal')} onClick={() => setBleepMode(!bleepMode)}>{bleepMode ? t('סיום') : t('בחר מילים')}</button>
@@ -668,9 +668,9 @@ export function SubtitlesTab({ part, stylePart, file, cues, onCues, words, onRep
                   <SwitchRow cls="mask-subs" title={t('הסתר אותן גם בכתוביות')} text="****" on={style.maskBleeped !== false} onChange={(on) => onStyle({ ...style, maskBleeped: on })} />
                 </section>
               )}
-      {show('list') && cues.length > 0 && (
+      {(show('list') || part === 'bleep') && cues.length > 0 && (
         <section class="card cue-list">
-          <h3 class="section-title">{t('הטקסט')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{cues.length}</span></h3>
+          <h3 class="section-title keep">{t('הטקסט')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{cues.length}</span></h3>
           <p class="small muted" style="margin:0">{t('הקש על כתובית כדי לערוך אותה.')}</p>
           {listNote && <p class="small" style="margin:0;color:var(--primary)">{listNote}</p>}
           <div class="clips">
@@ -705,7 +705,7 @@ export function SubtitlesTab({ part, stylePart, file, cues, onCues, words, onRep
                           const el = e.currentTarget as HTMLTextAreaElement
                           if (openId !== c.id) { setOpenId(c.id); if (!(time >= c.start && time < c.end)) onSeek(c.start + 0.01) }
                           // Room above the export bar and the keyboard: the subtitle in the middle of what shows.
-                          setTimeout(() => el.closest('.clip')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)
+                          setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)
                         }}
                         ref={fitText}
                         onInput={(e) => { const el = e.currentTarget as HTMLTextAreaElement; caret.current.set(c.id, el.selectionStart); fitText(el); edit(c.id, { text: el.value }) }}

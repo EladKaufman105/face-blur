@@ -4,7 +4,7 @@ import { t, duration, lang } from '../i18n'
 import { BlurRenderer, ellipseFor, type Ellipse } from '../lib/renderer'
 import { frameAt, loadLook, saveLook, trackBox, type Analysis, type BlurMode, type Look, type Track } from '../lib/types'
 import type { ExportJob } from './Exporting'
-import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIcon, FaceIcon, PictureIcon, MarkIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
+import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIcon, FaceIcon, PictureIcon, MarkIcon, TemplateIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
 import { FRAME, Timeline } from './Timeline'
 import { BlurBar } from './BlurBar'
 import { CutTab, wordSpan } from './CutTab'
@@ -28,7 +28,7 @@ import { speechLine } from './SpeechUi'
 import { cleanupOn, type Cleanup } from '../lib/cleanup'
 import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
 import { Analyzing } from './Analyzing'
-import { ChipTabs, STYLE_PARTS, subsOf, useNarrow } from './panels'
+import { ChipTabs, PANEL_ID, STYLE_PARTS, subsOf, useNarrow } from './panels'
 import { bleepRanges, cueAt, maskCue, shownText, type Cue, type SubStyle, type Word } from '../lib/subtitles'
 import { DEFAULT_SUB_STYLE, loadSubFont, normalizeStyle } from '../lib/substyle'
 import { cueWordTimes, drawCue } from '../lib/subrender'
@@ -1005,7 +1005,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   /** A subtitle's text with the bleeped words hidden (unless they're to show as said). */
   const masked = (c: Cue) => (subStyle.maskBleeped === false ? c.text : maskCue(c, words, bleeped))
 
-  const subList = subsOf(tab, cues.length > 0)
+  const subList = subsOf(tab, { hasCues: cues.length > 0, hasWords: words.length > 0, hasFaces: analyzed || tracks.length > 0 })
   const part = (subTab[tab] && subList.some(([id]) => id === subTab[tab]) ? subTab[tab] : subList[0]?.[0]) ?? ''
   /** Whether a sub-tool's controls show: all of them on a wide screen, the open one on a phone. */
   const S = (k: string) => !narrow || part === k
@@ -1015,6 +1015,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     : g === 'subs' ? cues.length > 0
     : g === 'sound' ? voice !== 'none' || cleanupOn(clean) || loudOn || sfx.length > 0 || bleeped.size > 0
     : g === 'mark' ? watermarkOn(mark) : false
+  const groupName = GROUPS.find((g) => g[0] === tab)![1]
   const groupColor = GROUPS.find((g) => g[0] === tab)![3]
   const exportBtn = (
     <button
@@ -1032,6 +1033,13 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     </button>
   )
   const saveTplBtn = <button class="btn ghost save-template-btn" onClick={() => setSaveTpl(true)}>{t('שמור כתבנית')}</button>
+  const saveTplIcon = <button class="icon-btn save-template-btn" aria-label={t('שמור כתבנית')} title={t('שמור כתבנית')} onClick={() => setSaveTpl(true)}><TemplateIcon size={22} /></button>
+  const editTools = (
+    <div class="edit-tools">
+            <button class="icon-btn" disabled={past.current.length === 0 || !!following} aria-label={t('בטל')} title={t('בטל') + ' (Ctrl+Z)'} onClick={undo}><span class="flip"><UndoIcon /></span></button>
+            <button class="icon-btn" disabled={future.current.length === 0 || !!following} aria-label={t('בצע שוב')} title={t('בצע שוב') + ' (Ctrl+Shift+Z)'} onClick={redo}><span class="flip"><RedoIcon /></span></button>
+          </div>
+  )
   const panelBody = (
     <>
         {tab === 'faces' && S('list') && !analyzed && (
@@ -1133,7 +1141,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             busy={cutBusy}
             onSilences={cutSilences}
             onFillers={cutFillers}
-            onMakeSubtitles={() => setTab('subs')}
+            onMakeSubtitles={() => { setTab('subs'); setSubTab({ ...subTab, subs: 'make' }) }}
             onPause={() => video.current?.pause()}
           />
         )}
@@ -1147,7 +1155,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         {tab === 'mark' && <WatermarkTab mark={mark} onChange={setMark} />}
         {tab === 'subs' && (
           <SubtitlesTab
-            part={narrow ? (part as 'make' | 'list' | 'style') : undefined}
+            part={narrow ? (part as 'make' | 'list' | 'bleep' | 'style') : undefined}
             stylePart={styleTab}
             file={file}
             cues={cues}
@@ -1198,11 +1206,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           <button class="btn ghost" onClick={onClose} style="padding-inline:6px"><span class="flip"><BackIcon /></span> {t('סרטון חדש')}</button>
           <div class="grow" />
           <span class="small muted detect-info">{detectInfo}</span>
-          <div class="edit-tools">
-            <button class="icon-btn" disabled={past.current.length === 0 || !!following} aria-label={t('בטל')} title={t('בטל') + ' (Ctrl+Z)'} onClick={undo}><span class="flip"><UndoIcon /></span></button>
-            <button class="icon-btn" disabled={future.current.length === 0 || !!following} aria-label={t('בצע שוב')} title={t('בצע שוב') + ' (Ctrl+Shift+Z)'} onClick={redo}><span class="flip"><RedoIcon /></span></button>
-          </div>
-          {narrow && <div class="export-bar">{exportBtn}</div>}
+          {!narrow && editTools}
+          {narrow && <div class="export-bar">{saveTplIcon}{exportBtn}</div>}
         </div>
         <div class={'screen' + (adding ? ' adding' : '') + (selected !== null ? ' sel' : '')} onPointerDown={onScreenDown} onPointerMove={onScreenMove} onPointerUp={onScreenUp} onPointerCancel={() => { press.current = null }}>
           <div class="view" style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc(var(--screen-h) * ${(W / H).toFixed(4)}))` }}>
@@ -1228,6 +1233,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           </div>
           <span class="time">{duration(time)} / {duration(dur)}</span>
           <div class="grow" />
+          {narrow && editTools}
           {selectedClip && (
             <div class="sel-sfx">
               <strong>{sfxName(selectedClip.sound)}</strong>
@@ -1313,12 +1319,11 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           <div class={'panel' + (tab === 'subs' && part === 'style' ? ' has-inner' : '')} data-g={tab} style={{ '--g': groupColor } as any}>
             <div class="panel-head">
               {subList.length > 0
-                ? <ChipTabs items={subList} value={part} onPick={(id) => setSubTab({ ...subTab, [tab]: id })} />
-                : <div class="subtabs"><span class="chip on">{t(GROUPS.find((g) => g[0] === tab)![1])}</span></div>}
-              {saveTplBtn}
+                ? <ChipTabs items={subList} value={part} onPick={(id) => setSubTab({ ...subTab, [tab]: id })} label={t(groupName)} />
+                : <h2 class="panel-title">{t(groupName)}</h2>}
             </div>
-            {tab === 'subs' && part === 'style' && <ChipTabs items={STYLE_PARTS} value={styleTab} onPick={setStyleTab} cls="inner" />}
-            <div class="panel-body">{panelBody}</div>
+            {tab === 'subs' && part === 'style' && <ChipTabs items={STYLE_PARTS} value={styleTab} onPick={setStyleTab} cls="inner" label={t('עיצוב כתוביות')} />}
+            <div class="panel-body" id={PANEL_ID} role="tabpanel" aria-labelledby={subList.length > 0 ? `tab-${tab === 'subs' && part === 'style' ? 'inner' : 'tool'}-${tab === 'subs' && part === 'style' ? styleTab : part}` : undefined} aria-label={subList.length > 0 ? undefined : t(groupName)}>{panelBody}</div>
           </div>
         ) : panelBody}
         <details class="keys">

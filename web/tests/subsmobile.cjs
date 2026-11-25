@@ -117,11 +117,13 @@ const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים 
     // The subtitle being edited is above the export bar (the page leaves room for it).
     await p.waitForTimeout(900)
     const room = await p.evaluate(() => {
-      const c = document.querySelector('.clip.open').getBoundingClientRect()
+      // The panel's body scrolls: the field being typed in is whole inside what shows of it, above the bar of groups.
+      const c = document.querySelector('.clip.open .cue-text').getBoundingClientRect()
+      const body = document.querySelector('.panel-body').getBoundingClientRect()
       const e = document.querySelector('.tabs').getBoundingClientRect()
-      return { bottom: c.bottom, barTop: e.top }
+      return { top: c.top, bottom: c.bottom, bodyTop: body.top, bodyBottom: body.bottom, barTop: e.top }
     })
-    if (room.bottom > room.barTop + 1) fail('the edited subtitle is under the export bar: ' + JSON.stringify(room))
+    if (room.bottom > room.barTop + 1 || room.bottom > room.bodyBottom + 1 || room.top < room.bodyTop - 1) fail('the edited subtitle is out of sight or under the bar of groups: ' + JSON.stringify(room))
     await p.screenshot({ path: `${out}/4_edit.png` })
 
     // ---- nothing is folded away behind "more options": the tools are tabs of their own, each with its own controls
