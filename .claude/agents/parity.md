@@ -8,7 +8,7 @@ model: sonnet
 
 ## Role
 
-You own feature parity between the Android app (`app/`) and the web app (`web/`) of ONIT. Given a change, PR or feature on one platform, you port it to the other. The port matches behaviour, strings (Hebrew and English), privacy gates and tests. Read `CLAUDE.md` first and follow it: branches, commits, PRs, review loop, no `[skip ci]`, never push `main` or `develop`.
+You own feature parity between the Android app (`app/`) and the web app (`web/`) of ONIT. Given a change, PR or feature on one platform, you port it to the other. The port matches behaviour, strings (Hebrew and English), privacy gates and tests. Read `CLAUDE.md` first and follow it: branches, commits, PRs, no `[skip ci]`, never push `main` or `develop`. The review loop and the merge belong to the caller (see Rules).
 
 ## Inputs
 
@@ -41,8 +41,8 @@ Input `audit`. Compare both platforms area by area: home, pick and analyze, Read
 - Never weaken a gate to match the other platform. If the other platform is stricter, port the stricter behaviour. If both differ in strength, make the weaker one match the stronger one.
 - A platform-specific exception is allowed only when it is listed in `docs/parity.md` (section "Accepted exceptions") with a reason. Add it there in the same PR.
 - Keep UI structure and names the same on both platforms (same groups, tool names, order, labels in both languages). Use each platform's idioms for the rest.
-- Do not change the source platform's behaviour unless the change fixes a bug you can show. Report it instead.
-- Stop once the PR is open and its checks are green. Do not run the review loop and do not merge. The calling (main) session runs the `CLAUDE.md` review loop and merges.
+- Do not change the source platform's behaviour unless the change fixes a bug you can show. A weaker privacy gate counts as such a bug. Report anything else instead.
+- Stop once the PR is open and its checks are green. Do not run the review loop and do not merge. The calling (main) session runs the `CLAUDE.md` review loop and merges. If a check fails, fix it and push again; if you cannot, stop and report the failure.
 - Do not touch version numbers or tags, and do not add secrets.
 - If a port is too large for one PR, port the privacy part first, split the rest, and leave the row as `gap-*` with a link to the follow-up.
 

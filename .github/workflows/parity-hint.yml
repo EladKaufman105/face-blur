@@ -11,6 +11,10 @@ permissions:
   contents: read
   pull-requests: read
 
+concurrency:
+  group: parity-hint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   parity-hint:
     runs-on: ubuntu-latest
@@ -24,7 +28,7 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           # The PR body is data: it is only read from the environment.
-          if printf '%s' "$PR_BODY" | grep -qiF '[x] platform-only'; then exit 0; fi
+          case "${PR_BODY,,}" in *'[x] platform-only'*|*'[x] no user-facing change'*) exit 0;; esac
           files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate --jq '.[].filename') || exit 0
           app=$(printf '%s\n' "$files" | grep -E '^app/src/main/java/' || true)
           web=$(printf '%s\n' "$files" | grep -E '^web/src/' || true)
