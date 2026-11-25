@@ -304,6 +304,11 @@ fun ExportSheet(
     onEditWatermark: (() -> Unit)? = null,
     /** In the editor: save what's set here (and in the editor) as a template. */
     onSaveTemplate: (() -> Unit)? = null,
+    /** In the editor: the sound alone as an MP3, with the same edits as the video. Null: no such choice. */
+    audioOnly: Boolean = false,
+    onAudioOnly: ((Boolean) -> Unit)? = null,
+    /** In the editor: no blur is on, so the faces in the video stay as they are. */
+    noBlur: Boolean = false,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
@@ -316,13 +321,29 @@ fun ExportSheet(
             verticalArrangement = Arrangement.spacedBy(Space.L),
         ) {
             Text(t("הגדרות ייצוא"), style = AppType.Title)
-            ExportOptionsPanel(info, options, onChange, onEditWatermark)
-            if (hasSubs) {
-                HorizontalDivider()
-                SubtitleExportOptions(options, onChange, hasTranslation)
+            if (onAudioOnly != null) {
+                Segments(
+                    listOf(false to t("סרטון"), true to t("סאונד בלבד (MP3)")),
+                    audioOnly,
+                    onAudioOnly,
+                )
             }
+            if (audioOnly) {
+                Text(
+                    t("הסאונד נשמר כקובץ MP3, עם אותן עריכות כמו בסרטון: שינוי קול, חיתוכים, ביפים, אפקטים וניקוי."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                ExportOptionsPanel(info, options, onChange, onEditWatermark)
+                if (hasSubs) {
+                    HorizontalDivider()
+                    SubtitleExportOptions(options, onChange, hasTranslation)
+                }
+            }
+            if (noBlur && !audioOnly) NoBlurWarning(t("אין טשטוש פעיל: הפנים בסרטון לא יטושטשו."), Modifier.testTag(Tags.NO_BLUR_WARNING))
             // The one place the video leaves the editor: the brand's main button.
-            GradientButton(action, onExport, Modifier.fillMaxWidth().testTag(Tags.EXPORT_GO), icon = EditorIcons.ExportIcon)
+            GradientButton(if (audioOnly) t("שמור MP3") else action, onExport, Modifier.fillMaxWidth().testTag(Tags.EXPORT_GO), icon = EditorIcons.ExportIcon)
             if (onSaveTemplate != null) {
                 TextButton(onClick = onSaveTemplate, modifier = Modifier.fillMaxWidth()) { Text(t("שמור כתבנית")) }
             }

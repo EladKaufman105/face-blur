@@ -105,7 +105,7 @@ fun BackgroundPanel(ctrl: EditorController) {
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            FilledTonalButton(onClick = ctrl::findPeople) {
+                            FilledTonalButton(onClick = ctrl::findPeople, enabled = ctrl.findFacesProgress == null) {
                                 Icon(AppIcons.Person, null, Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text(t("זהה אנשים"))
@@ -113,7 +113,7 @@ fun BackgroundPanel(ctrl: EditorController) {
                         }
                         else -> Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(t("האנשים זוהו בכל הסרטון"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-                            TextButton(onClick = ctrl::findPeople) { Text(t("זהה שוב")) }
+                            TextButton(onClick = ctrl::findPeople, enabled = ctrl.findFacesProgress == null) { Text(t("זהה שוב")) }
                         }
                     }
                 } else {

@@ -226,6 +226,8 @@ fun EditorScreen(
     onExport: () -> Unit,
     export: ExportOptions = ExportOptions(),
     onExportChange: (ExportOptions) -> Unit = {},
+    audioOnly: Boolean = false,
+    onAudioOnly: ((Boolean) -> Unit)? = null,
     subStyle: SubtitleStyle = SubtitleStyle(),
     onSubStyleChange: (SubtitleStyle) -> Unit = {},
     onSaveTemplate: (() -> Unit)? = null,
@@ -244,7 +246,7 @@ fun EditorScreen(
         }
     }
     @Suppress("UNUSED_VARIABLE") val version = ctrl.version
-    val busy = ctrl.trackingProgress != null
+    val busy = ctrl.trackingProgress != null || ctrl.findFacesProgress != null
     // The filmstrip is loaded once per editor: the timeline leaves the screen while a panel is open.
     val context = LocalContext.current
     val stripSize = with(LocalDensity.current) { STRIP.roundToPx() }
@@ -354,7 +356,7 @@ fun EditorScreen(
             GradientButton(
                 exportLabel,
                 onClick = { ctrl.pauser(); exportSheet = true },
-                enabled = !busy,
+                enabled = !busy && ctrl.segmentProgress == null,
                 icon = EditorIcons.ExportIcon,
                 height = 40.dp,
                 sidePadding = Space.M,
@@ -568,6 +570,9 @@ fun EditorScreen(
             hasTranslation = ctrl.hasTranslation,
             onEditWatermark = { exportSheet = false; ctrl.pauser(); ctrl.watermarkPanel = true },
             onSaveTemplate = onSaveTemplate?.let { save -> { exportSheet = false; save() } },
+            audioOnly = audioOnly,
+            onAudioOnly = onAudioOnly,
+            noBlur = ctrl.model.blursOn == 0,
         )
     }
 }
@@ -603,6 +608,7 @@ private fun BlurPanel(ctrl: EditorController, busy: Boolean, onDone: () -> Unit)
             .padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        FacesList(ctrl)
         BlurLookControls(
             s.mode, strength, padding,
             onMode = { ctrl.setBlur(mode = it) },
@@ -631,10 +637,10 @@ private fun VideoWithOverlay(
     val settings = ctrl.session.settings
     val aspect = if (analysis.uprightH > 0) analysis.uprightW.toFloat() / analysis.uprightH else 9f / 16f
     val times = ctrl.model.times
-    val preview = remember(ctrl) { PreviewSource(if (times.isEmpty()) 0L else times[0]) }
+    val preview = remember(ctrl, ctrl.playerEpoch) { PreviewSource(if (times.isEmpty()) 0L else times[0]) }
     // Made again with fewer GPU effects if they fail on this device (see effectsLevel).
     val level = ctrl.effectsLevel
-    val player = remember(ctrl, level) {
+    val player = remember(ctrl, level, ctrl.playerEpoch) {
         // Bleeps and the robot voice are heard live; the pitch is set on the player.
         ExoPlayer.Builder(context, VoicePreviewRenderers(context) { ctrl.voiceDsp }).build().apply {
             val blur = if (ctrl.previewAvailable) BlurEffect(preview, { ctrl.session.settings.mode }, { ctrl.session.settings.strength }) else null
@@ -1422,7 +1428,7 @@ private fun Timeline(
                     val x1 = max(g.clipX1(t), x0 + 3.dp.toPx())
                     if (x1 < -handleW || x0 > size.width + handleW) continue
                     val sel = t.id == selId
-                    drawRoundRect(if (t.manual) ManualClip else BlurClip, Offset(x0, y), Size(x1 - x0, rowH), CornerRadius(5.dp.toPx()))
+                    drawRoundRect((if (t.manual) ManualClip else BlurClip).copy(alpha = if (t.off) 0.3f else 1f), Offset(x0, y), Size(x1 - x0, rowH), CornerRadius(5.dp.toPx()))
                     // The number stays in view while the clip is, and never past the clip's end:
                     // near the end it rides along with it, then goes when there's no room.
                     val text = "#${t.id}"
