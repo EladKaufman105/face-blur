@@ -47,12 +47,34 @@ fun AnalysisResult.toEditModel() = EditModel(times, cuts, motion, aspect, dets, 
 class EditSession(
     val info: VideoInfo,
     initialSettings: Settings,
-    val analysis: AnalysisResult,
+    analysis: AnalysisResult,
     val analysisMs: Long,
-    /** Opened for subtitles only: no face detection was run. */
-    val subtitlesOnly: Boolean = false,
+    /** Opened for subtitles only: no face detection was run (until "Find faces" does). */
+    subtitlesOnly: Boolean = false,
 ) : Closeable {
-    val model = analysis.toEditModel()
+    var analysis: AnalysisResult = analysis
+        private set
+    var subtitlesOnly: Boolean = subtitlesOnly
+        private set
+    var model = analysis.toEditModel()
+        private set
+
+    /**
+     * Face detection was run on a subtitles-only session: its blurs and frames come in, and
+     * everything else edited so far (subtitles, bleeps, sounds, cuts, which are all kept in
+     * milliseconds) stays. The undo history starts again.
+     */
+    fun adoptDetection(found: AnalysisResult) {
+        val kept = model.exportState()
+        val old = analysis
+        val fresh = found.toEditModel()
+        val blurs = fresh.exportState()
+        fresh.restore(EditState(blurs.tracks, kept.cues, kept.bleeps, blurs.nextId, kept.nextCueId, kept.sfx, kept.removed))
+        analysis = found
+        model = fresh
+        subtitlesOnly = false
+        old.close()
+    }
 
     /** The blur's look (style, strength, area): chosen before detection, changeable in the editor. */
     var settings by androidx.compose.runtime.mutableStateOf(initialSettings)
@@ -643,7 +665,7 @@ class EditorController(
      * Anything running in the background: subtitles, speakers, loudness, cuts, finding the
      * people, measuring the camera's motion.
      */
-    val busy get() = subsBusy || loudnessBusy || cutBusy || segmentProgress != null || stabilizeProgress != null
+    val busy get() = findFacesProgress != null || subsBusy || loudnessBusy || cutBusy || segmentProgress != null || stabilizeProgress != null
 
     /** Suspends until the background work ([busy]) is done: for a template applied with no editor on screen. */
     suspend fun awaitIdle(timeoutMs: Long = IDLE_TIMEOUT_MS) {
@@ -1036,6 +1058,70 @@ class EditorController(
     /** Cancels the motion pass if the editor goes away. */
     fun cancelMotion() {
         motionJob?.cancel()
+        findJob?.cancel()
+    }
+
+    // ------------------------------------------------------------------ faces
+
+    /** Face detection run from the editor (a session opened without it): 0..1 while it runs. */
+    var findFacesProgress by mutableStateOf<Float?>(null)
+        private set
+
+    /** Bumped when the player must be made again (its blur effect only exists once there are faces). */
+    var playerEpoch by mutableIntStateOf(0)
+        private set
+
+    /** Called once detection found faces and they were taken in (the project is saved again). */
+    var onFacesFound: (() -> Unit)? = null
+    private var findJob: Job? = null
+
+    /**
+     * "Find faces" for a session opened without detection (subtitles, sound...): detection runs on
+     * the video, the blurs come in next to what was edited, and the faces list shows them.
+     */
+    fun findFaces() {
+        val ctx = appContext ?: return
+        if (!session.subtitlesOnly || findJob?.isActive == true) return
+        pauser()
+        addMode = false
+        findFacesProgress = 0f
+        findJob = scope.launch {
+            try {
+                val found = FaceBlurProcessor(ctx).analyze(session.info, session.settings) { p -> main.post { if (findFacesProgress != null) findFacesProgress = p } }
+                session.adoptDetection(found)
+                previewAvailable = true
+                frame = 0
+                selectedId = null
+                sync()
+                rebuildPreview()
+                playerEpoch++
+                onFacesFound?.invoke()
+                notice = if (model.tracks.isEmpty()) t("לא זוהו פנים. אפשר לסמן ידנית עם \"הוסף טשטוש\".") else null
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("ONIT", "finding faces failed", e)
+                notice = t("זיהוי הפנים נכשל")
+            } finally {
+                findFacesProgress = null
+            }
+        }
+    }
+
+    fun cancelFindFaces() {
+        findJob?.cancel()
+    }
+
+    /** Turns a face's blur off or back on (one undo step). */
+    fun toggleBlurOff(id: Int) {
+        model.toggleOff(id)
+        sync()
+    }
+
+    /** Turns every face's blur on or off (one undo step). */
+    fun setAllBlursOff(off: Boolean) {
+        model.setAllOff(off)
+        sync()
     }
 
     // ------------------------------------------------------------------ sound effects
@@ -1113,6 +1199,15 @@ class EditorController(
     fun clearBleeps() {
         model.clearBleeps()
         sync()
+    }
+
+    /** Subtitles from an SRT file in place of the present ones (and their bleeps): one undoable step. */
+    fun importSubtitles(list: List<NewCue>) {
+        if (list.isEmpty()) return
+        model.importCues(list)
+        selectCue(null)
+        sync()
+        list.minOfOrNull { it.startMs }?.let { first -> seek(frameAt(cueRelUs(first + 10))) }
     }
 
     /** Words bleeped in all subtitles. */

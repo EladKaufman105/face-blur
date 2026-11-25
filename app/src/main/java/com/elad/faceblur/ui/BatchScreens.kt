@@ -135,6 +135,7 @@ internal fun BatchSetupContent(vm: MainViewModel, s: UiState.BatchSetup, onAddMo
                 Column(verticalArrangement = Arrangement.spacedBy(Space.M)) {
                     SectionTitle(t("לפני שמתחילים"), Feature.SUBTITLES.tint)
                     PlanRow(t("זמן משוער"), estimateText(estimate), true)
+                    if (settings.blurOff) NoBlurWarning(t("הפנים לא יטושטשו בסרטונים האלה: בתבנית הזו אין טשטוש פנים."), Modifier.testTag(Tags.NO_BLUR_WARNING))
                     PlanRow(
                         t("מקום פנוי"),
                         t("%s פנוי, צריך כ-%s").format(bytesText(free), bytesText(need)),

@@ -382,6 +382,9 @@ internal fun EditorMessages(ctrl: EditorController, modifier: Modifier = Modifie
         ctrl.trackingProgress?.let { p ->
             ProgressPill(t("עוקב אחרי הפנים…"), p, ctrl::cancelTracking)
         }
+        ctrl.findFacesProgress?.let { p ->
+            ProgressPill(t("מזהה פנים… %d%%").format((p * 100).roundToInt()), p, ctrl::cancelFindFaces)
+        }
         if (!ctrl.subsSheet) {
             ctrl.speakersProgress?.let { p -> ProgressPill(t("מזהה דוברים…"), p, ctrl::cancelSpeakers) }
         }

@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,22 +65,26 @@ import kotlin.math.roundToInt
 @Composable
 internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, onReplace: () -> Unit) {
     var saveSheet by remember { mutableStateOf(false) }
+    // A template with no face blur: nothing here blurs faces, and the screen says so (a privacy matter).
+    val blurOff = vm.templateSettings?.blurOff == true
     val actions: @Composable () -> Unit = {
         Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
             GradientButton(
-                t("טשטש פנים"),
+                if (blurOff) t("פתח בעורך") else t("טשטש פנים"),
                 { vm.review = true; vm.start() },
                 Modifier.fillMaxWidth().testTag(Tags.BLUR_FACES),
-                icon = AppIcons.Face,
+                icon = if (blurOff) androidx.compose.material.icons.Icons.Filled.Edit else AppIcons.Face,
             )
             Text(
-                t("הפנים יזוהו ויטושטשו, ואז ייפתח העורך לבדיקה ולתיקון לפני השמירה."),
+                if (blurOff) t("בלי טשטוש פנים: ייפתח העורך, והתבנית תחול על הסרטון.")
+                else t("הפנים יזוהו ויטושטשו, ואז ייפתח העורך לבדיקה ולתיקון לפני השמירה."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             TextButton(onClick = { saveSheet = true }, enabled = !vm.templateNeedsModel, modifier = Modifier.fillMaxWidth().testTag(Tags.BLUR_AND_SAVE)) {
-                Text(t("או: טשטש ושמור ישר, בלי עורך"))
+                Text(if (blurOff) t("או: שמור ישר, בלי עורך") else t("או: טשטש ושמור ישר, בלי עורך"))
             }
+            if (blurOff) NoBlurWarning(t("הפנים לא יטושטשו בסרטון הזה: בתבנית הזו אין טשטוש פנים."), Modifier.testTag(Tags.NO_BLUR_WARNING))
         }
     }
     val picker: @Composable () -> Unit = {
@@ -116,9 +121,21 @@ internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, on
             s.info, vm.exportOptions, vm::changeExport,
             onExport = { saveSheet = false; vm.review = false; vm.start() },
             onDismiss = { saveSheet = false },
-            action = t("טשטש ושמור"),
+            action = if (blurOff) t("שמור ישר") else t("טשטש ושמור"),
         )
     }
+}
+
+/** A red warning, announced by screen readers as an alert: the faces in these videos are not blurred. */
+@Composable
+internal fun NoBlurWarning(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        color = MaterialTheme.colorScheme.error,
+        modifier = modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Assertive },
+    )
 }
 
 /** The template makes subtitles but the speech model isn't on the phone yet: say so, and download it from here. */

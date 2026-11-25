@@ -6,8 +6,46 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
 import com.elad.faceblur.edit.Cue
+import com.elad.faceblur.edit.NewCue
 
 object Srt {
+    /** One subtitle read from an SRT file. */
+    class Item(val startMs: Long, val endMs: Long, val text: String)
+
+    private val TIMES = Regex("""(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)""")
+    private val TAGS = Regex("<[^>]+>")
+    private val HEBREW = Regex("[\u0590-\u05FF]")
+
+    private fun ms(h: String, m: String, s: String, f: String): Long =
+        h.toLong() * 3_600_000 + m.toLong() * 60_000 + s.toLong() * 1000 + f.padEnd(3, '0').take(3).toLong()
+
+    /**
+     * The subtitles of SRT [text], as the web app reads them: blocks split at blank lines, the line
+     * with "-->" gives the times, markup tags are dropped, lines are joined with a space, blocks
+     * with no text or an end that isn't after the start are skipped. Sorted by start.
+     */
+    fun parse(text: String): List<Item> {
+        val out = ArrayList<Item>()
+        for (block in text.removePrefix("\uFEFF").replace("\r", "").split(Regex("\n\\s*\n"))) {
+            val lines = block.split('\n').filter { it.isNotBlank() }
+            val k = lines.indexOfFirst { it.contains("-->") }
+            if (k < 0) continue
+            val m = TIMES.find(lines[k]) ?: continue
+            val body = lines.drop(k + 1).joinToString("\n").replace(TAGS, "").trim()
+            if (body.isEmpty()) continue
+            val a = ms(m.groupValues[1], m.groupValues[2], m.groupValues[3], m.groupValues[4])
+            val b = ms(m.groupValues[5], m.groupValues[6], m.groupValues[7], m.groupValues[8])
+            if (b > a) out += Item(a, b, body.replace("\n", " "))
+        }
+        return out.sortedBy { it.startMs }
+    }
+
+    /** Imported subtitles as new ones: Hebrew text is the spoken text in Hebrew, anything else in English. */
+    fun toNewCues(items: List<Item>): List<NewCue> = items.map {
+        if (HEBREW.containsMatchIn(it.text)) NewCue(it.startMs, it.endMs, it.text, "", "he", null)
+        else NewCue(it.startMs, it.endMs, "", it.text, "en", null)
+    }
+
     private fun ts(ms: Long): String {
         val h = ms / 3_600_000
         val m = ms / 60_000 % 60

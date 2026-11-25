@@ -264,6 +264,50 @@ class FaceBlurProcessor(private val context: Context) {
         }
     }
 
+    /** The sound's processors (shared by the video and the MP3 export, so both apply the same edits). */
+    class AudioChain(val processors: List<AudioProcessor>, val sfx: List<SfxPlay>, val cutMap: com.elad.faceblur.edit.CutMap, val removeAudio: Boolean)
+
+    private fun audioChain(model: EditModel, audio: AudioEdit): AudioChain {
+        // The voice: the pitch, then bleeps and robot sound (so the beep isn't shifted).
+        val audioFx = ArrayList<AudioProcessor>()
+        val bleeps = model.bleeps.map { (a, b) -> longArrayOf(a, b) }
+        val sfx = model.sfx.mapNotNull { c -> SfxLibrary.load(context, c.sound)?.let { SfxPlay(c.startMs * 1000, it, c.gain) } }
+        val dsp = VoiceDsp(bleeps, audio.voice, audio.tone, sfx = sfx, denoise = audio.denoise, enhance = audio.enhance, gain = audio.gain)
+        // Stretches cut out: their frames and their sound are dropped at the end of the chains.
+        val cutMap = model.cutMap()
+        // No sound at all: the track is dropped, unless sound effects play over the silence.
+        val removeAudio = audio.voice == VoiceFx.MUTE && sfx.isEmpty()
+        if (!removeAudio) {
+            if (audio.voice.pitch != 1f) audioFx += SonicAudioProcessor().apply { setPitch(audio.voice.pitch) }
+            if (dsp.active) audioFx += VoiceAudioProcessor(dsp)
+            if (!cutMap.isEmpty) audioFx += CutAudioProcessor(cutMap)
+        }
+        return AudioChain(audioFx, sfx, cutMap, removeAudio)
+    }
+
+    /**
+     * Only the sound, with the edits of the export (voice, bleeps, sound effects, cleanup, cuts),
+     * as a temporary file for the MP3 encoder. Throws if they can't be applied: the caller must
+     * not save the original sound instead.
+     */
+    suspend fun renderAudio(info: VideoInfo, model: EditModel, audio: AudioEdit, onProgress: (Float) -> Unit): File {
+        val chain = audioChain(model, audio)
+        check(!chain.removeAudio) { "no sound" }
+        val out = temp("audio")
+        out.delete()
+        val item = EditedMediaItem.Builder(MediaItem.fromUri(info.uri))
+            .setRemoveVideo(true)
+            .setEffects(Effects(chain.processors, emptyList()))
+            .build()
+        try {
+            export(composition(item, Composition.HDR_MODE_KEEP_HDR, forceAudio = chain.sfx.isNotEmpty()), out, null, null, onProgress)
+        } catch (e: Throwable) {
+            out.delete()
+            throw e
+        }
+        return out
+    }
+
     suspend fun render(
         info: VideoInfo,
         settings: Settings,
@@ -300,20 +344,11 @@ class FaceBlurProcessor(private val context: Context) {
         if (burn.isNotEmpty()) overlays += SubtitleOverlay(burn, subStyle, SubtitleRenderer.get(context))
         if (export.watermark.enabled(context)) overlays += WatermarkOverlay(context, export.watermark)
         val subsEffect = if (overlays.isEmpty()) emptyList() else listOf<Effect>(OverlayEffect(ImmutableList.copyOf(overlays)))
-        // The voice: the pitch, then bleeps and robot sound (so the beep isn't shifted).
-        val audioFx = ArrayList<AudioProcessor>()
-        val bleeps = model.bleeps.map { (a, b) -> longArrayOf(a, b) }
-        val sfx = model.sfx.mapNotNull { c -> SfxLibrary.load(context, c.sound)?.let { SfxPlay(c.startMs * 1000, it, c.gain) } }
-        val dsp = VoiceDsp(bleeps, audio.voice, audio.tone, sfx = sfx, denoise = audio.denoise, enhance = audio.enhance, gain = audio.gain)
-        // Stretches cut out: their frames and their sound are dropped at the end of the chains.
-        val cutMap = model.cutMap()
-        // No sound at all: the track is dropped, unless sound effects play over the silence.
-        val removeAudio = audio.voice == VoiceFx.MUTE && sfx.isEmpty()
-        if (!removeAudio) {
-            if (audio.voice.pitch != 1f) audioFx += SonicAudioProcessor().apply { setPitch(audio.voice.pitch) }
-            if (dsp.active) audioFx += VoiceAudioProcessor(dsp)
-            if (!cutMap.isEmpty) audioFx += CutAudioProcessor(cutMap)
-        }
+        val chain = audioChain(model, audio)
+        val audioFx = chain.processors
+        val sfx = chain.sfx
+        val cutMap = chain.cutMap
+        val removeAudio = chain.removeAudio
         val steady = stabilizer
         // Steadied right after the blur (which follows the faces in the shaky frame), before
         // anything drawn on top: subtitles and the watermark don't move.
@@ -481,7 +516,7 @@ class FaceBlurProcessor(private val context: Context) {
         /** Temp videos left behind by a pass that was killed (older than a few hours). */
         private fun cleanStaleTemp(context: Context) {
             val old = System.currentTimeMillis() - 6 * 3600_000L
-            context.cacheDir.listFiles { f -> f.isFile && f.lastModified() < old && Regex("((analysis|motion|segment|render)_[0-9a-f]{8}\\.mp4|frames_[0-9a-f]{8}\\.bin)").matches(f.name) }
+            context.cacheDir.listFiles { f -> f.isFile && f.lastModified() < old && Regex("((analysis|motion|segment|render|audio)_[0-9a-f]{8}\\.mp4|frames_[0-9a-f]{8}\\.bin)").matches(f.name) }
                 ?.forEach { it.delete() }
         }
 

@@ -65,6 +65,14 @@ A template's watermark logo is its own file (`<id>.wm.png`, in `builtin/` for a 
 
 Templates are stored as JSON in app storage, reusing the existing `toJson`/`fromJson` of `SubtitleStyle`, `AudioEdit`, `Background`, `Watermark` and the export options.
 
+### A template with face blur off (privacy)
+
+Same on the Android app and the web app. Where a template with face blur off is chosen (the Ready screen, batch setup) a red warning says the faces will **not** be blurred (an alert for screen readers). On the Ready screen the main button is "Open in editor" (it never says it blurs faces) and the other one "Save right away, no editor", which saves the video with the template's processing and does not open the editor (`StartRoute`).
+
+### Sound only (MP3) and the app
+
+The editor's export sheet has "Sound only (MP3)". It applies the same sound edits as the video export (voice change, cuts, bleeps, sound effects, cleanup), through the same audio chain (`FaceBlurProcessor.renderAudio`), and then encodes the result. If those edits cannot be applied the export fails: the original sound is never saved instead (`Mp3Plan`). The home screen's MP3 tool has no edits to apply and converts the sound as it is.
+
 ## 2. Batch processing
 
 1. On the home screen: **"Several videos"**. Pick up to **10** videos from the gallery, then a template. Show a total time estimate (from the learned analysis/render/subtitle speeds).

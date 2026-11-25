@@ -226,6 +226,8 @@ fun EditorScreen(
     onExport: () -> Unit,
     export: ExportOptions = ExportOptions(),
     onExportChange: (ExportOptions) -> Unit = {},
+    audioOnly: Boolean = false,
+    onAudioOnly: ((Boolean) -> Unit)? = null,
     subStyle: SubtitleStyle = SubtitleStyle(),
     onSubStyleChange: (SubtitleStyle) -> Unit = {},
     onSaveTemplate: (() -> Unit)? = null,
@@ -568,6 +570,8 @@ fun EditorScreen(
             hasTranslation = ctrl.hasTranslation,
             onEditWatermark = { exportSheet = false; ctrl.pauser(); ctrl.watermarkPanel = true },
             onSaveTemplate = onSaveTemplate?.let { save -> { exportSheet = false; save() } },
+            audioOnly = audioOnly,
+            onAudioOnly = onAudioOnly,
         )
     }
 }
@@ -603,6 +607,7 @@ private fun BlurPanel(ctrl: EditorController, busy: Boolean, onDone: () -> Unit)
             .padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        FacesList(ctrl)
         BlurLookControls(
             s.mode, strength, padding,
             onMode = { ctrl.setBlur(mode = it) },
@@ -634,7 +639,7 @@ private fun VideoWithOverlay(
     val preview = remember(ctrl) { PreviewSource(if (times.isEmpty()) 0L else times[0]) }
     // Made again with fewer GPU effects if they fail on this device (see effectsLevel).
     val level = ctrl.effectsLevel
-    val player = remember(ctrl, level) {
+    val player = remember(ctrl, level, ctrl.playerEpoch) {
         // Bleeps and the robot voice are heard live; the pitch is set on the player.
         ExoPlayer.Builder(context, VoicePreviewRenderers(context) { ctrl.voiceDsp }).build().apply {
             val blur = if (ctrl.previewAvailable) BlurEffect(preview, { ctrl.session.settings.mode }, { ctrl.session.settings.strength }) else null
@@ -1422,7 +1427,7 @@ private fun Timeline(
                     val x1 = max(g.clipX1(t), x0 + 3.dp.toPx())
                     if (x1 < -handleW || x0 > size.width + handleW) continue
                     val sel = t.id == selId
-                    drawRoundRect(if (t.manual) ManualClip else BlurClip, Offset(x0, y), Size(x1 - x0, rowH), CornerRadius(5.dp.toPx()))
+                    drawRoundRect((if (t.manual) ManualClip else BlurClip).copy(alpha = if (t.off) 0.3f else 1f), Offset(x0, y), Size(x1 - x0, rowH), CornerRadius(5.dp.toPx()))
                     // The number stays in view while the clip is, and never past the clip's end:
                     // near the end it rides along with it, then goes when there's no room.
                     val text = "#${t.id}"

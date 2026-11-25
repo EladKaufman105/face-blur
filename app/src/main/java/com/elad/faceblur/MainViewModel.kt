@@ -96,7 +96,7 @@ sealed interface UiState {
      */
     data class Failed(val info: VideoInfo?, val message: String, val details: String? = null, val canEdit: Boolean = false) : UiState
     /** A video's sound saved as an MP3. */
-    data class AudioDone(val info: VideoInfo, val result: com.elad.faceblur.audio.Mp3Export.Result) : UiState
+    data class AudioDone(val info: VideoInfo, val result: com.elad.faceblur.audio.Mp3Export.Result, val canEdit: Boolean = false) : UiState
     /** Several videos picked for a batch: choose the template and check the time and space before starting. */
     data class BatchSetup(val videos: List<VideoInfo>) : UiState
     /** The batch's queue (and, when it's done, its results): the batch itself is in [BatchState]. */
@@ -608,7 +608,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         startAutosave(ctrl)
     }
 
+    /** "Find faces" ran in a subtitles-only project: its analysis is saved again, then the edits. */
+    private fun persistFaces(ctrl: EditorController) {
+        val id = projectId ?: return
+        val app = getApplication<Application>()
+        val analysis = ctrl.session.analysis
+        saver.execute {
+            runCatching { ProjectStore.replaceAnalysis(app, id, analysis) }
+                .onFailure { android.util.Log.w("ONIT", "project analysis not saved", it) }
+        }
+        saveProject(ctrl)
+    }
+
     private fun startAutosave(ctrl: EditorController) {
+        ctrl.onFacesFound = { persistFaces(ctrl) }
         autosave?.cancel()
         autosave = viewModelScope.launch {
             snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, subtitleStyle, sessionExport, ctrl.background, ctrl.masksReady, ctrl.session.settings, ctrl.stabilizeLevel) }
@@ -826,9 +839,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val info = currentInfo() ?: return
         if (blockedByBatch()) return
         val tpl = templateSettings
-        // A template with no face blur: the editor's frames without face detection.
-        if (tpl?.blurOff == true) {
-            startTool(null, tpl)
+        // A template with no face blur: the editor's frames without face detection; with the editor
+        // off ("save straight") the video is saved from there, not opened for editing.
+        val route = com.elad.faceblur.template.StartRoute.of(tpl?.blurOff == true, save = !review)
+        if (route == com.elad.faceblur.template.StartRoute.Route.EDIT_NO_BLUR || route == com.elad.faceblur.template.StartRoute.Route.SAVE_NO_BLUR) {
+            startTool(null, tpl, save = route == com.elad.faceblur.template.StartRoute.Route.SAVE_NO_BLUR)
             return
         }
         closeSession()
@@ -878,10 +893,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * The editor on the video's frames, without face detection, open on [tool] (none: no panel).
-     * With a [template] (from the Ready screen) its processing is applied; with review off, and
+     * With a [template] (from the Ready screen) its processing is applied; with [save], and
      * no tool, the video is then saved without opening the editor.
      */
-    fun startTool(tool: QuickTool?, template: TemplateSettings? = null) {
+    fun startTool(tool: QuickTool?, template: TemplateSettings? = null, save: Boolean = false) {
         val info = currentInfo() ?: return
         if (blockedByBatch()) return
         closeSession()
@@ -901,7 +916,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 editor = ctrl
                 beginProject(ctrl)
                 val processing = template?.takeIf { it.hasProcessing }
-                if (template != null && tool == null && !review) {
+                if (template != null && tool == null && save) {
                     if (processing != null) {
                         state = UiState.Working(info, 4, 0f, subsOnly = true, auto = true)
                         TemplateRunner.applyProcessing(ctrl, processing)
@@ -921,6 +936,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         state = UiState.Editing(ctrl.session.info, ctrl)
     }
 
+    /** The export sheet's "sound only (MP3)": the editor's export saves the sound, with its edits, as an MP3. */
+    var exportAudioOnly by mutableStateOf(false)
+
     fun export() {
         val ctrl = editor ?: return
         if (blockedByBatch()) return
@@ -928,9 +946,51 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ctrl.cancelTracking()
         ctrl.cancelSubtitles()
         val info = ctrl.session.info
+        if (exportAudioOnly) {
+            exportMp3(ctrl)
+            return
+        }
         state = UiState.Working(info, 2, 0f)
         job = viewModelScope.launch {
             guard(info, onCancel = { UiState.Editing(info, ctrl) }) { render(ctrl) }
+        }
+    }
+
+    /**
+     * The sound as an MP3 with the same edits as the video export (voice change, cuts, bleeps,
+     * sound effects, cleanup). If they can't be applied the export fails: the original sound is
+     * never saved instead (the voice change is for anonymity).
+     */
+    private fun exportMp3(ctrl: EditorController) {
+        val info = ctrl.session.info
+        state = UiState.Working(info, 3, 0f)
+        job = viewModelScope.launch {
+            guard(info, onCancel = { UiState.Editing(info, ctrl) }) {
+                val audio = ctrl.audio
+                val route = com.elad.faceblur.audio.Mp3Plan.route(audio, ctrl.model.bleeps.size, ctrl.model.sfx.size, !ctrl.model.cutMap().isEmpty)
+                val base = info.name.substringBeforeLast('.') + "_" + java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                fun progress(from: Float, span: Float) = { p: Float ->
+                    viewModelScope.launch(Dispatchers.Main) { if (state is UiState.Working) state = UiState.Working(info, 3, from + span * p) }
+                    Unit
+                }
+                val r = when (route) {
+                    com.elad.faceblur.audio.Mp3Plan.Route.NO_SOUND -> error(t("אין סאונד לשמירה: הסאונד מושתק"))
+                    com.elad.faceblur.audio.Mp3Plan.Route.RAW -> withContext(Dispatchers.IO) {
+                        com.elad.faceblur.audio.Mp3Export.convert(getApplication(), info.uri, base, isActive = { isActive }, onProgress = progress(0f, 1f))
+                    }
+                    com.elad.faceblur.audio.Mp3Plan.Route.EDITED -> {
+                        val edited = FaceBlurProcessor(getApplication()).renderAudio(info, ctrl.model, audio, progress(0f, 0.5f))
+                        try {
+                            withContext(Dispatchers.IO) {
+                                com.elad.faceblur.audio.Mp3Export.convert(getApplication(), Uri.fromFile(edited), base, isActive = { isActive }, onProgress = progress(0.5f, 0.5f))
+                            }
+                        } finally {
+                            edited.delete()
+                        }
+                    }
+                }
+                state = UiState.AudioDone(info, r, canEdit = true)
+            }
         }
     }
 
@@ -984,6 +1044,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun closeSession() {
+        exportAudioOnly = false
         autosave?.cancel()
         autosave = null
         editor?.let { saveProject(it) }

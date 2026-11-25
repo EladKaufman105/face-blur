@@ -28,10 +28,13 @@ class EditTrack(
     var end: Int,
     var scale: Float = 1f,
     val keys: TreeMap<Int, FloatArray> = TreeMap(),
+    /** Turned off by the user: the face stays in the list but is not blurred (not shown, not exported). */
+    var off: Boolean = false,
 ) {
     fun copy() = EditTrack(
         id, manual, TreeMap(path), start, end, scale,
         TreeMap<Int, FloatArray>().also { m -> keys.forEach { (k, v) -> m[k] = v.copyOf() } },
+        off,
     )
 }
 
@@ -297,7 +300,7 @@ class EditModel(
 
     /** Final box of [t] at frame [i], or null if the blur isn't shown then. */
     fun boxAt(t: EditTrack, i: Int): Box? {
-        if (i < t.start || i > t.end) return null
+        if (t.off || i < t.start || i > t.end) return null
         val b = rawBox(t, i) ?: return null
         return Box(b.cx, b.cy, b.w * t.scale, b.h * t.scale)
     }
@@ -701,6 +704,22 @@ class EditModel(
     }
 
     /**
+     * Replaces all subtitles with ones read from a file (an SRT), as one undo step. Bleeps go
+     * with the old subtitles (they were set on their words, which the file doesn't time), as in the
+     * web app; undo brings both back.
+     */
+    fun importCues(list: List<NewCue>) {
+        snapshot()
+        cues.clear()
+        bleeps.clear()
+        for (n in list.sortedBy { it.startMs }) {
+            val id = nextCueId++
+            cues += Cue(id, n.startMs, n.endMs, n.he, n.en, id, n.src, n.words)
+        }
+        changed()
+    }
+
+    /**
      * Re-splits every sentence into subtitles of up to [n] words of the spoken language (0: whole
      * sentences), keeping the other language alongside. One undo step.
      */
@@ -910,7 +929,7 @@ class EditModel(
         val t = track(id) ?: return null
         if (frame <= t.start || frame > t.end) return null
         snapshot()
-        val b = t.copy().let { EditTrack(nextId++, it.manual, it.path, frame, it.end, it.scale, it.keys) }
+        val b = t.copy().let { EditTrack(nextId++, it.manual, it.path, frame, it.end, it.scale, it.keys, it.off) }
         t.end = frame - 1
         tracks.add(tracks.indexOf(t) + 1, b)
         changed()
@@ -928,6 +947,25 @@ class EditModel(
         val t = track(id) ?: return
         if (undoable) snapshot()
         t.end = frame.coerceIn(t.start, frameCount - 1)
+        changed()
+    }
+
+    /** How many blurs are on (not turned off). */
+    val blursOn get() = tracks.count { !it.off }
+
+    /** Turns one blur off or back on (one undo step). */
+    fun toggleOff(id: Int) {
+        val t = track(id) ?: return
+        snapshot()
+        t.off = !t.off
+        changed()
+    }
+
+    /** Turns every blur on ([off] false) or off (true), as one undo step; nothing changes if they already are. */
+    fun setAllOff(off: Boolean) {
+        if (tracks.all { it.off == off }) return
+        snapshot()
+        for (t in tracks) t.off = off
         changed()
     }
 
