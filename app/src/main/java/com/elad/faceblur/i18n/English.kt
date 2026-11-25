@@ -781,6 +781,7 @@ internal val English: Map<String, String> = mapOf(
     "הרקע של האנשים עדיין לא מוכן: קודם מזהים את האנשים בלשונית הרקע, או מכבים את הרקע." to "The people background isn't ready: find the people in the Background tab first, or turn the background off.",
     "אי אפשר לזהות פנים בזמן שהאנשים מזוהים. חכה שהזיהוי יסתיים או בטל אותו." to "Faces can't be found while the people are being found. Wait for it to finish or cancel it.",
     "הרקע של האנשים עדיין לא מוכן, ולכן הסרטון לא נשמר. זהה את האנשים או כבה את הרקע ונסה שוב." to "The people background isn't ready, so the video was not saved. Find the people or turn the background off, then try again.",
+    "אי אפשר לזהות אנשים בזמן שהפנים מזוהות. חכה שהזיהוי יסתיים או בטל אותו." to "People can't be found while the faces are being found. Wait for it to finish or cancel it.",
     "זיהוי הפנים נכשל" to "Finding the faces failed",
     "הפנים לא יטושטשו בסרטונים האלה: בתבנית הזו אין טשטוש פנים." to "Faces will not be blurred in these videos: this template has no face blur.",
     "מזהה פנים… %d%%" to "Finding faces… %d%%",

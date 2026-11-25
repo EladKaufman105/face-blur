@@ -307,10 +307,12 @@ fun MainScreen(vm: MainViewModel) {
                                 body = s.message,
                                 // An export that failed: the edits are all there; go back, or try again.
                                 primary = when {
+                                    s.canEdit && !s.retry -> t("חזרה לעריכה") to vm::edit
                                     s.canEdit -> t("נסה שוב") to vm::export
                                     else -> t("בחר סרטון אחר") to { vm.reset(); pick() }
                                 },
                                 secondary = when {
+                                    s.canEdit && !s.retry -> null
                                     s.canEdit -> t("חזרה לעריכה") to vm::edit
                                     s.info != null -> t("חזרה להגדרות") to vm::backToSettings
                                     else -> null

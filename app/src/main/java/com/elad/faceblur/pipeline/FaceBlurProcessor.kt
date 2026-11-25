@@ -325,6 +325,8 @@ class FaceBlurProcessor(private val context: Context) {
         onPreview: ((android.graphics.Bitmap) -> Unit)? = null,
         onProgress: (Float) -> Unit,
     ): Outcome.Saved {
+        // No caller may save without a people background that is set: it would silently be left out.
+        if (background.active && background.key == BgKey.PERSON && masks == null) throw MissingMasksException()
         val t1 = SystemClock.elapsedRealtime()
         val timeline = FaceTimeline.build(
             model.renderTracks(),

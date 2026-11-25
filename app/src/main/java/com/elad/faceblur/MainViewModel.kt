@@ -94,7 +94,7 @@ sealed interface UiState {
      * [message]: what happened, in words to act on; [details]: the technical part, for a report;
      * [canEdit]: the editor is still there to go back to (an export that failed).
      */
-    data class Failed(val info: VideoInfo?, val message: String, val details: String? = null, val canEdit: Boolean = false) : UiState
+    data class Failed(val info: VideoInfo?, val message: String, val details: String? = null, val canEdit: Boolean = false, val retry: Boolean = true) : UiState
     /** A video's sound saved as an MP3. */
     data class AudioDone(val info: VideoInfo, val result: com.elad.faceblur.audio.Mp3Export.Result, val canEdit: Boolean = false) : UiState
     /** Several videos picked for a batch: choose the template and check the time and space before starting. */
@@ -959,7 +959,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         // The people background has no masks (yet): saving would leave it out without a word.
-        if (com.elad.faceblur.edit.MaskPolicy.exportBlocked(ctrl.background, ctrl.peopleMasksOk, false)) {
+        if (com.elad.faceblur.edit.MaskPolicy.exportBlocked(ctrl.background, ctrl.peopleMasksOk)) {
             ctrl.notice = t("הרקע של האנשים עדיין לא מוכן: קודם מזהים את האנשים בלשונית הרקע, או מכבים את הרקע.")
             return
         }
@@ -1010,7 +1010,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun render(ctrl: EditorController, auto: Boolean = false) {
         val s = ctrl.session
         // Never save without a people background that is set up (also for templates and batches).
-        if (com.elad.faceblur.edit.MaskPolicy.exportBlocked(ctrl.background, ctrl.peopleMasksOk, false)) throw com.elad.faceblur.pipeline.MissingMasksException()
+        if (com.elad.faceblur.edit.MaskPolicy.exportBlocked(ctrl.background, ctrl.peopleMasksOk)) throw com.elad.faceblur.pipeline.MissingMasksException()
         // What the screens after it need, read before the work starts.
         val subsOnly = s.subtitlesOnly
         if (!auto) livePreview = null
@@ -1034,7 +1034,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             throw e
         } catch (e: Exception) {
             android.util.Log.w("FaceBlur", "processing failed", e)
-            state = UiState.Failed(info, ProcessingErrors.friendly(e), ProcessingErrors.technical(e), canEdit = editor != null)
+            state = UiState.Failed(info, ProcessingErrors.friendly(e), ProcessingErrors.technical(e), canEdit = editor != null, retry = e !is com.elad.faceblur.pipeline.MissingMasksException)
         }
     }
 

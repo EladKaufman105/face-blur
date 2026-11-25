@@ -15,6 +15,5 @@ object MaskPolicy {
     fun rerunPeople(bg: Background, masksKept: Boolean): Boolean = !masksKept && needsMasks(bg)
 
     /** An export would silently leave out the background (privacy): refuse it. */
-    fun exportBlocked(bg: Background, masksReady: Boolean, segmenting: Boolean = false): Boolean =
-        needsMasks(bg) && (!masksReady || segmenting)
+    fun exportBlocked(bg: Background, masksReady: Boolean): Boolean = needsMasks(bg) && !masksReady
 }

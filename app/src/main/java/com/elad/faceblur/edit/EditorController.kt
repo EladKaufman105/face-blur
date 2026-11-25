@@ -1268,7 +1268,13 @@ class EditorController(
     fun findPeople() {
         val ctx = appContext ?: return
         if (segmentJob?.isActive == true) return
+        if (findFacesProgress != null) {
+            notice = t("אי אפשר לזהות אנשים בזמן שהפנים מזוהות. חכה שהזיהוי יסתיים או בטל אותו.")
+            return
+        }
         pauser()
+        // The old index must not outlive the masks it described.
+        session.projectDir?.let { d -> java.io.File(d, "masks.bin.idx").delete() }
         // Set before the launch: awaitIdle() must see the work as started.
         segmentProgress = 0f
         // ATOMIC: the body (and its finally) runs even if cancelled before it starts, so the progress is always cleared.
