@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { storageKey } from '../lib/channel'
+import { BETA, storageKey } from '../lib/channel'
 import { t, duration, lang } from '../i18n'
 import { BlurRenderer, ellipseFor, type Ellipse } from '../lib/renderer'
 import { frameAt, loadLook, saveLook, trackBox, type Analysis, type BlurMode, type Look, type Track } from '../lib/types'
 import type { ExportJob } from './Exporting'
-import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIcon, FaceIcon, PictureIcon, MarkIcon, TemplateIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
+import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIcon, FaceIcon, PictureIcon, MarkIcon, SettingsIcon, TemplateIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
 import { FRAME, Timeline } from './Timeline'
 import { BlurBar } from './BlurBar'
 import { CutTab, wordSpan } from './CutTab'
@@ -14,7 +14,7 @@ import { applyFollow, boxNear, newTrack, nextTrackId, retime, setEnd, setStart, 
 import type { FollowMessage, FollowRequest } from '../workers/follow.worker'
 import { SfxScheduler, type SfxClip } from '../lib/sfx'
 import { drawWatermark, normalizeWatermark, watermarkOn, type Watermark } from '../lib/watermark'
-import { CleanupCard, SoundTab, SubtitlesTab, WatermarkTab, loadWatermark } from './EditorTabs'
+import { CleanupCard, SoundTab, SubtitlesTab, WatermarkTab, loadWatermark, type LostBleeps } from './EditorTabs'
 import { ExportSheet } from './ExportSheet'
 import { BackgroundCard, FrameCard, StabilizeCard, type PictureBusy } from './PictureTab'
 import { maskAt, maskIndex, NO_BACKGROUND, type Background, type PeopleMasks } from '../lib/background'
@@ -83,7 +83,8 @@ function maskKey(m: PeopleMasks, k: number): string {
 /** Width of a new blur when there's no face under the tap, in frame widths (as in the app). */
 const NEW_BLUR = 0.12
 
-export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClose, initialTab = 'faces', hidden = false, project, template: tpl0 }: Props) {
+export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClose, initialTab: initTab, hidden = false, project, template: tpl0 }: Props) {
+  const initialTab: EditorTab = initTab ?? 'faces'
   // A project opened again starts as it was left.
   const saved = project?.state ?? null
   // A template applies to a new video only (a project opened again is as it was left).
@@ -144,6 +145,17 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [time, setTime] = useState(0)
   const [dur, setDur] = useState(times.length ? times[times.length - 1] : 0)
   const [tab, setTab] = useState<EditorTab>(initialTab)
+  // On a phone the timeline and a group's panel share one place (as in the app): the timeline shows, and a group opens its panel in its place (a tool picked from the home screen opens its panel).
+  const [panelOpen, setPanelOpen] = useState(initTab !== undefined)
+  /** Speech, speakers or translation is running in the subtitles tab: it stays mounted (hidden) when another group is open, so the job goes on. */
+  const [subsBusy, setSubsBusy] = useState(false)
+  /** The subtitles tab was opened once: from then on it stays mounted (hidden when another group is open), so a job, its notice or its error is never lost. */
+  const subsSeen = useRef(initTab === 'subs')
+  /** Bleeped words the new subtitles had no word for: an alert in every group and a line in the export sheet, until dismissed or undone. */
+  const [lost, setLost] = useState<LostBleeps | null>(null)
+  /** An error came in the subtitles tab while another group was open: its group says so. */
+  const [subsAlert, setSubsAlert] = useState(false)
+  const subsTime = useRef(0)
   // A phone shows one sub-tool of the open group at a time (as the app does); a wide screen shows them all.
   const narrow = useNarrow()
   const [subTab, setSubTab] = useState<Record<string, string>>({})
@@ -980,7 +992,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         case 'ArrowRight': e.preventDefault(); stepFrame(1); break
         case '-': case '_': timelineControls.zoom?.(1 / 1.5); break
         case '+': case '=': timelineControls.zoom?.(1.5); break
-        case '1': case '2': case '3': case '4': case '5': case '6': setTab(GROUPS[Number(k) - 1][0]); break
+        case '1': case '2': case '3': case '4': case '5': case '6': pickGroup(GROUPS[Number(k) - 1][0], true); break
         case 'Delete': case 'Backspace':
           if (selectedSfx !== null) { setSfxH((list) => list.filter((c) => c.id !== selectedSfx)); setSelectedSfx(null) }
           else if (selected !== null && !following) deleteSel()
@@ -1008,6 +1020,12 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
 
   const subList = subsOf(tab, { hasCues: cues.length > 0, hasWords: words.length > 0, hasFaces: analyzed || tracks.length > 0 })
   const part = (subTab[tab] && subList.some(([id]) => id === subTab[tab]) ? subTab[tab] : subList[0]?.[0]) ?? ''
+  if (tab === 'subs') subsSeen.current = true
+  useEffect(() => { if (tab === 'subs' && subsAlert) setSubsAlert(false) }, [tab, subsAlert])
+  const lostBleeps = lost && lost.words === words && lost.bleeped === bleeped ? lost.n : 0
+  // The subtitles tab's own tool (the one the Subtitles group has open), whichever group is open now.
+  const subsList = subsOf('subs', { hasCues: cues.length > 0, hasWords: words.length > 0, hasFaces: false })
+  const subsPart = (subTab.subs && subsList.some(([id]) => id === subTab.subs) ? subTab.subs : subsList[0][0]) as 'make' | 'list' | 'bleep' | 'style'
   // One panel body serves every group and tool: each opens at its top.
   useLayoutEffect(() => { bodyRef.current?.scrollTo(0, 0) }, [tab, part, styleTab])
   /** Whether a sub-tool's controls show: all of them on a wide screen, the open one on a phone. */
@@ -1018,6 +1036,22 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     : g === 'subs' ? cues.length > 0
     : g === 'sound' ? voice !== 'none' || cleanupOn(clean) || loudOn || sfx.length > 0 || bleeped.size > 0
     : g === 'mark' ? watermarkOn(mark) : false
+  /** A group's button: on a phone it opens the panel in the timeline's place, and a second tap closes it (as the app's group bar). */
+  function pickGroup(g: EditorTab, keyboard = false) {
+    if (narrow && panelOpen && tab === g && !keyboard) { setPanelOpen(false); return }
+    // (A blur being followed keeps its bar, with the progress and Cancel.)
+    // (Focus inside the subtitles tab, which is about to be hidden, goes to the group's button.)
+    if ((document.activeElement as HTMLElement | null)?.closest('.subs-keep') && g !== 'subs') (document.querySelector(`.tabs [data-g=${g}]`) as HTMLElement | null)?.focus()
+    if (narrow) { video.current?.pause(); if (!following) setSelected(null); setSelectedSfx(null); setAdding(false) }
+    setTab(g)
+    setPanelOpen(true)
+  }
+  /** The panel's close button: the timeline is back, and the focus goes to the group's button. */
+  function closePanel() {
+    setPanelOpen(false)
+    // (The group's button is on screen all along: focused at once, not after a render.)
+    ;(document.querySelector(`.tabs [data-g=${tab}]`) as HTMLElement | null)?.focus()
+  }
   const groupName = GROUPS.find((g) => g[0] === tab)![1]
   const groupColor = GROUPS.find((g) => g[0] === tab)![3]
   const exportBtn = (
@@ -1032,7 +1066,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         if (!srcInfo) probe()
       }}
     >
-      <SaveIcon /> {t('ייצוא')}
+      <SaveIcon /> <span class="exp-label">{t('ייצוא')}</span>
     </button>
   )
   const saveTplBtn = <button class="btn ghost save-template-btn" onClick={() => setSaveTpl(true)}>{t('שמור כתבנית')}</button>
@@ -1144,7 +1178,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             busy={cutBusy}
             onSilences={cutSilences}
             onFillers={cutFillers}
-            onMakeSubtitles={() => { setTab('subs'); setSubTab({ ...subTab, subs: 'make' }) }}
+            onMakeSubtitles={() => { setTab('subs'); setPanelOpen(true); setSubTab({ ...subTab, subs: 'make' }) }}
             onPause={() => video.current?.pause()}
           />
         )}
@@ -1156,9 +1190,14 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           </>
         )}
         {tab === 'mark' && <WatermarkTab mark={mark} onChange={setMark} />}
-        {tab === 'subs' && (
+        {(tab === 'subs' || subsSeen.current) && (
+          <div class="subs-keep" hidden={tab !== 'subs'}>
           <SubtitlesTab
-            part={narrow ? (part as 'make' | 'list' | 'bleep' | 'style') : undefined}
+            onBusy={setSubsBusy}
+            onLost={setLost}
+            onAttention={() => { setSubsAlert(true); setSubTab((s) => ({ ...s, subs: 'make' })) }}
+            hidden={tab !== 'subs'}
+            part={narrow ? subsPart : undefined}
             stylePart={styleTab}
             onPart={(p) => setSubTab((s) => ({ ...s, subs: p }))}
             file={file}
@@ -1172,9 +1211,10 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             onTone={setTone}
             style={subStyle}
             onStyle={setSubStyle}
-            time={time}
+            time={tab === 'subs' ? (subsTime.current = time) : subsTime.current}
             onSeek={(at) => { const v = video.current; if (v) v.currentTime = at }}
           />
+          </div>
         )}
 
     </>
@@ -1204,14 +1244,17 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         }}
       />
     )}
-    <main class={'editor' + (narrow && !detecting && !hidden ? ' narrow' : '')} style={detecting || hidden ? 'display:none' : ''}>
+    <main class={'editor' + (narrow && !detecting && !hidden ? ' narrow' : '') + (narrow && panelOpen ? ' panel-open' : '')} style={detecting || hidden ? 'display:none' : ''}>
       <div class="player">
-        <div class="row">
-          <button class="btn ghost" onClick={onClose} style="padding-inline:6px"><span class="flip"><BackIcon /></span> {t('סרטון חדש')}</button>
+        <div class={'row top-row' + (BETA ? ' beta' : '')}>
+          {narrow
+            ? <button class="icon-btn back-btn" onClick={onClose} aria-label={t('סרטון חדש')} title={t('סרטון חדש')}><span class="flip"><BackIcon /></span></button>
+            : <button class="btn ghost" onClick={onClose} style="padding-inline:6px"><span class="flip"><BackIcon /></span> {t('סרטון חדש')}</button>}
+          {narrow && BETA && <span class="beta-mini">BETA</span>}
           <div class="grow" />
           <span class="small muted detect-info">{detectInfo}</span>
           {!narrow && editTools}
-          {narrow && <div class="export-bar">{saveTplIcon}{exportBtn}</div>}
+          {narrow && <div class="export-bar">{editTools}{saveTplIcon}<button class="icon-btn settings-open" onClick={() => window.dispatchEvent(new Event('onit:settings'))} aria-label={t('הגדרות')} title={t('הגדרות')}><SettingsIcon size={22} /></button>{exportBtn}</div>}
         </div>
         <div class={'screen' + (adding ? ' adding' : '') + (selected !== null ? ' sel' : '')} onPointerDown={onScreenDown} onPointerMove={onScreenMove} onPointerUp={onScreenUp} onPointerCancel={() => { press.current = null }}>
           <div class="view" style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc(var(--screen-h) * ${(W / H).toFixed(4)}))` }}>
@@ -1237,7 +1280,6 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           </div>
           <span class="time">{duration(time)} / {duration(dur)}</span>
           <div class="grow" />
-          {narrow && editTools}
           {selectedClip && (
             <div class="sel-sfx">
               <strong>{sfxName(selectedClip.sound)}</strong>
@@ -1313,23 +1355,23 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         )}
         <div class="tabs" role="tablist">
           {GROUPS.map(([id, label, Icon, color], k) => (
-            <button role="tab" data-g={id} class={tab === id ? 'on' : ''} aria-selected={tab === id} style={{ '--g': color } as any} title={`${t(label)} (${k + 1})`} onClick={() => setTab(id)}>
-              <span class="pill-ic"><Icon size={22} />{groupOn(id) && <span class="dot" aria-hidden="true" />}</span>
+            <button role="tab" data-g={id} class={tab === id && (!narrow || panelOpen) ? 'on' : ''} aria-selected={tab === id && (!narrow || panelOpen)} style={{ '--g': color } as any} title={`${t(label)} (${k + 1})`} onClick={() => pickGroup(id)}>
+              <span class="pill-ic"><Icon size={22} />{(groupOn(id) || (id === 'subs' && (subsBusy || subsAlert))) && <span class={'dot' + (id === 'subs' && subsAlert ? ' alert' : id === 'subs' && subsBusy ? ' busy' : '')} aria-hidden="true" />}</span>
               <span>{t(label)}{id === 'sound' && sfx.length > 0 ? <span class="count"> · {sfx.length}</span> : id === 'edit' && cuts.length > 0 ? <span class="count"> · {cuts.length}</span> : null}</span>
             </button>
           ))}
         </div>
-        {narrow ? (
-          <div class={'panel' + (tab === 'subs' && part === 'style' ? ' has-inner' : '')} data-g={tab} style={{ '--g': groupColor } as any}>
-            <div class="panel-head">
-              {subList.length > 0
+        {/* One tree on every screen size (a phone turned past 600 px keeps a running job): the phone's panel, or on a wide screen a wrapper that is not there to the layout. */}
+          <div hidden={narrow && !panelOpen} class={narrow ? 'panel' + (tab === 'subs' && part === 'style' ? ' has-inner' : '') : 'panel-flat'} data-g={tab} style={{ '--g': groupColor } as any}>
+            <div class="panel-head" hidden={!narrow}>
+              {!narrow ? null : subList.length > 0
                 ? <ChipTabs items={subList} value={part} onPick={(id) => setSubTab({ ...subTab, [tab]: id })} label={t(groupName)} />
                 : <h2 class="panel-title">{t(groupName)}</h2>}
+              {narrow && <button class="icon-btn panel-close" onClick={closePanel} aria-label={t('סגור')} title={t('סגור')}><CloseIcon size={22} /></button>}
             </div>
-            {tab === 'subs' && part === 'style' && <ChipTabs items={STYLE_PARTS} value={styleTab} onPick={setStyleTab} cls="inner" label={t('עיצוב כתוביות')} />}
-            <div class="panel-body" ref={bodyRef} id={PANEL_ID} role="tabpanel" aria-labelledby={subList.length > 0 ? `tab-${tab === 'subs' && part === 'style' ? 'inner' : 'tool'}-${tab === 'subs' && part === 'style' ? styleTab : part}` : undefined} aria-label={subList.length > 0 ? undefined : t(groupName)}>{panelBody}</div>
+            {narrow && tab === 'subs' && part === 'style' && <ChipTabs items={STYLE_PARTS} value={styleTab} onPick={setStyleTab} cls="inner" label={t('עיצוב כתוביות')} />}
+            <div class="panel-body" ref={bodyRef} id={PANEL_ID} role={narrow ? 'tabpanel' : undefined} aria-labelledby={narrow && subList.length > 0 ? `tab-${tab === 'subs' && part === 'style' ? 'inner' : 'tool'}-${tab === 'subs' && part === 'style' ? styleTab : part}` : undefined} aria-label={narrow && subList.length === 0 ? t(groupName) : undefined}>{panelBody}</div>
           </div>
-        ) : panelBody}
         <details class="keys">
           <summary>{t('קיצורי מקלדת')}</summary>
           <dl>
@@ -1343,6 +1385,12 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             <dt><kbd>Esc</kbd></dt><dd>{t('ביטול הבחירה')}</dd>
           </dl>
         </details>
+        {lostBleeps > 0 && (
+          <div class="lost-bleeps card confirm" role="alert">
+            <p class="small" style="margin:0">{lostBleeps === 1 ? t('מילה מצופצפת אחת לא נמצאה בכתוביות החדשות, ולכן היא לא מצופצפת. בטל את הפעולה או צפצף אותה שוב.') : t('%d מילים מצופצפות לא נמצאו בכתוביות החדשות, ולכן הן לא מצופצפות. בטל את הפעולה או צפצף אותן שוב.', lostBleeps)}</p>
+            <div class="row"><button class="btn ghost small-btn" onClick={() => setLost(null)}>{t('הבנתי')}</button></div>
+          </div>
+        )}
         {soundFail && (
           <div class="sound-error card" role="alert" data-hard={soundFail.hard ? '1' : '0'}>
             <p class="small" style="margin:0">{soundFail.hard ? t('שינוי הקול נכשל, ולכן אי אפשר לייצא (כדי שהקול המקורי לא יישמר בטעות)') : t('עיבוד הסאונד נכשל. הסרטון ייוצא עם הסאונד המקורי')}</p>
@@ -1379,6 +1427,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         fps={srcInfo?.fps ?? (analyzed ? an.fps : null)}
         sourceHevc={srcInfo?.codec === 'hevc'}
         hasCues={cues.length > 0}
+        lostBleeps={lostBleeps}
         options={exportOpts}
         onChange={setExportOpts}
         onClose={() => setExportOpen(false)}

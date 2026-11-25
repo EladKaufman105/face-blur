@@ -178,7 +178,7 @@ export function App() {
               return
             }
             if (!save) {
-              setScreen({ name: 'editor', file: screen.file, analysis, thumbs, template, info: t('זמן עיבוד: %s', duration(ms / 1000)) + ' · ' + t('הזיהוי רץ על %s', backend === 'webgpu' ? t('המעבד הגרפי') : t('המעבד')) })
+              setScreen({ name: 'editor', file: screen.file, analysis, thumbs, template, tab: analysis.tracks.length > 0 && !template ? 'faces' : undefined, info: t('זמן עיבוד: %s', duration(ms / 1000)) + ' · ' + t('הזיהוי רץ על %s', backend === 'webgpu' ? t('המעבד הגרפי') : t('המעבד')) })
               return
             }
             // Saved straight away, as found: every face blurred, the watermark last used, and for
@@ -234,7 +234,14 @@ export function App() {
 
 function Header() {
   const [open, setOpen] = useState(false)
+  // The phone editor has no header of its own (its top bar has a settings button that asks for this sheet).
+  useEffect(() => {
+    const on = () => setOpen(true)
+    addEventListener('onit:settings', on)
+    return () => removeEventListener('onit:settings', on)
+  }, [])
   return (
+    <>
     <header class="top">
       <div class="brand">
         {BETA ? <BetaLogo /> : (
@@ -250,8 +257,9 @@ function Header() {
         </div>
       </div>
       <button class="icon-btn settings-btn" onClick={() => setOpen(true)} aria-label={t('הגדרות')} title={t('הגדרות')}><SettingsIcon /></button>
-      {open && <Settings onClose={() => setOpen(false)} />}
     </header>
+    {open && <Settings onClose={() => setOpen(false)} />}
+    </>
   )
 }
 

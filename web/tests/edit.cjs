@@ -19,6 +19,9 @@ const PHONE = { viewport: { width: 393, height: 852 }, deviceScaleFactor: 2, isM
   const seek = async (t) => { await p.evaluate((t) => { const v = document.querySelector('video'); v.pause(); v.currentTime = t }, t); await p.waitForTimeout(400) }
   const toast = () => p.evaluate(() => document.querySelector('.toast')?.textContent ?? '')
   const tap = (sel) => (device === 'phone' ? p.tap(sel) : p.click(sel))
+  // On a phone a group's button opens its panel in the timeline's place, a second tap on it closes it, and the panel's close button brings the timeline back.
+  const group = async (g) => { const s = `.tabs button[data-g=${g}]`; if (device === 'phone' && (await p.getAttribute(s, 'aria-selected')) === 'true') return; await tap(s) }
+  const timeline = async () => { if (device === 'phone' && (await p.$('.panel:not([hidden])'))) await tap('.panel-close') }
   try {
     await p.goto(url)
     await p.waitForTimeout(1000)
@@ -30,7 +33,7 @@ const PHONE = { viewport: { width: 393, height: 852 }, deviceScaleFactor: 2, isM
     await p.waitForTimeout(1500)
 
     // A blur by hand, on the man walking (at 5 s), followed both ways.
-    await tap('.tabs button[data-g=faces]')
+    await group('faces')
     await seek(5)
     if (device === 'phone') await tap('.panel-head [data-sub=manual]')
     await tap('.add-blur')
@@ -64,6 +67,7 @@ const PHONE = { viewport: { width: 393, height: 852 }, deviceScaleFactor: 2, isM
     if (undone !== 2 || redone !== 1) throw new Error('undo / redo of blurs')
 
     // Select it on the timeline, end it 1 s after its start, a bigger size.
+    await timeline()
     await tap('.tl-face')
     await seek(a + 1)
     await tap('.blur-end')
@@ -77,7 +81,7 @@ const PHONE = { viewport: { width: 393, height: 852 }, deviceScaleFactor: 2, isM
 
     // A stretch cut by hand (2 s to 4 s), then the pauses.
     await p.keyboard.press('Escape')
-    await tap('.tabs button[data-g=edit]')
+    await group('edit')
     await seek(2)
     await tap('.cut-start')
     await seek(4)
