@@ -55,7 +55,6 @@ object SubtitleEngine {
     /**
      * @param lang language of the speech for the model ("he", "ar", "fa", "en" or "auto"). A language
      *   that is not auto is forced: no detection.
-     * @param translateTo what the lines are translated into (null: English, or Hebrew for English speech).
      * @param translate also fill the other language (else lines have only the spoken one).
      * @param speed expected seconds of work per second of audio: recognition reports progress
      *   only per 30 s window, so in between, progress follows the clock.
@@ -67,7 +66,6 @@ object SubtitleEngine {
         modelPath: String,
         lang: String,
         translate: Boolean,
-        translateTo: String? = null,
         speed: Float = 0.6f,
         onSpeed: (Float) -> Unit = {},
         onProgress: (Stage, Float) -> Unit,
@@ -136,7 +134,7 @@ object SubtitleEngine {
         if (!translate || lines.isEmpty()) return@withContext SubResult(lines, detected, false)
         val out = lines.toMutableList()
         val ok = try {
-            translateLines(lines.map { it.he to it.en }, lines.map { it.src }, translateTo, onProgress) { i, he, en -> out[i] = SubLine(lines[i].startMs, lines[i].endMs, he, en, lines[i].src, lines[i].words) }
+            translateLines(lines.map { it.he to it.en }, lines.map { it.src }, null, onProgress) { i, he, en -> out[i] = SubLine(lines[i].startMs, lines[i].endMs, he, en, lines[i].src, lines[i].words) }
             true
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -206,6 +204,8 @@ object SubtitleEngine {
             script == "en" && otherLanguage -> ""
             // The model knows which of the two it heard (a loan word with پ or گ doesn't make Arabic Persian).
             (script == "ar" || script == "fa") && (detected == "ar" || detected == "fa") -> detected
+            // Arabic letters in another language (Urdu, Pashto, Kurdish, Uyghur...): neither Arabic nor Persian, don't translate as one.
+            (script == "ar" || script == "fa") && detected !in listOf("", "auto", "he", "en") -> ""
             else -> script
         }
     }

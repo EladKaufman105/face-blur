@@ -410,7 +410,7 @@ class FaceBlurProcessor(private val context: Context) {
             cutMap.mapMs(c.startMs, c.endMs)?.let { (a, b) -> c.copy().also { it.startMs = a; it.endMs = b } }
         }
         val srts = if (export.saveSrt && srtCues.isNotEmpty()) withContext(Dispatchers.IO) {
-            listOfNotNull(Srt.save(context, base, srtCues, english = false), Srt.save(context, base, srtCues, english = true)).size
+            Srt.saveAll(context, base, srtCues)
         } else 0
         val renderMs = SystemClock.elapsedRealtime() - t1
         return Outcome.Saved(saved, timeline.trackCount, keptHdr, analysis.frameCount, analysisMs, renderMs, srts)

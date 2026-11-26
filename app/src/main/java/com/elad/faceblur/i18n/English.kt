@@ -240,6 +240,7 @@ internal val English: Map<String, String> = mapOf(
     "מילים" to "Words",
     "עברית, אנגלית, ערבית ופרסית, במכשיר" to "Hebrew, English, Arabic and Persian, on the device",
     "ערבית" to "Arabic",
+    "%d לתרגום מחדש (מוסתרות בגלל מילים מוסתרות)" to "%d to translate again (hidden because of hidden words)",
     "התרגום מוסתר בסרטון כי יש בכתובית מילים מוסתרות והתרגום לא נוצר מהטקסט המוסתר. תרגם שוב כדי להציג אותו." to "The translation is hidden in the video because this subtitle has hidden words and the translation was not made from the hidden text. Translate again to show it.",
     "פרסית" to "Persian",
     "תרגום ל…" to "Translate to…",

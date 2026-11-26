@@ -171,4 +171,63 @@ class TranslationMaskTest {
         assertNull(old.cues[0].trm)
         assertEquals("Hello", old.cues[0].en)
     }
+
+    @Test
+    fun aSentenceIsStaleWhenAnyOfItsSubtitlesIsNotShown() {
+        val m = model(bleep = true)
+        val j = m.translationJobs(true)[0]
+        m.fillGroup(j.group, "Hello **** beautiful", true, j.source)
+        m.regroup(SplitRule(words = 1))
+        assertEquals(3, m.cues.size)
+        assertTrue(m.translationJobs(true).isEmpty())
+        // The last subtitle's translation typed by hand: the first still shows, the sentence is stale.
+        val last = m.cues.sortedBy { it.startMs }.last()
+        m.setCueTexts(last.id, last.srcText, "x")
+        assertTrue(m.translationShown(m.cues.minByOrNull { it.startMs }!!, true))
+        val again = m.translationJobs(true)
+        assertEquals(1, again.size)
+        assertTrue(again[0].overwrites)
+        assertEquals("שלום **** יפה", again[0].source)
+    }
+
+    @Test
+    fun aSentenceWithNoTranslationDoesNotOverwriteAndOneWithoutSpokenTextIsLeftAlone() {
+        val m = model(bleep = false, en = "")
+        assertFalse(m.translationJobs(true)[0].overwrites)
+        // A translation but no spoken text: nothing to translate from, never sent as it is.
+        val n = EditModel(LongArray(10) { it * 33_333L }, IntArray(0), FloatArray(20), 16f / 9f, emptyMap(), 30f, emptyList())
+        n.setSentences(listOf(NewCue(0, 3000, "", "Hello", "he", null)))
+        assertTrue(n.translationJobs(true).isEmpty())
+        // English speech translates from English, into the other slot.
+        val e = EditModel(LongArray(10) { it * 33_333L }, IntArray(0), FloatArray(20), 16f / 9f, emptyMap(), 30f, emptyList())
+        e.setSentences(listOf(NewCue(0, 3000, "", "Hello world", "en", null)))
+        val j = e.translationJobs(true)[0]
+        assertEquals("" to "Hello world", j.pair)
+        assertEquals("en", j.src)
+    }
+
+    @Test
+    fun aBatchOfTranslationsIsOneUndoStep() {
+        val m = model(bleep = true)
+        val before = m.cues[0].en
+        m.beginTranslationBatch()
+        val j = m.translationJobs(true)[0]
+        m.fillGroup(j.group, "Hello **** beautiful", true, j.source)
+        assertEquals("Hello **** beautiful", m.cues[0].en)
+        assertTrue(m.undo())
+        assertEquals(before, m.cues[0].en)
+        assertNull(m.cues[0].trm)
+    }
+
+    @Test
+    fun aTranslationIsNotExportedOverACutWord() {
+        val m = model(bleep = false)
+        m.toggleCutWord(m.cues[0].id, 0)
+        val e = m.exportCues(true)[0]
+        assertEquals("עולם יפה", e.he)
+        assertEquals("", e.en)
+        assertEquals("Hello beautiful world", m.cues[0].en)
+        // Nothing cut: it shows.
+        assertEquals("Hello beautiful world", model(bleep = false).exportCues(true)[0].en)
+    }
 }

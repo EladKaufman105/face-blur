@@ -563,6 +563,12 @@ class EditModel(
             (if (hide.isEmpty()) cc.srcText else Subtitles.mask(cc.srcText, hide)).trim().takeIf { it.isNotEmpty() }
         }.joinToString(" ")
 
+    /**
+     * Whether a spoken word of [c]'s sentence is cut out of the video. Its translation can't be cut
+     * to match (the translation is not aligned to the words), so the translation is not exported.
+     */
+    fun cutInSentence(c: Cue): Boolean = removed.isNotEmpty() && cues.any { it.group == c.group && cutWords(it).isNotEmpty() }
+
     /** Whether a word of [c]'s sentence is masked (given [maskWords]). */
     fun masksWords(c: Cue, maskWords: Boolean): Boolean =
         maskWords && cues.any { it.group == c.group && bleepedWords(it).isNotEmpty() }
@@ -576,13 +582,17 @@ class EditModel(
     fun translationShown(c: Cue, maskWords: Boolean): Boolean =
         !masksWords(c, maskWords) || c.trm == maskedSentence(c, maskWords)
 
-    /** A sentence to translate: (spoken-side text, English-side text) of which one is empty, its spoken language, and the masked text it is made from. */
-    class TranslationJob(val group: Int, val pair: Pair<String, String>, val src: String, val source: String?)
+    /**
+     * A sentence to translate: (spoken-side text, English-side text) of which one is empty, its spoken
+     * language, and the masked text it is made from. [overwrites]: it replaces a translation that is there.
+     */
+    class TranslationJob(val group: Int, val pair: Pair<String, String>, val src: String, val source: String?, val overwrites: Boolean = false)
 
     /**
-     * What needs translating: the sentences with one text only, and those whose translation is
-     * hidden over bleeped words (see [translationShown]). The text to translate is the masked
-     * one, so a bleeped word never reaches the translator.
+     * What needs translating: the sentences with a spoken text and no translation, and those whose
+     * translation is hidden over bleeped words in any of their subtitles (see [translationShown]).
+     * The text to translate is the masked one, so a bleeped word never reaches the translator. A
+     * sentence with only a translation and no spoken text is left alone.
      */
     fun translationJobs(maskWords: Boolean): List<TranslationJob> {
         val groups = LinkedHashMap<Int, MutableList<Cue>>()
@@ -593,26 +603,25 @@ class EditModel(
             val en = cs.joinToString(" ") { it.en.trim() }.trim()
             val english = first.src == "en" || (first.src == "" && first.he.isBlank())
             val spokenText = if (english) en else he
-            val stale = he.isNotBlank() && en.isNotBlank() && !translationShown(first, maskWords)
-            when {
-                spokenText.isNotBlank() && (he.isBlank() != en.isBlank() || stale) -> {
-                    val masked = maskedSentence(first, maskWords)
-                    TranslationJob(g, if (english) "" to masked else masked to "", first.src, masked)
-                }
-                he.isBlank() != en.isBlank() -> TranslationJob(g, he to en, first.src, null)
-                else -> null
-            }
+            val otherText = if (english) he else en
+            val stale = otherText.isNotBlank() && cs.any { !translationShown(it, maskWords) }
+            if (spokenText.isBlank() || (otherText.isNotBlank() && !stale)) return@mapNotNull null
+            val masked = maskedSentence(first, maskWords)
+            TranslationJob(g, if (english) "" to masked else masked to "", first.src, masked, overwrites = otherText.isNotBlank())
         }
     }
 
+    /** Starts one undo step for a batch of translations arriving (they replace hidden ones, which are then restorable). */
+    fun beginTranslationBatch() = snapshot()
+
     /**
      * Copies of the subtitles to export; with [mask], bleeped words are hidden (****) and a
-     * translation that may carry one is left out (so neither the video nor the .srt files show it).
+     * translation that may carry one, or that has a cut word in its sentence, is left out (so neither the video nor the .srt files show it).
      */
     fun exportCues(mask: Boolean): List<Cue> = cues.sortedBy { it.startMs }.map { c ->
         val hide = if (mask) bleepedWords(c) else emptySet()
         val gone = cutWords(c)
-        val trShown = translationShown(c, mask)
+        val trShown = translationShown(c, mask) && !cutInSentence(c)
         c.copy().also { m ->
             if (!trShown) {
                 if (c.src == "en" || (c.src == "" && c.he.isBlank())) m.he = "" else m.en = ""

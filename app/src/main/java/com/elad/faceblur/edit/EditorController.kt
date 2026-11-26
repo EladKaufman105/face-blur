@@ -745,15 +745,18 @@ class EditorController(
     /** What needs translating now (see [EditModel.translationJobs]). */
     private fun jobs() = model.translationJobs(audio.maskWords)
 
-    /** Sentences without a translation, or whose translation is hidden over bleeped words. */
-    val untranslatedCount get() = jobs().size
+    /** Sentences with a spoken text and no translation yet. */
+    val untranslatedCount get() = jobs().count { !it.overwrites }
+
+    /** Sentences whose translation is hidden over bleeped words (they translate again from the masked text). */
+    val staleCount get() = jobs().count { it.overwrites }
 
     /** Whether [c]'s translation is hidden in the video: it may carry a bleeped word (see [EditModel.translationShown]). */
     fun translationHidden(c: Cue) = c.otherText.isNotBlank() && !model.translationShown(c, audio.maskWords)
 
     /** Translates the subtitles that have only one language (again, after a failure). */
     fun translateSubtitles() {
-        if (subsJob?.isActive == true || untranslatedCount == 0) return
+        if (subsJob?.isActive == true || jobs().isEmpty()) return
         subsJob = scope.launch {
             try {
                 translateMissing()
@@ -769,6 +772,8 @@ class EditorController(
         val todo = jobs()
         if (todo.isEmpty()) return
         subsProgress = SubtitleEngine.Stage.TRANSLATE to 0f
+        // Translations that were typed by hand and are hidden get replaced: one step brings them back.
+        if (todo.any { it.overwrites }) model.beginTranslationBatch()
         try {
             SubtitleEngine.translateLines(
                 todo.map { it.pair },

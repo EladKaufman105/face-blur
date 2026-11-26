@@ -1,7 +1,5 @@
 package com.elad.faceblur.subs
 
-import java.text.Normalizer
-
 /**
  * The languages of the subtitles (pure, no Android): what the multilingual Whisper can be forced
  * to, what the translator handles, and how a text's language and direction are read from its
@@ -46,9 +44,12 @@ object SubLanguages {
         if (pick != null && translatable(pick) && pick != from) pick else if (from == ENGLISH) HEBREW else ENGLISH
 
     private fun isHebrewLetter(c: Char) = c in 'א'..'ת'
-    private fun isArabicLetter(c: Char) =
-        c in 'ؠ'..'ي' || c in 'ٮ'..'ۓ' || c in 'ۺ'..'ۿ' || c in 'ݐ'..'ݿ' ||
-            c in 'ࢠ'..'ࣿ' || c in 'ﭐ'..'﷿' || c in 'ﹰ'..'﻿'
+    /** An Arabic-script letter: assigned letters of the Arabic blocks only (not the BOM at the end of Presentation Forms-B, non-characters, symbols or digits). */
+    private fun isArabicLetter(c: Char) = Character.isLetter(c) && (
+        c in '\u0620'..'\u064A' || c in '\u066E'..'\u06D3' || c in '\u06FA'..'\u06FF' || c in '\u0750'..'\u077F' ||
+            c in '\u08A0'..'\u08FF' || c in '\uFB50'..'\uFBB1' || c in '\uFBD3'..'\uFD3D' || c in '\uFD50'..'\uFD8F' ||
+            c in '\uFD92'..'\uFDC7' || c in '\uFDF0'..'\uFDFB' || c in '\uFE70'..'\uFE74' || c in '\uFE76'..'\uFEFC'
+        )
     private fun isLatinLetter(c: Char) = c in 'a'..'z' || c in 'A'..'Z'
 
     /** Letters only Persian has (پ چ ژ گ ک ی): Arabic writes ك and ي instead of ک and ی. */
@@ -87,27 +88,6 @@ object SubLanguages {
         return false
     }
 
-    /** Whether [c] is an Arabic or Hebrew mark that belongs to the letter before it (vowel points, diacritics). */
-    fun isMark(c: Char) = c in '֑'..'ׇ' || c in 'ً'..'ٟ' || c == 'ٰ'
-
-    /**
-     * A word as compared, like the web's `normWord`: NFC, no zero-width or direction marks, no
-     * Hebrew points or Arabic diacritics (nor the tatweel), the punctuation around it gone, lower case.
-     */
-    fun normWord(w: String): String {
-        val sb = StringBuilder()
-        for (c in Normalizer.normalize(w, Normalizer.Form.NFC)) {
-            val zeroWidth = c == '­' || c in '​'..'‏' || c in '‪'..'‮' || c in '⁠'..'⁤' || c == '﻿'
-            if (zeroWidth || isMark(c) || c == 'ـ') continue
-            sb.append(c)
-        }
-        var a = 0
-        var b = sb.length
-        while (a < b && !keepsWord(sb[a])) a++
-        while (b > a && !keepsWord(sb[b - 1])) b--
-        return sb.substring(a, b).lowercase()
-    }
-
     private fun keepsWord(c: Char) = c.isLetterOrDigit() || Character.getType(c).let {
         it == Character.NON_SPACING_MARK.toInt() || it == Character.COMBINING_SPACING_MARK.toInt() || it == Character.ENCLOSING_MARK.toInt()
     }
@@ -115,6 +95,6 @@ object SubLanguages {
     /** Whether [word] ends a sentence: . ? ! … and the Arabic question mark and full stop. */
     fun endsSentence(word: String): Boolean = word.trimEnd().lastOrNull()?.let { it in ".?!…؟۔" } == true
 
-    /** A word with its letters kept as they are: marks count as part of the word (see [normWord]). */
+    /** A word with its letters kept as they are: marks count as part of the word. */
     fun isWordChar(c: Char) = keepsWord(c)
 }

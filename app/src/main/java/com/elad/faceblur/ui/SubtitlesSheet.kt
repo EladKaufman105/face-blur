@@ -198,12 +198,18 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
                     ctrl.stylePanel = true
                 }
                 val missing = ctrl.untranslatedCount
-                if (missing > 0 && models != null) {
+                val again = ctrl.staleCount
+                if (missing + again > 0 && models != null) {
                     Box(Modifier.padding(horizontal = 20.dp)) { TranslateToPicker(ctrl, !busy) }
                     ActionRow(
                         AppIcons.Translate,
                         if (ctrl.hasTranslation) t("השלם תרגום") else t("הוסף תרגום"),
-                        if (ctrl.hasTranslation) t("%d כתוביות עוד בלי תרגום").format(missing) else t("עברית, אנגלית, ערבית ופרסית, במכשיר"),
+                        if (ctrl.hasTranslation) {
+                            listOfNotNull(
+                                t("%d כתוביות עוד בלי תרגום").format(missing).takeIf { missing > 0 },
+                                t("%d לתרגום מחדש (מוסתרות בגלל מילים מוסתרות)").format(again).takeIf { again > 0 },
+                            ).joinToString(" · ")
+                        } else t("עברית, אנגלית, ערבית ופרסית, במכשיר"),
                         enabled = !busy,
                     ) { ctrl.translateSubtitles() }
                 }

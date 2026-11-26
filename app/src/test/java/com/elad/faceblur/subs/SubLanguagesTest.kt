@@ -74,17 +74,13 @@ class SubLanguagesTest {
     }
 
     @Test
-    fun normWordDropsArabicDiacriticsTatweelAndPunctuation() {
-        // Same as the web's normWord.
-        assertEquals("كلب", SubLanguages.normWord("كَلْب"))
-        assertEquals("كتب", SubLanguages.normWord("كَتَبَ،"))
-        assertEquals("محمد", SubLanguages.normWord("مـــحـمـد"))
-        assertEquals("الله", SubLanguages.normWord("اللّٰه"))
-        assertEquals("שלום", SubLanguages.normWord("שָׁלוֹם!"))
-        assertEquals("hello", SubLanguages.normWord("\"Hello,\""))
-        assertEquals("שלום", SubLanguages.normWord("של‏ום"))
-        // Persian letters stay as they are.
-        assertEquals("گربه", SubLanguages.normWord("گربه."))
+    fun onlyRealArabicLettersCount() {
+        // The BOM, non-characters, and symbols or digits of the Arabic blocks are not letters.
+        assertEquals("", SubLanguages.scriptLang("\uFEFF"))
+        assertEquals("", SubLanguages.scriptLang("\uFDD0\uFDEF"))
+        assertEquals("", SubLanguages.scriptLang("\u0660\u0661\u06DD"))
+        assertEquals("ar", SubLanguages.scriptLang("\uFEFB\uFEFC"))
+        assertEquals("ar", SubLanguages.scriptLang("\uFEFFمرحبا"))
     }
 
     @Test
@@ -109,6 +105,10 @@ class ArabicSubtitlesTest {
         assertEquals("he", SubtitleEngine.lineLanguage("שלום world עולם", "he"))
         assertEquals("en", SubtitleEngine.lineLanguage("Hello עולם", "he"))
         // Latin letters in speech that is in another language are names, not English speech.
+        // Arabic letters in a language that is neither Arabic nor Persian (Urdu, Pashto, Kurdish): not translated as one.
+        assertEquals("", SubtitleEngine.lineLanguage("یہ اردو ہے", "ur"))
+        assertEquals("", SubtitleEngine.lineLanguage("مرحبا", "ps"))
+        assertEquals("ar", SubtitleEngine.lineLanguage("مرحبا", ""))
         assertEquals("", SubtitleEngine.lineLanguage("iPhone", "ar"))
         assertEquals("", SubtitleEngine.lineLanguage("...", "ar"))
     }
@@ -218,5 +218,25 @@ class ArabicSubtitlesTest {
         val fa = listOf(Cue(1, 0, 1000, "سلام چطوری", "שלום", 1, "fa"))
         assertEquals("fa", Srt.tag(fa, english = false))
         assertEquals("he", Srt.tag(fa, english = true))
+    }
+
+    @Test
+    fun srtFilesAreNamedByTheMajorityScriptAndNeverRepeated() {
+        // The first line is English, most are Arabic; a line with no letters is skipped.
+        val mixed = listOf(
+            Cue(1, 0, 1000, "Hello", "", 1, "he"), Cue(2, 1000, 2000, "مرحبا", "", 2, "ar"),
+            Cue(3, 2000, 3000, "123", "", 3, "he"), Cue(4, 3000, 4000, "شكرا", "", 4, "ar"),
+        )
+        assertEquals("ar", Srt.tag(mixed, english = false))
+        // Both slots the same text: one file.
+        val same = listOf(Cue(1, 0, 1000, "Hello", "Hello", 1, ""))
+        assertEquals(1, Srt.files(same).size)
+        // Two files of the same language: distinct names.
+        val twice = listOf(Cue(1, 0, 1000, "Hi", "Hello", 1, ""))
+        assertEquals(listOf("en", "en2"), Srt.files(twice).map { it.tag })
+        // An Arabic text and its English translation.
+        val pair = listOf(Cue(1, 0, 1000, "مرحبا", "Hello", 1, "ar"))
+        assertEquals(listOf("ar", "en"), Srt.files(pair).map { it.tag })
+        assertTrue(Srt.files(emptyList()).isEmpty())
     }
 }
