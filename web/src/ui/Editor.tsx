@@ -534,11 +534,11 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           setCues(cs)
           if (cs.length === 0) notes.push(t('לא נמצא דיבור בסרטון'))
           else if (tpl.translate) {
-            // The template's translation (as the app's): each subtitle that still says what was translated takes it.
+            // The template's translation (as the app's): each subtitle that still says what was translated, and has no translation typed meanwhile, takes it.
             run(t('מתרגם… %d%', 0))
             try {
               const tr = new Map((await translateCues(cs, tpl.language, (stage, p) => setTplRun({ step: stage === 'download' ? t('מוריד את חבילת השפה… %d%', Math.round(p * 100)) : t('מתרגם… %d%', Math.round(p * 100)), progress: p, notes: [...notes] }), ctl.signal)).map((c) => [c.id, c]))
-              setCues((now) => now.map((c) => { const x = tr.get(c.id); return x && x.text === c.text ? { ...c, tr: x.tr, trm: x.trm } : c }))
+              setCues((now) => now.map((c) => { const x = tr.get(c.id); return x && x.text === c.text && !c.tr ? { ...c, tr: x.tr, trm: x.trm } : c }))
             } catch (e) {
               if (ctl.signal.aborted) return
               notes.push(translateNote(e))
