@@ -7,13 +7,21 @@
 // Run: node tests/subshe.cjs <url> <video with Hebrew speech> <expected words, a regex> <out dir>
 const { chromium } = require('playwright')
 const fs = require('fs')
+const os = require('os')
+const path = require('path')
 const [, , url, video, expect, out] = process.argv
 const PIN = 'c71eadaca74c0923a06632bdaeb7413ff9cff4cf'
 
 ;(async () => {
   fs.mkdirSync(out, { recursive: true })
-  const b = await chromium.launch(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {})
-  const ctx = await b.newContext({ viewport: { width: 1366, height: 860 }, locale: 'he-IL' })
+  // A profile on disk (both runs share it), as a person's browser has: an ephemeral context (newContext, storage
+  // in memory) refuses to cache a file of about 300 MB or more, so the 425 MB encoder and 334 MB decoder would
+  // never be cached there and the offline run could not pass. It is removed at the end.
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'onit-subshe-'))
+  const ctx = await chromium.launchPersistentContext(profile, {
+    ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}),
+    viewport: { width: 1366, height: 860 }, locale: 'he-IL',
+  })
   const logs = []
   const hub = []
   let offline = false
@@ -109,7 +117,8 @@ const PIN = 'c71eadaca74c0923a06632bdaeb7413ff9cff4cf'
   } finally {
     fs.writeFileSync(`${out}/console.txt`, logs.join('\n'))
     fs.writeFileSync(`${out}/hub.txt`, hub.join('\n'))
-    await b.close()
+    await ctx.close()
+    fs.rmSync(profile, { recursive: true, force: true })
   }
 })().catch((e) => {
   console.error('FAIL', e.message)

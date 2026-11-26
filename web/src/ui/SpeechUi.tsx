@@ -2,7 +2,7 @@
 // before anything downloads), the progress of a job, and the question before a template downloads.
 import { useEffect, useState } from 'preact/hooks'
 import { t } from '../i18n'
-import { answerSpeechAsk, device, gpuFailed, spokenLanguage, mbOf, planCached, planFor, probeDevice, qualityChoice, setQuality, speechAsk, defaultQuality, type Quality, type SpeechPlan, type SpeechStatus } from '../lib/speech'
+import { answerSpeechAsk, device, gpuFailed, hebrew, spokenLanguage, mbOf, planCached, planFor, probeDevice, qualityChoice, setQuality, speechAsk, defaultQuality, type Quality, type SpeechPlan, type SpeechStatus } from '../lib/speech'
 
 /** The plan now (the device's graphics processor is asked once, then the plan may change), and whether its files are already here. */
 export function useSpeechPlan(language: string | null = null): { plan: SpeechPlan; cached: boolean | null } {
@@ -28,10 +28,12 @@ export function QualityChoice({ cls, language = null }: { cls?: string; language
   const options: [Quality, string][] = [['fast', 'מהיר'], ['better', 'איכות טובה יותר']]
   // On a phone or another weak device the Hebrew model (ivrit.ai) is its own choice, named, with a warning:
   // it needs a lot of memory, so "better quality" there stays the small multilingual model.
-  const hebrewChoice = d.weak && spokenLanguage(language) === 'hebrew'
+  const hebrewChoice = d.weak && hebrew(spokenLanguage(language))
   if (hebrewChoice) options.push(['hebrew', 'מודל עברית'])
   const sizes = options.map(([q]) => planFor(q, d, gpuFailed.value, spokenLanguage(language)))
-  const [have, setHave] = useState<boolean[]>([false, false])
+  const [have, setHave] = useState<boolean[]>([false, false, false])
+  // The Hebrew model (large-v3-turbo) on the CPU with one thread (a page without threads, no big graphics processor): minutes for each 30 s of speech.
+  const slow = d.probed && plan.model === 'ivrit' && plan.device === 'wasm' && plan.threads <= 1
   useEffect(() => {
     let live = true
     Promise.all(sizes.map(planCached)).then((h) => { if (live) setHave(h) })
@@ -45,6 +47,7 @@ export function QualityChoice({ cls, language = null }: { cls?: string; language
         </button>
       ))}
       {hebrewChoice && plan.quality === 'hebrew' && <p class="small speech-memory" style="flex-basis:100%;margin:6px 0 0;color:var(--primary)">{t('מודל העברית (ivrit.ai) גדול וצריך הרבה זיכרון. אם הדף נסגר או נתקע, בחרו "מהיר".')}</p>}
+      {slow && <p class="small speech-slow" style="flex-basis:100%;margin:6px 0 0;color:var(--primary)">{t('במכשיר הזה מודל העברית רץ על המעבד בלי עיבוד מקבילי, ולכן הוא איטי: כמה דקות לכל חצי דקה של דיבור. "מהיר" מסיים הרבה יותר מהר.')}</p>}
     </div>
   )
 }

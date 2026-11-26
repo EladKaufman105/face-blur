@@ -39,7 +39,8 @@ checkpoint as the app, as the community ONNX export `instush/ivrit-whisper-large
 4-bit, 763 MB, with the attention outputs word timings need), pinned to one commit in `web/src/lib/speech.ts`: the
 worker puts that commit into the request path of every file, so a cached model needs no request to the Hub. On a
 phone the Hebrew model is a separate, named choice (it needs a lot of memory). Arabic,
-Persian and English use onnx-community's multilingual Whisper.
+Persian and English use onnx-community's multilingual Whisper. In an incognito or private window the browser can't keep
+the 763 MB Hebrew model, so it downloads again on every visit.
 
 Build: `cd web && npm ci && npm run build` (needs python3 with onnx, numpy and
 onnxconverter-common: the face model is made in float32 for the CPU and float16 for GPUs with

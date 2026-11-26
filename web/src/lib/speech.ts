@@ -149,14 +149,25 @@ const forcedModel = (): ModelKey | null => {
  * any device that is not a phone it is the default too. "Faster" stays the generic small one, and a
  * phone starts on it (the ivrit.ai model is a 760 MB download and a lot of memory for a phone's page).
  */
-const hebrew = (language: string | null) => language === 'hebrew' || language === 'he'
+export const hebrew = (language: string | null) => language === 'hebrew' || language === 'he'
+
+/**
+ * The choice as it applies to [language] on [d]: "Hebrew model" ('hebrew') is a choice of a weak device for
+ * Hebrew only. It is kept (localStorage) when the language changes, so for any other language it is "better
+ * quality" (the multilingual model, by the rules of "better"), and on a computer, where "better" in Hebrew is
+ * that model already, it is "better" too (the chip that shows as chosen).
+ */
+export function effectiveQuality(q: Quality, d: Device, language: string | null): Quality {
+  return q === 'hebrew' && (!hebrew(language) || !d.weak) ? 'better' : q
+}
 
 function modelFor(q: Quality, d: Device, language: string | null): ModelKey {
   const forced = forcedModel()
   if (forced) return forced
-  // "Better quality" in Hebrew is the Hebrew model, but not on a phone or another weak device (it needs a lot
-  // of memory): there it is only the choice named "Hebrew model" ('hebrew'), so a stored "better" never becomes it.
-  if (q === 'hebrew' || (q === 'better' && hebrew(language) && !d.weak)) return 'ivrit'
+  // Only Hebrew ever gets the Hebrew model. "Better quality" in Hebrew is that model, but not on a phone or
+  // another weak device (it needs a lot of memory): there it is only the choice named "Hebrew model"
+  // ('hebrew'), so a stored "better" never becomes it.
+  if (hebrew(language) && (q === 'hebrew' || (q === 'better' && !d.weak))) return 'ivrit'
   if (d.weak) return q === 'fast' ? 'base' : 'small'
   return q === 'fast' ? 'small' : 'large'
 }
@@ -165,7 +176,8 @@ function modelFor(q: Quality, d: Device, language: string | null): ModelKey {
 export const gpuFailed = signal(false)
 
 /** The plan for [quality] on [d]: the model, the processor, the file kinds and what they weigh. */
-export function planFor(quality: Quality, d: Device, forceCpu = gpuFailed.value, language: string | null = spokenLanguage(null)): SpeechPlan {
+export function planFor(choice: Quality, d: Device, forceCpu = gpuFailed.value, language: string | null = spokenLanguage(null)): SpeechPlan {
+  const quality = effectiveQuality(choice, d, language)
   let model = modelFor(quality, d, language)
   const wanted = param('backend')
   // A phone runs on the CPU unless the address asks for its graphics processor (?backend=webgpu): that
@@ -238,6 +250,31 @@ export async function planCached(plan: SpeechPlan): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+/**
+ * A pinned model whose pin changed leaves the files of its old commit in the browser (hundreds of MB that
+ * nothing reads any more): they go, once a visit. Only this repo's files at another commit (or at a branch
+ * such as `main`) are removed: `<repo>/resolve/<other>/...`; other models and the pinned commit are kept.
+ */
+const pruned = new Set<string>()
+export async function dropOldRevisions(plan: Pick<SpeechPlan, 'repo' | 'revision'>): Promise<number> {
+  if (!plan.revision || pruned.has(plan.repo)) return 0
+  pruned.add(plan.repo)
+  let n = 0
+  try {
+    if (!('caches' in self) || !(await caches.has('transformers-cache'))) return 0
+    const cache = await caches.open('transformers-cache')
+    const base = `/${plan.repo}/resolve/`
+    for (const req of await cache.keys()) {
+      let path: string
+      try { path = new URL(req.url).pathname } catch { continue }
+      if (!path.startsWith(base) || path.startsWith(`${base}${plan.revision}/`)) continue
+      if (await cache.delete(req)) n++
+    }
+    if (n) console.info(`ONIT subs: removed ${n} files of ${plan.repo} at an old commit`)
+  } catch {}
+  return n
 }
 
 // ------------------------------------------------------------------ asking before a download
@@ -432,6 +469,8 @@ export function transcribeFile(
     const onAbort = () => end(() => reject(new SpeechAborted()))
     signal?.addEventListener('abort', onAbort)
 
+    // The files of an old pin of this model are dropped (they never load again).
+    void dropOldRevisions(opts.plan)
     let usedFallback = false
     let usedOneThread = false
     const attempt = (plan: SpeechPlan) => {
@@ -455,6 +494,12 @@ export function transcribeFile(
         }
         if (code === 'memory') {
           end(() => reject(new SpeechError(t('אין מספיק זיכרון במכשיר לזיהוי הדיבור. אפשר לבחור "מהיר" (מודל קטן יותר).'), 'memory')))
+          return
+        }
+        // The Hebrew model's repo answers that a file isn't there (or isn't open to us): it was removed or closed
+        // (it is one uploader's repo, see docs/parity.md). Say so, and what still works (not the graphics processor's fault).
+        if (plan.model === 'ivrit' && /could not locate file|unauthorized access to file/i.test(message)) {
+          end(() => reject(new SpeechError(t('לא ניתן להוריד את מודל העברית (ivrit.ai) מ-Hugging Face. אפשר לבחור "מהיר" (מודל רב-לשוני).'), 'missing')))
           return
         }
         if (plan.device === 'webgpu' && !usedFallback && code !== 'no-audio' && (phase === 'load' || phase === 'recognize')) {

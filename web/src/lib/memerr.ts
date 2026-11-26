@@ -1,5 +1,10 @@
-/** Whether an error says the device ran out of memory (WebAssembly or an array buffer that can't be allocated, a C++ allocation, the tab's own limit). */
+/**
+ * Whether an error says the device ran out of memory: an allocation that failed (an array buffer, WebAssembly's
+ * memory that can't grow, a C++ allocation in the runtime, the graphics processor's own "out of memory").
+ * Not every RangeError, and not "memory access out of bounds" (a bug or a bad model file, not a lack of memory):
+ * those stay ordinary failures, so a graphics processor that fails still falls back to the CPU.
+ */
 export function isMemoryError(e: unknown): boolean {
   const s = e instanceof Error ? `${e.name}: ${e.message}` : String(e ?? '')
-  return /RangeError|array buffer allocation failed|allocation failed|bad_alloc|\bOOM\b|out of memory|could not allocate|cannot allocate|memory access out of bounds/i.test(s)
+  return /array buffer allocation failed|failed to allocate|could not allocate|cannot allocate|unable to allocate|allocation failed|bad_alloc|out of memory|\bOOM\b|Memory\.grow\(\)|maximum memory size exceeded/i.test(s)
 }
