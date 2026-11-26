@@ -267,6 +267,7 @@ export class FaceDetector {
     if (rfPool) {
       const te = performance.now()
       const cut = thresholds(this.sens).cut
+      // The pool is fused as the default faces are (fuse ends in the same NMS at 0.4), then cut: so the extras are nested as the cut goes down.
       this.lastExtras = extras(kept, fuse(rfPool, ynAll, POOL_YUNET_ONLY), cut)
       // Re-checked too: the default faces the tracker now counts (from the cut, under DET_THRESHOLD), as the app re-checks
       // every uncertain face; and the likeliest extra ones. A higher sensitivity checks every one a lower one does.

@@ -189,7 +189,9 @@ class FaceBlurProcessor(private val context: Context) {
                 android.util.Log.i("ONIT", "analysis stats: ${snap.summary()}")
                 onStats?.invoke(snap)
             }
-            return withContext(Dispatchers.Default) { analyzer.result() }
+            // Interruptible: a cancelled analysis stops between the sensitivity's tracker steps (an
+            // InterruptedException there becomes the coroutine's CancellationException, a cancel).
+            return kotlinx.coroutines.runInterruptible(Dispatchers.Default) { analyzer.result() }
         } finally {
             analyzer.close()
             analysisFile.delete()

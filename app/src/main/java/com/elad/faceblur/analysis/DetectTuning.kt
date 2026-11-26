@@ -139,7 +139,10 @@ object DetectTuning {
      *  2. on the CPU, the fine pass at [lowSide] px, lite;
      *  3. fewer detections (up to every [maxEvery]-th frame), lite;
      *  4. fast mode (its rate already the floor): lite.
-     * When relaxed, back a step toward every [baseEvery]-th frame, and the full checks once there.
+     * When relaxed, back a step toward every [baseEvery]-th frame, and the full checks once there
+     * (on a GPU, or with the CPU's fine pass back at [fineSide], the size detection started at:
+     * 960 px, or 640 in fast mode). Fast mode, whose rate never moves, gets its full checks back
+     * as soon as it keeps up easily.
      */
     fun adapt(
         p: Pacing,
@@ -162,6 +165,8 @@ object DetectTuning {
             val every = p.every - 1
             p.copy(every = every, lite = if (every == baseEvery && (gpuActive || p.cpuSide == fineSide)) false else p.lite) to PaceStep.RELAX
         }
+        relaxed && mode == DetectMode.FAST && p.lite && p.every == baseEvery && (gpuActive || p.cpuSide == fineSide) ->
+            p.copy(lite = false) to PaceStep.RELAX
         else -> p to PaceStep.NONE
     }
 
@@ -261,8 +266,9 @@ object DetectTuning {
     ): List<TreeMap<Int, Box>> {
         var out = base
         for (level in levels(s)) {
-            // A pass given up (a new pass or close): stop between steps.
-            if (cancelled()) break
+            // A pass given up (cancelled, a new pass or close): stop between steps, never with a part
+            // of the steps passed off as the whole.
+            if (cancelled()) throw InterruptedException("sensitivity steps given up")
             out = combine(out, more(level))
         }
         return out

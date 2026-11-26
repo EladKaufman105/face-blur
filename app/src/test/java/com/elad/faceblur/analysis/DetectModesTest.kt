@@ -85,7 +85,7 @@ class DetectModesTest {
             val waited = DetectTuning.blockedWithoutExtras(blockedMs, extraMs)
             // (The wait the default work alone makes is never more than what is left: the extra work delays by at most its time.)
             assertTrue("wait $waited over ${waitOf(cost)}", waited <= waitOf(cost) + 1)
-            val (next, step) = DetectTuning.adapt(p, waited > span / 3, waited < span / 10, gpuOn, gpuOn && fine > 25f, mode, base, most, 640, 960)
+            val (next, step) = DetectTuning.adapt(p, waited > span / 3, waited < span / 10, gpuOn, gpuOn && fine > 25f, mode, base, most, 640, if (mode == DetectMode.FAST) 640 else 960)
             if (step == PaceStep.GPU_OFF) gpuOn = false
             p = next
             out += p
@@ -151,8 +151,14 @@ class DetectModesTest {
         assertEquals(Pacing(2, 640, true) to PaceStep.RELAX, DetectTuning.adapt(Pacing(3, 640, true), false, true, false, false, DetectMode.NORMAL, 2, 3, 640, 960))
         assertEquals(Pacing(2, 960, false) to PaceStep.RELAX, DetectTuning.adapt(Pacing(3, 960, true), false, true, true, false, DetectMode.NORMAL, 2, 3, 640, 960))
         assertEquals(p to PaceStep.NONE, DetectTuning.adapt(p, false, false, false, false, DetectMode.NORMAL, 2, 3, 640, 960))
-        // Fast: lite only, never fewer.
-        assertEquals(Pacing(6, 640, true) to PaceStep.LITE, DetectTuning.adapt(Pacing(6, 640, false), true, false, false, false, DetectMode.FAST, 6, 6, 640, 960))
+        // Fast: lite only, never fewer; the full checks back once it keeps up easily at its own 640 px (or on a GPU).
+        assertEquals(Pacing(6, 640, true) to PaceStep.LITE, DetectTuning.adapt(Pacing(6, 640, false), true, false, false, false, DetectMode.FAST, 6, 6, 640, 640))
+        assertEquals(Pacing(6, 640, false) to PaceStep.RELAX, DetectTuning.adapt(Pacing(6, 640, true), false, true, false, false, DetectMode.FAST, 6, 6, 640, 640))
+        assertEquals(Pacing(6, 640, false) to PaceStep.RELAX, DetectTuning.adapt(Pacing(6, 640, true), false, true, true, false, DetectMode.FAST, 6, 6, 640, 640))
+        assertEquals(Pacing(6, 640, true) to PaceStep.NONE, DetectTuning.adapt(Pacing(6, 640, true), false, false, false, false, DetectMode.FAST, 6, 6, 640, 640))
+        // Normal and extended at every frame rate keep their old rule: lite stays without a rate step back.
+        assertEquals(Pacing(2, 640, true) to PaceStep.NONE, DetectTuning.adapt(Pacing(2, 640, true), false, true, false, false, DetectMode.NORMAL, 2, 3, 640, 960))
+        assertEquals(Pacing(1, 640, true) to PaceStep.NONE, DetectTuning.adapt(Pacing(1, 640, true), false, true, true, false, DetectMode.EXTENDED, 1, 1, 640, 960))
     }
 
     /** OpenCV's NMSBoxes as FaceDetectorYN calls it: scores over the threshold (strictly), stable-sorted highest first, cut to topK, then greedy. */

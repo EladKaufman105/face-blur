@@ -184,7 +184,10 @@ can only hold on longer). The app does the same with the frames' wait for a dete
 detectors' time on the extra work (the pool's decoding, YuNet's whole run, the fusion, the extra
 crops) comes out of the wait before its pace steps (`DetectTuning.blockedWithoutExtras`), and the
 extra crops neither vouch for nor strike the GPU or fp16. Its YuNet runs once (from the pool's
-threshold, the default faces those over 0.4, the same faces by OpenCV's NMS), as here. A higher
+threshold, the default faces those over 0.4, the same faces by OpenCV's NMS), as here. (One thing on
+Android depends on timing whatever the sensitivity: which clear faces skip their re-check (followed
+for several detections) and when a GPU detection leaves out its coarse pass (no big face in the
+one before), as its workers finish out of order.) A higher
 sensitivity re-checks every extra face a lower one does. A template's sensitivity between steps
 rounds up to the next 5%.
 

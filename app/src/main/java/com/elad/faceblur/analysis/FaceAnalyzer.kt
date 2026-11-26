@@ -452,7 +452,8 @@ class FaceAnalyzer private constructor(
             baseEvery = baseEvery,
             maxEvery = maxEvery,
             lowSide = LOW_SIDE,
-            fineSide = RetinaFaceDetector.CPU_FINE_SIDE,
+            // The size detection started at (960 px; 640 in fast mode): the full checks come back there.
+            fineSide = startCpuSide,
         )
         when (step) {
             // A GPU this slow (one lane, ~2-10 frames a second) holds back the CPU's cores:

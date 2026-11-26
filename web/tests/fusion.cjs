@@ -841,6 +841,12 @@ if (F.fuse([], []).length !== 0) fail('empty')
 // ---- the flag: low-confidence faces, or detection that ran reduced, or fast detection
 if (!L.isLowConfidence({ reduced: true }) || !L.isLowConfidence({ lowConfidence: 2 }) || L.isLowConfidence({}) || L.isLowConfidence({ lowConfidence: 0, reduced: false })) fail('isLowConfidence')
 if (!L.isLowConfidence({ fast: true }) || L.isLowConfidence({ fast: false })) fail('a fast run is flagged for a look')
+// A re-check of a detection under 0.4 (only made with a sensitivity above 0) never makes a track clear.
+{
+  const tr = { id: 0, first: 0, boxes: Float32Array.from([0.5, 0.5, 0.1, 0.1]), best: 0 }
+  if (L.lowConfidenceTracks([tr], new Map([[0, [det(0.5, 0.5, 0.1, 0.1, 0.3, 0.95)]]])) !== 1) fail('a re-check under 0.4 hid a track from the flag')
+  if (L.lowConfidenceTracks([tr], new Map([[0, [det(0.5, 0.5, 0.1, 0.1, 0.5, 0.95)]]])) !== 0) fail('a re-check from 0.4 no longer counts')
+}
 
 // ---- fast detection: 5 a second, never fewer; judged against 5, so a device that keeps up is never 'reduced'
 {
