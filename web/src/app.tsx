@@ -13,6 +13,7 @@ import { DEFAULT_EXPORT, type ExportOptions } from './lib/exportopts'
 import { ASPECT_RATIO, cropFraction, reframePath } from './lib/camera'
 import { loadWatermark } from './ui/EditorTabs'
 import { CheckFaces, NoFaces, Ready } from './ui/Ready'
+import { NORMAL_DETECT, type DetectChoice } from './ui/DetectControls'
 import { isLowConfidence } from './lib/lowconf'
 import { loadProject, type ProjectPicture, type ProjectState } from './lib/projects'
 import { ProjectsSection } from './ui/Projects'
@@ -50,7 +51,9 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'home' })
   // Exporting keeps the editor (and everything in it) underneath, for "back to editing".
   const [job, setJob] = useState<ExportJob | null>(null)
-  const [sensitive, setSensitive] = useState(false)
+  // The detection mode (normal, extended, fast) and sensitivity chosen on the ready screen.
+  const [detect, setDetect] = useState<DetectChoice>(NORMAL_DETECT)
+  const sensitive = detect.mode === 'extended'
   // What was found in a video saved straight away (to open the editor on it afterwards).
   const saved = useRef<{ file: File; analysis: Analysis } | null>(null)
   // Re-render on a change of language, theme or palette.
@@ -136,8 +139,8 @@ export function App() {
         <Ready
           key={screen.file.name + screen.file.size + screen.file.lastModified}
           file={screen.file}
-          sensitive={sensitive}
-          onSensitive={setSensitive}
+          detect={detect}
+          onDetect={setDetect}
           onBlur={async (_look, template) => {
             // With no face blur in the template: the editor opens straight away (as a tool does), and the template applies there.
             if (template?.blurOff) {
@@ -179,6 +182,8 @@ export function App() {
         <Analyzing
           file={screen.file}
           sensitive={sensitive}
+          fast={detect.mode === 'fast'}
+          sensitivity={detect.sensitivity}
           twoSteps={!!screen.save}
           onCancel={() => setScreen({ name: 'ready', file: screen.file })}
           onError={(error, details) => setScreen({ name: 'home', error, details })}
@@ -207,6 +212,7 @@ export function App() {
       {screen.name === 'check' && !job && (
         <CheckFaces
           reduced={!!screen.analysis.reduced}
+          fast={!!screen.analysis.fast}
           onEdit={() => setScreen({ name: 'editor', file: screen.file, analysis: screen.analysis, thumbs: screen.thumbs, template: screen.template, tab: 'faces', info: screen.info })}
           onSave={() => saveNow(screen.file, screen.analysis, screen.save, screen.template)}
           onBack={() => setScreen({ name: 'ready', file: screen.file })}
@@ -218,8 +224,9 @@ export function App() {
           canEdit={!screen.save}
           sensitive={sensitive}
           reduced={screen.analysis.reduced}
+          fast={screen.analysis.fast}
           onEdit={() => setScreen({ name: 'editor', file: screen.file, analysis: screen.analysis, thumbs: [], info: '', tab: 'faces', template: screen.template })}
-          onRetry={() => { setSensitive(true); setScreen({ name: 'analyzing', file: screen.file, save: screen.save, template: screen.template }) }}
+          onRetry={() => { setDetect({ ...detect, mode: 'extended' }); setScreen({ name: 'analyzing', file: screen.file, save: screen.save, template: screen.template }) }}
           onBack={() => setScreen({ name: 'ready', file: screen.file })}
         />
       )}

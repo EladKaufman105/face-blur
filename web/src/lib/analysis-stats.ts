@@ -45,6 +45,9 @@ export interface StatsSnapshot {
   cores: number
   /** What detection really covered so far (lib/coverage.ts). */
   measured: Measured
+  /** The detection mode ('normal', 'extended', 'fast') and the sensitivity (0..1, lib/sensitivity.ts). */
+  mode?: string
+  sensitivity?: number
 }
 
 /** Measured from the frames really detected: D, G, S. */
@@ -187,7 +190,7 @@ export function backendText(s: StatsSnapshot): string {
 export function summary(a: AnalysisStats): string {
   const s = a.latest
   const m = s.measured
-  return `${s.backend} ${s.precision} · ${s.rate.toFixed(1)}/s · ${s.side} px · ${s.frames} frames · ${fmt(a.detectMs)} ms a detection · ${s.workers} detectors · measured ${m.rate.toFixed(1)}/s (min ${m.minWindow?.toFixed(1) ?? '-'}), gap ${m.gapFrames} frames, ${m.minSide} px, YuNet ${m.yunet ? 'on' : 'off'}${s.noGpu ? ` · no GPU: ${s.noGpu}` : ''}`
+  return `${s.backend} ${s.precision} · ${s.rate.toFixed(1)}/s · ${s.side} px · ${s.frames} frames · ${fmt(a.detectMs)} ms a detection · ${s.workers} detectors · measured ${m.rate.toFixed(1)}/s (min ${m.minWindow?.toFixed(1) ?? '-'}), gap ${m.gapFrames} frames, ${m.minSide} px, YuNet ${m.yunet ? 'on' : 'off'}${s.noGpu ? ` · no GPU: ${s.noGpu}` : ''}${s.mode && s.mode !== 'normal' ? ` · ${s.mode} detection` : ''}${s.sensitivity ? ` · sensitivity ${Math.round(s.sensitivity * 100)}%` : ''}`
 }
 
 export interface ReportContext {
@@ -228,6 +231,7 @@ export function statsReport(a: AnalysisStats, c: ReportContext): string {
     `video: ${c.video.width}x${c.video.height}, ${fps} fps, ${mmss(c.video.duration)}`,
     `elapsed: ${mmss(c.elapsedSec)} · progress: ${c.percent}%`,
     `backend: ${l.backend} ${l.precision}${gpu ? '' : ` (no gpu: ${l.noGpu || '-'})`}`,
+    `detection_mode: ${l.mode ?? 'normal'}, sensitivity ${Math.round((l.sensitivity ?? 0) * 100)}%`,
     line('sampling_detections_per_s', l.rate, a.rateHistory),
     `resolution_px: ${l.side} (last 60 samples, ~1 s apart: ${sides.join(' -> ')})`,
     line('detect_ms', a.detectMs, a.detectHistory),

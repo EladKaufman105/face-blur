@@ -6,6 +6,7 @@ import * as ort from 'onnxruntime-web/webgpu'
 import type { Det } from './types'
 import { CLEAR, RF_THRESHOLD, RF_THRESHOLD_REDUCED, YUNET_THRESHOLD, YUNET_THRESHOLD_REDUCED, fuse, iou, nmsIou } from './fusion'
 import { DET_THRESHOLD } from './tracker'
+import { MAX_EXTRA_CHECKS, POOL_RF, POOL_YUNET, POOL_YUNET_ONLY, extras, quantize, thresholds } from './sensitivity'
 import { Yunet } from './yunet'
 import type { YunetWorker } from './yunet-worker'
 
@@ -56,6 +57,10 @@ export class FaceDetector {
   private ynWorker: YunetWorker | null = null
   private thr = RF_THRESHOLD
   private ynThr = YUNET_THRESHOLD
+  /** 0..1 (lib/sensitivity.ts): above 0, the faces only lower thresholds find go to [lastExtras]. */
+  private sens = 0
+  /** The latest detection's extra faces (a sensitivity above 0), re-checked on a crop; else empty. */
+  lastExtras: Det[] = []
   // The GPU's results are compared with the CPU's on the first frames with faces.
   private checking: boolean
   private agreed = 0
@@ -87,6 +92,11 @@ export class FaceDetector {
   setReduced(on: boolean) {
     this.thr = on ? RF_THRESHOLD_REDUCED : RF_THRESHOLD
     this.ynThr = on ? YUNET_THRESHOLD_REDUCED : YUNET_THRESHOLD
+  }
+
+  /** The sensitivity (lib/sensitivity.ts): 0, the default, changes nothing (no extra work). */
+  setSensitivity(s: number) {
+    this.sens = quantize(s)
   }
 
   get backend(): Backend {
@@ -158,12 +168,12 @@ export class FaceDetector {
     else await this.yunetLocal()
   }
 
-  /** YuNet on [frame] in this thread: its faces as fractions of the frame. */
-  private async yunet(frame: OffscreenCanvas): Promise<Det[]> {
+  /** YuNet on [frame] in this thread, from [thr] up: its faces as fractions of the frame. */
+  private async yunet(frame: OffscreenCanvas, thr = this.ynThr): Promise<Det[]> {
     const yn = await this.yunetLocal()
     if (!yn) return []
     try {
-      return await yn.detect(frame, this.ynThr)
+      return await yn.detect(frame, thr)
     } catch (e) {
       // YuNet fails to run: detection goes on with RetinaFace alone, and says so (yunetMissing).
       console.warn('ONIT: YuNet failed', e)
@@ -196,7 +206,12 @@ export class FaceDetector {
     st.detections++
     // YuNet in its worker starts first, on a copy of the frame, and works while RetinaFace does.
     const ynWorker = this.ynWorker
-    const ynJob = ynWorker ? createImageBitmap(src).then((b) => ynWorker.run(b, this.ynThr), () => null) : null
+    // A sensitivity above 0: YuNet's candidates from the pool's lower threshold; the default ones are those from its own up
+    // (the same faces: the decoding's NMS keeps the higher scores first, whatever the lower ones).
+    const more = this.sens > 0
+    const ynThr = more ? Math.min(this.ynThr, POOL_YUNET) : this.ynThr
+    const rfPool: Det[] | undefined = more ? [] : undefined
+    const ynJob = ynWorker ? createImageBitmap(src).then((b) => ynWorker.run(b, ynThr), () => null) : null
     const out: Det[] = []
     // Below ~800 px the fine pass's biggest anchors (512 px) already cover the biggest faces.
     const big = Math.max(src.width, src.height) > 800
@@ -210,12 +225,12 @@ export class FaceDetector {
       st.check += performance.now() - t
     }
     t = performance.now()
-    out.push(...await this.run(src, this.thr, 0, st))
+    out.push(...await this.run(src, this.thr, 0, st, rfPool))
     const fineMs = performance.now() - t
     let coarseMs = 0
     if (big) {
       t = performance.now()
-      out.push(...await this.run(coarse, this.thr, COARSE_MIN_BOX))
+      out.push(...await this.run(coarse, this.thr, COARSE_MIN_BOX, undefined, rfPool))
       coarseMs = performance.now() - t + shrinkMs
       st.coarse += performance.now() - t
       st.coarseRuns++
@@ -225,10 +240,11 @@ export class FaceDetector {
     t = performance.now()
     const rf = nmsIou(out, 0.4)
     // YuNet adds the faces RetinaFace misses and raises the score where both agree; the wait for it and the fusion count as the merge.
-    let yn = ynJob ? await ynJob : null
+    let ynAll = ynJob ? await ynJob : null
     // Its worker failed: YuNet in this thread from now on.
-    if (ynJob && !yn) this.ynWorker = null
-    yn ??= await this.yunet(src)
+    if (ynJob && !ynAll) this.ynWorker = null
+    ynAll ??= await this.yunet(src, ynThr)
+    const yn = more ? ynAll.filter((d) => d.score >= this.ynThr) : ynAll
     st.yunetFaces += yn.length
     const kept = fuse(rf, yn)
     st.nms += performance.now() - t
@@ -237,6 +253,12 @@ export class FaceDetector {
     // tracker without it.
     t = performance.now()
     await this.verify(src, kept.filter((d) => d.score >= DET_THRESHOLD && d.score < CLEAR).sort((a, b) => a.score - b.score).slice(0, 12))
+    // A sensitivity above 0: the pool's faces that aren't one of those, from the cut up, re-checked too (the likeliest first).
+    this.lastExtras = []
+    if (rfPool) {
+      this.lastExtras = extras(kept, fuse(rfPool, ynAll, POOL_YUNET_ONLY), thresholds(this.sens).cut)
+      await this.verify(src, [...this.lastExtras].sort((a, b) => b.score - a.score).slice(0, MAX_EXTRA_CHECKS))
+    }
     st.verify += performance.now() - t
     return kept
   }
@@ -311,8 +333,11 @@ export class FaceDetector {
     })
   }
 
-  /** [st] set: the time of each step is added to it (the fine pass; the coarse one is timed whole). */
-  private async run(c: OffscreenCanvas, threshold: number, minBox: number, st?: DetectStats): Promise<Det[]> {
+  /**
+   * [st] set: the time of each step is added to it (the fine pass; the coarse one is timed whole).
+   * [pool] set: also gets the faces from the pool's lower threshold, decoded from the same run (a sensitivity above 0).
+   */
+  private async run(c: OffscreenCanvas, threshold: number, minBox: number, st?: DetectStats, pool?: Det[]): Promise<Det[]> {
     const w = c.width, h = c.height
     const t0 = performance.now()
     const px = c.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, w, h).data
@@ -322,6 +347,7 @@ export class FaceDetector {
     const [loc, conf] = await this.infer(input, [1, 3, h, w])
     const t2 = performance.now()
     const dets = this.decode(loc, conf, w, h, threshold, minBox)
+    if (pool) pool.push(...this.decode(loc, conf, w, h, Math.min(threshold, POOL_RF), minBox))
     if (st) {
       st.pre += t1 - t0
       st.inf += t2 - t1

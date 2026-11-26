@@ -39,6 +39,10 @@ export interface Analysis {
   lowConfidence?: number
   /** Detection ran lighter than the app's (a slow device: a smaller frame, fewer detections per second, or no YuNet): faces may be missed, so the video is to be checked. */
   reduced?: boolean
+  /** Found with fast detection (5 a second): small or distant faces may be missed for a moment, so the video is to be checked. */
+  fast?: boolean
+  /** The sensitivity it ran at (0..1, lib/sensitivity.ts). */
+  sensitivity?: number
 }
 
 export type BlurMode = 'blur' | 'pixelate' | 'solid'

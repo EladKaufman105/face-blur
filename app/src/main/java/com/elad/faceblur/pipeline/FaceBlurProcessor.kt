@@ -88,7 +88,7 @@ class Settings(
     /** How faces are looked for: normal, extended or fast. */
     val detect: com.elad.faceblur.analysis.DetectMode = com.elad.faceblur.analysis.DetectMode.of(sensitive, fast)
     val fast: Boolean get() = detect == com.elad.faceblur.analysis.DetectMode.FAST
-    val sensitivity: Float = com.elad.faceblur.analysis.DetectTuning.clamp(sensitivity)
+    val sensitivity: Float = com.elad.faceblur.analysis.DetectTuning.quantize(sensitivity)
 }
 
 sealed interface Outcome {

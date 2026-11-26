@@ -490,12 +490,17 @@ class FaceAnalyzer private constructor(
         val cutList = cuts.filter { it in 1 until n }
         var tracks = OfflineTracker(measuredFps, aspect, sensitive).run(n, dets, motion, cutList)
         if (sensitivity > 0f && extraDets.isNotEmpty()) {
-            // A sensitivity above 0: the default tracks as they are, and the faces the lower
-            // thresholds add (see [DetectTuning.combine]).
-            val all = HashMap<Int, List<Det>>(dets)
-            for ((i, extra) in extraDets) all[i] = (all[i] ?: emptyList()) + extra
-            val more = OfflineTracker(measuredFps, aspect, sensitive, DetectTuning.thresholds(sensitivity)).run(n, all, motion, cutList)
-            tracks = DetectTuning.combine(tracks, more)
+            // A sensitivity above 0: the default tracks as they are, and step by step the faces
+            // the lower thresholds add (see [DetectTuning.widen]).
+            tracks = DetectTuning.widen(tracks, sensitivity) { level ->
+                val thr = DetectTuning.thresholds(level)
+                val all = HashMap<Int, List<Det>>(dets)
+                for ((i, extra) in extraDets) {
+                    val more = extra.filter { it.score >= thr.cut }
+                    if (more.isNotEmpty()) all[i] = (all[i] ?: emptyList()) + more
+                }
+                OfflineTracker(measuredFps, aspect, sensitive, thr).run(n, all, motion, cutList)
+            }
         }
         val store = frames
         frames = null
@@ -548,7 +553,7 @@ class FaceAnalyzer private constructor(
             val store = com.elad.faceblur.models.ModelStore.get(context)
             val files = store.acquire(com.elad.faceblur.models.PackId.FACES)
             try {
-                return FaceAnalyzer(context, mode, fps, DetectTuning.clamp(sensitivity), files)
+                return FaceAnalyzer(context, mode, fps, DetectTuning.quantize(sensitivity), files)
             } catch (t: Throwable) {
                 store.release(com.elad.faceblur.models.PackId.FACES)
                 throw t

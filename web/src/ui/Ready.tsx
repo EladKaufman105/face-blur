@@ -13,11 +13,14 @@ import { applyTemplate, currentSettings, exportOptionsOf, withExportOptions, typ
 import { findTemplate, loadTemplates } from '../lib/templatestore'
 import { prepareTranslation } from '../lib/translate'
 import { DetectionNotice } from './DetectionNotice'
+import { DetectControls, detectSummary, type DetectChoice } from './DetectControls'
+import { modeOf } from '../lib/sensitivity'
 
 type Props = {
   file: File
-  sensitive: boolean
-  onSensitive: (v: boolean) => void
+  /** The detection mode and sensitivity chosen. */
+  detect: DetectChoice
+  onDetect: (v: DetectChoice) => void
   /** Find the faces, then open the editor to check them ([template]: the settings of the template chosen, to apply there). */
   onBlur: (look: Look, template: TemplateSettings | null) => void
   /** Find the faces and save straight away, with these export choices ([template]: the template chosen). */
@@ -31,7 +34,9 @@ type Props = {
  * away as the other way. The blur's look and wider detection are folded away (the look can
  * change in the editor too); wider detection is the one choice to make before detection runs.
  */
-export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onReplace, onBack }: Props) {
+export function Ready({ file, detect, onDetect, onBlur, onBlurAndSave, onReplace, onBack }: Props) {
+  const asSettings = (d: DetectChoice) => ({ sensitive: d.mode === 'extended', fast: d.mode === 'fast', sensitivity: d.sensitivity })
+  const choiceOf = (s: { sensitive: boolean; fast: boolean; sensitivity: number }): DetectChoice => ({ mode: modeOf(s.sensitive, s.fast), sensitivity: s.sensitivity })
   const url = useMemo(() => URL.createObjectURL(file), [file])
   useEffect(() => () => URL.revokeObjectURL(url), [url])
   const [meta, setMeta] = useState<{ w: number; h: number; dur: number } | null>(null)
@@ -46,31 +51,31 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
   // Templates: one chosen fills in the settings (and brings its processing: subtitles, voice, ...).
   const frame = useFrame(file)
   useEffect(() => { loadTemplates() }, [])
-  const baseline = useMemo(() => currentSettings({ sensitive, hebrewUi: lang.value === 'he', watermark: loadWatermark(), options }), [])
+  const baseline = useMemo(() => currentSettings({ ...asSettings(detect), hebrewUi: lang.value === 'he', watermark: loadWatermark(), options }), [])
   const [tplId, setTplId] = useState<string | null>(null)
   const [tpl, setTpl] = useState<TemplateSettings | null>(null)
-  /** The look, wider detection and export choices as they were before a template was chosen. */
-  const before = useRef<{ look: Look; sensitive: boolean; options: ExportOptions } | null>(null)
+  /** The look, detection and export choices as they were before a template was chosen. */
+  const before = useRef<{ look: Look; detect: DetectChoice; options: ExportOptions } | null>(null)
   const pick = (id: string | null) => {
     setTplId(id)
     const t0 = findTemplate(id)
     if (!t0) {
       // No template: the settings go back to what they were.
-      if (before.current) { setLook(before.current.look); onSensitive(before.current.sensitive); setOptions(before.current.options) }
+      if (before.current) { setLook(before.current.look); onDetect(before.current.detect); setOptions(before.current.options) }
       before.current = null
       setTpl(null)
       return
     }
-    before.current ??= { look, sensitive, options }
+    before.current ??= { look, detect, options }
     const b = before.current
-    const s = applyTemplate(t0, withExportOptions({ ...baseline, look: b.look, sensitive: b.sensitive }, b.options))
+    const s = applyTemplate(t0, withExportOptions({ ...baseline, look: b.look, ...asSettings(b.detect) }, b.options))
     setLook(s.look)
-    onSensitive(s.sensitive)
+    onDetect(choiceOf(s))
     setOptions(exportOptionsOf(s, options))
     setTpl(s)
   }
   /** The template's settings with the changes made here since. */
-  const current = (): TemplateSettings | null => (tpl ? withExportOptions({ ...tpl, look, sensitive }, options) : null)
+  const current = (): TemplateSettings | null => (tpl ? withExportOptions({ ...tpl, look, ...asSettings(detect) }, options) : null)
 
   // The frame rate and codec (from the packets, no decoding), for the details and the export's choices.
   useEffect(() => {
@@ -86,7 +91,7 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
   }, [file])
 
   const modeLabel = (m: BlurMode) => (m === 'blur' ? t('טשטוש') : m === 'pixelate' ? t('פיקסלים') : t('כיסוי'))
-  const summary = modeLabel(look.mode) + ' · ' + (sensitive ? t('זיהוי מורחב') : t('זיהוי רגיל'))
+  const summary = modeLabel(look.mode) + ' · ' + detectSummary(detect)
 
   return (
     <main class="ready">
@@ -171,16 +176,7 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
                 <input type="range" class="padding" min={1.2} max={2} step={0.01} value={look.padding} onInput={(e) => setLook({ ...look, padding: Number((e.currentTarget as HTMLInputElement).value) })} />
                 <div class="range-ends small muted"><span>{t('צמוד')}</span><span>{t('רחב')}</span></div>
               </div>
-              <label class="row switch-row sensitive">
-                <div class="grow">
-                  <strong>{t('זיהוי מורחב')}</strong>
-                  <div class="small muted" style="margin-top:4px">{t('בודק כל פריים ומטשטש גם פנים שהמערכת פחות בטוחה בהן. מפספס פחות, אבל עלול לטשטש גם דברים מיותרים, ואיטי יותר.')}</div>
-                </div>
-                <span class="switch">
-                  <input type="checkbox" checked={sensitive} onChange={(e) => onSensitive((e.currentTarget as HTMLInputElement).checked)} />
-                  <span />
-                </span>
-              </label>
+              <DetectControls value={detect} onChange={onDetect} />
             </div>
           )}
         </section>}
@@ -214,7 +210,7 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
  * No faces were found, as the app's: small, distant or partly hidden faces may need wider
  * detection, or a blur marked by hand (when there's an editor to open).
  */
-export function NoFaces({ file, canEdit, sensitive, reduced, onEdit, onRetry, onBack }: { file: File; canEdit: boolean; sensitive: boolean; reduced?: boolean; onEdit: () => void; onRetry: () => void; onBack: () => void }) {
+export function NoFaces({ file, canEdit, sensitive, reduced, fast, onEdit, onRetry, onBack }: { file: File; canEdit: boolean; sensitive: boolean; reduced?: boolean; fast?: boolean; onEdit: () => void; onRetry: () => void; onBack: () => void }) {
   return (
     <main class="ready no-faces">
       <section class="card video-card">
@@ -227,6 +223,7 @@ export function NoFaces({ file, canEdit, sensitive, reduced, onEdit, onRetry, on
           <strong class="grow">{t('לא זוהו פנים בסרטון')}</strong>
         </div>
         {reduced && <DetectionNotice />}
+        {fast && <DetectionNotice fast />}
         <p class="small muted" style="margin:0">{t('אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב, או סמן אותן ידנית.')}</p>
         <div class="actions">
           {canEdit && <button class="btn primary mark-by-hand" onClick={onEdit}>{t('סמן טשטוש ידנית')}</button>}
@@ -243,7 +240,7 @@ export function NoFaces({ file, canEdit, sensitive, reduced, onEdit, onRetry, on
  * app's on this device, or some face has no clear detection behind it): nothing is saved until the
  * user says so. The editor is the primary way on.
  */
-export function CheckFaces({ reduced, onEdit, onSave, onBack }: { reduced: boolean; onEdit: () => void; onSave: () => void; onBack: () => void }) {
+export function CheckFaces({ reduced, fast, onEdit, onSave, onBack }: { reduced: boolean; fast?: boolean; onEdit: () => void; onSave: () => void; onBack: () => void }) {
   return (
     <main class="ready check-faces">
       <section class="card message-card">
@@ -252,6 +249,7 @@ export function CheckFaces({ reduced, onEdit, onSave, onBack }: { reduced: boole
           <strong class="grow">{t('זיהוי לא בטוח')}</strong>
         </div>
         {reduced && <DetectionNotice />}
+        {fast && <DetectionNotice fast />}
         <p class="small muted" style="margin:0">{t('כדאי לבדוק את הפנים בעורך.')}</p>
         <div class="actions">
           <button class="btn primary check-edit" onClick={onEdit}>{t('פתח בעורך')}</button>

@@ -61,7 +61,9 @@ data class Thresholds(
  * from a fixed, lower pool ([POOL_RF], [POOL_YUNET], [POOL_YUNET_ONLY]) beside the default ones,
  * and cut at [Thresholds.cut]. So the extra detections at a higher sensitivity always include
  * those at a lower one. The default detections and the default tracks are made exactly as
- * without the setting and kept whole ([extras], [combine]): a higher sensitivity never blurs less.
+ * without the setting and kept whole ([extras]); the tracks of each 5% step up to the setting
+ * are added to them in turn, never changing or taking away a box ([widen], [combine]): a
+ * higher sensitivity never blurs less than a lower one, nor than the default.
  * [FaceDetector.CLEAR] (0.8) doesn't move: what counts as a clear face (no re-check needed,
  * no "check the faces" flag) stays as it is.
  */
@@ -156,32 +158,47 @@ object DetectTuning {
         pool.filter { p -> p.score >= cut && kept.none { Geometry.iou(it.box, p.box) > SAME_FACE_IOU } }
 
     /**
-     * The tracks of a sensitivity above 0: every default track [base] as it is, and of the
-     * tracks made with the lower thresholds ([more]) those that are another face. One that is
-     * mostly a default track's face (IoU over [SAME_FACE_IOU] on at least half the frames they
-     * share) only adds its frames before and after that track, so a face found earlier or
-     * followed longer is blurred longer. Never fewer frames or boxes than [base].
+     * Adds the tracks [more] (made with lower thresholds) to [tracks], never changing or taking
+     * away a box that is there: a track that is mostly the face of one there (IoU over
+     * [SAME_FACE_IOU] on at least half the frames they share) only adds its frames right before
+     * and after it (a face found earlier or followed longer is blurred longer); any other is
+     * another face. The result has every frame and box of [tracks].
      */
-    fun combine(base: List<TreeMap<Int, Box>>, more: List<TreeMap<Int, Box>>): List<TreeMap<Int, Box>> {
-        if (more.isEmpty()) return base
-        val out = base.map { TreeMap(it) }
-        val added = ArrayList<TreeMap<Int, Box>>()
+    fun combine(tracks: List<TreeMap<Int, Box>>, more: List<TreeMap<Int, Box>>): List<TreeMap<Int, Box>> {
+        if (more.isEmpty()) return tracks
+        val out = ArrayList<TreeMap<Int, Box>>(tracks.size + more.size)
+        tracks.mapTo(out) { TreeMap(it) }
         for (m in more) {
-            val same = base.indices.firstOrNull { i -> sameFace(base[i], m) }
-            if (same == null) {
-                added += m
+            val t = out.firstOrNull { sameFace(it, m) }
+            if (t == null) {
+                out += TreeMap(m)
                 continue
             }
-            val b = base[same]
-            val t = out[same]
-            // Only the frames right before and after the default track (contiguous with it).
-            var f = b.firstKey() - 1
+            // Only the frames right before and after the track (contiguous with it).
+            var f = t.firstKey() - 1
             while (f >= m.firstKey() && m.containsKey(f)) { t[f] = m[f]!!; f-- }
-            f = b.lastKey() + 1
+            f = t.lastKey() + 1
             while (f <= m.lastKey() && m.containsKey(f)) { t[f] = m[f]!!; f++ }
         }
-        return out + added
+        return out
     }
+
+    /** [s] on the setting's steps of 5% (the slider's), within 0..1. */
+    fun quantize(s: Float): Float = kotlin.math.round(clamp(s) * STEPS) / STEPS
+
+    /** The steps a sensitivity of [s] goes through: 5%, 10%, ... up to [s] (none at 0). */
+    fun levels(s: Float): List<Float> = (1..kotlin.math.round(clamp(s) * STEPS).toInt()).map { it / STEPS }
+
+    /**
+     * The tracks at sensitivity [s]: the default tracks [base] as they are, then step by step
+     * ([levels]) the tracks [more] makes at each step's thresholds ([combine]). Each step only
+     * adds, so a higher sensitivity has every box a lower one has: it never blurs less.
+     */
+    fun widen(base: List<TreeMap<Int, Box>>, s: Float, more: (Float) -> List<TreeMap<Int, Box>>): List<TreeMap<Int, Box>> =
+        levels(s).fold(base) { acc, level -> combine(acc, more(level)) }
+
+    /** Steps of the setting. */
+    private const val STEPS = 20f
 
     private fun sameFace(a: TreeMap<Int, Box>, b: TreeMap<Int, Box>): Boolean {
         val from = max(a.firstKey(), b.firstKey())

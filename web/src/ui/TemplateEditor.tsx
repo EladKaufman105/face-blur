@@ -1,3 +1,5 @@
+import { DetectControls } from './DetectControls'
+import { modeOf } from '../lib/sensitivity'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { lang, t } from '../i18n'
 import { type BlurMode } from '../lib/types'
@@ -150,7 +152,7 @@ export function TemplateEditor({ template, onClose, onSaved }: Props) {
                       <label>{t('גודל האזור סביב הפנים')}</label>
                       <input type="range" min={1.2} max={2} step={0.01} value={blur.padding ?? 1.6} onInput={(e) => patch('blur', { padding: Number((e.currentTarget as HTMLInputElement).value) })} />
                     </div>
-                    <SwitchRow title={t('זיהוי מורחב')} text={t('בודק כל פריים ומטשטש גם פנים שהמערכת פחות בטוחה בהן.')} on={!!blur.sensitive} onChange={(on) => patch('blur', { sensitive: on })} />
+                    <DetectControls cls="tpl-detect" value={{ mode: modeOf(!!blur.sensitive, !!blur.fast), sensitivity: blur.sensitivity ?? 0 }} onChange={(d) => patch('blur', { sensitive: d.mode === 'extended', fast: d.mode === 'fast', sensitivity: d.sensitivity })} />
                   </>
                 )}
               </>

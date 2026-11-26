@@ -76,11 +76,11 @@ export function videoSize(file: File): Promise<[number, number] | null> {
 }
 
 /** Faces found in [file]: what the analyzing screen does, with no screen. [onProgress]: 0..1. */
-export function findFaces(file: File, sensitive: boolean, onProgress: (p: number) => void, signal?: AbortSignal) {
+export function findFaces(file: File, sensitive: boolean, onProgress: (p: number) => void, signal?: AbortSignal, detect: { fast?: boolean; sensitivity?: number } = {}) {
   return run<{ analysis: Analysis; thumbs: (string | null)[]; ms: number; backend: string }, AnalyzeMessage>(
     () => { releaseSpeechForExport(); return new Worker(new URL('../workers/analyze.worker.ts', import.meta.url), { type: 'module' }) },
     (w) => {
-      const req: AnalyzeRequest = { file, sensitive, base: new URL('.', document.baseURI).href, backend: forcedBackend(), workers: Number(new URLSearchParams(location.search).get('workers')) || undefined }
+      const req: AnalyzeRequest = { file, sensitive, fast: detect.fast, sensitivity: detect.sensitivity, base: new URL('.', document.baseURI).href, backend: forcedBackend(), workers: Number(new URLSearchParams(location.search).get('workers')) || undefined }
       w.postMessage(req)
     },
     (m, ok, fail) => {
@@ -97,7 +97,7 @@ export function findFaces(file: File, sensitive: boolean, onProgress: (p: number
           b.close()
           return c.toDataURL('image/jpeg', 0.85)
         })
-        ok({ analysis: { times: m.times, width: m.width, height: m.height, fps: m.fps, tracks: m.tracks, cuts: m.cuts, lowConfidence: m.lowConfidence, reduced: m.reduced }, thumbs, ms: m.ms, backend: m.backend })
+        ok({ analysis: { times: m.times, width: m.width, height: m.height, fps: m.fps, tracks: m.tracks, cuts: m.cuts, lowConfidence: m.lowConfidence, reduced: m.reduced, fast: m.fast, sensitivity: m.sensitivity }, thumbs, ms: m.ms, backend: m.backend })
       } else if (m.type === 'error') fail(new StepError(m.message, m.code))
     },
     signal,
@@ -227,7 +227,7 @@ export async function processVideo(file: File, s: TemplateSettings, report: (pha
     report('read', sh.faces)
   } else {
     report('faces', 0)
-    const r = await findFaces(file, s.sensitive, (p) => report('faces', p * sh.faces), signal)
+    const r = await findFaces(file, s.sensitive, (p) => report('faces', p * sh.faces), signal, { fast: s.fast, sensitivity: s.sensitivity })
     analysis = r.analysis
     thumbs = r.thumbs
     detectInfo = t('זמן עיבוד: %s', `${Math.round(r.ms / 1000)}s`)
