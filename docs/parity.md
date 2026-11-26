@@ -30,8 +30,8 @@ Rows marked **privacy** must be closed first.
 
 | Feature | App | Web | Status | Note / link |
 |---|---|---|---|---|
-| Face detection strength (**privacy**) | RetinaFace fused with YuNet, 1280 px GPU / 960 px CPU, 15/s | RetinaFace only; 960 px GPU / 640 px CPU; rate drops to 4/s on slow devices (`W/lib/detector.ts:14`, `W/workers/analyze.worker.ts:105`) | differs | More missed faces on web. Add YuNet or warn when rate or size was reduced |
-| Low-confidence faces flag | Batch flags uncertain videos (`A/batch/BatchRunner.kt:101`) | Not flagged | gap-web | Port `lowConfidenceTracks` |
+| Face detection strength (**privacy**) | RetinaFace fused with YuNet (noisy-or where both agree, YuNet-only faces from 0.6 at 0.85), 1280 px GPU / 960 px CPU, 15/s; on a slow device 640 px, no YuNet, down to 8/s (`A/analysis/FaceDetector.kt`, `FaceAnalyzer.kt`) | The same models and fusion (`W/lib/fusion.ts`, `W/lib/detector.ts`; `yunet.onnx` is the app's file, copied at build), 1280 px GPU / 960 px CPU, 15/s. On a slow device: 960 -> 640 px first, then 15 -> 4/s (`W/lib/pace.ts`), YuNet stays on, lower score thresholds (RetinaFace 0.25, YuNet 0.3), and the video is marked `reduced` (see "Detection reduced on slow device") | same | Same strength on a capable device (`web/tests/fusion.cjs`, `web/tests/detect.cjs`). The reduced mode is the web's own (see Accepted exceptions) and is never silent. YuNet runs on WebAssembly in a fixed 640 x 640 input (the frame in the top left corner), as its ONNX file is fixed-size; the app's OpenCV resizes the net per frame |
+| Low-confidence faces flag | Batch flags uncertain videos (`A/batch/BatchRunner.kt:101`) | Batch flags a video with low-confidence tracks (`W/lib/lowconf.ts`, `W/lib/batch.ts`) or one whose detection ran reduced | same | The web also flags a reduced run (stricter) |
 | "No faces" path | "Mark by hand" / "Try extended detection" | Same (`W/ui/Ready.tsx:222`) | same | |
 | Template with face blur OFF, Ready screen (**privacy**) | Button still says "Blur faces"; no warning (`A/ui/ReadyScreen.kt:70`, `A/MainViewModel.kt:830`) | "Open in editor" and red alert "faces will NOT be blurred" (`Ready.tsx:136`) | gap-app | User can believe faces are blurred. Copy the web behaviour |
 | Blur-off template, "Blur and save straight" (**privacy**) | Saves straight (`start()` -> `startTool(null, tpl)` -> `render(auto=true)`), but the button still says "טשטש ושמור ישר" (`ReadyScreen.kt:81`, `MainViewModel.kt:830`) | Label "Save straight", batch-of-one path runs (`Ready.tsx:138`, `app.tsx:138`) | differs | The app's label claims blur that does not happen. PR #34 changes the label |
@@ -185,7 +185,7 @@ Rows marked **privacy** must be closed first.
 | No-face-blur warning (**privacy**) | Missing in Ready and batch | Present | gap-app | Same rows as above |
 | Voice change is not an anonymity guarantee | Yes | Yes | same | |
 | Review-before-posting note | Yes | Yes | same | |
-| Detection reduced on slow device | n/a | Message when WebGPU missing | exception | Web only |
+| Detection reduced on slow device | Silent: a lighter pass (640 px, no YuNet, fewer detections) shows only in the stats panel | "Detection reduced on this device; check faces." (he + en) for as long as the video is open, in the editor and on the "no faces" screen (`W/ui/DetectionNotice.tsx`); the video is flagged low confidence (batch). Also a message when WebGPU is missing | exception | Web only. App: consider the same notice (privacy: a light pass may miss faces) |
 | Unsupported browser | n/a | WebCodecs check | exception | Web only |
 | Crash / report dialog | Yes (`A/CrashLog.kt`) | None | gap-web | |
 | Empty states | Same | Same | same | |
@@ -213,6 +213,7 @@ Differences that are allowed. Add a row here, with a reason, before marking anyt
 | Palette from wallpaper | Android 12+ only. |
 | Output location, "Open" on result screen, share-target type | Platform file handling. |
 | Footer, About, unsupported-browser notice, slow-device notice, beta project import | Web only. |
+| Web's reduced detection on a slow device (smaller frame first, then fewer detections a second, down to 4; lower score thresholds) | A browser tab has no big-core pinning or foreground service, and WebAssembly is much slower than the app's native pass; analysis must still end. It is never silent (a persistent notice and a low-confidence flag) and stricter where it can be (lower thresholds, YuNet kept on). |
 | No lost-bleeps warning in the app | The app stores bleeps as time ranges, so no bleep is lost when subtitles are replaced. |
 
 ## How to keep parity

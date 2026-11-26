@@ -11,6 +11,7 @@ import { loadWatermark } from './EditorTabs'
 import { lang } from '../i18n'
 import { applyTemplate, currentSettings, exportOptionsOf, withExportOptions, type TemplateSettings } from '../lib/template'
 import { findTemplate, loadTemplates } from '../lib/templatestore'
+import { DetectionNotice } from './DetectionNotice'
 
 type Props = {
   file: File
@@ -210,7 +211,7 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
  * No faces were found, as the app's: small, distant or partly hidden faces may need wider
  * detection, or a blur marked by hand (when there's an editor to open).
  */
-export function NoFaces({ file, canEdit, sensitive, onEdit, onRetry, onBack }: { file: File; canEdit: boolean; sensitive: boolean; onEdit: () => void; onRetry: () => void; onBack: () => void }) {
+export function NoFaces({ file, canEdit, sensitive, reduced, onEdit, onRetry, onBack }: { file: File; canEdit: boolean; sensitive: boolean; reduced?: boolean; onEdit: () => void; onRetry: () => void; onBack: () => void }) {
   return (
     <main class="ready no-faces">
       <section class="card video-card">
@@ -222,6 +223,7 @@ export function NoFaces({ file, canEdit, sensitive, onEdit, onRetry, onBack }: {
           <div class="face-icon"><FaceIcon /></div>
           <strong class="grow">{t('לא זוהו פנים בסרטון')}</strong>
         </div>
+        {reduced && <DetectionNotice />}
         <p class="small muted" style="margin:0">{t('אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב, או סמן אותן ידנית.')}</p>
         <div class="actions">
           {canEdit && <button class="btn primary mark-by-hand" onClick={onEdit}>{t('סמן טשטוש ידנית')}</button>}

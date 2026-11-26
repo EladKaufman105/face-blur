@@ -26,9 +26,12 @@ Work goes through pull requests: feature branches from `develop`, PRs into `deve
 ## Web version
 
 `web/` is ONIT in the browser (phone or computer), with the same promise: the video never leaves
-the device. It finds faces with the same RetinaFace model (ONNX Runtime Web: WebGPU when the
-browser has it, checked against the CPU on the first frames with faces, else WebAssembly),
-adapts how often and at what size it detects to the device's speed, builds tracks with a port
+the device. It finds faces as the app does: the same RetinaFace fused with the same YuNet
+(ONNX Runtime Web: RetinaFace on WebGPU when the browser has it, checked against the CPU on the
+first frames with faces, else WebAssembly; YuNet on WebAssembly), about 15 times per second of
+video at 1280 px (GPU) or 960 px (CPU). On a device too slow for that it detects at a smaller size
+and less often, with lower score thresholds, and says so: a notice in the editor and a low-confidence
+flag on the video (a batch lists it). It builds tracks with a port
 of the app's offline tracker, previews the blur live (WebGL2) and
 exports an MP4 with WebCodecs (Mediabunny), keeping the sound. Faces can be turned off and on
 one by one; the look (blur, pixels, cover), strength and size match the app.

@@ -44,6 +44,7 @@ import { exportOptionsOf, hasProcessing, savedLanguage, styleOf, type TemplateSe
 import { Aborted, findPauses, transcribe } from '../lib/templaterun'
 import { releaseSpeechForExport } from '../lib/speech'
 import { SaveTemplate } from './SaveTemplate'
+import { DetectionNotice } from './DetectionNotice'
 
 type Props = {
   file: File
@@ -1402,6 +1403,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           {!narrow && editTools}
           {narrow && <div class="export-bar">{editTools}{saveTplIcon}<button class="icon-btn settings-open" onClick={() => window.dispatchEvent(new Event('onit:settings'))} aria-label={t('הגדרות')} title={t('הגדרות')}><SettingsIcon size={22} /></button>{exportBtn}</div>}
         </div>
+        {an.reduced && <DetectionNotice />}
         {safeAvailable && <SafeZoneBar open={safeOn} platform={safePlatform} frameWidth={frameW} onPick={choosePlatform} />}
         <div class={'screen' + (adding ? ' adding' : '') + (selected !== null ? ' sel' : '')} onPointerDown={onScreenDown} onPointerMove={onScreenMove} onPointerUp={onScreenUp} onPointerCancel={(e) => { press.current = null; touches.current.delete(e.pointerId); if (touches.current.size < 2) pinch.current = null }}>
           <div class="view" ref={viewBox} style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc(var(--screen-h) * ${(W / H).toFixed(4)}))` }}>

@@ -4,10 +4,11 @@ import { FaceDetector, type DetectStats } from '../lib/detector'
 import type { Det } from '../lib/types'
 
 export type DetectRequest =
-  | { type: 'init'; model: Uint8Array }
-  | { type: 'frame'; id: number; frame: ImageBitmap }
+  | { type: 'init'; model: Uint8Array; yunet: Uint8Array | null }
+  /** [side] and [reduced]: how detection runs now (see the analysis worker's pacing). */
+  | { type: 'frame'; id: number; frame: ImageBitmap; side: number; reduced: boolean }
 export type DetectReply =
-  | { type: 'ready'; precision: string }
+  | { type: 'ready'; precision: string; yunet: boolean }
   | { type: 'dets'; id: number; dets: Det[]; ms: number; stats: DetectStats }
   | { type: 'error'; message: string }
 
@@ -19,10 +20,12 @@ self.onmessage = async (e: MessageEvent<DetectRequest>) => {
   const m = e.data
   try {
     if (m.type === 'init') {
-      detector = await FaceDetector.create('', 'wasm', m.model)
-      post({ type: 'ready', precision: detector.precision })
+      detector = await FaceDetector.create('', 'wasm', m.model, m.yunet)
+      post({ type: 'ready', precision: detector.precision, yunet: !detector.yunetMissing })
     } else if (detector) {
       const f = m.frame
+      detector.side = m.side
+      detector.setReduced(m.reduced)
       if (!canvas || canvas.width !== f.width || canvas.height !== f.height) canvas = new OffscreenCanvas(f.width, f.height)
       canvas.getContext('2d', { willReadFrequently: true })!.drawImage(f, 0, 0)
       f.close()

@@ -49,6 +49,8 @@ case "${1:?shard}" in
     # Subtitles on the timeline, as the app's: a tap selects, the bar's Start / End here, split, merge, delete and text, the edges dragged, all undone; bleeps follow their words. Desktop and a phone.
     # Bleeped words never show in the subtitles: 5000 random sequences of split, merge, retime, delete, bleep, edit, translate and undo (pure, no browser).
     t splitmask.cjs   # 2
+    # Face detection's pure parts: YuNet's decoding, the fusion with RetinaFace (the app's rules), the pace (1280 / 960 / 640 px, 15 to 4 a second), the low-confidence flag (pure, no browser).
+    t fusion.cjs   # 1
     t cues.cjs "$U" $S/speech_two.mp4 $R/cues   # 12
     t cues.cjs "$U" $S/speech_two.mp4 $R/cuesp phone   # 13
     # A subtitle edited so a bleeped word may show: the alert, the mark on the timeline, the export asking first; a deleted subtitle's bleeps listed.
@@ -67,12 +69,14 @@ case "${1:?shard}" in
     t templates.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/templates   # 95
     # The speech model's flow with no download: faster / better quality kept, a stuck recognition ends with an error and a retry, Cancel ends the worker, a template asks before downloading.
     t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 40
+    # Detection that ran lighter than the app's is never silent: the notice in the editor and on the "no faces" screen (he and en), none after a full run.
+    t reduced.cjs "$U" $S/classroom.mp4 $R/reduced   # 30
     # The watermark's logo kept between visits and a template's logo shown; the template editor asking before it drops changes, and "Edit" for the chosen template (ready screen, batch); the safe zone's switch, chooser and mock (9:16 only, never in the export); the thin scrubber over a phone's panel; the low-confidence rule.
     t parity2.cjs "$U" $S/speech_two.mp4 $S/stress_cuts.mp4 $R/parity2   # 30
     # Two fingers on the video resize the selected blur, one undo step each.
     t pinch.cjs "$U" $S/walk.mp4 $R/pinch   # 8
     ;;
-  4) # 222 s
+  4) # about 295 s
     # The sound's cleanup, MP3 (from the editor and the home screen), a lower size and frame rate.
     t sound.cjs "$U" $S/speech_two.mp4 $S/speech_en.mp4 $S/classroom60.mp4 $R/sound   # 19
     # A sound step that fails never exports the original voice: the editor's export stays blocked, a batch item fails.
@@ -91,6 +95,8 @@ case "${1:?shard}" in
     t usernotes.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/usernotes   # 60
     # Speakers found from their voices (the sample's two halves).
     t speakers.cjs "$U" $S/speech_two.mp4 $R/speakers   # 8
+    # Face detection as strong as the app's: RetinaFace + YuNet at 960 px finds at least as many faces as the old web detector (RetinaFace alone, 640 px) on the same frames of the stress clip and the classroom.
+    t detect.cjs "$U" $R/detect 1.5 $S/stress_cuts.mp4 $S/classroom.mp4   # 70
     # The keyboard: groups by number, play / pause, a frame step, undo and redo.
     t keys.cjs "$U" $S/walk.mp4 $R/keys.png   # 6
     # A deep voice on a clip with speech.

@@ -1,7 +1,8 @@
 // The analysis pass, off the main thread: decodes every frame (small), finds cuts, detects faces
 // on a regular subset of frames, then builds the face tracks and a thumbnail of each face.
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny'
-import { CPU_SIDE, FaceDetector } from '../lib/detector'
+import { CPU_SIDE, FaceDetector, GPU_SIDE } from '../lib/detector'
+import { pace } from '../lib/pace'
 import { StatsHistory, summary, type AnalysisStats, type StatsSnapshot } from '../lib/analysis-stats'
 import { DetectorPool } from '../lib/detector-pool'
 import { CutDetector } from '../lib/cuts'
@@ -9,13 +10,15 @@ import { track } from '../lib/tracker'
 import { lowConfidenceTracks } from '../lib/lowconf'
 import type { Det, Track } from '../lib/types'
 
-export type AnalyzeRequest = { file: File; sensitive: boolean; base: string; backend?: 'webgpu' | 'wasm'; /** How many CPU detectors to run side by side (default: by core count). */ workers?: number }
+export type AnalyzeRequest = { file: File; sensitive: boolean; base: string; backend?: 'webgpu' | 'wasm'; /** How many CPU detectors to run side by side (default: by core count). */ workers?: number; /** For tests (the page's ?detect=yunet:0,side:640,rate:5): detection pinned to these settings, no pacing, no reduced mode. */ tune?: Tune }
 export type AnalyzeMessage =
   | { type: 'ready'; backend: string; width: number; height: number; duration: number; fps: number }
   | { type: 'progress'; done: number; total: number; preview?: ImageBitmap; dets?: Det[]; faces: number; backend: string; stats: AnalysisStats }
-  | { type: 'done'; times: Float64Array; width: number; height: number; fps: number; tracks: Track[]; cuts: number[]; lowConfidence: number; thumbs: (ImageBitmap | null)[]; backend: string; ms: number }
+  | { type: 'done'; times: Float64Array; width: number; height: number; fps: number; tracks: Track[]; cuts: number[]; lowConfidence: number; /** Detection ran lighter than the app's (see lib/pace.ts). */ reduced: boolean; thumbs: (ImageBitmap | null)[]; backend: string; ms: number }
   | { type: 'error'; code: string; message: string }
   | { type: 'log'; message: string }
+
+export type Tune = { yunet?: boolean; side?: number; rate?: number; /** As if the device were too slow: the reduced mode from the start (the notice, the flag, the lower thresholds). */ reduced?: boolean }
 
 const post = (m: AnalyzeMessage, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(m, transfer)
 const log = (message: string) => post({ type: 'log', message })
@@ -28,7 +31,7 @@ self.onmessage = async (e: MessageEvent<AnalyzeRequest>) => {
   }
 }
 
-async function analyze({ file, sensitive, base, backend, workers }: AnalyzeRequest) {
+async function analyze({ file, sensitive, base, backend, workers, tune }: AnalyzeRequest) {
   const t0 = performance.now()
   log('start')
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
@@ -60,12 +63,14 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
   let pool: DetectorPool | null = null
   if (cpuOnly && poolSize > 1) {
     try {
-      pool = await DetectorPool.create(new Uint8Array(await (await fetch(base + 'models/retinaface_fp32.onnx')).arrayBuffer()), poolSize)
+      const yunet = tune?.yunet === false ? null : await fetch(base + 'models/yunet.onnx').then(async (r) => (r.ok ? new Uint8Array(await r.arrayBuffer()) : null)).catch(() => null)
+      pool = await DetectorPool.create(new Uint8Array(await (await fetch(base + 'models/retinaface_fp32.onnx')).arrayBuffer()), yunet, poolSize)
     } catch (err) {
       log(`detector pool failed, one detector: ${String((err as Error)?.message ?? err)}`)
     }
   }
-  const detector = pool ? null : await FaceDetector.create(base + 'models/', backend)
+  const detector = pool ? null : await FaceDetector.create(base + 'models/', backend, undefined, tune?.yunet === false ? null : undefined)
+  if (tune?.side && detector) detector.side = tune.side
   const backendNow = () => detector?.backend ?? 'wasm'
   // Why detection isn't on the GPU, for the stats panel.
   const noGpu = () => detector?.fellBack ?? (backend === 'wasm' ? 'forced with ?backend=wasm' : !gpu ? 'no WebGPU in this browser' : 'no WebGPU adapter')
@@ -73,18 +78,33 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
   log(`detector ${backendNow()} ${precision}${pool ? ' x' + pool.size : ''} ${(performance.now() - t0).toFixed(0)} ms`)
   post({ type: 'ready', backend: backendNow(), width, height, duration, fps: nominalFps })
 
-  // Frames are decoded at the detector's starting size (it may lower it later).
-  const startSide = detector?.side ?? CPU_SIDE
+  // Frames are decoded at the detector's starting size (it may lower it later): the app's 1280 px
+  // on the GPU, 960 px on the CPU.
+  const startSide = tune?.side ?? detector?.side ?? (cpuOnly ? CPU_SIDE : GPU_SIDE)
   const side = Math.min(Math.max(width, height), startSide)
   const s = side / Math.max(width, height)
   const iw = Math.max(32, Math.round(width * s / 32) * 32)
   const ih = Math.max(32, Math.round(height * s / 32) * 32)
-  // Detection up to 15 times per second of video (every frame when sensitive); the tracker fills
-  // the frames between. On a slow device fewer (down to 4 per second) and at a lower resolution,
-  // so a minute of video doesn't take many minutes.
+  // Detection up to 15 times per second of video (every frame when sensitive), as the app; the
+  // tracker fills the frames between. A device that can't keep that up gets lighter detection,
+  // stepwise (see lib/pace.ts): a smaller frame first, then fewer detections per second. That
+  // is never silent: the video is marked `reduced` (the editor says so, a batch flags it) and
+  // detection gets lower score thresholds, so a doubtful face is blurred rather than missed.
   const maxRate = sensitive ? nominalFps : 15
-  let rate = Math.min(maxRate, backendNow() === 'webgpu' ? 15 : 10)
+  let rate = tune?.rate ? Math.min(maxRate, tune.rate) : maxRate
+  let fineSide = startSide
+  let reduced = false
+  const reduce = (why: string) => {
+    if (tune && !tune.reduced) return
+    if (!reduced) log(`detection reduced: ${why}`)
+    reduced = true
+    detector?.setReduced(true)
+  }
+  // No YuNet (the model couldn't be loaded): weaker than the app's detection.
+  if (detector?.yunetMissing || (pool && !pool.yunet)) reduce('no YuNet')
+  if (tune?.reduced) reduce('forced for a test')
   const spent: number[] = []
+  let sinceStep: number[] = []
 
   const sink = new CanvasSink(video, { width: iw, height: ih, fit: 'fill', poolSize: 3 })
   const cuts = new CutDetector()
@@ -102,14 +122,21 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
     detectMs += ms
     dets.set(i, got)
     found = Math.max(found, got.filter((d) => d.score >= 0.6).length)
-    // After the first (warm-up) detections: aim for about 0.6 s of detection per second of
-    // video, between 4 and 15 detections per second, at 640 px if 960 is too slow. With several
-    // detectors working at once each gets that much more time per frame.
+    // After the first (warm-up) detections, every 4 detections: the pace that keeps analysis
+    // near the video's own speed (see lib/pace.ts).
     spent.push(ms)
-    if (spent.length >= 4 && spent.length % 4 === 0) {
-      const recent = spent.slice(-4).reduce((a, b) => a + b, 0) / 4
-      if (detector && recent > 200 && detector.side > CPU_SIDE) detector.side = CPU_SIDE
-      rate = Math.min(maxRate, Math.max(4, Math.min(backendNow() === 'webgpu' ? 15 : 10, 600 * (pool?.size ?? 1) / recent)))
+    sinceStep.push(ms)
+    if (detector) fineSide = Math.min(fineSide, detector.side)
+    if (!tune && spent.length >= (pool?.size ?? 1) + 4 && sinceStep.length >= 4) {
+      const recent = sinceStep.slice(-4).reduce((a, b) => a + b, 0) / 4
+      sinceStep = []
+      const p = pace(recent, pool?.size ?? 1, maxRate, fineSide)
+      rate = p.rate
+      if (p.side !== fineSide) {
+        fineSide = p.side
+        if (detector) detector.side = fineSide
+      }
+      if (p.reduced) reduce(`${recent.toFixed(0)} ms a detection: ${fineSide} px, ${rate.toFixed(1)}/s`)
     }
   }
   // The counters for the stats panel; the history makes the per-second values of them.
@@ -122,7 +149,7 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
       atMs: now, frames: times.length, frameMs: Math.max(0, now - loopStart - decodeWait - poolWait), waitMs: poolWait, decodeWaitMs: decodeWait, cutMs,
       detections: spent.length, detectMs, partDetections: d.detections, pre: d.pre, inf: d.inf, dec: d.dec, coarse: d.coarse, coarseRuns: d.coarseRuns, check: d.check, verify: d.verify, merge: d.nms,
       backend: backendNow(), precision, noGpu: backendNow() === 'wasm' ? noGpu() : null,
-      side: detector?.side ?? CPU_SIDE, rate, workers: pool?.size ?? 1, cores,
+      side: fineSide, rate, workers: pool?.size ?? 1, cores,
     }
   }
   const statsNow = () => history.add(snapshot())
@@ -150,7 +177,7 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
         const tp = performance.now()
         await pool.free()
         poolWait += performance.now() - tp
-        await pool.detect(canvas, i, recordDets)
+        await pool.detect(canvas, i, recordDets, fineSide, reduced)
       } else {
         const td = performance.now()
         const got = await detector!.detect(canvas)
@@ -170,14 +197,17 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
   } finally {
     pool?.close()
   }
-  log(`frames ${times.length}, detections ${spent.length}, detect avg ${(detectMs / Math.max(1, spent.length)).toFixed(0)} ms, decode wait ${decodeWait.toFixed(0)} ms, side ${detector?.side ?? CPU_SIDE}, rate ${rate.toFixed(1)}`)
+  log(`frames ${times.length}, detections ${spent.length}, detect avg ${(detectMs / Math.max(1, spent.length)).toFixed(0)} ms, decode wait ${decodeWait.toFixed(0)} ms, side ${fineSide}, rate ${rate.toFixed(1)}, reduced ${reduced}`)
   log(`stats ${summary(statsNow())}`)
+  let faces50 = 0
+  for (const ds of dets.values()) faces50 += ds.filter((d) => d.score >= 0.5).length
   const n = times.length
   const diffs: number[] = []
   for (let i = 1; i < n; i++) if (times[i] > times[i - 1]) diffs.push(times[i] - times[i - 1])
   diffs.sort((a, b) => a - b)
   const fps = Math.min(240, Math.max(5, diffs.length ? 1 / diffs[diffs.length >> 1] : nominalFps))
   const tracks = track(n, dets, cutList, fps, height / width, sensitive)
+  log(`result detections ${dets.size}, faces ${faces50}, tracks ${tracks.length}, reduced ${reduced}`)
 
   // A square thumbnail of each face, from its clearest frame. The frames are decoded in one
   // pass in time order (each packet at most once): fetching them one by one, each from its
@@ -204,6 +234,6 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
       thumbs[w.i] = out.transferToImageBitmap()
     }
   }
-  const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, cuts: cutList, lowConfidence: lowConfidenceTracks(tracks, dets), thumbs, backend: backendNow(), ms: performance.now() - t0 }
+  const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, cuts: cutList, lowConfidence: lowConfidenceTracks(tracks, dets), reduced, thumbs, backend: backendNow(), ms: performance.now() - t0 }
   post(msg, [msg.times.buffer, ...tracks.map((t) => t.boxes.buffer), ...thumbs.filter((b): b is ImageBitmap => !!b)])
 }

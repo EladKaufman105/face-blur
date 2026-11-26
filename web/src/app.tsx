@@ -197,6 +197,7 @@ export function App() {
           file={screen.file}
           canEdit={!screen.save}
           sensitive={sensitive}
+          reduced={screen.analysis.reduced}
           onEdit={() => setScreen({ name: 'editor', file: screen.file, analysis: screen.analysis, thumbs: [], info: '', tab: 'faces', template: screen.template })}
           onRetry={() => { setSensitive(true); setScreen({ name: 'analyzing', file: screen.file, save: screen.save, template: screen.template }) }}
           onBack={() => setScreen({ name: 'ready', file: screen.file })}

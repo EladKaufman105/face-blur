@@ -16,11 +16,13 @@ export class DetectorPool {
   private last = new Map<Worker, DetectStats>()
   private failed: string | null = null
   precision = 'fp32'
+  /** Every worker has YuNet. */
+  yunet = true
 
   private constructor(private all: Worker[]) {}
 
-  /** [model]: the fp32 model's bytes, fetched once by the caller (the workers each build a session from them). */
-  static async create(model: Uint8Array, n: number): Promise<DetectorPool> {
+  /** [model], [yunet]: the fp32 RetinaFace's and YuNet's bytes, fetched once by the caller (the workers each build sessions from them; [yunet] null if it couldn't be had). */
+  static async create(model: Uint8Array, yunet: Uint8Array | null, n: number): Promise<DetectorPool> {
     const workers = Array.from({ length: n }, () => new Worker(new URL('../workers/detect.worker.ts', import.meta.url), { type: 'module' }))
     const pool = new DetectorPool(workers)
     try {
@@ -28,12 +30,13 @@ export class DetectorPool {
         w.onmessage = (e: MessageEvent<DetectReply>) => {
           if (e.data.type === 'ready') {
             pool.precision = e.data.precision
+            if (!e.data.yunet) pool.yunet = false
             ok()
           } else if (e.data.type === 'error') fail(new Error(e.data.message || FAILED))
         }
         w.onerror = (e) => { e.preventDefault(); fail(new Error(e.message || FAILED)) }
         w.onmessageerror = () => fail(new Error(FAILED))
-        w.postMessage({ type: 'init', model })
+        w.postMessage({ type: 'init', model, yunet })
       })))
     } catch (err) {
       pool.close()
@@ -55,7 +58,7 @@ export class DetectorPool {
   }
 
   /** Hands [frame] (copied here, so the canvas can be reused at once) to a free worker; call [free] first. */
-  async detect(canvas: OffscreenCanvas, id: number, done: (id: number, dets: Det[], ms: number) => void) {
+  async detect(canvas: OffscreenCanvas, id: number, done: (id: number, dets: Det[], ms: number) => void, side: number, reduced: boolean) {
     const frame = await createImageBitmap(canvas)
     const w = this.idle.pop()
     if (!w) {
@@ -75,7 +78,7 @@ export class DetectorPool {
     }
     w.onerror = (e) => { e.preventDefault(); this.fail(e.message) }
     w.onmessageerror = () => this.fail(FAILED)
-    w.postMessage({ type: 'frame', id, frame }, [frame])
+    w.postMessage({ type: 'frame', id, frame, side, reduced }, [frame])
   }
 
   /** Resolves when every frame handed over has come back. */

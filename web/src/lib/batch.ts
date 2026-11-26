@@ -11,6 +11,7 @@ import { batchName, createProject, saveProject, deleteProject, summarize, type P
 import { keepAwake } from './wakelock'
 import { cutCues, toSrt } from './subtitles'
 import { CutMap } from './cutmap'
+import { isLowConfidence } from './lowconf'
 
 export const MAX_VIDEOS = 10
 
@@ -281,7 +282,7 @@ async function processOne(b: Batch, item: BatchItem) {
     }, item.controller.signal)
     mark('export')
     item.notes = p.notes
-    item.lowConfidence = !s.blurOff && (p.analysis.lowConfidence ?? 0) > 0
+    item.lowConfidence = !s.blurOff && isLowConfidence(p.analysis)
     const state = stateOf(s, p)
     const picture: ProjectPicture | null = p.picture ? { motion: p.picture.motion, cuts: p.picture.cuts, masks: p.picture.masks } : null
     const meta = (thumb: string | null) => ({ duration: p.analysis.times.length ? p.analysis.times[p.analysis.times.length - 1] : item.duration, thumb, ...summarize(state) })

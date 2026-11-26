@@ -1,6 +1,9 @@
 // Which videos a batch flags for another look at their faces (the app's BatchMath.lowConfidenceTracks).
 import type { Det, Track } from './types'
 
+/** A video whose faces are to be checked: some blur has no clear detection behind it, or detection ran lighter than the app's on this device. */
+export const isLowConfidence = (a: { lowConfidence?: number; reduced?: boolean }): boolean => (a.lowConfidence ?? 0) > 0 || !!a.reduced
+
 /**
  * How many automatic face tracks have no clear detection behind them (the best detection inside
  * the track's box, or its re-check, scored under [clear]): faces to look at again. As the app's

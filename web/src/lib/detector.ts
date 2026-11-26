@@ -1,18 +1,23 @@
-// RetinaFace (MobileNetV2 backbone, yakhyo/retinaface-pytorch, MIT; trained on WIDER FACE), the
-// same model and decoding as the Android app, run with ONNX Runtime Web (WebGPU when the browser
-// has it, else WebAssembly).
+// RetinaFace (MobileNetV2 backbone, yakhyo/retinaface-pytorch, MIT; trained on WIDER FACE) fused
+// with YuNet (OpenCV Zoo, 2023mar), the same models, decoding and fusion as the Android app, run
+// with ONNX Runtime Web (RetinaFace on WebGPU when the browser has it, else WebAssembly; YuNet,
+// a 230 KB model, on WebAssembly).
 import * as ort from 'onnxruntime-web/webgpu'
 import type { Det } from './types'
+import { CLEAR, RF_THRESHOLD, RF_THRESHOLD_REDUCED, YUNET_SIDE, YUNET_THRESHOLD, YUNET_THRESHOLD_REDUCED, decodeYunet, fuse, iou, nmsIou } from './fusion'
+
+export { RF_THRESHOLD, iou, nmsIou }
 
 const STEPS = [8, 16, 32]
 const MIN_SIZES = [[16, 32], [64, 128], [256, 512]]
 const MEAN_B = 104, MEAN_G = 117, MEAN_R = 123
-export const RF_THRESHOLD = 0.35
 const COARSE_SIDE = 480
 const COARSE_MIN_BOX = 64
 const VERIFY_SIDE = 192
-/** The long side the fine pass runs at on the CPU (960 on the GPU). */
-export const CPU_SIDE = 640
+/** The long side the fine pass runs at: on the GPU, on the CPU, and on a device too slow for those (as the app's 1280 / 960 / 640). */
+export const GPU_SIDE = 1280
+export const CPU_SIDE = 960
+export const LOW_SIDE = 640
 
 export type Backend = 'webgpu' | 'wasm'
 
@@ -40,6 +45,11 @@ export class FaceDetector {
   private fine: OffscreenCanvas | null = null
   private crop = new OffscreenCanvas(VERIFY_SIDE, VERIFY_SIDE)
   private cpu: Session | null = null
+  private yunetModel: Uint8Array | null
+  private yn: Session | null = null
+  private ynCanvas = new OffscreenCanvas(YUNET_SIDE, YUNET_SIDE)
+  private thr = RF_THRESHOLD
+  private ynThr = YUNET_THRESHOLD
   // The GPU's results are compared with the CPU's on the first frames with faces.
   private checking: boolean
   private agreed = 0
@@ -49,25 +59,41 @@ export class FaceDetector {
   side: number
   /** Why detection left the GPU, if it did. */
   fellBack: string | null = null
+  /** YuNet couldn't be loaded: RetinaFace alone (weaker than the app's detection). */
+  yunetMissing = false
   readonly stats: DetectStats = { detections: 0, pre: 0, inf: 0, dec: 0, coarse: 0, coarseRuns: 0, check: 0, verify: 0, nms: 0 }
 
-  private constructor(private gpu: Session | null, private model32: Uint8Array, public precision: 'fp16' | 'fp32') {
+  private constructor(private gpu: Session | null, private model32: Uint8Array, public precision: 'fp16' | 'fp32', yunet: Uint8Array | null) {
     this.checking = gpu !== null
-    this.side = gpu ? 960 : CPU_SIDE
+    this.side = gpu ? GPU_SIDE : CPU_SIDE
+    this.yunetModel = yunet
+    this.yunetMissing = yunet === null
+  }
+
+  /**
+   * The reduced mode (the device is too slow for the app's full detection): lower score
+   * thresholds, so a doubtful face is blurred rather than missed (the tracker and the
+   * re-check of uncertain faces judge the extra ones).
+   */
+  setReduced(on: boolean) {
+    this.thr = on ? RF_THRESHOLD_REDUCED : RF_THRESHOLD
+    this.ynThr = on ? YUNET_THRESHOLD_REDUCED : YUNET_THRESHOLD
   }
 
   get backend(): Backend {
     return this.gpu ? 'webgpu' : 'wasm'
   }
 
-  /** [base]: the folder with retinaface_fp32.onnx and retinaface_fp16.onnx; [fp32]: that model's bytes if already loaded. */
-  static async create(base: string, force?: Backend, fp32?: Uint8Array): Promise<FaceDetector> {
+  /** [base]: the folder with retinaface_fp32.onnx, retinaface_fp16.onnx and yunet.onnx; [fp32], [yunet]: those models' bytes if already loaded. */
+  static async create(base: string, force?: Backend, fp32?: Uint8Array, yunet?: Uint8Array | null): Promise<FaceDetector> {
     // One thread: ORT's thread pool can't start from inside a bundled module worker (WebGPU is
     // the fast path anyway).
     ort.env.wasm.numThreads = 1
     ort.env.logLevel = 'error'
     const load = async (name: string) => new Uint8Array(await (await fetch(base + name)).arrayBuffer())
     const model32 = fp32 ?? await load('retinaface_fp32.onnx')
+    // yunet === null: the caller tried and failed. Without it detection goes on (RetinaFace alone) and says so.
+    const ynBytes = yunet !== undefined ? yunet : await load('yunet.onnx').catch((e) => { console.warn('ONIT: no YuNet', e); return null })
     const gpuApi = (navigator as any).gpu
     if (gpuApi && force !== 'wasm') {
       try {
@@ -77,20 +103,64 @@ export class FaceDetector {
           const half = adapter.features?.has?.('shader-f16') === true
           const model = half ? await load('retinaface_fp16.onnx') : model32
           const s = await ort.InferenceSession.create(model, { executionProviders: ['webgpu'], graphOptimizationLevel: 'all' })
-          return new FaceDetector(s, model32, half ? 'fp16' : 'fp32')
+          return new FaceDetector(s, model32, half ? 'fp16' : 'fp32', ynBytes)
         }
       } catch (e) {
         console.warn('ONIT: no WebGPU face detection', e)
       }
     }
-    const d = new FaceDetector(null, model32, 'fp32')
+    const d = new FaceDetector(null, model32, 'fp32', ynBytes)
     await d.cpuSession()
+    await d.yunetSession()
     return d
   }
 
   private async cpuSession(): Promise<Session> {
     this.cpu ??= await ort.InferenceSession.create(this.model32, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' })
     return this.cpu
+  }
+
+  /** YuNet's session (always WebAssembly: the model is tiny); null if it can't be had. */
+  private async yunetSession(): Promise<Session | null> {
+    if (!this.yn && this.yunetModel) {
+      try {
+        this.yn = await ort.InferenceSession.create(this.yunetModel, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' })
+      } catch (e) {
+        console.warn('ONIT: no YuNet', e)
+        this.yunetModel = null
+        this.yunetMissing = true
+      }
+    }
+    return this.yn
+  }
+
+  /** YuNet on the frame (the app runs it at 640 px at most): its faces as fractions of the frame. */
+  private async yunet(frame: OffscreenCanvas): Promise<Det[]> {
+    const sess = await this.yunetSession()
+    if (!sess) return []
+    const S = YUNET_SIDE
+    const s = Math.min(1, S / Math.max(frame.width, frame.height))
+    const w = Math.max(16, Math.round(frame.width * s)), h = Math.max(16, Math.round(frame.height * s))
+    const ctx = this.ynCanvas.getContext('2d', { willReadFrequently: true })!
+    // The model's input is a fixed 640 x 640: the frame in its top left corner, black around it.
+    ctx.fillStyle = '#000'
+    ctx.fillRect(0, 0, S, S)
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(frame, 0, 0, w, h)
+    const px = ctx.getImageData(0, 0, S, S).data
+    const n = S * S
+    const input = new Float32Array(3 * n)
+    // BGR, 0..255 as they are (no mean).
+    for (let i = 0, j = 0; i < n; i++, j += 4) {
+      input[i] = px[j + 2]
+      input[n + i] = px[j + 1]
+      input[2 * n + i] = px[j]
+    }
+    const t = new ort.Tensor('float32', input, [1, 3, S, S])
+    const r = await sess.run({ input: t })
+    t.dispose()
+    const get = (k: string) => r[k].data as Float32Array
+    return decodeYunet({ cls: [get('cls_8'), get('cls_16'), get('cls_32')], obj: [get('obj_8'), get('obj_16'), get('obj_32')], bbox: [get('bbox_8'), get('bbox_16'), get('bbox_32')] }, w, h, this.ynThr)
   }
 
   /** From now on on the CPU. The GPU session isn't released: on some drivers that breaks WebGPU. */
@@ -104,7 +174,7 @@ export class FaceDetector {
 
   /**
    * Fine pass on the frame (at [side]) + a coarse pass at 480 px for faces bigger than the
-   * anchors. Uncertain faces are then re-checked on a centered crop: clutter (knees, gloves,
+   * anchors, fused with YuNet's faces (as the app's FaceDetector). Uncertain faces are then re-checked on a centered crop: clutter (knees, gloves,
    * walls) rarely survives that, real faces often do (the tracker uses it).
    */
   async detect(frame: OffscreenCanvas): Promise<Det[]> {
@@ -122,20 +192,22 @@ export class FaceDetector {
       await this.check(coarse)
       st.check += performance.now() - t
     }
-    out.push(...await this.run(src, RF_THRESHOLD, 0, st))
+    out.push(...await this.run(src, this.thr, 0, st))
     if (big) {
       t = performance.now()
-      out.push(...await this.run(coarse, RF_THRESHOLD, COARSE_MIN_BOX))
+      out.push(...await this.run(coarse, this.thr, COARSE_MIN_BOX))
       st.coarse += performance.now() - t
       st.coarseRuns++
     }
     t = performance.now()
-    const kept = nmsIou(out, 0.4)
+    const rf = nmsIou(out, 0.4)
+    // YuNet adds the faces RetinaFace misses and raises the score where both agree; its time and the fusion count as the merge.
+    const kept = fuse(rf, await this.yunet(src))
     st.nms += performance.now() - t
     // Re-check the uncertain ones (up to 12, all crops in one run); confident faces count as
     // strong evidence in the tracker without it.
     t = performance.now()
-    await this.verify(src, kept.filter((d) => d.score < 0.8).sort((a, b) => a.score - b.score).slice(0, 12))
+    await this.verify(src, kept.filter((d) => d.score < CLEAR).sort((a, b) => a.score - b.score).slice(0, 12))
     st.verify += performance.now() - t
     return kept
   }
@@ -303,20 +375,4 @@ function fill(out: Float32Array, at: number, px: Uint8ClampedArray, n: number) {
     out[at + n + i] = px[j + 1] - MEAN_G
     out[at + 2 * n + i] = px[j] - MEAN_R
   }
-}
-
-export function iou(a: Det, b: Det): number {
-  const iw = Math.min(a.cx + a.w / 2, b.cx + b.w / 2) - Math.max(a.cx - a.w / 2, b.cx - b.w / 2)
-  const ih = Math.min(a.cy + a.h / 2, b.cy + b.h / 2) - Math.max(a.cy - a.h / 2, b.cy - b.h / 2)
-  if (iw <= 0 || ih <= 0) return 0
-  const inter = iw * ih
-  return inter / (a.w * a.h + b.w * b.h - inter)
-}
-
-export function nmsIou(dets: Det[], thr: number): Det[] {
-  const keep: Det[] = []
-  for (const d of [...dets].sort((a, b) => b.score - a.score)) {
-    if (keep.every((k) => iou(k, d) < thr)) keep.push(d)
-  }
-  return keep
 }
