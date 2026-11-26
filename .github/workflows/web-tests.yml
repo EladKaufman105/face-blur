@@ -1,7 +1,8 @@
 name: Web build and tests
 
-# Called by pr.yml (the PR checks) and web.yml (manual and weekly runs; web.yml builds the site
-# it deploys itself). Builds the app once, then runs ci/web-tests.sh in parallel shards on that build.
+# Called by pr.yml (the PR checks) and web.yml (pushes to develop, manual and weekly runs; web.yml
+# builds the site it deploys itself). Builds the app once, then runs ci/web-tests.sh in parallel
+# shards on that build.
 on:
   workflow_call:
     inputs:
@@ -13,6 +14,10 @@ on:
         description: Also run the subtitles test (Whisper, a 2.2 GB model download)
         type: boolean
         default: false
+      full:
+        description: The full versions of the tests that have a shorter one (FULL=1 for ci/web-tests.sh)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -21,8 +26,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      shards: ${{ steps.shards.outputs.shards }}
     steps:
       - uses: actions/checkout@v4
+      # The shards are the numbered cases of ci/web-tests.sh ("  1)", "  2)", ...).
+      - name: Test shards
+        id: shards
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHARDS=$(grep -oE '^  [0-9]+\)' ci/web-tests.sh | tr -dc '0-9\n' | jq -Rsc 'split("\n") | map(select(length > 0) | tonumber)')
+          [ "$SHARDS" != "[]" ] || { echo "::error::no numbered shards in ci/web-tests.sh"; exit 1; }
+          echo "shards=$SHARDS" | tee -a "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -45,6 +61,9 @@ jobs:
           pip install --quiet -r scripts/requirements-ci.txt
           npm ci
           npm run build
+      # The pure tests (no browser, a few seconds): a failure shows before the shards start.
+      - name: Unit tests
+        run: bash ci/web-tests.sh unit
       # The beta web app ("ONIT Beta", built from develop) builds too, so a beta-only failure shows here.
       - name: Build the beta
         working-directory: web
@@ -65,11 +84,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: ${{ fromJSON(needs.build.outputs.shards) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/web-test-env
       - name: Chromium tests
+        env:
+          FULL: ${{ inputs.full && '1' || '' }}
         run: bash ci/web-tests.sh ${{ matrix.shard }}
       - uses: actions/upload-artifact@v4
         if: always()
@@ -89,6 +110,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/web-test-env
       - name: Test subtitles in Chromium (Whisper, the model from Hugging Face)
+        env:
+          FULL: ${{ inputs.full && '1' || '' }}
         run: bash ci/web-tests.sh subs
       - uses: actions/upload-artifact@v4
         if: always()

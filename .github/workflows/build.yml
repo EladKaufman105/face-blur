@@ -1,41 +1,91 @@
 name: Build APK
 
-# push to develop: a beta ("ONIT Beta", its own app id, pre-release, never "latest").
-# push to main: a release. Both publish only what passed the emulator end-to-end test.
+# push to develop: a beta ("ONIT Beta", its own app id, pre-release, never "latest"), and with it
+#   the release candidate (RC): the next release's APK (app id com.elad.faceblur), built in the same
+#   run with the same tools, kept 90 days as the artifact "release-candidate".
+# push to main: a release. When main's tree is a tested beta's (ci/promote-check.sh), that beta's
+#   RC is checked and released as it is ("promote", no build, no emulator). Otherwise, and always
+#   for a hotfix, the full path: build, emulator e2e, publish, as before.
+# Sunday, and manual runs with "full": every instrumented test (also @Weekly ones) and every
+#   EndToEndTest clip. These runs publish, tag and version nothing.
+# Both publish only what passed the emulator end-to-end test.
 #
-# build-release  arm64 release APK (the one that ships)       \  in parallel
-# build-test     x86_64 test APKs for the emulator             /
-# avd            AVD + booted snapshot, cached (created once)  /
-# e2e            3 emulator shards over the 20 instrumented tests, in parallel
-# publish        needs build-release and every e2e shard
+# plan           what this run does: promote, full or test (on main: ci/promote-check.sh plan)
+# promote        main, promote only: the RC, checked again, released
+# build-release  arm64 release APKs: the beta and the RC (develop) or the release (main)   \
+# build-test     x86_64 test APKs for the emulator                                          | in
+# avd            AVD + booted snapshot, cached (created once)                               | parallel
+# android        the PR check on the merged tree: debug build, JVM unit tests               /
+# e2e            4 emulator shards over the instrumented tests, in parallel
+# publish        needs every job above
 on:
   push:
     branches: [main, develop]
-    # The web app has its own workflow.
-    paths-ignore: ['.github/workflows/models.yml', '.github/workflows/web.yml', '.github/workflows/web-tests.yml', '.github/actions/**', 'ci/web-tests.sh', 'ci/publish-pages.sh', 'ci/pages-build.sh', 'ci/web_i18n_check.py', 'web/**', 'docs/**', '.claude/**', '.github/pull_request_template.md', '.github/workflows/parity-hint.yml']
+    # Paths that don't go into the APK (the web app has its own workflow). Keep this list the
+    # same as EXCLUDES in ci/promote-check.sh: a release may differ from its beta only here.
+    # pr.yml checks that they match.
+    paths-ignore:
+      - '.github/workflows/models.yml'
+      - '.github/workflows/web.yml'
+      - '.github/workflows/web-tests.yml'
+      - '.github/actions/**'
+      - 'ci/web-tests.sh'
+      - 'ci/web_i18n_check.py'
+      - 'ci/publish-pages.sh'
+      - 'ci/pages-build.sh'
+      - 'web/**'
+      - 'docs/**'
+      - '.claude/**'
+      - '.github/pull_request_template.md'
+      - '.github/workflows/parity-hint.yml'
   workflow_dispatch:
+    inputs:
+      full:
+        description: Test only, everything (also @Weekly tests, all EndToEndTest clips). Publishes nothing.
+        type: boolean
+        default: false
+      force_full:
+        description: On main, build and run the emulator e2e instead of promoting the beta's release candidate.
+        type: boolean
+        default: false
+  schedule:
+    # Sunday: the full instrumented suite on develop (the default branch).
+    - cron: '17 3 * * 0'
 
 permissions:
   contents: read
 
-# One run at a time per branch, so two runs don't take the same version.
+# One publishing run at a time per branch, so two runs don't take the same version. Test-only
+# runs (weekly, manual "full") queue on their own.
 concurrency:
-  group: release-${{ github.ref }}
+  group: ${{ (github.event_name == 'schedule' || inputs.full) && 'e2e-full' || 'release' }}-${{ github.ref }}
   cancel-in-progress: false
 
 env:
   # The cached AVD's key: API level, image, profile and emulator flags. Change it with them.
   AVD_KEY: avd-33-google_apis-x86_64-pixel_6-swiftshader-4c4096M-v1
-  # setup-gradle saves its cache on develop and main only; everything else reads it.
-  GRADLE_READ_ONLY: ${{ github.ref != 'refs/heads/develop' && github.ref != 'refs/heads/main' }}
+  # Pushes to develop (the default branch, whose caches every branch reads) save the Gradle cache
+  # and ccache; everything else, main too, only reads them.
+  SAVE_CACHES: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
 
 jobs:
-  # The shipped APK: arm64, minified, signed. Starts at once, doesn't wait for the emulator.
-  build-release:
+  # What this run does. mode: promote (main, the RC passed every check), full (build, e2e, publish)
+  # or test (weekly / manual "full": build and e2e only).
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
     outputs:
-      version: ${{ steps.version.outputs.version }}
+      mode: ${{ steps.decide.outputs.mode }}
+      version: ${{ steps.plan.outputs.version }}
+      kinds: ${{ steps.plan.outputs.kinds }}
+      e2e_full: ${{ steps.plan.outputs.e2e_full }}
+      beta: ${{ steps.plan.outputs.beta }}
+      rc_run: ${{ steps.plan.outputs.rc_run }}
+      rc_sha256: ${{ steps.plan.outputs.rc_sha256 }}
+      rc_version_code: ${{ steps.plan.outputs.rc_version_code }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,19 +94,150 @@ jobs:
           filter: blob:none
 
       # The version from the git tags: main a release, develop a beta, anything else a dev build.
-      - name: Version
-        id: version
+      # On main, ci/version.sh fails a re-run of a released commit ("already released") here.
+      - name: Plan
+        id: plan
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TEST_ONLY: ${{ github.event_name == 'schedule' || inputs.full == true }}
+          FORCE_FULL: ${{ inputs.force_full == true }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          {
+            if [ "$TEST_ONLY" = true ]; then
+              echo "mode=test"; echo "version=0.0.0-dev"; echo 'kinds=["dev"]'; echo "e2e_full=true"
+            else
+              echo "e2e_full=false"
+              case "$GITHUB_REF" in
+                refs/heads/main) bash ci/promote-check.sh plan HEAD; echo 'kinds=["release"]' ;;
+                refs/heads/develop) V=$(bash ci/version.sh beta); echo "mode=full"; echo "version=$V"; echo 'kinds=["beta","rc"]' ;;
+                *) echo "mode=full"; echo "version=0.0.0-dev"; echo 'kinds=["dev"]' ;;
+              esac
+            fi
+          } | tee -a "$GITHUB_OUTPUT"
+
+      - name: Download the release candidate
+        id: rc
+        if: steps.plan.outputs.mode == 'promote'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: release-candidate
+          path: rc
+          run-id: ${{ steps.plan.outputs.rc_run }}
+          github-token: ${{ github.token }}
+
+      - name: Check the release candidate
+        id: verify
+        if: steps.plan.outputs.mode == 'promote' && steps.rc.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+          CODE: ${{ steps.plan.outputs.rc_version_code }}
+          SHA: ${{ steps.plan.outputs.rc_sha256 }}
+        run: |
+          set -euo pipefail
+          ls -la rc
+          [ "$(ls rc)" = "ONIT-$VERSION.apk" ] || { echo "::error::rc/ should hold only ONIT-$VERSION.apk"; exit 1; }
+          bash ci/verify-rc.sh "rc/ONIT-$VERSION.apk" "$VERSION" "$CODE" "$SHA"
+
+      # Anything not verified falls back to the full path, never to a weaker publish.
+      - name: Decide
+        id: decide
+        shell: bash
+        env:
+          MODE: ${{ steps.plan.outputs.mode }}
+          VERIFY: ${{ steps.verify.outcome }}
+          REASON: ${{ steps.plan.outputs.reason }}
+          BETA: ${{ steps.plan.outputs.beta }}
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          if [ "$MODE" = promote ] && [ "$VERIFY" != success ]; then
+            MODE=full
+            REASON="the release candidate couldn't be downloaded or failed its checks"
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          case "$MODE" in
+            promote) MSG="Promote: $VERSION is the release candidate of $BETA, released without a rebuild." ;;
+            full) MSG="Full path: build, emulator e2e, publish ($VERSION).${REASON:+ Why: $REASON}" ;;
+            *) MSG="Test only: every instrumented test, nothing published." ;;
+          esac
+          echo "::notice::$MSG"
+          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
+
+  # The release from the beta's release candidate: the same bytes the beta's run built next to the
+  # APKs its emulator shards tested. ci/verify-rc.sh checked them in plan; here only the hash.
+  promote:
+    needs: plan
+    if: needs.plan.outputs.mode == 'promote'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-candidate
+          path: out
+          run-id: ${{ needs.plan.outputs.rc_run }}
+          github-token: ${{ github.token }}
+
+      - name: The bytes plan checked
+        shell: bash
+        env:
+          SHA: ${{ needs.plan.outputs.rc_sha256 }}
+        run: |
+          set -euo pipefail
+          [ "$(ls out)" = "ONIT-$VERSION.apk" ]
+          echo "$SHA  out/ONIT-$VERSION.apk" | sha256sum -c -
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: ONIT ${{ env.VERSION }}
+          body: "ONIT ${{ env.VERSION }}, build ${{ needs.plan.outputs.rc_version_code }} (the Android versionCode). APK for arm64 (vivo X300 Pro). Commit ${{ github.sha }}. The release candidate of beta ${{ needs.plan.outputs.beta }}, built and tested in run ${{ needs.plan.outputs.rc_run }}."
+          files: out/*.apk
+          make_latest: true
+          generate_release_notes: true
+
+  # The shipped APKs: arm64, minified, signed. Start at once, don't wait for the emulator.
+  # beta: -Plabs ("ONIT Beta"); rc: the next release's APK (develop); release: main's full path.
+  build-release:
+    name: build-release (${{ matrix.kind }})
+    needs: plan
+    if: needs.plan.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      matrix:
+        kind: ${{ fromJSON(needs.plan.outputs.kinds) }}
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      KIND: ${{ matrix.kind }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version and name
         shell: bash
         run: |
-          git fetch --tags --force
-          case "$GITHUB_REF" in
-            refs/heads/main) CHANNEL=release ;;
-            refs/heads/develop) CHANNEL=beta ;;
-            *) CHANNEL=dev ;;
+          set -euo pipefail
+          LABS=""
+          case "$KIND" in
+            beta) NAME="ONIT-Beta-$VERSION"; LABS="-Plabs=true" ;;
+            # The release it will be: X.Y.Z-beta.N -> X.Y.Z (ci/version.sh, tested in ci/test_version.sh).
+            rc) VERSION="${VERSION%-beta.*}"; NAME="ONIT-$VERSION" ;;
+            release) NAME="ONIT-$VERSION" ;;
+            *) NAME="ONIT-dev-$GITHUB_RUN_NUMBER" ;;
           esac
-          VERSION=$(bash ci/version.sh "$CHANNEL")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          { echo "APK_VERSION=$VERSION"; echo "APK_NAME=$NAME"; echo "LABS=$LABS"; } | tee -a "$GITHUB_ENV"
 
       - uses: actions/setup-java@v4
         with:
@@ -65,7 +246,23 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          cache-read-only: ${{ env.GRADLE_READ_ONLY }}
+          cache-read-only: ${{ env.SAVE_CACHES != 'true' || matrix.kind == 'rc' }}
+          cache-cleanup: on-success
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+      - name: ccache
+        id: ccache
+        run: bash ci/ccache.sh setup
+      - name: Restore the ccache
+        id: ccache-restore
+        if: steps.ccache.outputs.ok == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-release-arm64-${{ hashFiles('ci/fetch-whisper.sh', 'app/build.gradle.kts', 'app/src/main/cpp/*.*', 'app/src/main/cpp/lame/**') }}-${{ steps.ccache.outputs.week }}
+          restore-keys: |
+            ccache-release-arm64-${{ hashFiles('ci/fetch-whisper.sh', 'app/build.gradle.kts', 'app/src/main/cpp/*.*', 'app/src/main/cpp/lame/**') }}-
+            ccache-release-arm64-
 
       - name: Build release APK
         shell: bash
@@ -74,26 +271,32 @@ jobs:
           bash ci/fetch-opencv.sh
           chmod +x gradlew
           set -o pipefail
-          LABS=""
-          if [ "$GITHUB_REF" = "refs/heads/develop" ]; then LABS="-Plabs=true"; fi
-          ./gradlew assembleRelease $LABS "-PversionName=$VERSION" --no-daemon --configuration-cache --stacktrace 2>&1 | tee build.log
+          ./gradlew assembleRelease ${LABS:+"$LABS"} "-PversionName=$APK_VERSION" --configuration-cache --stacktrace 2>&1 | tee build.log
+
+      - name: ccache stats
+        if: always()
+        run: bash ci/ccache.sh stats
+      - name: Save the ccache
+        if: success() && steps.ccache.outputs.ok == 'true' && steps.ccache-restore.outputs.cache-hit != 'true' && env.SAVE_CACHES == 'true' && matrix.kind != 'rc'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
 
       - name: Rename APK
         shell: bash
         run: |
           mkdir -p out
-          case "$GITHUB_REF" in
-            refs/heads/main) NAME="ONIT-$VERSION" ;;
-            refs/heads/develop) NAME="ONIT-Beta-$VERSION" ;;
-            *) NAME="ONIT-dev-$GITHUB_RUN_NUMBER" ;;
-          esac
-          cp app/build/outputs/apk/release/*.apk "out/$NAME.apk"
+          cp app/build/outputs/apk/release/*.apk "out/$APK_NAME.apk"
+          sha256sum out/*.apk
 
+      # The beta and release APKs are kept a week, in case the release asset's upload fails. The RC is kept 90 days, until main
+      # promotes it.
       - uses: actions/upload-artifact@v4
         with:
-          name: release-apk
+          name: ${{ matrix.kind == 'rc' && 'release-candidate' || 'release-apk' }}
           path: out/*.apk
-          retention-days: 7
+          retention-days: ${{ matrix.kind == 'rc' && 90 || 7 }}
           compression-level: 0
           if-no-files-found: error
 
@@ -101,13 +304,15 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log-release
+          name: build-log-release-${{ matrix.kind }}
           path: build.log
           retention-days: 14
           if-no-files-found: ignore
 
   # The test APKs for the x86_64 emulator, built once and shared by every shard.
   build-test:
+    needs: plan
+    if: needs.plan.outputs.mode != 'promote'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -116,11 +321,14 @@ jobs:
       - name: Every string has its English
         run: python3 ci/i18n_check.py
 
-      - name: Fetch test media
+      # The test clips and models download in the background while the build is set up. OpenCV
+      # first: both fetch into this repository's FETCH_HEAD. whisper.cpp is a clone of its own.
+      - name: Fetch sources, and the test media in the background
+        shell: bash
         run: |
-          bash ci/fetch-test-media.sh
-          bash ci/fetch-whisper.sh
           bash ci/fetch-opencv.sh
+          ( bash ci/fetch-test-media.sh > fetch-test-media.log 2>&1; echo $? > fetch-test-media.status ) &
+          bash ci/fetch-whisper.sh
 
       - uses: actions/setup-java@v4
         with:
@@ -129,7 +337,30 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          cache-read-only: ${{ env.GRADLE_READ_ONLY }}
+          cache-read-only: ${{ env.SAVE_CACHES != 'true' }}
+          cache-cleanup: on-success
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+      - name: ccache
+        id: ccache
+        run: bash ci/ccache.sh setup
+      - name: Restore the ccache
+        id: ccache-restore
+        if: steps.ccache.outputs.ok == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-test-x86_64-${{ hashFiles('ci/fetch-whisper.sh', 'app/build.gradle.kts', 'app/src/main/cpp/*.*', 'app/src/main/cpp/lame/**') }}-${{ steps.ccache.outputs.week }}
+          restore-keys: |
+            ccache-test-x86_64-${{ hashFiles('ci/fetch-whisper.sh', 'app/build.gradle.kts', 'app/src/main/cpp/*.*', 'app/src/main/cpp/lame/**') }}-
+            ccache-test-x86_64-
+
+      - name: Wait for the test media
+        shell: bash
+        run: |
+          timeout 600 bash -c 'until [ -f fetch-test-media.status ]; do sleep 1; done'
+          cat fetch-test-media.log
+          [ "$(cat fetch-test-media.status)" = 0 ]
 
       - name: Build test APKs (x86_64)
         shell: bash
@@ -137,7 +368,17 @@ jobs:
           chmod +x gradlew
           set -o pipefail
           # The release build too (minified by R8): the self-test shard runs it after its tests.
-          ./gradlew assembleDebug assembleDebugAndroidTest assembleRelease -PabiFilters=x86_64 --no-daemon --configuration-cache --stacktrace 2>&1 | tee e2e-build.log
+          ./gradlew assembleDebug assembleDebugAndroidTest assembleRelease -PabiFilters=x86_64 --configuration-cache --stacktrace 2>&1 | tee e2e-build.log
+
+      - name: ccache stats
+        if: always()
+        run: bash ci/ccache.sh stats
+      - name: Save the ccache
+        if: success() && steps.ccache.outputs.ok == 'true' && steps.ccache-restore.outputs.cache-hit != 'true' && env.SAVE_CACHES == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -146,7 +387,7 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             app/build/outputs/apk/release/app-release.apk
-          retention-days: 7
+          retention-days: 1
           compression-level: 0
           if-no-files-found: error
 
@@ -155,13 +396,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-log-test
-          path: e2e-build.log
+          path: |
+            e2e-build.log
+            fetch-test-media.log
           retention-days: 14
           if-no-files-found: ignore
 
   # The emulator image and its booted snapshot, created once and cached (API level, image and
   # emulator flags are the key). The shards boot from it instead of creating an AVD.
   avd:
+    needs: plan
+    if: needs.plan.outputs.mode != 'promote'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -196,29 +441,102 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: echo "Generated the AVD snapshot for caching."
 
+  # The same check as a PR's android job (pr.yml), on the merged tree: the arm64 debug build, the
+  # instrumented tests compile, the JVM unit tests. On develop it also saves the ccache PRs read.
+  android:
+    name: android (debug build, unit tests)
+    needs: plan
+    if: needs.plan.outputs.mode != 'promote'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+      - name: ccache
+        id: ccache
+        run: bash ci/ccache.sh setup
+      - name: Restore the ccache
+        id: ccache-restore
+        if: steps.ccache.outputs.ok == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-debug-arm64-${{ hashFiles('ci/fetch-whisper.sh', 'app/build.gradle.kts', 'app/src/main/cpp/*.*', 'app/src/main/cpp/lame/**') }}-${{ steps.ccache.outputs.week }}
+          restore-keys: |
+            ccache-debug-arm64-${{ hashFiles('ci/fetch-whisper.sh', 'app/build.gradle.kts', 'app/src/main/cpp/*.*', 'app/src/main/cpp/lame/**') }}-
+            ccache-debug-arm64-
+
+      - name: Debug build and unit tests
+        shell: bash
+        run: |
+          bash ci/fetch-whisper.sh
+          bash ci/fetch-opencv.sh
+          chmod +x gradlew
+          ./gradlew assembleDebug compileDebugAndroidTestKotlin testDebugUnitTest --configuration-cache --stacktrace
+
+      - name: ccache stats
+        if: always()
+        run: bash ci/ccache.sh stats
+      - name: Save the ccache
+        if: success() && steps.ccache.outputs.ok == 'true' && steps.ccache-restore.outputs.cache-hit != 'true' && env.SAVE_CACHES == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+
+      - name: Upload the unit test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: app/build/reports/tests
+          retention-days: 14
+          if-no-files-found: ignore
+
   e2e:
-    needs: [build-test, avd]
+    needs: [plan, build-test, avd]
+    if: needs.plan.outputs.mode != 'promote'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
         include:
-          # EndToEndTest (one test over 12 clip runs, about half the emulator time) is split three ways
-          # by clip; the other classes are spread over the shards by their measured time. The
-          # release self-test runs in one.
+          # Balanced by the measured class times (seconds, run 45828954854, less the tests moved
+          # to @Weekly or the JVM). EndToEndTest is split in two by clip run (-e e2eShards 2,
+          # run index % 2 == part): on a merge part 0 is portrait_rot90, headpose pixelate and
+          # classroom60 720p30, part 1 stress_cuts and classroom sensitive; with full=true the two
+          # parts cover all 12 runs. The release self-test (~75 s) runs in one shard.
+          # 1: EndToEndTest part 1 (~130), LabsTest (~70)
           - shard: 1
-            part: 0
-            classes: com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.LabsTest,com.elad.faceblur.BatchTest
-            selftest: 0
-          - shard: 2
             part: 1
-            classes: com.elad.faceblur.EndToEndTest,com.elad.faceblur.ProjectsVoiceTest
+            classes: com.elad.faceblur.EndToEndTest,com.elad.faceblur.LabsTest
             selftest: 0
-          - shard: 3
-            part: 2
+          # 2: EndToEndTest part 0 (~120), SubtitlesTest (~50)
+          - shard: 2
+            part: 0
             classes: com.elad.faceblur.EndToEndTest,com.elad.faceblur.SubtitlesTest
+            selftest: 0
+          # 3: EditorScreenTest (~120), the self-test (~75)
+          - shard: 3
+            part: 0
+            classes: com.elad.faceblur.EditorScreenTest
             selftest: 1
+          # 4: ProjectsVoiceTest (~110), BatchTest (~100)
+          - shard: 4
+            part: 0
+            classes: com.elad.faceblur.ProjectsVoiceTest,com.elad.faceblur.BatchTest
+            selftest: 0
     name: e2e (shard ${{ matrix.shard }})
     steps:
       - uses: actions/checkout@v4
@@ -229,11 +547,6 @@ jobs:
           path: app/build/outputs/apk
 
       - run: find app/build/outputs/apk -name '*.apk'
-
-      # Only the self-test pushes these files to the emulator (the others have them in the test APK).
-      - name: Fetch test media
-        if: matrix.selftest == 1
-        run: bash ci/fetch-test-media.sh
 
       - name: Enable KVM
         shell: bash
@@ -254,8 +567,9 @@ jobs:
         env:
           E2E_CLASSES: ${{ matrix.classes }}
           E2E_SELFTEST: ${{ matrix.selftest }}
-          E2E_SHARDS: 3
+          E2E_SHARDS: 2
           E2E_SHARD: ${{ matrix.part }}
+          E2E_FULL: ${{ needs.plan.outputs.e2e_full }}
         with:
           api-level: 33
           arch: x86_64
@@ -277,16 +591,17 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-  # Release only what passed the emulator end-to-end test.
+  # Release only what passed the emulator end-to-end test (and every other job above). Never in a
+  # test-only run.
   publish:
-    needs: [build-release, e2e]
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    needs: [plan, build-release, android, e2e]
+    if: needs.plan.outputs.mode == 'full' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
     env:
-      VERSION: ${{ needs.build-release.outputs.version }}
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -305,6 +620,22 @@ jobs:
           make_latest: true
           generate_release_notes: true
 
+      # The beta's release names its RC (this run, its hash): main's plan job reads both.
+      - uses: actions/download-artifact@v4
+        if: github.ref == 'refs/heads/develop'
+        with:
+          name: release-candidate
+          path: rc
+
+      - name: Release candidate
+        id: rc
+        if: github.ref == 'refs/heads/develop'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$(find rc -type f | wc -l)" = 1 ]
+          echo "sha256=$(sha256sum rc/*.apk | cut -d' ' -f1)" | tee -a "$GITHUB_OUTPUT"
+
       - name: Publish beta
         if: github.ref == 'refs/heads/develop'
         uses: softprops/action-gh-release@v2
@@ -312,7 +643,11 @@ jobs:
           tag_name: v${{ env.VERSION }}
           target_commitish: ${{ github.sha }}
           name: ONIT Beta ${{ env.VERSION }}
-          body: "Beta ${{ env.VERSION }} from develop (installs beside ONIT as \"ONIT Beta\"), build ${{ github.run_number }}. Commit ${{ github.sha }}"
+          body: |
+            Beta ${{ env.VERSION }} from develop (installs beside ONIT as "ONIT Beta"), build ${{ github.run_number }}. Commit ${{ github.sha }}
+
+            rc-run: ${{ github.run_id }}
+            rc-sha256: ${{ steps.rc.outputs.sha256 }}
           files: out/*.apk
           prerelease: true
           make_latest: false

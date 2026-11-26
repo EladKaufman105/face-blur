@@ -3,10 +3,16 @@
 // button), with the bar of groups at the foot; the video stays in view; nothing scrolls sideways; every tool of every group can be opened and has something in
 // it; the targets are 44 px; "more options" is never an empty fold (on a wide screen it holds
 // something or is not there). The speech model is blocked (the subtitles come from an SRT).
-// Run: node tests/panels.cjs <url> <video> <out dir> [a video with at least 3 face tracks, for the crowded case; default: the first video]
+// Face detection is pinned light (?detect=yunet:0,side:320,rate:2, a test hook on localhost): the layout is what's
+// tested here, not detection, and the full detection took most of the time.
+// In two parts for CI's shards (part 1: the phone's tools in he and en, no detection, jobs over a group switch; part 2:
+// the crowded phone and a sound error, the phone's states and short screens, a wide screen); without one, both.
+// Run: node tests/panels.cjs <url> <video> <out dir> [a video with at least 3 face tracks, for the crowded case; default: the first video] [1|2]
 const { chromium } = require('playwright')
 const fs = require('fs')
-const [, , url, video, out] = process.argv
+const [, , pageUrl, video, out, crowded, partArg] = process.argv
+const part = Number(partArg) || 0
+const url = pageUrl + (pageUrl.includes('?') ? '&' : '?') + 'detect=yunet:0,side:320,rate:2'
 const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים הבאים\n\n2\n00:00:02,600 --> 00:00:05,000\nזה סרטון לדוגמה\n\n3\n00:00:05,100 --> 00:00:08,000\nעם כתוביות בעברית\n`
 const fail = (m) => { throw new Error(m) }
 // Two voices (the sample's first half is one voice, its second half the same pitched up), for the speaker search.
@@ -25,20 +31,36 @@ const closePanel = async (p) => {
   await p.waitForSelector('.tl', { state: 'visible' })
   await p.waitForTimeout(200)
 }
-/** Taps the video on a grid until a blur is selected (its bar shows). */
+/**
+ * Where a tap selected a blur, by the moment tapped (the same clip at the same moment: detection is pinned, so its
+ * blurs are the same each run). The cells where the sample clips' first blur is at that moment are tried first.
+ */
+const tapCell = new Map()
+const TAP_HINTS = [[5, 3], [4, 4]]
+/** Taps the video on a grid until a blur is selected (its bar shows); the cell known for this moment first. */
 const tapSelect = async (p) => {
-  // Paused, at a moment when a blur is on the video (the middle of the first blur's stretch).
+  // Paused, at a moment when a blur is on the video (the middle of the first blur's stretch). A tap that misses plays
+  // the video: it goes back to that moment before every tap (the same moment each time, so the cell found is kept).
   const mid = await p.$$eval('.tl-face', (e) => (Number(e[0].dataset.a) + Number(e[0].dataset.b)) / 2)
-  await p.evaluate((t) => { const v = document.querySelector('video'); v.pause(); v.currentTime = t }, mid)
-  await p.waitForTimeout(400)
+  const atMid = async (wait) => {
+    await p.evaluate((t) => { const v = document.querySelector('video'); v.pause(); v.currentTime = t }, mid)
+    await p.waitForFunction(() => !document.querySelector('video').seeking, null, { timeout: 5000 }).catch(() => {})
+    await p.waitForTimeout(wait)
+  }
+  await atMid(300)
   const k = await p.$eval('.screen .view', (e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height] })
-  for (let j = 1; j < 8; j++) for (let i = 1; i < 8; i++) {
-    await p.evaluate(() => document.querySelector('video').pause())
+  const cells = []
+  for (let j = 1; j < 8; j++) for (let i = 1; i < 8; i++) cells.push([i, j])
+  const first = tapCell.has(mid) ? [tapCell.get(mid)] : TAP_HINTS
+  cells.unshift(...first)
+  for (const [n, [i, j]] of cells.entries()) {
+    if (n) await atMid(150)
     await p.touchscreen.tap(k[0] + (k[2] * i) / 8, k[1] + (k[3] * j) / 8)
-    if (await p.waitForSelector('.ctx-bar', { timeout: 500 }).then(() => true, () => false)) return true
+    if (await p.waitForSelector('.ctx-bar', { timeout: 500 }).then(() => true, () => false)) { tapCell.set(mid, [i, j]); return true }
   }
   return false
 }
+
 /** The phone editor with no panel open: the timeline has the room, the video keeps a third of the screen, the bar of groups is on screen, nothing scrolls. */
 const checkTimeline = async (p, label, { minTl = 149 } = {}) => {
   const m = await p.evaluate(() => {
@@ -268,11 +290,11 @@ const mkCheck = (p) => async (label) => {
       }
       await p.context().close()
     }
-    for (const locale of ['he-IL', 'en-US']) await phone({ width: 390, height: 844 }, locale)
+    if (part !== 2) for (const locale of ['he-IL', 'en-US']) await phone({ width: 390, height: 844 }, locale)
 
     // ---- the smallest phone with more than the usual on it: several face tracks (a longer timeline), and a failed sound step (an alert over the panel): the bar of groups stays whole on the screen
-    {
-      const q = await open(b, { width: 360, height: 740 }, true, 'he-IL', undefined, process.argv[5] || video)
+    if (part !== 1) {
+      const q = await open(b, { width: 360, height: 740 }, true, 'he-IL', undefined, crowded || video)
       const chk = mkCheck(q)
       const tracks = await q.$$eval('.tl-face', (e) => e.length)
       console.log('face tracks:', tracks)
@@ -335,7 +357,7 @@ const mkCheck = (p) => async (label) => {
     }
 
     // ---- an editor opened with no face detection: no empty "look" tool, the rest as usual
-    for (const locale of ['he-IL', 'en-US']) {
+    if (part !== 2) for (const locale of ['he-IL', 'en-US']) {
       const q = await open(b, { width: 360, height: 740 }, true, locale, 0)
       const subs = await q.$$eval('.panel-head [data-sub]', (els) => els.map((e) => e.dataset.sub))
       console.log('no detection', locale, subs.join())
@@ -353,7 +375,7 @@ const mkCheck = (p) => async (label) => {
     // ---- the phone's states at four sizes, in Hebrew and English: the editor opens on the timeline (with
     // all its lanes), a group's panel takes its place, the close button and a second tap on the group
     // bring it back; the video keeps a third of the screen; the bar of groups never leaves the screen.
-    for (const locale of ['he-IL', 'en-US']) {
+    if (part !== 1) for (const locale of ['he-IL', 'en-US']) {
       const p = await open(b, { width: 390, height: 780 }, true, locale)
       // With faces found, the editor opens on the faces' list (the face tiles are in view at once); closed, the timeline is there.
       await p.waitForSelector('.panel:not([hidden]) .face', { state: 'visible', timeout: 5000 })
@@ -477,7 +499,7 @@ const mkCheck = (p) => async (label) => {
 
     // ---- jobs that outlive a group switch (a phone, Hebrew): speakers found while another group (or another tool) is open are
     // applied and the busy mark goes; the notice of bleeps the new subtitles lost is there when the subtitles are back.
-    {
+    if (part !== 2) {
       const openToolPhone = async (fake) => {
         const ctx = await b.newContext({ viewport: { width: 390, height: 780 }, locale: 'he-IL', hasTouch: true, isMobile: true })
         await ctx.route(/huggingface\.co|\.hf\.co/, (r) => r.abort())
@@ -571,21 +593,23 @@ self.onmessage = async () => { const n = Number(await (await fetch('/__run')).te
     }
 
     // ---- a wide screen: everything as before, and "more options" holds something
-    const w = await open(b, { width: 1366, height: 860 }, false)
-    await w.click('.tabs button[data-g=subs]')
-    const wide = async (label) => {
-      const n = await w.evaluate(() => [...document.querySelectorAll('.subs-more')].map((d) => d.querySelector('.subs-more-body')?.textContent.trim().length ?? 0))
-      console.log('wide', label, JSON.stringify(n))
-      if (n.some((x) => x === 0)) fail('wide ' + label + ': "more options" is empty')
-      if (await w.$('.panel:not([hidden])')) fail('the phone panel on a wide screen')
+    if (part !== 1) {
+      const w = await open(b, { width: 1366, height: 860 }, false)
+      await w.click('.tabs button[data-g=subs]')
+      const wide = async (label) => {
+        const n = await w.evaluate(() => [...document.querySelectorAll('.subs-more')].map((d) => d.querySelector('.subs-more-body')?.textContent.trim().length ?? 0))
+        console.log('wide', label, JSON.stringify(n))
+        if (n.some((x) => x === 0)) fail('wide ' + label + ': "more options" is empty')
+        if (await w.$('.panel:not([hidden])')) fail('the phone panel on a wide screen')
+      }
+      await wide('no subtitles')
+      await w.setInputFiles('.srt-import input', `${out}/in.srt`).catch(async () => { await w.click('.subs-more > summary'); await w.setInputFiles('.srt-import input', `${out}/in.srt`) })
+      await w.waitForSelector('.cue-list .clip')
+      await w.click('.subs-more > summary')
+      await w.waitForSelector('.subs-more-body .translate-go, .subs-more-body .translate-unsupported', { state: 'visible' })
+      await wide('with subtitles')
+      await w.screenshot({ path: `${out}/wide_subs.png` })
     }
-    await wide('no subtitles')
-    await w.setInputFiles('.srt-import input', `${out}/in.srt`).catch(async () => { await w.click('.subs-more > summary'); await w.setInputFiles('.srt-import input', `${out}/in.srt`) })
-    await w.waitForSelector('.cue-list .clip')
-    await w.click('.subs-more > summary')
-    await w.waitForSelector('.subs-more-body .translate-go, .subs-more-body .translate-unsupported', { state: 'visible' })
-    await wide('with subtitles')
-    await w.screenshot({ path: `${out}/wide_subs.png` })
     console.log('PASS')
   } catch (e) {
     console.error('FAIL', e.message)

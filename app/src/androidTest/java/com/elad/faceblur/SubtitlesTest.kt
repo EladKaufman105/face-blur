@@ -5,6 +5,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -54,7 +55,8 @@ import kotlin.math.sqrt
 /**
  * Subtitles on a clip with English speech (CI puts whisper's "tiny" model in the test assets):
  * audio decoding, transcription, translation (if the language pack can be downloaded), the
- * editor's subtitle lane and sheet, and an export with burned-in subtitles and .srt files.
+ * editor's subtitle lane and sheet, and an export with burned-in subtitles and .srt files. Then
+ * subtitles without face detection, in the same editor window (a compose rule sets its content once).
  */
 @RunWith(AndroidJUnit4::class)
 class SubtitlesTest {
@@ -109,13 +111,17 @@ class SubtitlesTest {
         inst.runOnMainSync { session.model.setCues(r.lines.map { Triple(it.startMs, it.endMs, it.he to it.en) }) }
         var export by mutableStateOf(ExportOptions(subs = SubLang.BOTH))
         var style by mutableStateOf(SubtitleStyle())
+        // The editor shown: this one, then the subtitles-only one at the end (a new editor, keyed).
+        var shown by mutableStateOf(ctrl)
         rule.setContent {
             EditorTheme {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    EditorScreen(
-                        ctrl, onClose = {}, onExport = {}, export = export, onExportChange = { export = it },
-                        subStyle = style, onSubStyleChange = { style = it },
-                    )
+                    key(shown) {
+                        EditorScreen(
+                            shown, onClose = {}, onExport = {}, export = export, onExportChange = { export = it },
+                            subStyle = style, onSubStyleChange = { style = it },
+                        )
+                    }
                 }
             }
         }
@@ -252,6 +258,9 @@ class SubtitlesTest {
         note("near-white pixels added: $added ('${cue.en}')")
         if (added < 300) fail("subtitle not burned in")
 
+        // Subtitles without face detection (until the CI overhaul its own test, subtitlesOnly).
+        subtitlesOnly(outDir) { c, e, st -> rule.runOnIdle { export = e; style = st; shown = c } }
+
         scope.cancel()
         session.close()
     }
@@ -279,8 +288,9 @@ class SubtitlesTest {
         return n
     }
 
-    /** Every preset, and each effect over time, drawn on a gray frame: for looking at. */
+    /** Every preset, and each effect over time, drawn on a gray frame: for looking at (weekly). */
     @Test
+    @Weekly
     fun styleGallery() {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val outDir = File(ctx.getExternalFilesDir(null), "subs").apply { mkdirs() }
@@ -359,12 +369,13 @@ class SubtitlesTest {
         for (f in SubFont.entries) if (r.typeface(f) == android.graphics.Typeface.DEFAULT_BOLD && f.asset != null) fail("font ${f.name} didn't load")
     }
 
-    /** Subtitles without face detection: frame times from the file, then an export. */
-    @Test
-    fun subtitlesOnly() {
+    /**
+     * Subtitles without face detection: frame times from the file, then an export. [show] puts
+     * the editor on screen with its export options and style (the caller's composition).
+     */
+    private fun subtitlesOnly(outDir: File, show: (EditorController, ExportOptions, SubtitleStyle) -> Unit) {
         val inst = InstrumentationRegistry.getInstrumentation()
         val ctx = inst.targetContext
-        val outDir = File(ctx.getExternalFilesDir(null), "subs").apply { mkdirs() }
         val src = File(ctx.cacheDir, "speech_only.mp4")
         inst.context.assets.open("samples/speech_en.mp4").use { i -> src.outputStream().use { i.copyTo(it) } }
         val info = VideoInfo.probe(ctx, Uri.fromFile(src))
@@ -380,13 +391,7 @@ class SubtitlesTest {
             session.model.setCues(listOf(Triple(500L, 4000L, "שלום לכולם" to "Hello everyone"), Triple(4200L, 9000L, "זה מבחן" to "This is a test")))
         }
         val style = SubPresets.all.first { it.name == "טיקטוק" }.style
-        rule.setContent {
-            EditorTheme {
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    EditorScreen(ctrl, onClose = {}, onExport = {}, export = ExportOptions(subs = SubLang.BOTH), subStyle = style)
-                }
-            }
-        }
+        show(ctrl, ExportOptions(subs = SubLang.BOTH), style)
         rule.waitForIdle()
         Thread.sleep(2500)
         rule.runOnIdle { ctrl.seek(ctrl.frameAt(2_000_000)) }
