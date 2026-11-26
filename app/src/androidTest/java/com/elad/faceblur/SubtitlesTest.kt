@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -37,6 +38,7 @@ import com.elad.faceblur.subs.SubtitleRenderer
 import com.elad.faceblur.subs.SubtitleStyle
 import com.elad.faceblur.ui.EditorScreen
 import com.elad.faceblur.ui.EditorTheme
+import com.elad.faceblur.ui.Tags
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -190,6 +192,9 @@ class SubtitlesTest {
         rule.waitForIdle()
         Thread.sleep(1000)
         shot(outDir, "4b_list_editor.png")
+        // "Save SRT now" is in the list's header, with the files the export would save.
+        rule.onNodeWithTag(Tags.SRT_SAVE).assertExists()
+        if (rule.runOnIdle { ctrl.srtFiles() }.isEmpty()) fail("no srt to save now")
         rule.runOnIdle { ctrl.changeSplit(SplitRule(chars = 15)) }
         val byChars = rule.runOnIdle { session.model.cues.map { it.en } }
         note("15 characters: $byChars")

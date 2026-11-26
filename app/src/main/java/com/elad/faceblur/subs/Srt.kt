@@ -118,16 +118,33 @@ object Srt {
     /** Saves the files of [cues] to Download/ONIT; returns how many. */
     fun saveAll(context: Context, baseName: String, cues: List<Cue>): Int = files(cues).count { save(context, baseName, it) != null }
 
-    /** Saves to Download/ONIT; returns null if there's nothing to save. */
+    /**
+     * Saves to Download/ONIT; returns null if it couldn't be saved. The file stays hidden (pending)
+     * until it is written, and a failed write takes it away, so no empty file is left behind.
+     */
     fun save(context: Context, baseName: String, f: SrtFile): Uri? {
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, "$baseName.${f.tag}.srt")
             put(MediaStore.Downloads.MIME_TYPE, "application/x-subrip")
             put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/ONIT")
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         val r = context.contentResolver
         val uri = r.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
-        r.openOutputStream(uri)?.use { it.write(f.text.toByteArray(Charsets.UTF_8)) }
-        return uri
+        return try {
+            val out = r.openOutputStream(uri) ?: throw java.io.IOException("no output stream")
+            out.use { it.write(f.text.toByteArray(Charsets.UTF_8)) }
+            r.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            uri
+        } catch (_: Exception) {
+            runCatching { r.delete(uri, null, null) }
+            null
+        }
     }
+
+    /** The name a saved file got (the system adds " (1)" and the like when the name was taken); null if it can't be read. */
+    fun savedName(context: Context, uri: Uri): String? = runCatching {
+        context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)
+            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+    }.getOrNull()
 }

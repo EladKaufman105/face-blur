@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { technical } from '../lib/errors'
 import { t, duration } from '../i18n'
 import type { Analysis } from '../lib/types'
-import type { AnalyzeMessage, AnalyzeRequest } from '../workers/analyze.worker'
+import type { AnalyzeMessage, AnalyzeRequest, Tune } from '../workers/analyze.worker'
 import { FaceIcon } from './icons'
 import { AnalysisStatsPanel, type VideoFacts } from './AnalysisStatsPanel'
 import type { AnalysisStats } from '../lib/analysis-stats'
@@ -18,6 +18,16 @@ type Props = {
   /** What went wrong, and its technical details (to copy). */
   onError: (message: string, details?: string) => void
   onCancel: () => void
+}
+
+/** For tests, on localhost only: ?detect=yunet:0,side:640,rate:5 pins detection (no YuNet, a 640 px fine pass, 5 detections a second), with no pacing; reduced:1 starts it in the reduced mode. */
+function tuneFromUrl(): Tune | undefined {
+  // Only on this computer (the tests' server): on the site it would weaken detection with a link.
+  if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return undefined
+  const q = new URLSearchParams(location.search).get('detect')
+  if (!q) return undefined
+  const kv = Object.fromEntries(q.split(',').map((p) => p.split(':')))
+  return { yunet: kv.yunet !== '0', ...(Number(kv.side) ? { side: Number(kv.side) } : {}), ...(Number(kv.rate) ? { rate: Number(kv.rate) } : {}), ...(kv.reduced === '1' ? { reduced: true } : {}) }
 }
 
 export function Analyzing({ file, sensitive, twoSteps, onDone, onError, onCancel }: Props) {
@@ -77,7 +87,7 @@ export function Analyzing({ file, sensitive, twoSteps, onDone, onError, onCancel
           b.close()
           return c.toDataURL('image/jpeg', 0.85)
         })
-        onDone({ times: m.times, width: m.width, height: m.height, fps: m.fps, tracks: m.tracks, cuts: m.cuts, lowConfidence: m.lowConfidence }, thumbs, m.ms, m.backend)
+        onDone({ times: m.times, width: m.width, height: m.height, fps: m.fps, tracks: m.tracks, cuts: m.cuts, lowConfidence: m.lowConfidence, reduced: m.reduced }, thumbs, m.ms, m.backend)
         worker.terminate()
       } else if (m.type === 'error') {
         worker.terminate()
@@ -89,7 +99,7 @@ export function Analyzing({ file, sensitive, twoSteps, onDone, onError, onCancel
       onError(t('משהו השתבש בעיבוד. נסה שוב; אם זה חוזר, העתק את הפרטים הטכניים ושלח אותם.'), technical('face detection worker', e.message || 'error'))
     }
     const forced = new URLSearchParams(location.search).get('backend')
-    const req: AnalyzeRequest = { file, sensitive, base: new URL('.', document.baseURI).href, backend: forced === 'wasm' || forced === 'webgpu' ? forced : undefined, workers: Number(new URLSearchParams(location.search).get('workers')) || undefined }
+    const req: AnalyzeRequest = { file, sensitive, base: new URL('.', document.baseURI).href, backend: forced === 'wasm' || forced === 'webgpu' ? forced : undefined, workers: Number(new URLSearchParams(location.search).get('workers')) || undefined, tune: tuneFromUrl() }
     worker.postMessage(req)
     return () => worker.terminate()
   }, [file, sensitive])

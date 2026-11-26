@@ -147,10 +147,11 @@ private fun CategoryBlock(c: TemplateCategory, included: Boolean, onIncluded: (B
  * version (same id) and "restore the original" brings the shipped one back.
  *
  * [onSaved] is told the saved or restored template (so a screen using it takes it again);
- * [onClose] leaves the editor.
+ * [onClose] leaves the editor. [isNew]: a template from scratch, not in the store yet: it can be
+ * saved as it is, and leaving it without changes keeps nothing.
  */
 @Composable
-internal fun TemplateEditorScreen(store: TemplateStore, template: Template, onClose: () -> Unit, onSaved: (Template) -> Unit) {
+internal fun TemplateEditorScreen(store: TemplateStore, template: Template, onClose: () -> Unit, onSaved: (Template) -> Unit, isNew: Boolean = false) {
     val shipped = BuiltInTemplates.byId(template.id)
     var base by remember(template.id) { mutableStateOf(template) }
     var draft by remember(template.id) { mutableStateOf(template) }
@@ -162,7 +163,7 @@ internal fun TemplateEditorScreen(store: TemplateStore, template: Template, onCl
     var askRestore by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     val dirty = draft != base || nameText != baseName
-    val canSave = dirty && nameText.isNotBlank()
+    val canSave = (dirty || isNew) && nameText.isNotBlank()
 
     // A built-in keeps its Hebrew name (shown translated) unless the user typed another.
     fun nameToSave(): String = if (draft.builtIn && nameText.trim() == templateName(draft)) draft.name else nameText.trim().take(60)
@@ -208,7 +209,7 @@ internal fun TemplateEditorScreen(store: TemplateStore, template: Template, onCl
         Column(Modifier.fillMaxSize().padding(insets)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = Space.S), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = leave, enabled = !saving, modifier = Modifier.testTag(Tags.TEMPLATE_EDITOR_CLOSE)) { Icon(Icons.Filled.Close, t("סגור")) }
-                Text(t("עריכת תבנית"), style = AppType.Title, modifier = Modifier.weight(1f))
+                Text(if (isNew) t("תבנית חדשה") else t("עריכת תבנית"), style = AppType.Title, modifier = Modifier.weight(1f))
                 if (shipped != null) {
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, t("אפשרויות")) }

@@ -635,6 +635,12 @@ class EditModel(
         }
     }
 
+    /**
+     * The subtitles of the .srt files, as the export saves them: [exportCues] in the cut video's
+     * time (a subtitle cut out entirely is left out).
+     */
+    fun srtCues(mask: Boolean): List<Cue> = cutMap().mapCues(exportCues(mask))
+
     /** Removes every bleep (one undo step). */
     fun clearBleeps() {
         if (bleeps.isEmpty()) return

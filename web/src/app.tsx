@@ -12,7 +12,8 @@ import { DEFAULT_SUB_STYLE } from './lib/subtitles'
 import { DEFAULT_EXPORT, type ExportOptions } from './lib/exportopts'
 import { ASPECT_RATIO, cropFraction, reframePath } from './lib/camera'
 import { loadWatermark } from './ui/EditorTabs'
-import { NoFaces, Ready } from './ui/Ready'
+import { CheckFaces, NoFaces, Ready } from './ui/Ready'
+import { isLowConfidence } from './lib/lowconf'
 import { loadProject, type ProjectPicture, type ProjectState } from './lib/projects'
 import { ProjectsSection } from './ui/Projects'
 import { installed, takeShared } from './lib/share'
@@ -36,6 +37,7 @@ type Screen =
   | { name: 'ready'; file: File }
   | { name: 'analyzing'; file: File; save?: { look: Look; options: ExportOptions }; template?: TemplateSettings | null }
   | { name: 'noFaces'; file: File; analysis: Analysis; save?: { look: Look; options: ExportOptions }; template?: TemplateSettings | null }
+  | { name: 'check'; file: File; analysis: Analysis; thumbs: (string | null)[]; save: { look: Look; options: ExportOptions }; template?: TemplateSettings | null; info: string }
   | { name: 'editor'; file: File; analysis: Analysis; thumbs: (string | null)[]; info: string; tab?: EditorTab; project?: { id: string; state: ProjectState | null; picture: ProjectPicture | null }; template?: TemplateSettings | null }
   | { name: 'batchSetup' }
   | { name: 'batch' }
@@ -55,6 +57,15 @@ export function App() {
   useEffect(() => { loadTemplates() }, [])
   // A new screen starts at its top (the home screen is long on a phone: a tap on a tool low down must not open the editor scrolled).
   useEffect(() => { window.scrollTo(0, 0) }, [screen.name, job !== null])
+  /** Saved straight away, as found: every face blurred, the watermark last used, and for a frame of another shape, a frame that follows the faces (as the editor would). */
+  const saveNow = (file: File, analysis: Analysis, save: { look: Look; options: ExportOptions }, template?: TemplateSettings | null) => {
+    const { width: w, height: h, times, tracks, fps } = analysis
+    const [cw, ch] = cropFraction(w, h, ASPECT_RATIO[save.options.aspect])
+    const path = save.options.aspect !== 'original' && times.length ? reframePath(times.length, tracks, analysis.cuts ?? [], fps, cw, ch) : null
+    setScreen({ name: 'ready', file })
+    saved.current = { file, analysis }
+    setJob({ file, times, tracks, look: save.look, width: w, height: h, sfx: [], watermark: template?.watermark ?? loadWatermark(), cues: [], subStyle: DEFAULT_SUB_STYLE, voice: null, anonymize: false, cuts: [], options: save.options, standalone: true, twoSteps: true, picture: { background: null, masks: null, steady: null, path } })
+  }
   void batchVersion.value
   void lang.value
   void theme.value
@@ -183,15 +194,22 @@ export function App() {
               setScreen({ name: 'editor', file: screen.file, analysis, thumbs, template, tab: analysis.tracks.length > 0 && !template ? 'faces' : undefined, info: t('זמן עיבוד: %s', duration(ms / 1000)) + ' · ' + t('הזיהוי רץ על %s', backend === 'webgpu' ? t('המעבד הגרפי') : t('המעבד')) })
               return
             }
-            // Saved straight away, as found: every face blurred, the watermark last used, and for
-            // a frame of another shape, a frame that follows the faces (as the editor would).
-            const { width: w, height: h, times, tracks, fps } = analysis
-            const [cw, ch] = cropFraction(w, h, ASPECT_RATIO[save.options.aspect])
-            const path = save.options.aspect !== 'original' && times.length ? reframePath(times.length, tracks, analysis.cuts ?? [], fps, cw, ch) : null
-            setScreen({ name: 'ready', file: screen.file })
-            saved.current = { file: screen.file, analysis }
-            setJob({ file: screen.file, times, tracks, look: save.look, width: w, height: h, sfx: [], watermark: template?.watermark ?? loadWatermark(), cues: [], subStyle: DEFAULT_SUB_STYLE, voice: null, anonymize: false, cuts: [], options: save.options, standalone: true, twoSteps: true, picture: { background: null, masks: null, steady: null, path } })
+            // Faces to be checked (a lighter detection on this device, or faces with no clear detection behind them): not saved unasked.
+            const info = t('זמן עיבוד: %s', duration(ms / 1000)) + ' · ' + t('הזיהוי רץ על %s', backend === 'webgpu' ? t('המעבד הגרפי') : t('המעבד'))
+            if (isLowConfidence(analysis)) {
+              setScreen({ name: 'check', file: screen.file, analysis, thumbs, save, template, info })
+              return
+            }
+            saveNow(screen.file, analysis, save, template)
           }}
+        />
+      )}
+      {screen.name === 'check' && !job && (
+        <CheckFaces
+          reduced={!!screen.analysis.reduced}
+          onEdit={() => setScreen({ name: 'editor', file: screen.file, analysis: screen.analysis, thumbs: screen.thumbs, template: screen.template, tab: 'faces', info: screen.info })}
+          onSave={() => saveNow(screen.file, screen.analysis, screen.save, screen.template)}
+          onBack={() => setScreen({ name: 'ready', file: screen.file })}
         />
       )}
       {screen.name === 'noFaces' && (
@@ -199,6 +217,7 @@ export function App() {
           file={screen.file}
           canEdit={!screen.save}
           sensitive={sensitive}
+          reduced={screen.analysis.reduced}
           onEdit={() => setScreen({ name: 'editor', file: screen.file, analysis: screen.analysis, thumbs: [], info: '', tab: 'faces', template: screen.template })}
           onRetry={() => { setSensitive(true); setScreen({ name: 'analyzing', file: screen.file, save: screen.save, template: screen.template }) }}
           onBack={() => setScreen({ name: 'ready', file: screen.file })}

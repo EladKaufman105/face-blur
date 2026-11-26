@@ -37,6 +37,8 @@ export interface Analysis {
   cuts?: number[]
   /** Automatic blurs with no clear detection behind them (a batch flags a video that has some). */
   lowConfidence?: number
+  /** Detection ran lighter than the app's (a slow device: a smaller frame, fewer detections per second, or no YuNet): faces may be missed, so the video is to be checked. */
+  reduced?: boolean
 }
 
 export type BlurMode = 'blur' | 'pixelate' | 'solid'
