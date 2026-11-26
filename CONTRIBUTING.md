@@ -4,7 +4,7 @@ ONIT is an Android video editor with a browser version in `web/`. See README.md 
 
 ## Branches
 
-- `main`: releases only. A merge publishes a public GitHub release (APK) once the emulator e2e passes. The web app from `main` is at https://eladkaufman105.github.io/face-blur/.
+- `main`: releases only. A merge publishes a public GitHub release (APK): the tested beta's release candidate when `main`'s tree is that beta's, else once the emulator e2e passes. The web app from `main` is at https://eladkaufman105.github.io/face-blur/.
 - `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Beta" once the emulator e2e passes (merges that change only `web/` make no beta). It has its own app id and installs beside ONIT. The web app from `develop` is the beta web app, at https://eladkaufman105.github.io/face-blur/beta/.
 - Never push, force-push, rebase or delete `main` or `develop`. Repository rulesets block this.
 - `labs` is retired. Do not push to it.
@@ -27,24 +27,28 @@ With the repository setting "Automatically delete head branches" on, a feature b
 
 Commit messages are one short plain sentence about the user-visible effect. An area prefix is optional (`Editor: ...`, `Web: ...`).
 
-Every user-visible string needs its English text. The UI is Hebrew and English. Check with `python3 ci/i18n_check.py`.
+Every user-visible string needs its English text. The UI is Hebrew and English. Check with `python3 ci/i18n_check.py` (the app) and `python3 ci/web_i18n_check.py` (the web app).
 
 ## Build locally
 
 - Android: `bash ci/fetch-whisper.sh && bash ci/fetch-opencv.sh && ./gradlew assembleDebug`
 - Web: `cd web && npm ci && npm run build`. Needs python3 with `onnx`, `numpy` and `onnxconverter-common`.
+- The NDK version is pinned in `app/build.gradle.kts` (the default of GitHub's ubuntu-24.04 runner image).
+- CI scripts: `bash ci/test_version.sh` tests `ci/version.sh`, `ci/promote-check.sh` and `ci/verify-rc.sh`.
 
 ## Pull request checks
 
 Every change reaches `develop` or `main` through a PR. No human approval is required. `main` and `develop` are never deleted (default branch and rulesets), nor are the data branches (rulesets); side-workflow and old CI branches are never PR heads, so merges don't touch them. These checks must pass (workflows "PR guard" and "PR checks"):
 
 - `source-branch`: PRs into `main` must come from `develop` or `hotfix/*`.
-- `android-build`: i18n check and debug APK build.
-- `web-build`: web build and one browser smoke test.
+- `android-build`: i18n check, debug APK build, the instrumented tests compile, JVM unit tests.
+- `web-build`: web build and the Chromium tests.
 
-The full Android emulator e2e runs after merge (`build.yml`): the 20 instrumented tests in 3 parallel emulator shards, plus the release build's self-test. It gates the release or beta. The arm64 release APK is built in parallel and published only when every shard passed.
+The Android emulator e2e runs after merge (`build.yml`): the instrumented tests in 4 parallel emulator shards, plus the release build's self-test. It gates the beta. Tests marked `@Weekly` and the full EndToEndTest clip set run weekly (Sunday) and in manual runs with `full`; those runs publish nothing. The arm64 APKs are built in parallel and published only when every shard passed.
 
-On a PR, `pr.yml` builds Android (debug) only when Android files, `ci/` or workflows change, and builds and tests the web app (Chromium, 4 parallel shards) only when `web/`, the assets it copies from `app/src/main/assets` or workflows change. `android-build` and `web-build` always report, and pass when their work was skipped. A push to `main` that changes web files (`web/`, the assets it copies from `app/src/main/assets`, `web.yml`, `web-tests.yml`, `ci/web-tests.sh`, `ci/publish-pages.sh`, `ci/pages-build.sh` or `.github/actions/`) deploys the release web app, and such a push to `develop` the beta web app, each without repeating the web tests and without touching the other. A manual run of `web.yml` runs every web test on the branch it's started from, then deploys the release (always built from `main`), the beta (always built from `develop`) or both; the weekly run only tests. Results are workflow artifacts on the run.
+Each beta run also builds the release candidate (RC): the next release's APK, kept 90 days as the artifact `release-candidate`. When `main`'s tree is the newest beta's (outside `EXCLUDES` in `ci/promote-check.sh`, the same list as `build.yml`'s `paths-ignore`), `build.yml` checks the RC (`ci/verify-rc.sh`) and releases it without a rebuild or emulator run. Otherwise, and for every hotfix, it rebuilds and runs the e2e first. On a release PR, `android-build` skips the build when the merged tree is a tested beta's, and `web-build` skips the tests when `web.yml` already tested the same web files on `develop`.
+
+On a PR, `pr.yml` builds Android (debug) only when Android files, `ci/` or workflows change, and builds and tests the web app (Chromium, parallel shards, one per numbered case of `ci/web-tests.sh`) only when `web/`, the assets it copies from `app/src/main/assets` or workflows change. `android-build` and `web-build` always report, and pass when their work was skipped. A push to `develop` that changes web files (`web/`, the assets it copies from `app/src/main/assets`, `web.yml`, `web-tests.yml`, `ci/web-tests.sh`, `ci/web_i18n_check.py`, `ci/publish-pages.sh`, `ci/pages-build.sh` or `.github/actions/`) runs the web tests, then deploys the beta web app. Such a push to `main` deploys the release web app without tests. Neither touches the other. A manual run of `web.yml` runs every web test on the branch it's started from, then deploys the release (always built from `main`), the beta (always built from `develop`) or both; the weekly run only tests. Results are workflow artifacts on the run.
 
 ## Review loop
 
@@ -63,15 +67,14 @@ For every PR into `develop`, and for hotfix PRs into `main`:
 
 1. Open a PR from `develop` into `main`. No review loop.
 2. Check that PR checks are green.
-3. Check that the release is the beta that was tested on a device: nothing outside `web/` changed on `develop` since the newest beta tag.
+3. Check that the release is the beta that was tested on a device: nothing outside `EXCLUDES` changed on `develop` since the newest beta.
 
 ```
 git fetch origin --tags
-BETA=$(git tag --list 'v*-beta.*' --sort=-v:refname | head -1)
-git diff --name-only "$BETA" origin/develop -- . ':!web' ':!.github/workflows/web.yml' ':!.github/workflows/web-tests.yml' ':!.github/actions' ':!ci/web-tests.sh' ':!ci/publish-pages.sh' ':!ci/pages-build.sh' ':!.github/workflows/models.yml'
+bash ci/promote-check.sh origin/develop
 ```
 
-It must print nothing. If it prints files, wait for the next beta and test it. If that beta never came because its e2e failed, fix that first.
+It must exit 0 and print no files. If it prints files, wait for the next beta and test it, or release anyway (the release then rebuilds and runs the full e2e). If that beta never came because its e2e failed, fix that first.
 
 4. Write release notes in the PR body: the PRs merged into `develop` since the last release.
 5. Ask "Release X.Y.Z?". Merge only after a clear yes.
@@ -92,6 +95,8 @@ Run the review loop, get a clear yes, then merge with a merge commit. Then open 
 
 - e2e fails after a merge into `develop`: no beta. Fix it with a normal PR.
 - e2e fails after a merge into `main`: no release. Fix it with a `hotfix/*` PR.
+- The weekly full e2e fails: nothing is published. Fix it with a normal PR.
+- Promote fails before the release exists: re-run the run, or start `build.yml` on `main` by hand with `force_full`.
 - A release exists but has no APK: tell the owner. Re-running fails on purpose.
 - Until the first release brings the new `web.yml` to `main`, a hotfix into `main` that changes web files runs `main`'s old web workflow (GitHub Actions Pages deploy), which may fail or briefly replace the site: afterwards run "Web app" on `develop` with channel `both`.
 - Changed a PR's base branch? Push a new commit so the builds run again.
@@ -102,11 +107,11 @@ Run the review loop, get a clear yes, then merge with a merge commit. Then open 
 CI computes SemVer from git tags in `ci/version.sh`. Nobody types version numbers.
 
 - Merge into `develop`: `vX.Y.Z-beta.N` pre-release.
-- Merge `develop` -> `main`: minor bump. The first is 2.1.0.
+- Merge `develop` -> `main`: minor bump. The first is 2.1.0. It is the newest beta's version without `-beta.N`.
 - Hotfix into `main`: patch bump (2.1.1).
 - Major bump: a PR into `develop` that raises `major=` in `version.properties`. Only when asked.
 - Never create, move or delete `v*` tags by hand.
-- Never hard-code `versionName` or `versionCode` in `app/build.gradle.kts`. Android `versionCode` is the `build.yml` run number.
+- Never hard-code `versionName` or `versionCode` in `app/build.gradle.kts`. Android `versionCode` is the run number of the `build.yml` run that built the APK (for a promoted release, the `develop` run that built its RC).
 - Older releases use legacy tags `build-N` and `test-N`. Leave them.
 
 ## Other branches

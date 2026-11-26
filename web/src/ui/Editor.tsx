@@ -4,10 +4,10 @@ import { t, duration, lang } from '../i18n'
 import { BlurRenderer, ellipseFor, type Ellipse } from '../lib/renderer'
 import { frameAt, loadLook, saveLook, trackBox, type Analysis, type BlurMode, type Look, type Track } from '../lib/types'
 import type { ExportJob } from './Exporting'
-import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIcon, FaceIcon, PictureIcon, MarkIcon, SafeAreaIcon, SettingsIcon, TemplateIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
+import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIcon, EyeOffIcon, FaceIcon, TuneIcon, VisibleIcon, PictureIcon, MarkIcon, SafeAreaIcon, SettingsIcon, TemplateIcon, PauseIcon, PlayIcon, RedoIcon, SaveIcon, SoundIcon, SubtitlesIcon, UndoIcon } from './icons'
 import { FRAME, Timeline } from './Timeline'
 import { BlurBar } from './BlurBar'
-import { CueBar } from './CueBar'
+import { CueBar, CueSidePanel } from './CueBar'
 import { SafeZoneBar } from './SafeZoneBar'
 import { appliesTo, easeOut, GLIDE_MS, mixZone, zoneOf, type Platform, type Zone } from '../lib/safezone'
 import { drawSafeZone } from '../lib/safezonemock'
@@ -42,6 +42,7 @@ import type { VoiceFx } from '../lib/voice'
 import type { AudioMessage, AudioRequest } from '../workers/audio.worker'
 import { exportOptionsOf, hasProcessing, savedLanguage, styleOf, type TemplateSettings } from '../lib/template'
 import { Aborted, findPauses, transcribe } from '../lib/templaterun'
+import { translateCues, translateNote } from '../lib/translate'
 import { releaseSpeechForExport } from '../lib/speech'
 import { SaveTemplate } from './SaveTemplate'
 import { DetectionNotice } from './DetectionNotice'
@@ -122,10 +123,14 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const clean: Cleanup = useMemo(() => ({ denoise, enhance, loud: loudOn }), [denoise, enhance, loudOn])
   const [exportOpen, setExportOpen] = useState(false)
   const [exportOpts, setExportOpts] = useState(() => (tpl ? exportOptionsOf(tpl, loadExportOptions()) : { ...loadExportOptions(), aspect: saved?.aspect ?? 'original' }))
-  const [srcInfo, setSrcInfo] = useState<{ codec: string; fps: number } | null>(null)
+  const [srcInfo, setSrcInfo] = useState<{ codec: string; fps: number; bitrate: number } | null>(null)
   // The safe zone, a view aid: where a short-video platform's own screens cover a vertical frame (drawn here only, never exported).
   const safeAvailable = appliesTo(exportOpts.aspect, W, H)
   const [safeOn, setSafeOn] = useState(false)
+  /** The blur view (as the app's): the real blur in the player, or outlines only (to see the faces under it). Only here, never in the export. */
+  const [blurView, setBlurView] = useState(true)
+  // With no blur left the switch goes (it shows only with blurs): the next blur starts on the real blur again.
+  useEffect(() => { if (tracks.length === 0 && !blurView) setBlurView(true) }, [tracks.length, blurView])
   const [safePlatform, setSafePlatform] = useState<Platform>(() => { try { const p = localStorage.getItem(storageKey('safezone.platform')); return p === 'reels' || p === 'shorts' ? p : 'tiktok' } catch { return 'tiktok' } })
   const safe = useRef<{ platform: Platform; from: Zone; at: number }>({ platform: safePlatform, from: zoneOf(safePlatform), at: -1e9 })
   // The picture tools: the camera's motion, the cuts and the people (from one pass over the video).
@@ -219,7 +224,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const logo = useRef<HTMLImageElement | null>(null)
   const scheduler = useMemo(() => new SfxScheduler(), [])
   const orphans = useMemo(() => orphansOf(cues, bleeped), [cues, bleeped])
-  const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, orphans, voiceBuf: null as AudioBuffer | null, tracks, selected, cuts, cutMap, fps: an.fps, times, steadied, crop, framePath, masks: null as PeopleMasks | null, background, safeOn: false })
+  const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, orphans, voiceBuf: null as AudioBuffer | null, tracks, selected, cuts, cutMap, fps: an.fps, times, steadied, crop, framePath, masks: null as PeopleMasks | null, background, safeOn: false, blurView: true })
   // (The drawing runs in callbacks made once: it reads the frame times from here, as they can
   // arrive later, from a search for faces or a first blur by hand.)
   state.current.times = times
@@ -229,6 +234,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   state.current.masks = picture?.masks ?? null
   state.current.background = background
   state.current.safeOn = safeOn && safeAvailable
+  state.current.blurView = blurView
   state.current.tracks = tracks
   state.current.selected = selected
   state.current.cuts = cuts
@@ -299,7 +305,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       r.setMask(masks.w, masks.h, k >= 0 ? maskAt(masks, k) : null, maskKey(masks, k))
     } else r.setMask(1, 1, null, null)
     r.setBackgroundImage(bg.fill === 'image' ? bgImage.current : null, bg.image)
-    r.draw(v, W, H, facesAt(i, false), state.current.look)
+    r.draw(v, W, H, state.current.blurView ? facesAt(i, false) : [], state.current.look)
     // The steadied picture (and the blurs' rings with it): moved and enlarged, as exported.
     const st = state.current.steadied
     const k = st ? Math.min(i, st.sx.length - 1) : 0
@@ -326,6 +332,31 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         ctx.stroke()
       }
       ctx.setLineDash([])
+      // Outlines only (the blur view off): each blur a light shape with its number, the faces seen through it (as the app's).
+      if (!state.current.blurView) {
+        ctx.lineWidth = Math.max(2, W / 400)
+        ctx.font = `bold ${Math.max(12, Math.round(W / 45))}px system-ui, sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'bottom'
+        for (const tr of state.current.tracks) {
+          if (state.current.off.has(tr.id)) continue
+          const e = ellipseOf(tr, i)
+          if (!e) continue
+          // (A blur by hand in the timeline's pink; the selected one's ring, drawn after, is yellow.)
+          const c = tr.manual ? '255,140,190' : '255,255,255'
+          ctx.fillStyle = `rgba(${c},0.16)`
+          ctx.strokeStyle = `rgb(${c})`
+          ctx.beginPath()
+          ctx.ellipse(e.cx, e.cy, e.rx, e.ry, 0, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.stroke()
+          ctx.fillStyle = '#fff'
+          ctx.shadowColor = '#000'
+          ctx.shadowBlur = 5
+          ctx.fillText(String(tr.id + 1), e.cx, Math.max(Math.round(W / 45) + 2, e.cy - e.ry - 4))
+          ctx.shadowBlur = 0
+        }
+      }
       // The selected blur: a solid ring.
       const sel = state.current.tracks.find((tr) => tr.id === state.current.selected)
       const se = sel ? ellipseOf(sel, i) : null
@@ -457,7 +488,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   // Redraw the paused frame when the look, the faces or the watermark change.
   useEffect(() => {
     if (video.current?.paused) draw()
-  }, [off, look, mark, cues, subStyle, tracks, selected, background, picture, steadied, framePath, crop, bleeped, words, safeOn, safeAvailable])
+  }, [off, look, mark, cues, subStyle, tracks, selected, background, picture, steadied, framePath, crop, bleeped, words, safeOn, safeAvailable, blurView])
 
   // The background's picture, loaded once for the preview.
   useEffect(() => {
@@ -532,12 +563,22 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           setBleeped(new Set())
           setCues(cs)
           if (cs.length === 0) notes.push(t('לא נמצא דיבור בסרטון'))
+          else if (tpl.translate) {
+            // The template's translation (as the app's): each subtitle that still says what was translated, and has no translation typed meanwhile, takes it.
+            run(t('מתרגם… %d%', 0))
+            try {
+              const tr = new Map((await translateCues(cs, tpl.language, (stage, p) => setTplRun({ step: stage === 'download' ? t('מוריד את חבילת השפה… %d%', Math.round(p * 100)) : t('מתרגם… %d%', Math.round(p * 100)), progress: p, notes: [...notes] }), ctl.signal)).map((c) => [c.id, c]))
+              setCues((now) => now.map((c) => { const x = tr.get(c.id); return x && x.text === c.text && !c.tr ? { ...c, tr: x.tr, trm: x.trm } : c }))
+            } catch (e) {
+              if (ctl.signal.aborted) return
+              notes.push(translateNote(e))
+            }
+          }
         } catch (e) {
           if (e instanceof Aborted) return
           notes.push((e as any)?.code === 'no-audio' ? t('לסרטון אין פס קול.') : t('הכתוביות לא נוצרו: %s', String((e as Error)?.message ?? e).slice(0, 160)))
           // A stuck or failed recognition can be run again from the subtitles tab.
         }
-        if (tpl.translate) notes.push(t('התרגום לא נתמך בעיבוד אוטומטי, והכתוביות נשארו בשפת הדיבור'))
       }
       if (tpl.cutSilences || tpl.cutFillers) {
         run(t('חותך'))
@@ -574,18 +615,34 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       .catch(() => { storageFull.current = true; setNotice(t('אין מקום לשמור את הפרויקט בדפדפן. אפשר להמשיך לערוך ולייצא.')) })
   }, [])
   const [projectTick, setProjectTick] = useState(0)
-  /** A small picture of the video as edited (faces blurred), for the projects' list. */
-  const snapshot = (): string | null => {
+  /**
+   * A small picture of the video as edited (faces blurred), for the projects' list. Always with the blur: with the blur view
+   * on outlines the preview holds the faces as they are, so the frame is drawn blurred for the picture and then as it was.
+   * Undefined (the saved picture is kept) when it can't be drawn blurred now.
+   */
+  const snapshot = (): string | null | undefined => {
     const c = canvas.current
     if (!c || !c.width) return null
+    const outlines = !state.current.blurView
     try {
+      if (outlines) {
+        const v = video.current
+        if (!v || v.readyState < 2) return undefined
+        state.current.blurView = true
+        draw()
+      }
       const small = document.createElement('canvas')
       small.width = 160
       small.height = Math.max(1, Math.round((160 * c.height) / c.width))
       small.getContext('2d')!.drawImage(c, 0, 0, small.width, small.height)
       return small.toDataURL('image/jpeg', 0.7)
     } catch {
-      return null
+      return outlines ? undefined : null
+    } finally {
+      if (outlines) {
+        state.current.blurView = false
+        draw()
+      }
     }
   }
   useEffect(() => {
@@ -598,7 +655,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       }
       const pic = savedPicture.current !== picture ? picture : undefined
       savedPicture.current = picture
-      saveProject(id, { duration: dur, thumb: snapshot(), ...summarize(state) }, state, pic).catch(() => {
+      const thumb = snapshot()
+      saveProject(id, { duration: dur, ...(thumb !== undefined ? { thumb } : {}), ...summarize(state) }, state, pic).catch(() => {
         storageFull.current = true
         setNotice(t('אין מקום לשמור את הפרויקט בדפדפן. אפשר להמשיך לערוך ולייצא.'))
       })
@@ -868,7 +926,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       w.terminate()
       const m = e.data
       if (m.type !== 'times') return
-      setSrcInfo({ codec: m.codec, fps: m.fps })
+      setSrcInfo({ codec: m.codec, fps: m.fps, bitrate: m.bitrate })
       if (!state.current.times.length) setAn((a) => (a.times.length ? a : { ...a, times: m.times, fps: m.fps }))
     }
     w.onerror = () => w.terminate()
@@ -1114,11 +1172,11 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     if (!parts) { setNotice(t('אי אפשר לפצל כאן: הכתובית קצרה מדי, יש בה מילה אחת, או שמילה מוסתרת לא תישאר מוסתרת')); return }
     setCuesH(cues.flatMap((c) => (c.id === selCue.id ? parts : [c])), true)
   }
-  /** With the next subtitle; the last one with the one before it. */
-  const mergeSelCue = () => {
+  /** Merge with the next subtitle or the one before it; the bar's Merge (auto) takes the next one, the last one the one before (as the app's). */
+  const mergeSelCue = (with_: 'next' | 'prev' | 'auto' = 'auto') => {
     if (!selCue) return
-    const next = sortedCues[cueAtIdx + 1]
-    const prev = sortedCues[cueAtIdx - 1]
+    const next = with_ === 'prev' ? undefined : sortedCues[cueAtIdx + 1]
+    const prev = with_ === 'next' ? undefined : sortedCues[cueAtIdx - 1]
     if (next) setCuesH(cues.filter((c) => c.id !== next.id).map((c) => (c.id === selCue.id ? mergeCues(selCue, next) : c)), true)
     else if (prev) { setCuesH(cues.filter((c) => c.id !== selCue.id).map((c) => (c.id === prev.id ? mergeCues(prev, selCue) : c)), true); setSelectedCue(prev.id) }
   }
@@ -1152,6 +1210,33 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const shown = (c: Cue) => shownText(c, masked(c), subStyle.show, subStyle.maskBleeped !== false)
   /** The subtitles whose text was edited so that a bleeped word of theirs may show (see [maskWarning]). */
   const maskWarned = useMemo(() => (subStyle.maskBleeped === false ? [] : cues.filter((c) => maskWarning(c, words, bleeped, orphans))), [cues, words, bleeped, orphans, subStyle.maskBleeped])
+  /** The selected subtitle's bar and properties (a tablet with its panel open shows the properties there, as the app's). */
+  const cueProps = selCue && !selTrack ? {
+    cue: selCue,
+    hasNext: cueAtIdx >= 0 && cueAtIdx < sortedCues.length - 1,
+    hasPrev: cueAtIdx > 0,
+    hasTranslation: cues.some((c) => c.tr !== undefined),
+    open: cueOpen,
+    onOpen: setCueOpen,
+    sheet: phone,
+    speakers: cueSpeakers > 1 ? cueSpeakers : 0,
+    warn: maskWarned.some((c) => c.id === selCue.id),
+    trHidden: subStyle.maskBleeped !== false && !!selCue.tr && !trVisible(selCue, maskCue(selCue, words, bleeped, orphans)),
+    color: subStyle.color,
+    chosen: subStyle.speakerColors,
+    onStart: () => cueEdgeHere(true),
+    onEnd: () => cueEdgeHere(false),
+    onSplit: splitSelCue,
+    onMerge: () => mergeSelCue(),
+    onMergePrev: () => mergeSelCue('prev'),
+    onMergeNext: () => mergeSelCue('next'),
+    onDelete: deleteCue,
+    onText: (text: string) => patchCue({ text }),
+    onTranslation: (tr: string) => patchCue({ tr }),
+    onSpeaker: (sp: number) => patchCue({ speaker: sp }),
+    onClose: () => setSelectedCue(null),
+  } : null
+  const sideCue = !!cueProps && tablet && panelOpen
 
   const subList = subsOf(tab, { hasCues: cues.length > 0, hasWords: words.length > 0, hasFaces: analyzed || tracks.length > 0 })
   const part = (subTab[tab] && subList.some(([id]) => id === subTab[tab]) ? subTab[tab] : subList[0]?.[0]) ?? ''
@@ -1178,6 +1263,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     // (Focus inside the subtitles tab, which is about to be hidden, goes to the group's button.)
     if ((document.activeElement as HTMLElement | null)?.closest('.subs-keep') && g !== 'subs') (document.querySelector(`.tabs [data-g=${g}]`) as HTMLElement | null)?.focus()
     if (phone) { video.current?.pause(); if (!following) setSelected(null); setSelectedSfx(null); setAdding(false) }
+    // A tablet's side panel shows the selected subtitle in the tool's place: a group picked there is shown instead.
+    if (tablet) setSelectedCue(null)
     setTab(g)
     setPanelOpen(true)
   }
@@ -1218,9 +1305,12 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const saveTplIcon = <button class="icon-btn save-template-btn" aria-label={t('שמור כתבנית')} title={t('שמור כתבנית')} onClick={() => setSaveTpl(true)}><TemplateIcon size={22} /></button>
   const editTools = (
     <div class="edit-tools">
+            {!sideCue && tablet && !panelOpen && cueProps && <button class="btn tonal small-btn props-open" onClick={() => setPanelOpen(true)}><TuneIcon size={18} /> {t('מאפיינים')}</button>}
             {safeAvailable && <button class={'icon-btn safe-toggle' + (safeOn ? ' on' : '')} aria-pressed={safeOn} aria-label={t('אזור בטוח')} title={t('אזור בטוח')} onClick={() => setSafeOn(!safeOn)}><SafeAreaIcon /></button>}
             <button class="icon-btn" disabled={past.current.length === 0 || !!following} aria-label={t('בטל')} title={t('בטל') + ' (Ctrl+Z)'} onClick={undo}><span class="flip"><UndoIcon /></span></button>
             <button class="icon-btn" disabled={future.current.length === 0 || !!following} aria-label={t('בצע שוב')} title={t('בצע שוב') + ' (Ctrl+Shift+Z)'} onClick={redo}><span class="flip"><RedoIcon /></span></button>
+            {/* (After undo and redo: the tests find those by place. Only with blurs to show either way.) */}
+            {tracks.length > 0 && <button class={'icon-btn blur-view' + (blurView ? ' on' : '')} aria-pressed={blurView} aria-label={t('תצוגה')} title={t('תצוגה: טשטוש או קווי מתאר')} onClick={() => setBlurView(!blurView)}>{blurView ? <VisibleIcon /> : <EyeOffIcon />}</button>}
           </div>
   )
   const panelBody = (
@@ -1393,7 +1483,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     <main class={'editor' + (narrow && !detecting && !hidden ? ' narrow' : '') + (tablet && !detecting && !hidden ? ' tablet' : '') + (phone && panelOpen ? ' panel-open' : '') + (tablet && panelOpen ? ' panel-shown' : '')} style={detecting || hidden ? 'display:none' : ''}>
       {tablet && groupBar}
       <div class="player">
-        <div class={'row top-row' + (BETA ? ' beta' : '')}>
+        <div class={'row top-row' + (BETA ? ' beta' : '') + (safeAvailable && tracks.length > 0 ? ' many' : '')}>
           {narrow
             ? <button class="icon-btn back-btn" onClick={onClose} aria-label={t('סרטון חדש')} title={t('סרטון חדש')}><span class="flip"><BackIcon /></span></button>
             : <button class="btn ghost" onClick={onClose} style="padding-inline:6px"><span class="flip"><BackIcon /></span> {t('סרטון חדש')}</button>}
@@ -1500,30 +1590,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           controls={timelineControls}
         />
         {/* (After the timeline, so the timeline does not move when a subtitle is selected on a wide screen; on a phone and a tablet the layout orders it.) */}
-        {selCue && !selTrack && (
-          <CueBar
-            cue={selCue}
-            hasNext={cueAtIdx >= 0 && cueAtIdx < sortedCues.length - 1}
-            hasPrev={cueAtIdx > 0}
-            open={cueOpen}
-            onOpen={setCueOpen}
-            sheet={phone}
-            speakers={cueSpeakers > 1 ? cueSpeakers : 0}
-            warn={maskWarned.some((c) => c.id === selCue.id)}
-            trHidden={subStyle.maskBleeped !== false && !!selCue.tr && !trVisible(selCue, maskCue(selCue, words, bleeped, orphans))}
-            color={subStyle.color}
-            chosen={subStyle.speakerColors}
-            onStart={() => cueEdgeHere(true)}
-            onEnd={() => cueEdgeHere(false)}
-            onSplit={splitSelCue}
-            onMerge={mergeSelCue}
-            onDelete={deleteCue}
-            onText={(text) => patchCue({ text })}
-            onTranslation={(tr) => patchCue({ tr })}
-            onSpeaker={(sp) => patchCue({ speaker: sp })}
-            onClose={() => setSelectedCue(null)}
-          />
-        )}
+        {cueProps && <CueBar {...cueProps} open={cueOpen && !sideCue} noEdit={sideCue} />}
       </div>
 
       <aside class="side">
@@ -1545,7 +1612,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         )}
         {!tablet && groupBar}
         {/* One tree on every screen size (a phone turned past 600 px keeps a running job): the phone's panel, or on a wide screen a wrapper that is not there to the layout. */}
-          <div hidden={narrow && !panelOpen} class={narrow ? 'panel' + (tab === 'subs' && part === 'style' ? ' has-inner' : '') : 'panel-flat'} data-g={tab} style={{ '--g': groupColor } as any}>
+          {sideCue && <CueSidePanel {...cueProps!} />}
+          <div hidden={(narrow && !panelOpen) || sideCue} class={narrow ? 'panel' + (tab === 'subs' && part === 'style' ? ' has-inner' : '') : 'panel-flat'} data-g={tab} style={{ '--g': groupColor } as any}>
             {/* A phone's panel takes the timeline's place: this thin scrubber stays over it (as the app's MiniScrubber), so moving through the video never means closing the panel. */}
             {phone && !tablet && panelOpen && (
               <input
@@ -1630,6 +1698,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         height={H}
         fps={srcInfo?.fps ?? (analyzed ? an.fps : null)}
         sourceHevc={srcInfo?.codec === 'hevc'}
+        srcBitrate={srcInfo?.bitrate ?? null}
+        duration={dur}
         hasCues={cues.length > 0}
         lostBleeps={lostBleeps}
         maskWarn={maskWarned.length}

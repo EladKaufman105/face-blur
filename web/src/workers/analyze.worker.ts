@@ -2,7 +2,8 @@
 // on a regular subset of frames, then builds the face tracks and a thumbnail of each face.
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny'
 import { CPU_SIDE, FaceDetector, GPU_SIDE } from '../lib/detector'
-import { Pacer, pace, runSide, type Timing } from '../lib/pace'
+import { DetectGate, FrameRate, Pacer, follow, fullRate, needRate, pace, runSide, type Timing } from '../lib/pace'
+import { CoverageMeter, type Coverage } from '../lib/coverage'
 import { YunetWorker } from '../lib/yunet-worker'
 import { StatsHistory, summary, type AnalysisStats, type StatsSnapshot } from '../lib/analysis-stats'
 import { DetectorPool } from '../lib/detector-pool'
@@ -20,6 +21,12 @@ export type AnalyzeMessage =
   | { type: 'log'; message: string }
 
 export type Tune = { yunet?: boolean; side?: number; rate?: number; /** As if the device were too slow: the reduced mode from the start (the notice, the flag, the lower thresholds). */ reduced?: boolean }
+
+/** The measures for a log line: "D 15.0/s (window min 14.6, need 12.0, 30 windows, 0 short), G 2 frames 0.083 s, cuts 3 (0 missed), S 960 px, YuNet on". */
+const coverageText = (c: Coverage, side: number, yunet: boolean) =>
+  `D ${c.rate.toFixed(2)}/s (window min ${c.minWindow?.toFixed(2) ?? '-'}, need ${c.need.toFixed(2)}, ${c.windows} windows, ${c.short} short), G ${c.maxGapFrames} frames ${c.maxGapS.toFixed(3)} s, cuts ${c.cuts} (${c.cutsMissed} missed), S ${side} px, YuNet ${yunet ? 'on' : 'off'}`
+const measuredText = (c: Coverage) =>
+  `the frames detected fall short: ${c.shortRate?.toFixed(1)}/s from ${c.shortAt?.toFixed(2)} s, ${c.shortNeed?.toFixed(1)}/s needed there`
 
 const post = (m: AnalyzeMessage, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(m, transfer)
 const log = (message: string) => post({ type: 'log', message })
@@ -91,13 +98,20 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   const s = side / Math.max(width, height)
   const iw = Math.max(32, Math.round(width * s / 32) * 32)
   const ih = Math.max(32, Math.round(height * s / 32) * 32)
-  // Detection up to 15 times per second of video (every frame when sensitive), as the app; the
-  // tracker fills the frames between. A device that can't keep that up gets lighter detection,
-  // stepwise (see lib/pace.ts), never lighter than the web's detection before YuNet. That is never
-  // silent: the video is marked `reduced` (the editor says so, a batch flags it) and detection
-  // gets lower score thresholds, so that two weak detections that agree can add up to a face.
-  const maxRate = sensitive ? nominalFps : 15
+  // Detection 15 times per second of video (every frame of a clip with fewer), or on the app's
+  // frames where those are more (every n-th frame, n = fps / 15 rounded: every frame of a 20 fps
+  // clip; see fullRate: never under 15, even if the nominal frame rate reads lower), every frame
+  // when sensitive; the tracker fills the frames between. A device that can't keep that up gets lighter
+  // detection, stepwise (see lib/pace.ts), never lighter than the web's detection before YuNet.
+  // That is never silent: the video is marked `reduced` (the editor says so, a batch flags it) and
+  // detection gets lower score thresholds, so that two weak detections that agree can add up to a
+  // face. Also when the frames really detected fall short (lib/coverage.ts), whatever the rate.
+  // In wide detection the full rate is the frame rate measured as the frames come (the nominal one
+  // can be far off, either way): every frame, or the pace's rate under it (see follow()).
+  let maxRate = sensitive ? nominalFps : fullRate(nominalFps)
   let rate = tune?.rate ? Math.min(maxRate, tune.rate) : maxRate
+  const frameRate = new FrameRate(nominalFps)
+  let all = sensitive && !tune?.rate
   let fineSide = startSide
   // The long side of the frames detection gets: a fine pass set bigger than that changes nothing.
   const frameSide = Math.max(iw, ih)
@@ -113,7 +127,11 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
     }
   }
   // No YuNet (the model couldn't be loaded): weaker than the app's detection.
-  if (detector?.yunetMissing || (pool && !pool.yunet)) reduce('no YuNet')
+  let yunetOn = !!yunet
+  if (detector?.yunetMissing || (pool && !pool.yunet)) {
+    yunetOn = false
+    reduce('no YuNet')
+  }
   if (tune?.reduced) reduce('forced for a test')
   // A pinned tune weaker than the default is a reduced detection like any other (a size that changes nothing for this video isn't).
   const long = Math.max(width, height)
@@ -129,14 +147,26 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   const dets = new Map<number, Det[]>()
   let lastPost = 0
   let lastDets: Det[] = []
-  let lastDetect = -Infinity
+  // Which frames get a detection: the rate a second on a fixed schedule (lib/pace.ts), and every
+  // frame develop's gate (at most 15 a second, or the nominal rate when sensitive) would have taken
+  // at that rate; a cut's frame always; every frame in wide detection at its full rate. What that
+  // really covered is measured as it goes.
+  const gate = new DetectGate(sensitive ? nominalFps : 15)
+  const meter = new CoverageMeter({ needAt: (f) => needRate(f, sensitive, maxRate) })
+  let cover: Coverage = meter.result()
+  // The smallest fine pass that ran (its long side, px), recorded as each detection starts.
+  let minSide = Infinity
+  const ranSide = () => (Number.isFinite(minSide) ? minSide : runSide(fineSide, frameSide))
   let found = 0
   let decodeWait = 0, detectMs = 0, cutMs = 0, poolWait = 0
   // Where a detection's result goes (in the pool, in any order), and the pace follows from it.
   const recordDets = (i: number, got: Det[], tm: Timing, yunetOk = true) => {
     const ms = tm.ms
     // YuNet lost on the way (a session that fails to run): from here on it is the reduced mode.
-    if (!yunetOk || detector?.yunetMissing) reduce('YuNet failed')
+    if (!yunetOk || detector?.yunetMissing) {
+      yunetOn = false
+      reduce('YuNet failed')
+    }
     lastDets = got
     detectMs += ms
     dets.set(i, got)
@@ -151,7 +181,7 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
       const { recentMs: recent, rfMs } = w
       const gpuNow = backendNow() === 'webgpu'
       const startNow = gpuNow ? GPU_SIDE : CPU_SIDE
-      const p = pace({ ...w, workers: pool?.size ?? 1, maxRate, side: fineSide, startSide: startNow, rate, gpu: gpuNow, frameSide, frameRate: nominalFps })
+      const p = pace({ ...w, workers: pool?.size ?? 1, maxRate, side: fineSide, startSide: startNow, rate, gpu: gpuNow, frameSide, frameRate: frameRate.fps, nominal: nominalFps })
       rate = p.rate
       if (p.side !== fineSide) {
         fineSide = Math.min(p.side, startNow, startSide)
@@ -171,6 +201,7 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
       detections: spent.length, detectMs, partDetections: d.detections, pre: d.pre, inf: d.inf, dec: d.dec, coarse: d.coarse, coarseRuns: d.coarseRuns, check: d.check, verify: d.verify, merge: d.nms,
       backend: backendNow(), precision, noGpu: backendNow() === 'wasm' ? noGpu() : null,
       side: fineSide, rate, workers: pool?.size ?? 1, cores,
+      measured: { rate: cover.rate, minWindow: cover.minWindow, need: cover.need, gapFrames: cover.maxGapFrames, gapS: cover.maxGapS, minSide: ranSide(), yunet: yunetOn },
     }
   }
   const statsNow = () => history.add(snapshot())
@@ -191,8 +222,14 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
     const cut = cuts.isCut(canvas)
     cutMs += performance.now() - tc
     if (cut) cutList.push(i)
-    if (cut || wc.timestamp - lastDetect >= 1 / rate - 1e-3) {
-      lastDetect = wc.timestamp
+    frameRate.add(wc.timestamp)
+    if (sensitive) ({ maxRate, rate, all } = follow(frameRate.fps, maxRate, rate, !!tune?.rate))
+    const take = gate.take(wc.timestamp, rate, cut, all)
+    meter.frame(wc.timestamp, cut, take, rate)
+    cover = meter.result()
+    if (cover.short && !reduced) reduce(measuredText(cover))
+    if (take) {
+      minSide = Math.min(minSide, runSide(pool ? fineSide : detector!.side, frameSide))
       if (pool) {
         // Wait for a free detector (the decoder keeps going meanwhile), then pass the frame on.
         const tp = performance.now()
@@ -220,6 +257,8 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
     pool?.close()
     ynWorker?.close()
   }
+  cover = meter.result(true)
+  if (cover.short && !reduced) reduce(measuredText(cover))
   log(`frames ${times.length}, detections ${spent.length}, detect avg ${(detectMs / Math.max(1, spent.length)).toFixed(0)} ms, decode wait ${decodeWait.toFixed(0)} ms, side ${fineSide}, rate ${rate.toFixed(1)}, reduced ${reduced}`)
   log(`stats ${summary(statsNow())}`)
   let faces50 = 0
@@ -230,7 +269,10 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   diffs.sort((a, b) => a - b)
   const fps = Math.min(240, Math.max(5, diffs.length ? 1 / diffs[diffs.length >> 1] : nominalFps))
   const tracks = track(n, dets, cutList, fps, height / width, sensitive)
-  log(`result detections ${dets.size}, faces ${faces50}, tracks ${tracks.length}, reduced ${reduced}, yunet ${(pool?.stats() ?? detector!.stats).yunetFaces}`)
+  // The result, and what detection really covered: D (detections a second within shots, and the
+  // fewest in a 2 s window against the need), G (the longest gap within a shot), S (the smallest
+  // fine pass that ran, YuNet).
+  log(`result detections ${dets.size}, faces ${faces50}, tracks ${tracks.length}, reduced ${reduced}, yunet ${(pool?.stats() ?? detector!.stats).yunetFaces}; ${coverageText(cover, ranSide(), yunetOn)}`)
 
   // A square thumbnail of each face, from its clearest frame. The frames are decoded in one
   // pass in time order (each packet at most once): fetching them one by one, each from its

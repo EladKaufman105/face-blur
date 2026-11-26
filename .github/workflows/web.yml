@@ -2,10 +2,11 @@ name: Web app
 
 # The site is the gh-pages branch (GitHub Pages serves it as it is): the release, built from main,
 # at its root, and the beta ("ONIT Beta"), built from develop, under beta/. Each is deployed on its
-# own and never touches the other's part (ci/publish-pages.sh): a push to main deploys the release,
-# a push to develop the beta, without tests (each change was tested in its PR, see pr.yml).
+# own and never touches the other's part (ci/publish-pages.sh). A push to develop runs the web
+# tests on the merged tree, then deploys the beta (a release PR skips its web tests when such a
+# run tested the same web files, see pr.yml). A push to main deploys the release without tests.
 # A manual run deploys either or both (always from main and develop) after every test, including
-# the slow subtitles one. The weekly run only tests.
+# the slow subtitles one and the full versions (FULL=1). The weekly run only tests, the same way.
 on:
   push:
     branches: [main, develop]
@@ -18,6 +19,7 @@ on:
       - '.github/workflows/web.yml'
       - '.github/workflows/web-tests.yml'
       - 'ci/web-tests.sh'
+      - 'ci/web_i18n_check.py'
       - 'ci/publish-pages.sh'
       - 'ci/pages-build.sh'
       - '.github/actions/**'
@@ -40,11 +42,13 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'schedule' }}
 
 jobs:
+  # Every test on manual and weekly runs; on a push to develop, the PR's set (no subtitles test).
   web:
-    if: github.event_name != 'push'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/develop'
     uses: ./.github/workflows/web-tests.yml
     with:
-      subtitles: true
+      subtitles: ${{ github.event_name != 'push' }}
+      full: ${{ github.event_name != 'push' }}
 
   # Each app on its own: built from its branch's newest commit, then only its part of gh-pages
   # replaced. One deploy of each app at a time (a newer one waiting replaces an older one waiting);
@@ -52,7 +56,7 @@ jobs:
   deploy:
     name: deploy (${{ matrix.channel }})
     needs: web
-    if: ${{ !cancelled() && needs.web.result != 'failure' && github.event_name != 'schedule' }}
+    if: ${{ !cancelled() && (needs.web.result == 'success' || needs.web.result == 'skipped') && github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

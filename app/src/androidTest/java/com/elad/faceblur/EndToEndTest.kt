@@ -26,6 +26,10 @@ import java.io.File
 /**
  * Runs the whole pipeline on the sample clips (CI copies them into assets/samples) and writes
  * side-by-side frame sheets + the processed videos for inspection.
+ *
+ * By default only the runs with something no other test covers: the rotated clip, pixelate, scene
+ * cuts, sensitive detection and the export with options (the other clips are exported by other
+ * tests). `-e full true` (the weekly run) does all 12.
  */
 @RunWith(AndroidJUnit4::class)
 class EndToEndTest {
@@ -45,26 +49,37 @@ class EndToEndTest {
         val names = (assets.list("samples") ?: emptyArray()).filter { it.endsWith(".mp4") }.sorted()
         log.appendLine("samples: $names")
 
-        val runs = ArrayList<Pair<String, Settings>>()
-        for (name in names) runs += name to Settings(BlurMode.BLUR, 0.6f, 1.6f, false)
-        names.firstOrNull { it.startsWith("headpose") }?.let { runs += it to Settings(BlurMode.PIXELATE, 0.6f, 1.6f, false) }
-        names.firstOrNull { it.startsWith("classroom.") }?.let { runs += it to Settings(BlurMode.BLUR, 0.6f, 1.6f, true) }
+        val args = InstrumentationRegistry.getArguments()
+        val full = args.getString("full") == "true"
+        // A run: the clip, its settings, whether it's the export with options.
+        data class Run(val name: String, val settings: Settings, val withOpts: Boolean = false)
+        val all = ArrayList<Run>()
+        for (name in names) all += Run(name, Settings(BlurMode.BLUR, 0.6f, 1.6f, false))
+        names.firstOrNull { it.startsWith("headpose") }?.let { all += Run(it, Settings(BlurMode.PIXELATE, 0.6f, 1.6f, false)) }
+        names.firstOrNull { it.startsWith("classroom.") }?.let { all += Run(it, Settings(BlurMode.BLUR, 0.6f, 1.6f, true)) }
 
         // One export with options: smaller, lower frame rate, H.264.
         val exportRun = names.firstOrNull { it.startsWith("classroom60") }
         val exportOpts = ExportOptions(shortSide = 720, fps = 30, quality = ExportQuality.SAVER, codec = ExportCodec.H264)
-        if (exportRun != null) runs += exportRun to Settings(BlurMode.BLUR, 0.6f, 1.6f, false)
+        if (exportRun != null) all += Run(exportRun, Settings(BlurMode.BLUR, 0.6f, 1.6f, false), withOpts = true)
+
+        // Without `full`: portrait_rot90 (rotation), headpose pixelated, stress_cuts (scene cuts),
+        // classroom sensitive and classroom60 with options. walk, speech_*, green_screen and plain
+        // classroom are exported by other tests.
+        val runs = if (full) all else all.filter { r ->
+            r.withOpts || r.settings.sensitive || r.settings.mode == BlurMode.PIXELATE ||
+                r.name.startsWith("portrait_rot90") || r.name.startsWith("stress_cuts")
+        }
+        log.appendLine("runs (${if (full) "full" else "default"}): ${runs.size} of ${all.size}")
 
         // CI runs this test in parts on parallel emulators: -e e2eShards N -e e2eShard I (0-based)
         // takes every Nth run. Without them every run is done.
-        val args = InstrumentationRegistry.getArguments()
         val shards = args.getString("e2eShards")?.toIntOrNull() ?: 1
         val shard = args.getString("e2eShard")?.toIntOrNull() ?: 0
 
         for ((idx, run) in runs.withIndex()) {
             if (shards > 1 && idx % shards != shard) continue
-            val (name, settings) = run
-            val withOpts = exportRun != null && idx == runs.size - 1
+            val (name, settings, withOpts) = run
             val tag = name.removeSuffix(".mp4") + "_" + settings.mode.name.lowercase() +
                 (if (settings.sensitive) "_sens" else "") + (if (withOpts) "_720p30" else "")
             try {

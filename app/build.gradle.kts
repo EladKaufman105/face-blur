@@ -17,11 +17,10 @@ val minimalOpenCv = abiList.all { file("src/main/jniLibs/$it/libopencv_java_min.
 android {
     namespace = "com.elad.faceblur"
     compileSdk = 36
-    // Use the NDK the machine has (CI runners preinstall one), if it names its version.
-    (System.getenv("ANDROID_NDK_HOME") ?: System.getenv("ANDROID_NDK_LATEST_HOME"))
-        ?.let { File(it).name }
-        ?.takeIf { it.matches(Regex("""\d+\.\d+\.\d+""")) }
-        ?.let { ndkVersion = it }
+    // The NDK, pinned so a beta and the release built from it compile with the same one: the
+    // default NDK of GitHub's ubuntu-24.04 runner image (ANDROID_NDK_HOME there, preinstalled).
+    // Change it on purpose, when the image drops it. -PndkVersion=... overrides it locally.
+    ndkVersion = (findProperty("ndkVersion") as String?) ?: "27.3.13750724"
 
     // The beta build (from develop, -Plabs=true): "ONIT Beta", its own app beside the real one,
     // with a BETA mark on its icon.
@@ -40,7 +39,14 @@ android {
         // The app speaks Hebrew and English: other languages' library strings are left out.
         resourceConfigurations += listOf("en", "iw", "he")
         externalNativeBuild {
-            cmake { arguments += listOf("-DANDROID_STL=c++_static") }
+            cmake {
+                arguments += listOf("-DANDROID_STL=c++_static")
+                // CI compiles the native code through ccache when the job set it up (ci/ccache.sh
+                // sets CCACHE_DIR); other builds don't use it.
+                if (System.getenv("CCACHE_DIR") != null) {
+                    arguments += listOf("-DCMAKE_C_COMPILER_LAUNCHER=ccache", "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
+                }
+            }
         }
     }
 

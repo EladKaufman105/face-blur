@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { lang, t } from '../i18n'
 import { type BlurMode } from '../lib/types'
 import { LANGUAGES } from '../lib/subtitles'
+import { canTranslate } from '../lib/translate'
 import { VOICES, type VoiceFx } from '../lib/voice'
 import { NO_WATERMARK } from '../lib/watermark'
 import { DEFAULT_EXPORT, type ExportCodec, type ExportQuality } from '../lib/exportopts'
 import { DEFAULT_SUB_STYLE } from '../lib/substyle'
 import {
-  applyTemplate, blankTemplate, builtIn, categoriesOf, CATEGORIES, copyOf, currentSettings, languageCode, only, templateToJson, type Template, type TemplateCategory,
+  applyTemplate, blankTemplate, builtIn, categoriesOf, CATEGORIES, copyOf, currentSettings, languageCode, only, templateToJson, type SubLang, type Template, type TemplateCategory,
 } from '../lib/template'
 import { deleteTemplate, duplicateTemplate, isEdited, newTemplateId, restoreTemplate, saveTemplate, storeFailed, userTemplates, lookTemplates } from '../lib/templatestore'
 import { CloseIcon, DeleteIcon, EditIcon } from './icons'
@@ -157,6 +158,7 @@ export function TemplateEditor({ template, onClose, onSaved }: Props) {
             {cat('subs', subs && (
               <>
                 <SwitchRow cls="tpl-create" title={t('ליצור כתוביות אוטומטית')} text={t('זיהוי הדיבור במכשיר, לכל סרטון')} on={!!subs.create} onChange={(on) => patch('subs', { create: on })} />
+                {subs.create && <SwitchRow cls="tpl-translate" title={t('הוסף תרגום')} text={t('אוטומטי: לאנגלית, ודיבור באנגלית לעברית.') + ' ' + (canTranslate() ? t('עברית, אנגלית, ערבית ופרסית, במכשיר') : t('הדפדפן הזה לא מתרגם על המכשיר (כרום ואדג׳ במחשב כן).'))} on={!!subs.translate} onChange={(on) => patch('subs', { translate: on, burn: !on && (subs.burn === 'TRANSLATED' || subs.burn === 'BOTH') ? 'ORIGINAL' : subs.burn })} />}
                 <h4 class="caption">{t('שפת הדיבור')}</h4>
                 <div class="chips">
                   {chip(subs.language === undefined, t('השפה שבחרתי'), () => setDraft((d) => ({ ...d, subs: { ...d.subs, language: undefined } })))}
@@ -173,10 +175,20 @@ export function TemplateEditor({ template, onClose, onSaved }: Props) {
                   {[20, 32, 42].map((n) => chip(subs.splitChars === n && !subs.splitWords, t('עד %d תווים', n), () => patch('subs', { splitWords: 0, splitChars: n })))}
                 </div>
                 <h4 class="caption">{t('כתוביות בסרטון המיוצא')}</h4>
-                <div class="seg seg2 tpl-burn" role="radiogroup">
-                  <button class={subs.burn !== 'NONE' ? 'on' : ''} role="radio" aria-checked={subs.burn !== 'NONE'} onClick={() => patch('subs', { burn: 'ORIGINAL' })}>{t('לצרוב בסרטון')}</button>
-                  <button class={subs.burn === 'NONE' ? 'on' : ''} role="radio" aria-checked={subs.burn === 'NONE'} onClick={() => patch('subs', { burn: 'NONE' })}>{t('לא לצרוב')}</button>
-                </div>
+                {subs.create && subs.translate ? (
+                  // With a translation, as the app's: what the video shows of it.
+                  <div class="seg tpl-burn" role="radiogroup" style="grid-template-columns:repeat(4,1fr)">
+                    {([['ORIGINAL', 'כמו שנאמר'], ['TRANSLATED', 'תרגום'], ['BOTH', 'שתיהן'], ['NONE', 'בלי']] as [SubLang, string][]).map(([v, label]) => {
+                      const on = (subs.burn ?? 'ORIGINAL') === v
+                      return <button class={on ? 'on' : ''} role="radio" aria-checked={on} data-burn={v} onClick={() => patch('subs', { burn: v })}>{t(label)}</button>
+                    })}
+                  </div>
+                ) : (
+                  <div class="seg seg2 tpl-burn" role="radiogroup">
+                    <button class={subs.burn !== 'NONE' ? 'on' : ''} role="radio" aria-checked={subs.burn !== 'NONE'} onClick={() => patch('subs', { burn: 'ORIGINAL' })}>{t('לצרוב בסרטון')}</button>
+                    <button class={subs.burn === 'NONE' ? 'on' : ''} role="radio" aria-checked={subs.burn === 'NONE'} onClick={() => patch('subs', { burn: 'NONE' })}>{t('לא לצרוב')}</button>
+                  </div>
+                )}
                 <SwitchRow title={t('שמור גם קובץ כתוביות SRT')} text={t('לפלטפורמות שמציגות כתוביות בעצמן.')} on={!!subs.saveSrt} onChange={(on) => patch('subs', { saveSrt: on })} />
               </>
             ))}
