@@ -752,7 +752,6 @@ internal val English: Map<String, String> = mapOf(
     "זיהוי אוטומטי" to "Detect automatically",
     "עיצוב הכתוביות" to "Subtitle design",
     "כבוי: סימן המים נשאר כמו שהוא" to "Off: the watermark stays as it is",
-    "תבנית היא עיצוב ועיבוד לסרטון: כתוביות, טשטוש, קול, חיתוכים וייצוא. אפשר לבחור אותה במסך הסרטון ובעיבוד כמה סרטונים. תבנית חדשה נשמרת מהעורך, ואפשר לערוך כל תבנית, גם מובנית." to "A template is a design and processing for a video: subtitles, blur, sound, cuts and export. You can pick it on the video screen and when processing several videos. A new template is saved from the editor, and any template can be edited, built-in ones too.",
     "לשחזר את התבנית המקורית?" to "Restore the original template?",
     "השינויים שעשית ב\"%s\" יימחקו, והתבנית תחזור למה שהגיע עם האפליקציה." to "Your changes to \"%s\" will be removed, and the template goes back to what came with the app.",
     "שחזר" to "Restore",

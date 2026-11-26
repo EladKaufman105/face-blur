@@ -48,7 +48,9 @@ internal fun rememberSrtSave(ctrl: EditorController): () -> Unit {
         saving = true
         scope.launch {
             val names = withContext(Dispatchers.IO) {
-                files.mapNotNull { f -> runCatching { Srt.save(context, base, f) }.getOrNull()?.let { "$base.${f.tag}.srt" } }
+                files.mapNotNull { f ->
+                    runCatching { Srt.save(context, base, f) }.getOrNull()?.let { uri -> Srt.savedName(context, uri) ?: "$base.${f.tag}.srt" }
+                }
             }
             saving = false
             result = if (names.isEmpty()) {

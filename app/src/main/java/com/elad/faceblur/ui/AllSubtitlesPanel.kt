@@ -152,7 +152,7 @@ fun AllSubtitlesPanel(ctrl: EditorController, modifier: Modifier = Modifier, sty
                 IconButton(onClick = { findOpen = !findOpen }) { Icon(Icons.Filled.Search, t("חפש והחלף")) }
                 // The subtitles as .srt files now, without exporting.
                 if (cues.isNotEmpty()) {
-                    IconButton(onClick = saveSrt, modifier = Modifier.testTag(Tags.SRT_SAVE)) { Icon(AppIcons.Download, t("שמור SRT עכשיו")) }
+                    IconButton(onClick = saveSrt, enabled = !ctrl.subsBusy, modifier = Modifier.testTag(Tags.SRT_SAVE)) { Icon(AppIcons.Download, t("שמור SRT עכשיו")) }
                 }
             }
             if (ctrl.bleepMode) {
