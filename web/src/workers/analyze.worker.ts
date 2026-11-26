@@ -26,7 +26,7 @@ export type Tune = { yunet?: boolean; side?: number; rate?: number; /** As if th
 const coverageText = (c: Coverage, side: number, yunet: boolean) =>
   `D ${c.rate.toFixed(2)}/s (window min ${c.minWindow?.toFixed(2) ?? '-'}, need ${c.need.toFixed(2)}, ${c.windows} windows, ${c.short} short), G ${c.maxGapFrames} frames ${c.maxGapS.toFixed(3)} s, cuts ${c.cuts} (${c.cutsMissed} missed), S ${side} px, YuNet ${yunet ? 'on' : 'off'}`
 const measuredText = (c: Coverage) =>
-  `the frames detected fall short: ${c.minWindow?.toFixed(1)}/s in 2 s from ${c.shortAt?.toFixed(2)} s, ${c.need.toFixed(1)} needed`
+  `the frames detected fall short: ${c.shortRate?.toFixed(1)}/s from ${c.shortAt?.toFixed(2)} s, ${c.shortNeed?.toFixed(1)}/s needed there`
 
 const post = (m: AnalyzeMessage, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(m, transfer)
 const log = (message: string) => post({ type: 'log', message })
@@ -143,10 +143,11 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   const dets = new Map<number, Det[]>()
   let lastPost = 0
   let lastDets: Det[] = []
-  // Which frames get a detection: the rate a second on a fixed schedule (lib/pace.ts); a cut's
-  // frame always; every frame in wide detection at its full rate. What that really covered is
-  // measured as it goes.
-  const gate = new DetectGate(nominalFps)
+  // Which frames get a detection: the rate a second on a fixed schedule (lib/pace.ts), and every
+  // frame develop's gate (at most 15 a second, or the nominal rate when sensitive) would have taken
+  // at that rate; a cut's frame always; every frame in wide detection at its full rate. What that
+  // really covered is measured as it goes.
+  const gate = new DetectGate(sensitive ? nominalFps : 15)
   const meter = new CoverageMeter({ needAt: (f) => needRate(f, sensitive, maxRate) })
   let cover: Coverage = meter.result()
   // The smallest fine pass that ran (its long side, px), recorded as each detection starts.
@@ -217,8 +218,8 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
     const cut = cuts.isCut(canvas)
     cutMs += performance.now() - tc
     if (cut) cutList.push(i)
-    const take = gate.take(wc.timestamp, rate, cut || (sensitive && rate >= maxRate))
-    meter.frame(wc.timestamp, cut, take)
+    const take = gate.take(wc.timestamp, rate, cut, sensitive && rate >= maxRate)
+    meter.frame(wc.timestamp, cut, take, rate)
     cover = meter.result()
     if (cover.short && !reduced) reduce(measuredText(cover))
     if (take) {

@@ -22,8 +22,8 @@
 //    time is at least RetinaFace's fine pass at 640 px (estimated from the fine pass now, scaled
 //    down by the area, which underestimates it: the fixed costs don't shrink), so the rate from
 //    that time is at least the rate it had (and never under 8, where it went down to 4);
-//  - at a rate, DetectGate detects on no fewer frames, and with no longer gaps, than that
-//    detection's gate (the next frame at least a period after the last detected one) did.
+//  - at a rate, DetectGate detects on every frame that detection's gate (the next frame at least
+//    a period after the last detected one) took: that gate runs beside the schedule.
 // So YuNet's cost can make the analysis take longer, but never makes detection lighter than it
 // was before YuNet.
 
@@ -107,39 +107,49 @@ export const needRate = (fps: number, sensitive: boolean, maxRate = sensitive ? 
 export const GATE_SLACK_S = 1e-3
 
 /**
- * Which frames get a detection: [rate] a second of video, on a fixed schedule. Each due time is a
- * period after the last one was due, not after the frame that met it: snapping to the frame
- * rounded every gap up to whole frames (15 a second on a 25 fps clip was 12.5; 11 a second on a
- * 12 fps clip, 6). The schedule never runs ahead of the frames (a frame taken a little early moves
- * it back) nor more than a frame behind them (after a hole in the frames, a dropped stretch or a
- * VFR pause, it goes on from about that frame: no burst of catch-up detections). A cut, or
- * [force], takes the frame and starts the schedule again from it. It detects on
- * covered(rate, frameRate) frames a second, and never on fewer, nor with a longer gap, than
- * snapping to the frame did at the same rate.
+ * Which frames get a detection: [rate] a second of video, on a fixed schedule, together with the
+ * old gate (develop's) alongside it.
+ *
+ * The schedule: each due time is a period after the last one was due, not after the frame that
+ * met it: snapping to the frame rounded every gap up to whole frames (15 a second on a 25 fps clip
+ * was 12.5; 11 a second on a 12 fps clip, 6). It never runs ahead of the frames (a frame taken a
+ * little early moves it back) nor more than a period behind them (after a hole in the frames, a
+ * dropped stretch or a VFR pause, it goes on from about that frame: at most one detection to catch
+ * up). On steady frames it detects on covered(rate, fps) frames a second.
+ *
+ * The old gate: the next frame at least 1 / min(rate, [oldMax]) after the last frame it took (or a
+ * cut), as develop's analysis did, kept with its own last frame. Every frame it takes is taken, so
+ * the detections are a superset of the old gate's at that rate: never fewer in any stretch, never
+ * a longer gap, on any timestamps (on variable frame rates the schedule alone could leave a frame
+ * the old gate took, and a longer gap). A frame the old gate takes and the schedule doesn't moves
+ * the schedule to it (it goes on a period from there). Without [oldMax], the schedule alone.
+ *
+ * A cut, or [all] (wide detection at its full rate: every frame), takes the frame and starts the
+ * schedule again from it.
  */
 export class DetectGate {
   /** When the last detection was due (s). */
   private anchor = -Infinity
-  /** The last frame's time, and the interval before it. */
-  private prev = NaN
-  private step = 0
-  /** The video's nominal frame interval (s). */
-  private frameDt: number
+  /** The last frame the old gate took (s). */
+  private oldLast = -Infinity
+  private oldMax: number | undefined
 
-  constructor(frameRate: number) {
-    this.frameDt = 1 / frameRate
+  /** [oldMax]: the old gate's highest rate (develop: 15 a second, or the nominal frame rate in wide detection). */
+  constructor(oldMax?: number) {
+    this.oldMax = oldMax
   }
 
-  /** Whether the frame at [ts] (s) gets a detection at [rate] a second. */
-  take(ts: number, rate: number, force = false): boolean {
-    // One frame: the nominal interval, or the last one if longer (a VFR stretch at a lower frame rate).
-    const frame = Math.max(this.frameDt, this.step)
-    if (Number.isFinite(this.prev)) this.step = Math.max(0, ts - this.prev)
-    this.prev = ts
+  /** Whether the frame at [ts] (s) gets a detection at [rate] a second; [cut]: a cut's frame; [all]: every frame. */
+  take(ts: number, rate: number, cut = false, all = false): boolean {
     const due = this.anchor + 1 / rate
-    if (!force && ts < due - GATE_SLACK_S) return false
-    this.anchor = force || this.anchor === -Infinity ? ts : Math.min(ts, Math.max(due, ts - frame))
-    return true
+    const restart = cut || all || this.anchor === -Infinity
+    const own = restart || ts >= due - GATE_SLACK_S
+    // The old gate, exactly as it was (its own last frame; a cut always).
+    const old = this.oldMax !== undefined && (cut || ts - this.oldLast >= 1 / Math.min(rate, this.oldMax) - GATE_SLACK_S)
+    if (old) this.oldLast = ts
+    if (own) this.anchor = restart ? ts : Math.min(ts, Math.max(due, ts - 1 / rate))
+    else if (old) this.anchor = ts
+    return own || old
   }
 }
 

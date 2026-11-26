@@ -10,7 +10,10 @@
 // variable-frame-rate clip with fewer frames needs fewer, and a hole in the frames (nothing to
 // detect on) needs almost nothing: never more than 0.8 of a detection a frame interval. Windows shorter
 // than 1 s (a short shot, a shot's last moments) aren't judged: a single gap of two frames would
-// read as half the rate. A gap over 2 s is judged by itself. A window may be short of its need
+// read as half the rate. A gap over 2 s is judged by itself. Between two detections around an
+// interval longer than a period at the rate detection aimed at (a hole in the frames), the need is
+// at most one detection: a schedule at that rate can take no more there (at 120 fps with holes the
+// need of the frames before a hole and of the hole would add up to more). A window may be short of its need
 // by one frame interval's need (under one detection): the schedule (DetectGate) can take its last
 // frame up to a frame after it was due, so a rate at the need could read just under it.
 // (No imports: the pure tests run it in Node as it is.)
@@ -34,10 +37,12 @@ export interface Coverage {
   minWindow: number | null
   /** The need, a second, over the frames so far (within shots; 0 before two frames). */
   need: number
-  /** Windows judged, and those under their need; where the first of those starts (s). */
+  /** Windows judged, and those under their need; where the first of those starts (s), its detections a second and its need a second. */
   windows: number
   short: number
   shortAt: number | null
+  shortRate: number | null
+  shortNeed: number | null
   /** The longest gap within a shot, in frames (also from a shot's start to its first detection and from its last to its end) and in seconds (between detections). */
   maxGapFrames: number
   maxGapS: number
@@ -61,6 +66,8 @@ export class CoverageMeter {
   private lastIdx = -1
   private lastTs = 0
   private lastE = 0
+  /** An interval longer than a period at the rate since the last detection. */
+  private hole = false
   /** Detections of this shot from the oldest window not yet judged: time, need so far, need of the frame interval before it. */
   private wt: number[] = []
   private we: number[] = []
@@ -69,7 +76,7 @@ export class CoverageMeter {
   private gapTime = 0
   private needSum = 0
   private needTime = 0
-  private c: Omit<Coverage, 'frames' | 'detections' | 'rate' | 'need'> = { minWindow: null, windows: 0, short: 0, shortAt: null, maxGapFrames: 0, maxGapS: 0, cuts: 0, cutsMissed: 0 }
+  private c: Omit<Coverage, 'frames' | 'detections' | 'rate' | 'need'> = { minWindow: null, windows: 0, short: 0, shortAt: null, shortRate: null, shortNeed: null, maxGapFrames: 0, maxGapS: 0, cuts: 0, cutsMissed: 0 }
 
   constructor(o: CoverageOptions) {
     this.o = o
@@ -80,13 +87,23 @@ export class CoverageMeter {
     return dt > 0 ? dt * this.o.needAt(1 / dt) : 0
   }
 
-  private shortFrom(t: number) {
-    this.c.short++
-    this.c.shortAt ??= t
+  /** A window from [t] (s) of [span] s with [n] detections, under its [need]. */
+  private shortFrom(t: number, n: number, span: number, need: number) {
+    const c = this.c
+    c.short++
+    if (c.shortAt === null) {
+      c.shortAt = t
+      c.shortRate = n / span
+      c.shortNeed = need / span
+    }
   }
 
-  /** The next frame: its time (s), whether it is a cut (the first frame of a new shot), whether it got a detection. */
-  frame(ts: number, cut: boolean, detected: boolean) {
+  /**
+   * The next frame: its time (s), whether it is a cut (the first frame of a new shot), whether it
+   * got a detection, and the rate detection aimed at then (a second; 0: not given, no interval
+   * counts as a hole).
+   */
+  frame(ts: number, cut: boolean, detected: boolean, rate = 0) {
     const i = this.frames++
     this.eStep = 0
     if (cut && i > 0) {
@@ -98,12 +115,21 @@ export class CoverageMeter {
     else {
       this.eStep = this.needOf(ts - this.prevTs)
       this.e += this.eStep
+      // An interval longer than a period at the rate (a hole in the frames): between the detections around it, one is all a schedule at that rate can take.
+      if (ts - this.prevTs > 1 / rate) this.hole = true
       this.needSum += this.eStep
       this.needTime += Math.max(0, ts - this.prevTs)
     }
     this.prevTs = ts
     if (!detected) return
     this.dets++
+    // A hole since the last detection: this one is the need of the stretch, at most (see frame()).
+    if (this.hole && this.lastIdx >= 0 && this.e - this.lastE > 1) {
+      this.needSum -= this.e - this.lastE - 1
+      this.e = this.lastE + 1
+      this.eStep = Math.min(this.eStep, 1)
+    }
+    this.hole = false
     if (this.lastIdx < 0) {
       // A shot's first detection: the frames before it are a gap too.
       this.c.maxGapFrames = Math.max(this.c.maxGapFrames, i - this.shotStart + (i > this.shotStart ? 1 : 0))
@@ -138,7 +164,7 @@ export class CoverageMeter {
   private judgeGap(from: number, span: number, need: number) {
     this.c.windows++
     this.c.minWindow = Math.min(this.c.minWindow ?? Infinity, 1 / span)
-    if (need >= 1) this.shortFrom(from)
+    if (need >= 1) this.shortFrom(from, 0, span, need)
   }
 
   private judge(j: number, k: number) {
@@ -150,7 +176,7 @@ export class CoverageMeter {
     const c = this.c
     c.windows++
     c.minWindow = Math.min(c.minWindow ?? Infinity, n / span)
-    if (n < need - 1e-9) this.shortFrom(this.wt[j])
+    if (n < need - 1e-9) this.shortFrom(this.wt[j], n, span, need)
   }
 
   /** The shot that ends before frame [end]: its last windows, the gap to its end. */
@@ -169,6 +195,7 @@ export class CoverageMeter {
     this.we = []
     this.ws = []
     this.e = 0
+    this.hole = false
     this.lastIdx = -1
     this.shotStart = end
   }
@@ -183,10 +210,10 @@ export class CoverageMeter {
   }
 }
 
-/** The measures of a whole analysis: the frames' times (s), the detected frames' indices, the cuts' frame indices. */
-export function measureCoverage(times: ArrayLike<number>, detected: Iterable<number>, cuts: Iterable<number>, o: CoverageOptions): Coverage {
+/** The measures of a whole analysis: the frames' times (s), the detected frames' indices, the cuts' frame indices, the rate detection aimed at on each frame. */
+export function measureCoverage(times: ArrayLike<number>, detected: Iterable<number>, cuts: Iterable<number>, o: CoverageOptions, rateAt: (i: number) => number = () => 0): Coverage {
   const d = new Set(detected), c = new Set(cuts)
   const m = new CoverageMeter(o)
-  for (let i = 0; i < times.length; i++) m.frame(times[i], c.has(i), d.has(i))
+  for (let i = 0; i < times.length; i++) m.frame(times[i], c.has(i), d.has(i), rateAt(i))
   return m.result(true)
 }

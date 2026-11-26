@@ -27,12 +27,22 @@ rate) after the last one was due, not after the frame that met it. The old gate 
 least a period after the last detected one) rounded every gap up to whole frames: 15 a second gave
 12 on a 24 or 25 fps clip, 10 on a 20 fps one, 12.5 on a 50 fps one, 10.3 on a 31 fps one, and on
 WebM (times rounded to the millisecond) it could drop a frame more. The schedule detects on
-min(rate, fps) frames a second on any timestamps (exact, WebM's milliseconds, MP4's 1/90000,
-variable frame rate), never on fewer and never with a longer gap than the old gate at the same
-rate. It never runs ahead of the frames, nor more than a frame behind them: after a hole in the
-frames (a dropped stretch, a pause of a variable-rate clip) it takes the next frame and goes on
-without a burst of catch-up detections. A cut's frame is always detected and starts the schedule
-again; wide detection at its full rate takes every frame.
+min(rate, fps) frames a second on steady timestamps (exact, WebM's milliseconds, MP4's 1/90000).
+It never runs ahead of the frames, nor more than a period behind them: after a hole in the frames
+(a dropped stretch, a pause of a variable-rate clip) it takes the next frame, at most one more to
+catch up, and goes on. A cut's frame is always detected and starts the schedule again; wide
+detection at its full rate takes every frame.
+
+The old gate runs beside the schedule, as it was (its own last frame, the same rate, at most 15 a
+second, or the nominal frame rate in wide detection), and every frame it takes is detected too. On
+variable frame rates, jitter or holes the schedule alone could leave out a frame the old gate took
+and so leave a longer gap; with both, the frames detected are a superset of the old gate's at that
+rate: no stretch of 2 s has fewer and no gap is longer, on any timestamps. A frame the old gate
+takes moves the schedule to it. The cost, on a device that keeps up: on the review's mix of clips
+about 3% more detections than the schedule alone; on steady clips none at 20, 29.97, 30, 59.94
+and 60 fps, about 7% at 23.976 to 24 fps (16 a second), 11% at 25 (16.7), and a third to a half
+where the full rate is over 15 and out of step with the old gate's (31 fps: 20.7 a second; 48 and
+50 fps: 24 and 25).
 
 ## A slow device
 
@@ -52,7 +62,7 @@ It is never weaker than the web's detection before YuNet (RetinaFace alone at 96
 640 px on the CPU, 600 ms of detection per second of video): the frame never goes below that
 detection's size on the device, and the rate never below the rate it would have had (estimated
 from RetinaFace's fine pass, scaled to 640 px, which overestimates that rate) nor below 8 a
-second; at a rate, the schedule detects on no fewer frames than its gate did. YuNet's cost can
+second; at a rate, every frame its gate took is detected. YuNet's cost can
 make the analysis take longer, never lighter. `web/tests/fusion.cjs` checks both on simulated
 devices (fast and slow GPUs, CPUs with one to four detectors, a cheap or costly YuNet).
 
@@ -70,7 +80,9 @@ most of the frames, 97% of the app's cadence) (23.976 fps: 11.6, so the app's ev
 isn't reduced; 30 fps: 12; 20 fps: 16; 10 fps: 8; wide: 80% of the frames). On a steady clip that
 is N; a stretch of a variable-rate clip with fewer frames needs fewer, a hole in the frames almost
 nothing. A gap of over 2 s within a shot (no window holds two detections; also to a shot's end,
-or a shot with none) is short when it needed a detection or more. The stats panel ("Detected",
+or a shot with none) is short when it needed a detection or more. Between two detections around
+an interval longer than a period at the rate aimed at (a hole in the frames), the need is at most
+one: a schedule at that rate can take no more there. The stats panel ("Detected",
 "Longest gap", "Strength" under more details), its copied report and the result's log line show
 D, G and S.
 

@@ -239,9 +239,10 @@ if (F.fuse([], []).length !== 0) fail('empty')
   if (cases < 10000) fail('too few cases: ' + cases)
 }
 
-// ---- which frames get a detection (DetectGate): the rate a second, at most every frame, on any
-// timestamps; never fewer detections nor a longer gap than develop's gate (snap to the frame) at
-// the same rate; no burst after a hole in the frames.
+// ---- which frames get a detection (DetectGate's schedule, without the old gate beside it): the
+// rate a second, at most every frame, on any timestamps; on steady frames never fewer detections
+// nor a longer gap than develop's gate (snap to the frame) at the same rate; after a hole in the
+// frames at most one detection to catch up.
 {
   const FPS = [8, 10, 12, 15, 20, 23.976, 24, 25, 29.97, 30, 50, 59.94, 60]
   let seed = 5
@@ -254,9 +255,9 @@ if (F.fuse([], []).length !== 0) fail('empty')
   }
   /** develop's gate: a frame at least 1 / rate after the frame of the last detection. */
   const snap = () => { let last = -Infinity; return (ts, rate, cut) => (cut || ts - last >= 1 / rate - 1e-3 ? ((last = ts), true) : false) }
-  const run = (ts, fps, rateAt, cutAt = () => false) => {
-    const g = new P.DetectGate(fps), got = []
-    ts.forEach((t, k) => { if (g.take(t, rateAt(k), cutAt(k))) got.push(k) })
+  const run = (ts, fps, rateAt, cutAt = () => false, allAt = () => false) => {
+    const g = new P.DetectGate(), got = []
+    ts.forEach((t, k) => { if (g.take(t, rateAt(k), cutAt(k), allAt(k))) got.push(k) })
     return got
   }
   const maxGap = (ts, got) => got.slice(1).reduce((m, k, j) => Math.max(m, ts[k] - ts[got[j]]), 0)
@@ -274,12 +275,12 @@ if (F.fuse([], []).length !== 0) fail('empty')
     if (got.some((k, j) => k !== 2 * j)) fail('15 a second on 30 fps is not every second frame: ' + got.slice(0, 10))
     if (run(clip(12, 'ms', 10), 12, () => 15).length !== 120) fail('a rate over the frame rate is not every frame')
   }
-  // 3. Never behind develop's gate, never a longer gap: same frames, the same changing rate (4..15, as pace changes it), the same cuts.
+  // 3. Steady frames: never behind develop's gate, never a longer gap: same frames, the same changing rate (4..15, as pace changes it), the same cuts.
   for (const fps of FPS) for (const mode of ['exact', 'ms', '90k']) for (let trial = 0; trial < 10; trial++) {
     const ts = clip(fps, mode), rates = [], cuts = new Set()
     let r = 15, until = 0
     ts.forEach((t, k) => { if (t >= until) { r = Math.min(15, 4 + rnd() * 11.5); until = t + 0.3 + rnd() * 1.7 } rates.push(r); if (rnd() < 1 / (3 * fps)) cuts.add(k) })
-    const g = new P.DetectGate(fps), d = snap()
+    const g = new P.DetectGate(), d = snap()
     let a = 0, b = 0, la = null, lb = null, ga = 0, gb = 0
     ts.forEach((t, k) => {
       if (g.take(t, rates[k], cuts.has(k))) { a++; if (la !== null && !cuts.has(k)) ga = Math.max(ga, t - la); la = t }
@@ -288,12 +289,12 @@ if (F.fuse([], []).length !== 0) fail('empty')
     })
     if (ga > gb + 1.5e-3) fail('a longer gap than the gate of develop: ' + JSON.stringify({ fps, mode, trial, ga, gb }))
   }
-  // 4. A hole in the frames (a stall, a dropped stretch): the first frame after it is taken, then the schedule goes on without catching up.
+  // 4. A hole in the frames (a stall, a dropped stretch): the first frame after it is taken, then at most one more to catch up (the schedule lags a period at most), then the rate.
   for (const fps of [24, 30, 60]) for (const rate of [4, 7.5, 12, 15]) {
     const ts = clip(fps, 'ms', 20).filter((t) => t < 5 || t >= 6.2)
     const got = run(ts, fps, () => rate), after = got.findIndex((k) => ts[k] >= 6.2)
     if (ts[got[after]] !== ts.find((t) => t >= 6.2)) fail('the first frame after a hole is not taken')
-    if (ts[got[after + 1]] - ts[got[after]] < 1 / rate - 1 / fps - 1.5e-3) fail('catch-up after a hole: ' + JSON.stringify({ fps, rate }))
+    if (ts[got[after + 2]] - ts[got[after + 1]] < 1 / rate - 1 / fps - 1.5e-3) fail('catch-up after a hole: ' + JSON.stringify({ fps, rate }))
     for (let j = 0, i = 0; i < got.length; i++) { while (ts[got[i]] - ts[got[j]] >= 1) j++; if (i - j + 1 > Math.ceil(rate) + 1) fail('a burst: ' + JSON.stringify({ fps, rate, at: ts[got[i]] })) }
   }
   // 5. VFR: intervals +-20% (ms-rounded), and a clip whose frame rate changes (nominal 30, then 15, 60, 10): the rate, at most every frame.
@@ -316,17 +317,107 @@ if (F.fuse([], []).length !== 0) fail('empty')
   {
     const ts = clip(30, 'ms', 4), got = run(ts, 30, () => 4, (k) => k === 31)
     if (!got.includes(31) || got.find((k) => k > 31) < 31 + 7) fail('a cut: ' + got)
-    if (run(clip(29.97, 'walk', 10), 29.97, () => 29.97, () => true).length !== Math.round(299.7)) fail('force')
+    if (run(clip(29.97, 'walk', 10), 29.97, () => 29.97, () => false, () => true).length !== Math.round(299.7)) fail('all: every frame')
   }
-  // 7. A rate that goes up takes effect at once, without a burst; one that goes down, too.
+  // 7. A rate that goes up takes effect at once, with at most one detection to catch up (the schedule lags a period at most); one that goes down, too.
   {
     const ts = clip(60, 'ms', 10), got = run(ts, 60, (k) => (ts[k] < 5 ? 4 : 15))
     const first = got.find((k) => ts[k] >= 5)
     if (ts[first] - 5 > 1 / 15 + 1 / 60 + 1e-3) fail('a rate up waits for the old schedule')
     const after = got.filter((k) => ts[k] >= 5)
-    if (after.slice(1).some((k, j) => ts[k] - ts[after[j]] < 1 / 15 - 1 / 60 - 1.5e-3)) fail('a burst after a rate up')
+    if (after.slice(1).filter((k, j) => ts[k] - ts[after[j]] < 1 / 15 - 1 / 60 - 1.5e-3).length > 1) fail('a burst after a rate up')
   }
   if (P.covered(15, 23.976) !== 15 || P.covered(15, 12) !== 12 || P.covered(11.1, 12) !== 11.1 || P.covered(9) !== 9) fail('covered()')
+}
+
+// ---- the gate keeps every frame develop's gate takes at the same rate (the old gate runs beside the
+// schedule): frame by frame, on hard timestamps (the review's generators: steady, ms-rounded, +-40%
+// jitter, frame rates that switch, holes of up to 3 s, frames in pairs, duplicate times, dropped
+// frames, ramps; the nominal rate read right, at 1/4 to 2x, or as 1, 2.5 or 120; cuts): no frame it
+// takes is left out, so no 2 s from any frame has fewer detections and no gap within a shot is
+// longer (frames and seconds). With the rates the pace gives (8 a second at least, the full rate at
+// most) against develop's (4 to 15): never fewer, a longer gap or a sparser 2 s, or noticed (the
+// measure, or the pace's flag).
+{
+  let seed = 31
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296
+  const pick = (a) => a[Math.floor(rnd() * a.length)]
+  const gen = () => {
+    const fps = pick([5, 8, 10, 12, 12.5, 14, 15, 16, 20, 23.976, 24, 25, 29.97, 30, 31, 48, 50, 59.94, 60, 90, 120, 240])
+    const kind = pick(['steady', 'ms', 'jitter', 'vfr', 'holes', 'pairs', 'drop', 'ramp', 'dup'])
+    const n = 60 + Math.floor(rnd() * 900), t = []
+    let ts = rnd() * 2, f = fps
+    for (let i = 0; i < n; i++) {
+      let dt = 1 / f
+      if (kind === 'jitter') dt *= 0.6 + 0.8 * rnd()
+      if (kind === 'vfr' && rnd() < 0.05) f = pick([fps, fps / 2, fps * 2, 7, 15, 30, 60])
+      if (kind === 'holes' && rnd() < 0.02) dt += rnd() * 3
+      if (kind === 'pairs') dt = i % 2 ? 0.001 : 2 / fps - 0.001
+      if (kind === 'drop' && rnd() < 0.3) dt *= 2
+      if (kind === 'ramp') dt = 1 / (fps * (0.5 + i / n))
+      if (kind === 'dup' && rnd() < 0.1) dt = 0
+      ts += dt
+      t.push(kind === 'ms' ? Math.round(ts * 1000) / 1000 : ts)
+    }
+    const nominal = pick([fps, fps, fps, fps / 2, fps * 2, Math.max(1, fps / 4), 1, 2.5, 120])
+    const cuts = new Set()
+    for (let i = 1; i < n; i++) if (rnd() < 0.004) cuts.add(i)
+    gen.last = kind + ' ' + fps
+    return { fps, kind, t, nominal, cuts }
+  }
+  const snap = (t, rateAt, cuts) => { let last = -Infinity; const got = new Set(); t.forEach((x, i) => { if (cuts.has(i) || x - last >= 1 / rateAt(i) - 1e-3) { last = x; got.add(i) } }); return got }
+  /** The longest gap within a shot in frames and in seconds (to the shot's ends too); the detections in 2 s from each frame (as many windows for both). */
+  const measures = (t, det, cuts) => {
+    let gapF = 0, gapS = 0, a = 0
+    const bounds = [...[...cuts].sort((x, y) => x - y), t.length]
+    for (const b of bounds) {
+      let l = -1
+      for (let i = a; i < b; i++) if (det.has(i)) { gapF = Math.max(gapF, l < 0 ? i - a + 1 : i - l); gapS = Math.max(gapS, t[i] - t[l < 0 ? a : l]); l = i }
+      gapF = Math.max(gapF, l < 0 ? b - a : b - l)
+      gapS = Math.max(gapS, t[b - 1] - t[l < 0 ? a : l])
+      a = b
+    }
+    const pre = [0]
+    for (let i = 0; i < t.length; i++) pre.push(pre[i] + (det.has(i) ? 1 : 0))
+    const win = []
+    for (let i = 0, j = 0; i < t.length && t[t.length - 1] - t[i] >= 2; i++) { while (j < t.length && t[j] < t[i] + 2) j++; if (j < i) j = i; win.push(pre[j] - pre[i]) }
+    return { gapF, gapS, win }
+  }
+  let runs = 0, extra = 0, base = 0
+  for (let r = 0; r < 1500; r++) {
+    const { t, nominal, cuts } = gen()
+    for (const sensitive of [false, true]) {
+      const cap = sensitive ? nominal : 15, maxRate = sensitive ? nominal : P.fullRate(nominal)
+      const steps = Array.from({ length: Math.ceil(t.length / 40) }, () => pick([4, 6, 8, 10, 12, 13, 14, 15, 16, 20, 30]))
+      for (const sched of ['full', 'steps']) {
+        // The worker's: the pace's rate (the floor of 8, the full rate at most), the gate, the meter.
+        const rateAt = (i) => (sched === 'full' ? maxRate : Math.min(maxRate, Math.max(Math.min(8, maxRate), steps[Math.floor(i / 40)])))
+        const g = new P.DetectGate(cap), m = new C.CoverageMeter({ needAt: (f) => P.needRate(f, sensitive, maxRate) }), got = new Set()
+        t.forEach((x, i) => { const take = g.take(x, rateAt(i), cuts.has(i), sensitive && rateAt(i) >= maxRate); m.frame(x, cuts.has(i), take, rateAt(i)); if (take) got.add(i) })
+        const noticed = m.result(true).short || (sched === 'steps' && t.some((_, i) => P.covered(rateAt(i), nominal) < P.FULL_SHARE * P.covered(maxRate, nominal)))
+        const mine = measures(t, got, cuts)
+        // develop's gate at the same rate (capped as develop's): every frame of it is taken.
+        const same = snap(t, (i) => Math.min(rateAt(i), cap), cuts)
+        for (const i of same) if (!got.has(i)) fail('a frame develop takes at the same rate is left out: ' + JSON.stringify({ r, sensitive, sched, i }))
+        const s = measures(t, same, cuts)
+        if (mine.gapF > s.gapF || mine.gapS > s.gapS + 1e-12 || mine.win.some((c, i) => c < s.win[i])) fail('weaker than develop at the same rate: ' + JSON.stringify({ r, sensitive, sched, mine: [mine.gapF, mine.gapS], dev: [s.gapF, s.gapS] }))
+        // develop with its own rates (4 to 15, or the nominal rate when sensitive; the pace's are no lower): never fewer detections, a longer gap or fewer in the
+        // sparsest 2 s, or noticed. (Window by window the two can differ where the rates differ: the old gate's frames depend on its rates before.)
+        const devSet = snap(t, (i) => (sched === 'full' ? cap : Math.min(cap, Math.max(4, steps[Math.floor(i / 40)]))), cuts), dev = measures(t, devSet, cuts)
+        const fewest = (w) => (w.length ? Math.min(...w) : Infinity)
+        if ((got.size < devSet.size || mine.gapF > dev.gapF || mine.gapS > dev.gapS + 1e-12 || fewest(mine.win) < fewest(dev.win)) && !noticed) fail('weaker than develop and silent: ' + JSON.stringify({ r, sensitive, sched, nominal, kind: gen.last }))
+        if (sched === 'full' && !sensitive) {
+          // What the old gate beside the schedule adds.
+          const own = new P.DetectGate()
+          extra += got.size
+          base += t.filter((x, i) => own.take(x, rateAt(i), cuts.has(i))).length
+        }
+        runs++
+      }
+    }
+  }
+  if (runs < 5000) fail('too few runs: ' + runs)
+  if (process.env.GATE_EXTRA) console.error('the old gate beside the schedule adds ' + ((extra / base - 1) * 100).toFixed(1) + '% detections (full rate, normal, the generators)')
 }
 
 // ---- 'reduced' is the frames really covered, against the full rate (15 a second or the app's
@@ -335,7 +426,7 @@ if (F.fuse([], []).length !== 0) fail('empty')
 {
   let seed = 9
   const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296
-  const gateRate = (rate, fps) => { const g = new P.DetectGate(fps); let n = 0; for (let k = 0; k < 20 * fps; k++) if (g.take(Math.round((k / fps) * 1000) / 1000, rate)) n++; return n / 20 }
+  const gateRate = (rate, fps) => { const g = new P.DetectGate(); let n = 0; for (let k = 0; k < 20 * fps; k++) if (g.take(Math.round((k / fps) * 1000) / 1000, rate)) n++; return n / 20 }
   for (const fps of [20, 23.976, 24, 25, 29.97, 30, 31, 50, 59.94, 60]) for (const gpu of [true, false]) for (const ms of [20, 66, 75, 80]) {
     // 1000 / ms a second wanted: 50, 15, 13.3, 12.5 (a mid device keeps 80% of 15, not of 20 nor of 16.7)
     const maxRate = P.fullRate(fps)
@@ -392,18 +483,20 @@ if (F.fuse([], []).length !== 0) fail('empty')
   }
   /** The worker's gate: the rate a second, a cut's frame always, every frame in wide detection at its full rate. */
   const detect = (ts, fps, sensitive, rateAt = () => Infinity, cuts = new Set()) => {
-    const maxRate = sensitive ? fps : P.fullRate(fps), g = new P.DetectGate(fps), got = []
-    ts.forEach((t, k) => { const r = Math.min(maxRate, rateAt(k)); if (g.take(t, r, cuts.has(k) || (sensitive && r >= maxRate))) got.push(k) })
+    const maxRate = sensitive ? fps : P.fullRate(fps), g = new P.DetectGate(sensitive ? fps : 15), got = [], rates = []
+    ts.forEach((t, k) => { const r = Math.min(maxRate, rateAt(k)); rates.push(r); if (g.take(t, r, cuts.has(k), sensitive && r >= maxRate)) got.push(k) })
+    got.rates = rates
     return got
   }
-  const measure = (ts, got, fps, sensitive, cuts = []) => { const maxRate = sensitive ? fps : P.fullRate(fps); return C.measureCoverage(ts, got, cuts, { needAt: (f) => P.needRate(f, sensitive, maxRate) }) }
+  // The meter as the worker feeds it: the rate aimed at on each frame (what detect() used, else the full rate).
+  const measure = (ts, got, fps, sensitive, cuts = []) => { const maxRate = sensitive ? fps : P.fullRate(fps); return C.measureCoverage(ts, got, cuts, { needAt: (f) => P.needRate(f, sensitive, maxRate) }, (i) => got.rates?.[i] ?? maxRate) }
   const dur = (ts) => ts[ts.length - 1] - ts[0] + 1e-9
   const ok = (m, what) => { if (m.short || m.cutsMissed) fail('a false notice: ' + what + ' ' + JSON.stringify(m)) }
   // P1. A device that keeps up, steady frame rates, any timestamps: no notice; D at least 97% of min(full, fps) and of the app's cadence, at most 5% over the full rate; gaps no longer than the app's (n frames).
   for (const fps of FPS) for (const mode of ['exact', 'ms', '90k']) {
     const ts = clip(fps, mode), got = detect(ts, fps, false), m = measure(ts, got, fps, false), full = P.fullRate(fps)
     ok(m, 'P1 ' + fps + ' ' + mode)
-    if (m.rate < 0.97 * Math.min(full, fps) || m.rate < 0.97 * P.appRate(fps) || m.rate > 1.05 * full + 1 / dur(ts)) fail('P1 D: ' + JSON.stringify({ fps, mode, D: m.rate, full }))
+    if (m.rate < 0.97 * Math.min(full, fps) || m.rate < 0.97 * P.appRate(fps) || m.rate > (full > 15 ? 1.55 : 1.12) * Math.min(full, fps) + 1 / dur(ts)) fail('P1 D: ' + JSON.stringify({ fps, mode, D: m.rate, full }))
     if (m.maxGapFrames > Math.max(1, Math.round(fps / 15)) + (fps / full % 1 ? 1 : 0) || m.windows < 10) fail('P1 G: ' + JSON.stringify({ fps, mode, m }))
   }
   // P2. Wide detection at its full rate: every frame, on any timestamps (also VFR stretches over the nominal rate).
@@ -436,11 +529,16 @@ if (F.fuse([], []).length !== 0) fail('empty')
     if (got[0] !== 0) fail('P6 the first frame')
   }
   // P8. A device paced under the need is noticed, one at it isn't (the meter allows a frame interval's need, under one detection, a window: the schedule's last frame
-  // can come up to a frame after it was due): steady rates 10% under N, and at N (+0.01: the pace's line, 12.01 a second on 25, 29.97 and 30 fps isn't reduced).
+  // can come up to a frame after it was due): steady rates 10%, 25%, 40% under N (noticed whenever what was detected is 3% under N; at 40% always), and at N
+  // (+0.01: the pace's line, 12.01 a second on 25, 29.97 and 30 fps isn't reduced).
   for (const fps of FPS) for (const sensitive of [false, true]) for (const mode of ['exact', 'ms', '90k']) {
     const ts = clip(fps, mode), n = P.needRate(fps, sensitive), full = Math.min(fps, sensitive ? fps : P.fullRate(fps))
-    const under = measure(ts, detect(ts, fps, sensitive, () => 0.9 * n), fps, sensitive)
-    if (!under.short && n * 0.9 < full) fail('P8 under the need, no notice: ' + JSON.stringify({ fps, sensitive, mode, n, under }))
+    // (The old gate beside the schedule can add detections: what is judged is what was detected, D.)
+    for (const share of [0.9, 0.75, 0.6]) {
+      const under = measure(ts, detect(ts, fps, sensitive, () => share * n), fps, sensitive)
+      if (!under.short && under.rate < 0.97 * n && n * share < full) fail('P8 under the need, no notice: ' + JSON.stringify({ fps, sensitive, mode, n, share, under }))
+      if (share === 0.6 && !under.short && n * share < full) fail('P8 60% of the need, no notice: ' + JSON.stringify({ fps, sensitive, mode, n, under }))
+    }
     if (n + 0.01 < full) ok(measure(ts, detect(ts, fps, sensitive, () => n + 0.01), fps, sensitive), 'P8 at the need ' + fps + ' ' + sensitive + ' ' + mode)
   }
   for (const fps of [25, 29.97, 30]) {
@@ -460,8 +558,8 @@ if (F.fuse([], []).length !== 0) fail('empty')
     for (let k = 0; k < 60 * 30; k++) ts.push(t1 + k / 30)
     for (let k = 0; k < ts.length; k++) ts[k] = mode === 'ms' ? Math.round(ts[k] * 1000) / 1000 : Math.round(ts[k] * 90000) / 90000
     const got = detect(ts, nominal, false), dev = develop(ts, 15), m = measure(ts, got, nominal, false)
-    if (got.length < dev.length || gapOf(ts, got) > gapOf(ts, dev) + 1.5e-3) fail('B1 a misread nominal ' + nominal + ': weaker than develop ' + JSON.stringify({ got: got.length, dev: dev.length }))
-    for (let t0 = 0; t0 + 2 <= ts[ts.length - 1]; t0 += 0.5) if (in2s(ts, got, t0) < in2s(ts, dev, t0) - 1) fail('B1 fewer in 2 s than develop at ' + t0)
+    if (got.length < dev.length || gapOf(ts, got) > gapOf(ts, dev) + 1e-9) fail('B1 a misread nominal ' + nominal + ': weaker than develop ' + JSON.stringify({ got: got.length, dev: dev.length }))
+    for (let t0 = 0; t0 + 2 <= ts[ts.length - 1]; t0 += 0.5) if (in2s(ts, got, t0) < in2s(ts, dev, t0)) fail('B1 fewer in 2 s than develop at ' + t0)
     ok(m, 'B1 nominal ' + nominal)
     if (!measure(ts, detect(ts, nominal, false, () => 8), nominal, false).short) fail('B1 the floor on a misread nominal ' + nominal + ' is silent')
   }
@@ -482,7 +580,7 @@ if (F.fuse([], []).length !== 0) fail('empty')
   // P10 / P11. At any rate from the floor (8) up: D at least 97% of min(rate, fps), at most 5% over; the gap within a shot at most round(0.25 x fps) + 1 frames and 0.7 s (the tracker's limits).
   for (const fps of FPS) for (const mode of ['exact', 'ms', '90k']) for (const r of [8, 9, 10.5, 12, 13.3, 15, 16.7, 20, 30]) {
     const ts = clip(fps, mode), m = measure(ts, detect(ts, fps, false, () => r), fps, false), want = Math.min(r, P.fullRate(fps), fps)
-    if (m.rate < 0.97 * want || m.rate > 1.05 * Math.max(P.fullRate(fps), r) + 1 / dur(ts)) fail('P10 D: ' + JSON.stringify({ fps, mode, r, D: m.rate }))
+    if (m.rate < 0.97 * want || m.rate > 1.05 * (Math.min(want, fps) + Math.min(want, 15, fps)) + 1 / dur(ts)) fail('P10 D: ' + JSON.stringify({ fps, mode, r, D: m.rate }))
     if (m.maxGapFrames > Math.round(0.25 * fps) + 1 || m.maxGapS > 0.7) fail('P11 the gap: ' + JSON.stringify({ fps, mode, r, m }))
   }
   // P12. The floor: a crawling device detects 8 a second (develop and PR #37: 4), and it is noticed where 8 is under the need.
@@ -497,16 +595,16 @@ if (F.fuse([], []).length !== 0) fail('empty')
   for (let k = 0; k < 300; k++) {
     const fps = FPS[Math.floor(rnd() * FPS.length)], r = 4 + rnd() * 30, ts = clip(fps, ['ms', 'walk', 'grid'][k % 3], 10)
     const m = measure(ts, detect(ts, fps, false, () => r), fps, false)
-    if (m.rate > 1.05 * Math.max(P.fullRate(fps), Math.min(r, P.fullRate(fps))) + 1 / dur(ts)) fail('P14 over: ' + JSON.stringify({ fps, r, D: m.rate }))
+    const re = Math.min(r, P.fullRate(fps))
+    if (m.rate > 1.05 * (Math.min(re, fps) + Math.min(re, 15, fps)) + 1 / dur(ts)) fail('P14 over: ' + JSON.stringify({ fps, r, D: m.rate }))
   }
-  // P15. The notice is the pace's flag or the measure: where they differ, one is stricter. A steady rate the pace calls full is never far under the need when measured; one the pace calls reduced (same size) never measures 80% of the full rate.
+  // P15. The notice is the pace's flag or the measure: where they differ, one is stricter. A steady rate the pace calls full is never far under the need when measured (one the pace calls reduced can measure more: the old gate beside the schedule adds frames).
   for (let k = 0; k < 2000; k++) {
     const fps = FPS[Math.floor(rnd() * FPS.length)], sensitive = rnd() < 0.3, gpu = rnd() < 0.5, start = gpu ? 1280 : 960
     const maxRate = sensitive ? fps : P.fullRate(fps)
     const p = P.pace({ recentMs: 10 + rnd() * 400, rfMs: 5 + rnd() * 300, fineMs: 5 + rnd() * 250, workers: 1 + Math.floor(rnd() * 3), maxRate, side: start, startSide: start, rate: maxRate, gpu, frameRate: fps })
     const ts = clip(fps, 'ms', 10), m = measure(ts, detect(ts, fps, sensitive, () => p.rate), fps, sensitive)
     if (!p.reduced && m.rate < P.needRate(fps, sensitive) - 0.05) fail('P15 the pace calls it full, D under the need: ' + JSON.stringify({ fps, sensitive, ...p, D: m.rate }))
-    if (p.reduced && p.side === start && m.rate >= P.FULL_SHARE * P.covered(maxRate, fps) * 1.01) fail('P15 reduced, D at 80%: ' + JSON.stringify({ fps, sensitive, ...p, D: m.rate }))
   }
   // The meter itself: windows of 2 s within a shot, the gap from a shot's start, a missed cut counted, a hole in the frames needs nothing.
   {
@@ -526,11 +624,40 @@ if (F.fuse([], []).length !== 0) fail('empty')
     if (!lone.short || lone.shortAt > 3 || lone.minWindow > 0.5) fail('a gap of 2.7 s: ' + JSON.stringify(lone))
     if (!measure(ts, ts.map((_, k) => k).filter((k) => k % 2 === 0 && k < 200), 30, false).short) fail('3.3 s to the end with no detection')
     if (!measure(ts, [0], 30, false, [1]).short) fail('a shot of 10 s with no detection')
+    // Nit 2 (review): 60 to 120 fps with holes of up to 3 s (2-5% of the frames): between the detections around a hole the need is at most one, so the full rate
+    // isn't noticed; a rate of 5 still is (the frames between the holes).
+    for (const fps of [60, 120]) for (const ph of [0.02, 0.05]) {
+      let falseN = 0, missed = 0
+      for (let r = 0; r < 40; r++) {
+        const t = []
+        let x = 0
+        for (let i = 0, n = 300 + Math.floor(rnd() * 900); i < n; i++) { x += 1 / fps + (rnd() < ph ? rnd() * 3 : 0); t.push(x) }
+        for (const rate of [P.fullRate(fps), 5]) {
+          const g = new P.DetectGate(15), mm = new C.CoverageMeter({ needAt: (f) => P.needRate(f, false, P.fullRate(fps)) })
+          t.forEach((y) => mm.frame(y, false, g.take(y, rate), rate))
+          const sh = mm.result(true).short
+          if (rate === 5 ? !sh : sh) rate === 5 ? missed++ : falseN++
+        }
+      }
+      if (falseN || missed > 2) fail('holes at ' + fps + ' fps: ' + JSON.stringify({ ph, falseN, missed }))
+    }
+    // Bursts of 6 frames at 120 fps (50 ms, under a period at 15 a second) between holes of 0.5 s, one detection a burst: all a schedule at 15 can take; not short.
+    // One detection every 0.55 s on steady frames (no holes): short.
+    {
+      const bt = [], bd = []
+      for (let b = 0; b < 12; b++) for (let k = 0; k < 6; k++) { if (k === 0) bd.push(bt.length); bt.push(b * 0.55 + k / 120) }
+      const fed = (tt, dd) => { const mm = new C.CoverageMeter({ needAt: (f) => P.needRate(f, false, 15) }), ds = new Set(dd); tt.forEach((y, i) => mm.frame(y, false, ds.has(i), 15)); return mm.result(true) }
+      if (fed(bt, bd).short) fail('bursts between holes: one detection a burst is short')
+      const ft = Array.from({ length: 12 * 66 }, (_, i) => i / 120)
+      if (!fed(ft, ft.map((_, i) => i).filter((i) => i % 66 === 0)).short) fail('one detection every 0.55 s on steady frames is not short')
+    }
     // Fed as it goes: the same as at once.
     const mt = new C.CoverageMeter({ needAt: (f) => P.needRate(f, false, 15) })
     ts.forEach((t, k) => mt.frame(t, false, k % 3 === 0))
     const a = mt.result(true), b = measure(ts, ts.map((_, k) => k).filter((k) => k % 3 === 0), 30, false)
     if (JSON.stringify(a) !== JSON.stringify(b) || !a.short || !near(a.rate, 10, 0.1)) fail('the meter fed as it goes: ' + JSON.stringify({ a, b }))
+    // The first short window's own D and need (a second), for the log line: 10 against 12 (less a frame interval's need).
+    if (a.shortAt !== 0 || !near(a.shortRate, 10, 0.2) || !near(a.shortNeed, 12, 0.5)) fail('the short window: ' + JSON.stringify(a))
   }
 }
 
@@ -582,10 +709,11 @@ if (F.fuse([], []).length !== 0) fail('empty')
     const run = (rule) => {
       const maxRate = sensitive ? fps : rule === 'new' ? P.fullRate(fps) : 15
       let side = rule === 'dev' ? (gpu ? 960 : 640) : start, rate = maxRate
-      const g = rule === 'new' ? new P.DetectGate(fps) : null, s = snap(), pacer = new P.Pacer(workers + 2), got = [], steps = []
+      const g = rule === 'new' ? new P.DetectGate(sensitive ? fps : 15) : null, s = snap(), pacer = new P.Pacer(workers + 2), got = [], steps = [], rates = []
       ts.forEach((t, k) => {
         const cut = cuts.has(k)
-        if (!(g ? g.take(t, rate, cut || (sensitive && rate >= maxRate)) : s(t, rate, cut))) return
+        rates.push(rate)
+        if (!(g ? g.take(t, rate, cut, sensitive && rate >= maxRate) : s(t, rate, cut))) return
         got.push(k)
         if (rule === 'dev') {
           // develop: its rate from its own time (RetinaFace alone, no YuNet), 640 px on the GPU over 200 ms.
@@ -603,20 +731,27 @@ if (F.fuse([], []).length !== 0) fail('empty')
         rate = p.rate; side = p.side
         steps.push({ side, rate })
       })
-      return { got, steps }
+      return { got, steps, rates }
     }
     const now = run('new'), r37 = run('pr37'), dev = run('dev')
-    for (const [name, old] of [['PR #37', r37], ['develop', dev]]) {
+    // develop's gate at the rate the new one runs (capped as develop's: 15, or the frame rate when sensitive): every frame it takes is taken.
+    const ds = snap(), same = { got: [] }
+    ts.forEach((t, k) => { if (ds(t, Math.min(now.rates[k], sensitive ? fps : 15), cuts.has(k))) same.got.push(k) })
+    const taken = new Set(now.got)
+    if (same.got.some((k) => !taken.has(k))) fail('a frame develop takes at this rate is left out')
+    for (const [name, old] of [['PR #37', r37], ['develop', dev], ['develop at the same rate', same]]) {
       const what = JSON.stringify({ gpu, big, yunet, workers, fps, sensitive, name })
-      for (let k = 0; k < Math.min(now.steps.length, old.steps.length); k++)
+      for (let k = 0; k < Math.min(now.steps.length, old.steps?.length ?? 0); k++)
         if (eff(now.steps[k].side) < eff(old.steps[k].side) || P.covered(now.steps[k].rate, fps) < P.covered(old.steps[k].rate, fps) - 1e-9) fail('a pace step weaker than ' + what + ' ' + JSON.stringify({ k, now: now.steps[k], old: old.steps[k] }))
       if (now.got.length < old.got.length) fail('fewer detections than ' + what)
-      for (let t0 = 0; t0 + 2 <= 20; t0 += 0.5) {
-        const n = (got) => got.filter((k) => ts[k] >= t0 && ts[k] < t0 + 2).length
-        if (n(now.got) < n(old.got) - 1) fail('fewer detections in 2 s than ' + what + ' at ' + t0)
+      // Every 2 s from every frame, against the old gate at the same rate (each rule's own pace changes its rate after its own detections, at other moments:
+      // one that detects more paces sooner; against those, the pace steps, the count and the gap).
+      if (old === same) for (let i = 0; i < ts.length && ts[i] + 2 <= ts[ts.length - 1]; i++) {
+        const n = (got) => got.filter((k) => ts[k] >= ts[i] && ts[k] < ts[i] + 2).length
+        if (n(now.got) < n(old.got)) fail('fewer detections in 2 s than ' + what + ' at ' + ts[i])
       }
       const gap = (got) => got.slice(1).reduce((m, k, j) => (cuts.has(k) ? m : Math.max(m, ts[k] - ts[got[j]])), 0)
-      if (gap(now.got) > gap(old.got) + 1.5e-3) fail('a longer gap than ' + what + ' ' + gap(now.got) + ' > ' + gap(old.got))
+      if (gap(now.got) > gap(old.got) + 1e-9) fail('a longer gap than ' + what + ' ' + gap(now.got) + ' > ' + gap(old.got))
       cases++
     }
   }
