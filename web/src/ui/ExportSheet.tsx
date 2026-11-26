@@ -1,4 +1,4 @@
-import { useEffect } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 import { t } from '../i18n'
 import { fpsChoices, resolutionChoices, type ExportCodec, type ExportOptions, type ExportQuality } from '../lib/exportopts'
 import { ASPECT_RATIO, cropFraction, type Aspect } from '../lib/camera'
@@ -14,6 +14,8 @@ type Props = {
   hasCues: boolean
   /** Bleeped words the subtitles no longer have (they would be heard): said before exporting. */
   lostBleeps?: number
+  /** Subtitles that may show a bleeped word (its text was edited): exporting asks first. */
+  maskWarn?: number
   options: ExportOptions
   onChange: (o: ExportOptions) => void
   onGo: () => void
@@ -39,6 +41,11 @@ export function ExportSheet(p: Props) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+  // A subtitle that may show a bleeped word blocks the video's export until it is fixed or the person says to go on.
+  const [maskOk, setMaskOk] = useState(false)
+  // (Only what carries the subtitles: the burned-in text, or the SRT file.)
+  const carries = o.format === 'mp4' && (o.burn !== false || o.srt)
+  const blocked = (p.maskWarn ?? 0) > 0 && carries && !maskOk
   const chip = (on: boolean, label: string, onClick: () => void) => <button class={'chip' + (on ? ' on' : '')} onClick={onClick}>{label}</button>
   return (
     <div class="sheet-back" onClick={(e) => { if (e.target === e.currentTarget) p.onClose() }}>
@@ -49,6 +56,12 @@ export function ExportSheet(p: Props) {
         </div>
         <div class="sheet-body">
           {(p.lostBleeps ?? 0) > 0 && <p class="small lost-note" role="note" style="margin:0;color:var(--primary)">{p.lostBleeps === 1 ? t('מילה מצופצפת אחת לא נמצאה בכתוביות החדשות ולא תצופצף') : t('%d מילים מצופצפות לא נמצאו בכתוביות החדשות ולא יצופצפו', p.lostBleeps ?? 0)}</p>}
+          {(p.maskWarn ?? 0) > 0 && carries && (
+            <label class="small mask-warn-note confirm" role="alert" style="margin:0;display:flex;gap:8px;align-items:flex-start">
+              <input type="checkbox" class="mask-warn-ok" checked={maskOk} onChange={(e) => setMaskOk((e.currentTarget as HTMLInputElement).checked)} />
+              <span>{p.maskWarn === 1 ? t('בכתובית אחת מילה מצופצפת לא נמצאת בטקסט, ולכן הכתובית עלולה להציג אותה. סמן כדי לייצא בכל זאת.') : t('ב-%d כתוביות מילה מצופצפת לא נמצאת בטקסט, ולכן הן עלולות להציג אותה. סמן כדי לייצא בכל זאת.', p.maskWarn ?? 0)}</span>
+            </label>
+          )}
           <h4 class="caption">{t('מה לשמור')}</h4>
           <div class="seg seg2 export-format" role="radiogroup">
             <button class={o.format === 'mp4' ? 'on' : ''} role="radio" aria-checked={o.format === 'mp4'} onClick={() => set({ format: 'mp4' })}>{t('סרטון')}</button>
@@ -121,7 +134,7 @@ export function ExportSheet(p: Props) {
             </label>
           )}
         </div>
-        <button class="btn primary export-go" onClick={p.onGo}><SaveIcon /> {o.format === 'mp3' ? t('שמור MP3') : p.action ?? t('ייצא')}</button>
+        <button class="btn primary export-go" disabled={blocked} onClick={p.onGo}><SaveIcon /> {o.format === 'mp3' ? t('שמור MP3') : p.action ?? t('ייצא')}</button>
       </div>
     </div>
   )

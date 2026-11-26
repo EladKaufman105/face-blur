@@ -131,6 +131,7 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
           onPick={pick}
           settings={tpl ?? baseline}
           onSettings={(s) => setTpl(s)}
+          onEdited={pick}
         />
         <section class="ready-actions">
           <button class="btn primary blur-faces" onClick={() => onBlur(look, current())}><FaceIcon /> {tpl?.blurOff ? t('פתח בעורך') : t('טשטש פנים')}</button>

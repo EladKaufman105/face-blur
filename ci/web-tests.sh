@@ -37,7 +37,7 @@ case "${1:?shard}" in
     # The editor as the app's, part two: effect cards that play (still with less motion), font cards each in its font, a group's tool chips on one row (360-412 px, he and en), the tablet layouts (upright under 840 px: one column; the rail of groups and the panel beside the video).
     t parity.cjs "$U" $S/speech_two.mp4 $R/parity ../app/src/main/assets/fonts/heebo.ttf   # 62
     ;;
-  2) # 235 s
+  2) # 260 s
     # Subtitles on a phone (390 px): the one button on the first screen, the looks as drawn cards, one tap applies one, a subtitle edited where it is, 44 px targets. No model.
     t subsmobile.cjs "$U" $S/speech_two.mp4 $R/subsmobile   # 8
     # The editor's panels on a phone (390 px), as the app's: each group one compact panel of a bounded height with its tools as chips, the video in view, nothing sideways, no empty "more options".
@@ -46,8 +46,15 @@ case "${1:?shard}" in
     t subsimport.cjs "$U" $S/speech_two.mp4 $R/subsimport   # 8
     # Where it was filmed and on what phone don't go out with the export.
     t privacy.cjs "$U" $S/speech_two.mp4 $R/privacy   # 10
+    # Subtitles on the timeline, as the app's: a tap selects, the bar's Start / End here, split, merge, delete and text, the edges dragged, all undone; bleeps follow their words. Desktop and a phone.
+    # Bleeped words never show in the subtitles: 5000 random sequences of split, merge, retime, delete, bleep, edit, translate and undo (pure, no browser).
+    t splitmask.cjs   # 2
+    t cues.cjs "$U" $S/speech_two.mp4 $R/cues   # 12
+    t cues.cjs "$U" $S/speech_two.mp4 $R/cuesp phone   # 13
+    # A subtitle edited so a bleeped word may show: the alert, the mark on the timeline, the export asking first; a deleted subtitle's bleeps listed.
+    t maskwarn.cjs "$U" $S/speech_two.mp4 $R/maskwarn   # 15
     ;;
-  3) # 217 s
+  3) # 255 s
     # Subtitle design: styles, fonts (one imported with Hebrew, one without), effects, burned into the export.
     t style.cjs "$U" $S/speech_two.mp4 ../app/src/main/assets/fonts/heebo.ttf /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf $R/style   # 33
     # Face detection on the CPU path, the editor, the export: desktop and a phone.
@@ -60,6 +67,10 @@ case "${1:?shard}" in
     t templates.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/templates   # 95
     # The speech model's flow with no download: faster / better quality kept, a stuck recognition ends with an error and a retry, Cancel ends the worker, a template asks before downloading.
     t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 40
+    # The watermark's logo kept between visits and a template's logo shown; the template editor asking before it drops changes, and "Edit" for the chosen template (ready screen, batch); the safe zone's switch, chooser and mock (9:16 only, never in the export); the thin scrubber over a phone's panel; the low-confidence rule.
+    t parity2.cjs "$U" $S/speech_two.mp4 $S/stress_cuts.mp4 $R/parity2   # 30
+    # Two fingers on the video resize the selected blur, one undo step each.
+    t pinch.cjs "$U" $S/walk.mp4 $R/pinch   # 8
     ;;
   4) # 222 s
     # The sound's cleanup, MP3 (from the editor and the home screen), a lower size and frame rate.

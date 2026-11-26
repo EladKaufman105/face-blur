@@ -125,7 +125,7 @@ const mkCheck = (p) => async (label) => {
     const small = [...document.querySelectorAll('.panel:not([hidden]) button, .panel:not([hidden]) label.btn, .tabs button, .top-row button, .transport button')].filter((e) => { const k = e.getBoundingClientRect(); return k.width > 0 && k.height > 0 && k.height < 43.5 && !e.closest('.preset') && !e.matches('.face, .swatch, .speaker-dot, .time-btn') }).map((e) => e.className + ':' + Math.round(e.getBoundingClientRect().height))
       return {
         sideways: document.documentElement.scrollWidth > innerWidth, vh: innerHeight, alert: !!document.querySelector('.side > .sound-error, .side > .tpl-run'), clientH: document.documentElement.clientHeight, scrollH: document.documentElement.scrollHeight, tabsBottom: tabs?.bottom,
-        panelH: panel?.height, bodyH: body?.height, tlShown: !!document.querySelector('.tl') && getComputedStyle(document.querySelector('.tl')).visibility !== 'hidden' && getComputedStyle(document.querySelector('.tl')).display !== 'none', ctx: !!document.querySelector('.ctx-bar'), panelTop2: panel?.top, tabsTop: tabs?.top, screenTop: screen?.top, screenBottom: screen?.bottom, screenH: screen?.height,
+        scrub: !!document.querySelector('.panel > .mini-scrubber'), panelH: panel?.height, bodyH: body?.height, tlShown: !!document.querySelector('.tl') && getComputedStyle(document.querySelector('.tl')).visibility !== 'hidden' && getComputedStyle(document.querySelector('.tl')).display !== 'none', ctx: !!document.querySelector('.ctx-bar'), panelTop2: panel?.top, tabsTop: tabs?.top, screenTop: screen?.top, screenBottom: screen?.bottom, screenH: screen?.height,
         bodyEmpty: !bodyEl || bodyEl.children.length === 0 || !(bodyEl.innerText.trim() || [...bodyEl.querySelectorAll('input, canvas, img, button')].some((e) => e.offsetParent !== null)),
         moreOptions: [...document.querySelectorAll('.subs-more')].map((d) => d.querySelector('.subs-more-body')?.children.length ?? 0),
         topRow, chipRows, playerBottom: lastBottom, panelTop: panel?.top, tablist: [...document.querySelectorAll('.panel [role=tablist]')].every((t) => t.getAttribute('aria-label')), tabs: [...document.querySelectorAll('.panel [role=tab]')].every((t) => t.getAttribute('aria-controls') === 'panel-body' && (t.tabIndex === 0) === (t.getAttribute('aria-selected') === 'true')), tabpanel: document.querySelector('.panel-body')?.getAttribute('role'), small, panelOver: bodyEl ? [...bodyEl.querySelectorAll('*')].some((e) => { if (e.closest('.chips, .faces, .swatches, .preset-row, .scroll-row, .word-chips, .tl-scroll')) return false; const k = e.getBoundingClientRect(); const bb = bodyEl.getBoundingClientRect(); return k.width > 0 && (k.right > bb.right + 1 || k.left < bb.left - 1) }) : false,
@@ -140,7 +140,8 @@ const mkCheck = (p) => async (label) => {
     if (m.panelH > m.vh * 0.5) fail(`${label}: the panel is ${m.panelH} px of ${m.vh}`)
     // The panel takes the timeline's place: the timeline is hidden, and the panel's body has room for a tool.
     if (m.tlShown) fail(label + ': the timeline shows with a panel open')
-    const wantBody = m.alert ? 100 : m.ctx ? (m.vh >= 740 ? 140 : 100) : m.vh >= 740 ? 215 : 170
+    // The thin scrubber (30 px) over the panel's body takes its share of the same slot (24 px, its gap and the rounding of the shorter phones).
+    const wantBody = (m.alert ? 100 : m.ctx ? (m.vh >= 740 ? 140 : 100) : m.vh >= 740 ? 215 : 170) - (m.scrub ? 36 : 0)
     if (m.bodyH < wantBody) fail(`${label}: the panel body is ${Math.round(m.bodyH)} px (wanted ${wantBody}) at ${m.vh}`)
     if (!m.alert && !m.ctx && m.screenH < m.vh * 0.3 - 1) fail(`${label}: the video is ${Math.round(m.screenH)} px of ${m.vh}`)
     if (m.screenTop < 0 || m.screenBottom > m.tabsTop || m.screenH < (m.alert || m.ctx ? 40 : 90)) fail(`${label}: the video is not in view: ${JSON.stringify(m)}`)
@@ -401,8 +402,9 @@ const mkCheck = (p) => async (label) => {
         await grp(p, 'subs')
         await p.click('.panel-head [data-sub=style]')
         await chk(`${label} subs/style`)
+        // (the thin scrubber over the panel takes its height from the body)
         const body = await p.$eval('.panel-body', (e) => e.getBoundingClientRect().height)
-        if (vp.height === 780 && body < 220) fail(`${label}: the style panel's body is ${Math.round(body)} px`)
+        if (vp.height === 780 && body < 220 - 36) fail(`${label}: the style panel's body is ${Math.round(body)} px`)
         // the close control, and a second tap on the open group, bring the timeline back
         await p.click('.panel-close')
         await p.waitForSelector('.tl', { state: 'visible' })

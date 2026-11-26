@@ -35,6 +35,8 @@ export interface Analysis {
   tracks: Track[]
   /** First frames of the shots after the first (hard cuts). */
   cuts?: number[]
+  /** Automatic blurs with no clear detection behind them (a batch flags a video that has some). */
+  lowConfidence?: number
 }
 
 export type BlurMode = 'blur' | 'pixelate' | 'solid'

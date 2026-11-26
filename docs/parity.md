@@ -49,10 +49,10 @@ Rows marked **privacy** must be closed first.
 | Top bar | Back, title, blur view toggle, safe zone, undo, redo, Export | Back, undo, redo, save template, settings, Export (`W/ui/Editor.tsx:1262`) | differs | |
 | Blur view toggle (blur / outlines) | Yes (`A/ui/EditorScreen.kt:322`) | None | gap-web | Optional |
 | Transport | Time, prev, play, next, zoom -/+ | Prev, play, next, time; zoom by pinch and keys | differs | Web: add zoom buttons (unverified) |
-| Mini scrubber while a panel is open (phone) | `MiniScrubber` (`A/ui/EditorShell.kt:518`) | None (unverified) | gap-web | |
+| Mini scrubber while a panel is open (phone) | `MiniScrubber` (`A/ui/EditorShell.kt:518`) | Thin range input at the top of the open phone panel (`W/ui/Editor.tsx`, `web/tests/parity2.cjs`) | same | Hidden under 600 px of height |
 | Keyboard shortcuts | none | Space, J/K/L, arrows, Ctrl+Z, Delete, Esc (`Editor.tsx:1385`) | exception | Platform: keyboard |
 | Timeline lanes | Filmstrip, subtitles, sounds, blur, cuts, bleep marks | Filmstrip, subtitles, sounds, faces, cuts; bleep marks not seen (unverified) | differs | |
-| Subtitle clips on timeline | Tap selects, drag edges to retime (`EditorScreen.kt:1353`) | Tap seeks only; no retime (`W/ui/Timeline.tsx:205`) | gap-web | High: cannot fix subtitle timing or bleep timing |
+| Subtitle clips on timeline | Tap selects, drag edges to retime (`EditorScreen.kt:1353`) | Tap selects, handles retime, one undo step (`W/ui/Timeline.tsx`, `web/tests/cues.cjs`) | same | Web clamps to the neighbours; the app lets them overlap |
 | Group bar | 6 groups with "on" dot | 6 groups | same | |
 | Per-face list | No list; each blur is a clip | Thumbnails, tap to turn on/off, All / None (`Editor.tsx:1116`) | gap-app | Add per-face toggle |
 | Find faces after entering via a tool | Not available (`A/MainViewModel.kt:892`) | "Find faces" in Faces tab (`Editor.tsx:1099`) | gap-app | |
@@ -63,7 +63,7 @@ Rows marked **privacy** must be closed first.
 |---|---|---|---|---|
 | Privacy: blur look (style, strength, area) | `A/ui/SettingsPanels.kt:419` | `Editor.tsx:1140` | same | |
 | Privacy: manual blur, auto-follow | Yes | Yes | same | |
-| Privacy: resize blur on video | Pinch plus slider | Slider only; drag to move | gap-web | Add pinch |
+| Privacy: resize blur on video | Pinch plus slider | Pinch (two pointers) plus slider (`web/tests/pinch.cjs`) | same | |
 | Edit: cut silences, filler words, manual, by text | `A/ui/CutPanel.kt` | `W/ui/CutTab.tsx` | same | |
 | Edit: stabilize | Off/light/medium/strong | Same | same | "Nothing to stabilize" wording differs |
 | Picture: background (people / green / blue, none/blur/color/picture) | `A/ui/BackgroundPanel.kt` | `W/ui/PictureTab.tsx:33` | same | |
@@ -76,13 +76,19 @@ Rows marked **privacy** must be closed first.
 | Subtitles: download SRT now | Only at export | Button in list plus export option | gap-app | |
 | Subtitles: find and replace, split rule | Yes | Yes | same | |
 | Subtitles: bleep words placement | Under Sound > Voice and bleeps, and list header | Under Subtitles > Bleep words | differs | Align placement or accept |
+| **Privacy**: which words a subtitle masks | By place: the text's words (`Subtitles.mask(s, hide)`, hidden = words under a bleep) | By place too: a subtitle owns its word indices (`Cue.wi`); split divides them, merge joins them, retime keeps them (`W/lib/subtitles.ts`, `web/tests/splitmask.cjs`) | same | Once the text is edited the web also masks every token that says what a bleeped word said, and warns if one is in no token |
+| **Privacy**: subtitle edited so a bleeped word may show | Not applicable: positions are always masked | A persistent warning on the subtitle; export (burn-in or SRT) is blocked until fixed or confirmed (`W/ui/ExportSheet.tsx`) | differs | Web only: its text is edited freely, as in the app, but its words are tracked by index |
+| **Privacy**: translation of a subtitle with bleeped words | Translates the raw text (unverified) | Translates the masked text; a translation not made from the masked text is hidden in the video, with a notice | differs | App: check `translate` input |
+| **Privacy**: subtitle made by hand over a bleeped word | Masks by time (`EditModel.kt` `bleepedWords`) | The cue is given the free words in its time; one with none masks the bleeped words that start inside it by text, and warns if one is in no token | same | Web: an edit that respells and moves a bleeped word warns (a pure in-place respelling does not) |
+| Deleting a subtitle with bleeped words | Bleeps are time ranges and stay | The words stay bleeped; the Subtitles tab lists them as bleeps with no subtitle and removes them on request | same | |
+| Download SRT in the list | Only at export | Unmasked, for editing (labelled, and it asks first when words are bleeped); the export's SRT is masked | differs | |
 | Subtitle style: looks (27), fonts (10 + import), effects (18), colors, outline, shadow, glow, box, size, position | `A/ui/SubtitleStylePanel.kt` | `W/ui/SubStyleCard.tsx` | same | |
 | Subtitle style: outline widths | 4 (none/thin/medium/thick) | 3 (none/thin/thick) | differs | Web: add medium. Web maps an outline of 0.13 or more to "thick" (`SubStyleCard.tsx:38`), so an app style saved as medium shows as thick on web |
 | Sound: cleanup (noise, enhance, loudness) | `VoicePanel.kt:188` | `EditorTabs.tsx:40` | same | |
 | Sound: voice change | none, deep, high, robot, disguise, mute | Same functions; labels differ ("Low" vs "Deep", "No sound" vs "Mute") | differs | Unify labels |
 | Sound: effects library (51), My sounds (20 s) | Yes | Yes | same | |
 | Branding: watermark | `A/ui/WatermarkPanel.kt` | `EditorTabs.tsx:265` | same | |
-| Watermark persistence | Logo file remembered | Text remembered, logo dropped (`EditorTabs.tsx:256`) | differs | Likely web bug |
+| Watermark persistence | Logo file remembered | Logo kept in IndexedDB, shrunk to 512 px (`W/lib/logostore.ts`) | same | |
 
 ## Editor: tablet layout
 
@@ -97,7 +103,7 @@ Rows marked **privacy** must be closed first.
 | Feature | App | Web | Status | Note / link |
 |---|---|---|---|---|
 | Selected blur | Bar: Properties, Split, Follow, Delete | Bar: Show/Blur toggle, Split, Start/End here, Follow, Size, Delete (`W/ui/BlurBar.tsx:48`) | differs | See per-face toggle |
-| Selected subtitle | Bar and properties: text, translation, speaker, times, start/end here, split, merge, delete | No selection; per-row Split / Join / Delete in list only | gap-web | High: add selectable subtitle clips and timing edits |
+| Selected subtitle | Bar and properties: text, translation, speaker, times, start/end here, split, merge, delete | Same (`W/ui/CueBar.tsx`) | same | |
 | Selected sound | Play, Move here, Delete; volume, start | Inline name, volume, Move here, Delete; no Play | differs | Web: add Play |
 | Merge subtitle | With previous or next | With next only | gap-web | |
 
@@ -105,7 +111,7 @@ Rows marked **privacy** must be closed first.
 
 | Feature | App | Web | Status | Note / link |
 |---|---|---|---|---|
-| Safe-zone overlay (TikTok / Reels / Shorts) | Switch, platform pill, mock overlay, 9:16 only (`A/ui/SafeZoneMock.kt`, `docs/specs/safe-zones.md`) | None | gap-web | Spec says web follows; not burned into export |
+| Safe-zone overlay (TikTok / Reels / Shorts) | Switch, platform pill, mock overlay, 9:16 only (`A/ui/SafeZoneMock.kt`, `docs/specs/safe-zones.md`) | Same, drawn in the editor only (`W/lib/safezonemock.ts`); the export worker never imports it | same | Icons are SVG paths |
 
 ## Export
 

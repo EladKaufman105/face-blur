@@ -6,13 +6,14 @@ import { StatsHistory, summary, type AnalysisStats, type StatsSnapshot } from '.
 import { DetectorPool } from '../lib/detector-pool'
 import { CutDetector } from '../lib/cuts'
 import { track } from '../lib/tracker'
+import { lowConfidenceTracks } from '../lib/lowconf'
 import type { Det, Track } from '../lib/types'
 
 export type AnalyzeRequest = { file: File; sensitive: boolean; base: string; backend?: 'webgpu' | 'wasm'; /** How many CPU detectors to run side by side (default: by core count). */ workers?: number }
 export type AnalyzeMessage =
   | { type: 'ready'; backend: string; width: number; height: number; duration: number; fps: number }
   | { type: 'progress'; done: number; total: number; preview?: ImageBitmap; dets?: Det[]; faces: number; backend: string; stats: AnalysisStats }
-  | { type: 'done'; times: Float64Array; width: number; height: number; fps: number; tracks: Track[]; cuts: number[]; thumbs: (ImageBitmap | null)[]; backend: string; ms: number }
+  | { type: 'done'; times: Float64Array; width: number; height: number; fps: number; tracks: Track[]; cuts: number[]; lowConfidence: number; thumbs: (ImageBitmap | null)[]; backend: string; ms: number }
   | { type: 'error'; code: string; message: string }
   | { type: 'log'; message: string }
 
@@ -203,6 +204,6 @@ async function analyze({ file, sensitive, base, backend, workers }: AnalyzeReque
       thumbs[w.i] = out.transferToImageBitmap()
     }
   }
-  const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, cuts: cutList, thumbs, backend: backendNow(), ms: performance.now() - t0 }
+  const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, cuts: cutList, lowConfidence: lowConfidenceTracks(tracks, dets), thumbs, backend: backendNow(), ms: performance.now() - t0 }
   post(msg, [msg.times.buffer, ...tracks.map((t) => t.boxes.buffer), ...thumbs.filter((b): b is ImageBitmap => !!b)])
 }

@@ -216,7 +216,7 @@ async function run(req: ExportRequest) {
             if (overlay) ctx.drawImage(overlay, 0, 0, w, h)
             if (cue) {
               const blocks = cue.text.split('\n')
-              const times = subStyle.show === 'tr' ? [] : [cueWordTimes(blocks[0], cue.start, cue.end, words)]
+              const times = subStyle.show === 'tr' ? [] : [cueWordTimes(blocks[0], cue.wi, words)]
               drawCue(ctx, blocks, cue.start, cue.end, sample.timestamp, { ...subStyle, color: speakerColor(subStyle.color, cue.speaker, subStyle.speakerColors) }, w, h, times)
             }
             if (!camera) renderer.setOverlay(layer)

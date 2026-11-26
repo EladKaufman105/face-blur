@@ -40,11 +40,12 @@ function starts(text: string, times: number[] | null | undefined, start: number,
   return wt.map((x) => { const s = start + (span * acc) / total; acc += x; return s })
 }
 
-/** The recognized start times of a subtitle's words (null if they don't match its text). */
-export function cueWordTimes(text: string, start: number, end: number, words: Word[]): number[] | null {
+/** The recognized start times of a subtitle's words ([wi]: their places in [words]); null if they don't match its text. */
+export function cueWordTimes(text: string, wi: number[] | undefined, words: Word[]): number[] | null {
   const n = wordsOf(text).length
-  const ws = words.filter((w) => w.start >= start - 0.01 && w.start < end)
-  return ws.length === n ? ws.map((w) => w.start) : null
+  if (!wi || wi.length !== n) return null
+  const ts = wi.map((k) => words[k]?.start)
+  return ts.every((x) => x !== undefined) ? (ts as number[]) : null
 }
 
 const active = (st: number[], t: number) => { let a = -1; for (let i = 0; i < st.length; i++) { if (st[i] <= t) a = i; else break } return a }
