@@ -245,10 +245,14 @@ export class FaceDetector {
     t = performance.now()
     const rf = nmsIou(out, 0.4)
     // YuNet adds the faces RetinaFace misses and raises the score where both agree; the wait for it and the fusion count as the merge.
+    // A sensitivity above 0: YuNet's wait here and its run in this thread count as extra work (more than its extra candidates
+    // cost: kept out of the pace, a sensitivity can only make it hold on longer, never lighter).
+    const ty = performance.now()
     let ynAll = ynJob ? await ynJob : null
     // Its worker failed: YuNet in this thread from now on.
     if (ynJob && !ynAll) this.ynWorker = null
     ynAll ??= await this.yunet(src, ynThr)
+    if (more) this.extraMs += performance.now() - ty
     const yn = more ? ynAll.filter((d) => d.score >= this.ynThr) : ynAll
     st.yunetFaces += yn.length
     const kept = fuse(rf, yn)
@@ -262,7 +266,12 @@ export class FaceDetector {
     this.lastExtras = []
     if (rfPool) {
       const te = performance.now()
-      this.lastExtras = extras(kept, fuse(rfPool, ynAll, POOL_YUNET_ONLY), thresholds(this.sens).cut)
+      const cut = thresholds(this.sens).cut
+      this.lastExtras = extras(kept, fuse(rfPool, ynAll, POOL_YUNET_ONLY), cut)
+      // Re-checked too: the default faces the tracker now counts (from the cut, under DET_THRESHOLD), as the app re-checks
+      // every uncertain face; and the likeliest extra ones. A higher sensitivity checks every one a lower one does.
+      const low = kept.filter((d) => d.score >= cut && d.score < DET_THRESHOLD).sort((a, b) => b.score - a.score).slice(0, MAX_EXTRA_CHECKS)
+      await this.verify(src, low)
       await this.verify(src, [...this.lastExtras].sort((a, b) => b.score - a.score).slice(0, MAX_EXTRA_CHECKS))
       this.extraMs += performance.now() - te
     }

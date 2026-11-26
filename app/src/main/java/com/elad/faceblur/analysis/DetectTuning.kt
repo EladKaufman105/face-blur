@@ -41,11 +41,11 @@ data class Thresholds(
     val shortVerified: Float,
 )
 
-/** How detection runs now on a device (see [DetectTuning.adapt]): every [every]-th frame, the CPU's fine pass at [cpuSide] px, [lite] checks, and whether a sensitivity's extra work is [shed]. */
-data class Pacing(val every: Int, val cpuSide: Int, val lite: Boolean, val shed: Boolean = false)
+/** How detection runs now on a device (see [DetectTuning.adapt]): every [every]-th frame, the CPU's fine pass at [cpuSide] px, [lite] checks. */
+data class Pacing(val every: Int, val cpuSide: Int, val lite: Boolean)
 
 /** What a step of [DetectTuning.adapt] did. */
-enum class PaceStep { NONE, SHED, GPU_OFF, SIDE, RATE, LITE, RELAX }
+enum class PaceStep { NONE, GPU_OFF, SIDE, RATE, LITE, RELAX }
 
 /**
  * The detection modes' pacing and the sensitivity setting, as plain values (no Android, no
@@ -132,14 +132,13 @@ object DetectTuning {
     /**
      * One step of FaceAnalyzer.adapt (about every 1.5 s), as plain values. [blocked]: the frames
      * waited for a free detector over a third of the time (detection holds the analysis back);
-     * [relaxed]: under a tenth. When blocked, the lightest change first:
-     *  1. a sensitivity above 0 ([extras]) sheds its own extra work (the extra detections' crops):
-     *     the default detection then costs what it costs at sensitivity 0, so a sensitivity never
-     *     makes the default detection lighter than it is at 0;
-     *  2. a GPU too slow ([gpuSlow]) gives way to the CPU, at [lowSide] px, lite;
-     *  3. on the CPU, the fine pass at [lowSide] px, lite;
-     *  4. fewer detections (up to every [maxEvery]-th frame), lite;
-     *  5. fast mode (its rate already the floor): lite.
+     * [relaxed]: under a tenth. Both are measured without a sensitivity's extra work (see
+     * [blockedWithoutExtras]): a sensitivity never moves the pacing. When blocked, the lightest
+     * change first:
+     *  1. a GPU too slow ([gpuSlow]) gives way to the CPU, at [lowSide] px, lite;
+     *  2. on the CPU, the fine pass at [lowSide] px, lite;
+     *  3. fewer detections (up to every [maxEvery]-th frame), lite;
+     *  4. fast mode (its rate already the floor): lite.
      * When relaxed, back a step toward every [baseEvery]-th frame, and the full checks once there.
      */
     fun adapt(
@@ -149,13 +148,11 @@ object DetectTuning {
         gpuActive: Boolean,
         gpuSlow: Boolean,
         mode: DetectMode,
-        extras: Boolean,
         baseEvery: Int,
         maxEvery: Int,
         lowSide: Int,
         fineSide: Int,
     ): Pair<Pacing, PaceStep> = when {
-        blocked && extras && !p.shed -> p.copy(shed = true) to PaceStep.SHED
         blocked && gpuActive && gpuSlow -> p.copy(cpuSide = lowSide, lite = true) to PaceStep.GPU_OFF
         blocked && !gpuActive && p.cpuSide > lowSide -> p.copy(cpuSide = lowSide, lite = true) to PaceStep.SIDE
         blocked && p.every < maxEvery -> p.copy(every = p.every + 1, lite = true) to PaceStep.RATE
@@ -167,6 +164,20 @@ object DetectTuning {
         }
         else -> p to PaceStep.NONE
     }
+
+    /**
+     * The frames' wait for a free detector in a window ([blockedMs]), less the time the detectors
+     * spent on a sensitivity's extra work in it ([extraMs]: the pool's decoding and fusion, YuNet's
+     * whole run, the extra detections' crops), at 0 at least. Adding work to the detectors delays
+     * the frames by at most that work's time, so the wait without it is at most the wait at
+     * sensitivity 0 for the same detection: the extra work can't make the pacing lighter. (YuNet's
+     * whole run counts, not just its extra candidates: more than its share, so a sensitivity can
+     * only make the pacing hold on longer, and the analysis slower, never lighter.)
+     */
+    fun blockedWithoutExtras(blockedMs: Long, extraMs: Long): Long = max(0L, blockedMs - extraMs)
+
+    /** The extra detections that get a crop re-check: the likeliest [MAX_EXTRA_CHECKS]. As the extras are nested and the new ones score lower, a higher sensitivity checks every one a lower one does. */
+    fun extraChecks(extra: List<Det>): List<Det> = extra.sortedByDescending { it.score }.take(MAX_EXTRA_CHECKS)
 
     /**
      * RetinaFace's faces [rf] and YuNet's [yn] as one list (YuNet adds the faces RetinaFace

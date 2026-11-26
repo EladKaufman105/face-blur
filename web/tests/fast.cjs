@@ -2,8 +2,9 @@
 //  - the ready screen: three modes (fast's warning shows when it is picked), the sensitivity slider and the summary line;
 //  - a fast run measured near 5 detections a second (not reduced), its notice kept in the editor (Hebrew; English on a
 //    phone as a pill over the video), and "blur and save straight" stopping at the check screen;
-//  - a higher sensitivity on a clip with many faces (stress_cuts): extra detections found, no fewer face tracks than the default.
-// Run: node tests/fast.cjs <url> <video> <video with many faces> <out dir>
+//  - a higher sensitivity on a clip with distant faces (classroom, detection pinned at 320 px: many borderline faces): extra
+//    detections found, no fewer face tracks than the default.
+// Run: node tests/fast.cjs <url> <video> <video with distant faces> <out dir>
 const { chromium } = require('playwright')
 const fs = require('fs')
 const [, , url, video, crowd, out] = process.argv
@@ -126,13 +127,13 @@ const PILL_EN = 'Fast detection: small or distant faces may be missed for a mome
     await p.screenshot({ path: `${out}/4_check_fast.png` })
     console.log('save straight: the check screen')
 
-    // ---- the sensitivity on a clip with many faces: extra detections, no fewer face tracks than the default
-    // Detection pinned (960 px, 15 a second, no pacing), so both runs detect the same frames whatever the machine's timing:
-    // the default detections are then the same, and a sensitivity can only add.
+    // ---- the sensitivity on a clip with distant faces: extra detections, no fewer face tracks than the default
+    // Detection pinned (320 px, 15 a second, no pacing), so both runs detect the same frames whatever the machine's timing:
+    // the default detections are then the same, and a sensitivity can only add. At 320 px the distant faces are borderline.
     const counts = []
     for (const s of [0, 1]) {
       p = await page('he-IL')
-      await p.goto(url + '&detect=yunet:1,side:960,rate:15')
+      await p.goto(url + '&detect=yunet:1,side:320,rate:15')
       await ready(p, crowd, 'normal', s)
       await p.click('.blur-faces')
       await p.waitForSelector('.editor .tabs, .no-faces', { timeout: 600000 })

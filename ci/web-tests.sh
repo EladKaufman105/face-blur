@@ -131,13 +131,13 @@ case "${1:?shard}" in
     # A template's translation (no model, a stubbed translator): the editor's switch and the video's four choices, the switch on the ready screen, translated in "save straight away" and in the editor it opens; a browser with none: a note, the subtitles kept.
     t tpltranslate.cjs "$U" $S/speech_two.mp4 $R/tpltranslate   # 22
     ;;
-  7) # about 180 s
+  7) # about 160 s
     # Which frames get a detection, measured in the browser: a clip re-timed to 20, 24, 25 (WebM), 30 and 31 fps at the full rate (15 a second or the app's cadence), no notice; a tune under the need measured short.
     t gate.cjs "$U" $S/walk.mp4 $R/gate   # ~70 (110 measured locally)
     # Fast detection and the sensitivity: the ready screen's modes, fast's warning and the slider; a fast run measured near 5 a second
     # (not reduced) with its notice kept in the editor (he; en on a phone) and "blur and save straight" stopping at the check screen;
-    # a higher sensitivity finding extra detections and no fewer faces (stress_cuts).
-    t fast.cjs "$U" $S/walk.mp4 $S/stress_cuts.mp4 $R/fast   # ~110 (measured locally)
+    # a higher sensitivity finding extra detections and no fewer faces (classroom, pinned at 320 px).
+    t fast.cjs "$U" $S/walk.mp4 $S/classroom.mp4 $R/fast   # ~90 (measured locally)
     ;;
   subs) # Whisper's model downloads from Hugging Face: its own job, only when subtitle code changes. The small one (whisper-base, 77 MB on the CPU) is forced: the phone path, and quick. The page is isolated here (threads), as on the site.
     t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base" $S/speech_en.mp4 $R/subs   # 60

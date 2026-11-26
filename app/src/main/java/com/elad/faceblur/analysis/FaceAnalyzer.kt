@@ -177,8 +177,8 @@ class FaceAnalyzer private constructor(
     private val followed = ArrayList<Followed>()
     @Volatile private var detectEvery = baseEvery
     @Volatile private var lite = false
-    // A sensitivity above 0 whose extra crops were left out: the device can't keep up with them (see [DetectTuning.adapt]).
-    @Volatile private var shedExtras = false
+    // The detectors' time on a sensitivity's extra work in this window (see [DetectTuning.blockedWithoutExtras]).
+    private val extraUsWindow = AtomicLong()
     // The latest finished detection found a big face: the coarse pass, which fits those, then
     // runs on every detection (see [RetinaFaceDetector.detect]).
     @Volatile private var bigFace = false
@@ -254,7 +254,7 @@ class FaceAnalyzer private constructor(
         cuts.clear()
         detectEvery = baseEvery
         lite = false
-        shedExtras = false
+        extraUsWindow.set(0)
         bigFace = false
         cpuSide = startCpuSide
         windowStart = 0L
@@ -357,7 +357,7 @@ class FaceAnalyzer private constructor(
                     if (gen == generation) {
                         val d0 = SystemClock.elapsedRealtime()
                         val det = detector()
-                        val found = det.detect(frame, lite, known, cpuSide, maySkipCoarse, sensitivity, extraCrops = !shedExtras)
+                        val found = det.detect(frame, lite, known, cpuSide, maySkipCoarse, sensitivity)
                         detectMsTotal.addAndGet(SystemClock.elapsedRealtime() - d0)
                         detections.incrementAndGet()
                         fineUsTotal.addAndGet(det.lastFineUs)
@@ -366,6 +366,7 @@ class FaceAnalyzer private constructor(
                         yunetUsTotal.addAndGet(det.lastYunetUs)
                         cropUsTotal.addAndGet(det.lastCropUs)
                         cropsTotal.addAndGet(det.lastCrops)
+                        extraUsWindow.addAndGet(det.lastExtraUs)
                         if (gen == generation) {
                             if (det.lastExtras.isNotEmpty()) extraDets[idx] = det.lastExtras
                             dets[idx] = found
@@ -432,27 +433,28 @@ class FaceAnalyzer private constructor(
         if (windowStart == 0L) {
             windowStart = now
             blockedMs = 0L
+            extraUsWindow.set(0)
             return
         }
         val span = now - windowStart
         if (span < 1500 || idx < 20) return
         val g = gpu
         val gpuActive = g != null && g.active
+        // Without a sensitivity's extra work: it never moves the pacing (see [DetectTuning.blockedWithoutExtras]).
+        val waited = DetectTuning.blockedWithoutExtras(blockedMs, extraUsWindow.getAndSet(0) / 1000)
         val (next, step) = DetectTuning.adapt(
-            Pacing(detectEvery, cpuSide, lite, shedExtras),
-            blocked = blockedMs > span / 3,
-            relaxed = blockedMs < span / 10,
+            Pacing(detectEvery, cpuSide, lite),
+            blocked = waited > span / 3,
+            relaxed = waited < span / 10,
             gpuActive = gpuActive,
             gpuSlow = gpuActive && g!!.inferMs > GPU_SLOW_MS,
             mode = mode,
-            extras = sensitivity > 0f,
             baseEvery = baseEvery,
             maxEvery = maxEvery,
             lowSide = LOW_SIDE,
             fineSide = RetinaFaceDetector.CPU_FINE_SIDE,
         )
         when (step) {
-            PaceStep.SHED -> android.util.Log.i("ONIT", "face detection slower than the video: the sensitivity's extra crops left out")
             // A GPU this slow (one lane, ~2-10 frames a second) holds back the CPU's cores:
             // they do better together, at the lighter size a device like this needs.
             PaceStep.GPU_OFF -> {
@@ -469,7 +471,6 @@ class FaceAnalyzer private constructor(
         detectEvery = next.every
         cpuSide = next.cpuSide
         lite = next.lite
-        shedExtras = next.shed
         windowStart = now
         blockedMs = 0L
     }

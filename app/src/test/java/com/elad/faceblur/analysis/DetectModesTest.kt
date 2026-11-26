@@ -60,20 +60,32 @@ class DetectModesTest {
 
     /**
      * A simulated device, window by window (FaceAnalyzer.adapt's 1.5 s): each detection costs its
-     * fine pass (by the side's area), less for lite checks, more with a sensitivity's extra crops
-     * (unless shed); the frames wait (blocked) when the detections a second cost more than
-     * [capacity], and keep up easily under 70% of it. Returns the state after each window.
+     * fine pass (by the side's area), less for lite checks, plus a sensitivity's extra work (its
+     * crops: more with a higher sensitivity). The frames wait (blocked) for the part of the work
+     * over [capacity]; FaceAnalyzer measures that wait and takes the extra work's time out of it
+     * (DetectTuning.blockedWithoutExtras), and adapt steps on what is left. Returns the state
+     * after each window.
      */
     private fun simulate(capacity: Float, mode: DetectMode, sensitivity: Float, fps: Float = 30f, gpu: Boolean = false, windows: Int = 40): List<Pacing> {
         val (base, most) = DetectTuning.cadence(mode, fps)
         var p = Pacing(base, if (mode == DetectMode.FAST) 640 else 960, false)
         var gpuOn = gpu
         val out = ArrayList<Pacing>()
+        val span = 1500L
         repeat(windows) {
             val fine = if (gpuOn) 30f else 100f * (p.cpuSide / 960f) * (p.cpuSide / 960f)
-            val cost = (fine + 40f) * (if (p.lite) 0.8f else 1f) * (if (sensitivity > 0f && !p.shed) 1.4f else 1f)
-            val load = fps / p.every * cost / capacity
-            val (next, step) = DetectTuning.adapt(p, load > 1f, load < 0.7f, gpuOn, gpuOn && fine > 25f, mode, sensitivity > 0f, base, most, 640, 960)
+            val cost = (fine + 40f) * (if (p.lite) 0.8f else 1f)
+            // The extra work: up to 12 crops of about 8 ms each, more at a higher sensitivity, and the pool's decoding.
+            val extra = if (sensitivity > 0f) 4f + 8f * minOf(12f, 20f * sensitivity) else 0f
+            val perSecond = fps / p.every
+            // The detectors do [capacity] ms of work a second; the work over that makes the frames wait (at most the whole window).
+            val waitOf = { work: Float -> (span / 1000f * (work * perSecond - capacity)).coerceIn(0f, span.toFloat()).toLong() }
+            val blockedMs = waitOf(cost + extra)
+            val extraMs = (span * extra * perSecond / 1000f).toLong()
+            val waited = DetectTuning.blockedWithoutExtras(blockedMs, extraMs)
+            // (The wait the default work alone makes is never more than what is left: the extra work delays by at most its time.)
+            assertTrue("wait $waited over ${waitOf(cost)}", waited <= waitOf(cost) + 1)
+            val (next, step) = DetectTuning.adapt(p, waited > span / 3, waited < span / 10, gpuOn, gpuOn && fine > 25f, mode, base, most, 640, 960)
             if (step == PaceStep.GPU_OFF) gpuOn = false
             p = next
             out += p
@@ -87,43 +99,60 @@ class DetectModesTest {
     @Test
     fun aSensitivityNeverMakesTheDefaultDetectionLighter() {
         for (mode in DetectMode.entries) for (gpu in listOf(false, true)) for (fps in listOf(24f, 30f, 60f)) {
-            for (cap in (200..3000 step 50).map { it.toFloat() }) {
-                val s0 = simulate(cap, mode, 0f, fps, gpu)
-                val s1 = simulate(cap, mode, 1f, fps, gpu)
+            for (cap in (200..3000 step 25).map { it.toFloat() }) {
+                val runs = listOf(0f) + DetectTuning.levels(1f)
+                val states = runs.map { simulate(cap, mode, it, fps, gpu) }
                 val what = "$mode gpu=$gpu $fps fps, capacity $cap"
-                // Window by window no weaker than sensitivity 0 (shedding the extra work comes first, so it is a window behind at most).
-                for (k in s0.indices) assertTrue("$what, window $k: ${s1[k]} vs ${s0[k]}", noWeaker(s1[k], s0[k]) || (k > 0 && noWeaker(s1[k], s0[k - 1])))
-                val e0 = s0.last()
-                val e1 = s1.last()
-                // (A device on the edge may go back and forth between two states: then a window behind.)
-                assertTrue("$what: ends ${e1} vs ${e0}", noWeaker(e1, e0) || noWeaker(e1, s0[s0.size - 2]))
-                // Never fewer default detections over the run.
-                assertTrue(what, s1.sumOf { 1.0 / it.every } >= s0.sumOf { 1.0 / it.every } - 1e-9)
+                // Window by window, each sensitivity no weaker than the one below it, and than 0.
+                for (k in 1 until runs.size) for (w in states[0].indices) {
+                    assertTrue("$what at ${runs[k]}, window $w: ${states[k][w]} vs ${states[k - 1][w]}", noWeaker(states[k][w], states[k - 1][w]))
+                    assertTrue("$what at ${runs[k]}, window $w", noWeaker(states[k][w], states[0][w]))
+                }
             }
         }
-        // A device that just keeps up at sensitivity 0 (no step at all) only sheds the extra crops at 1.
-        val s0 = simulate(2200f, DetectMode.NORMAL, 0f)
-        val s1 = simulate(2200f, DetectMode.NORMAL, 1f)
-        assertTrue(s0.all { it == Pacing(2, 960, false) })
-        assertEquals(Pacing(2, 960, false, shed = true), s1.last())
+        // A device that just keeps up at 30% keeps the same pacing at 80% (the extra crops never tip it over).
+        val s30 = simulate(2200f, DetectMode.NORMAL, 0.3f)
+        val s80 = simulate(2200f, DetectMode.NORMAL, 0.8f)
+        assertTrue("$s30", s30.all { it == Pacing(2, 960, false) })
+        assertEquals(s30, s80)
+    }
+
+    @Test
+    fun theExtraWorkComesOutOfTheWait() {
+        assertEquals(400L, DetectTuning.blockedWithoutExtras(1000L, 600L))
+        assertEquals(0L, DetectTuning.blockedWithoutExtras(300L, 600L))
+        assertEquals(700L, DetectTuning.blockedWithoutExtras(700L, 0L))
+    }
+
+    @Test
+    fun aHigherSensitivityChecksEveryExtraALowerOneDoes() {
+        val r = java.util.Random(13)
+        repeat(500) {
+            val kept = randomDets(r, r.nextInt(6), 0.4f)
+            val pool = DetectTuning.fuse(randomDets(r, r.nextInt(30), DetectTuning.POOL_RF), randomDets(r, r.nextInt(30), DetectTuning.POOL_YUNET), DetectTuning.POOL_YUNET_ONLY)
+            var prev: List<Det> = emptyList()
+            for (level in DetectTuning.levels(1f)) {
+                val checked = DetectTuning.extraChecks(DetectTuning.extras(kept, pool, DetectTuning.thresholds(level).cut))
+                assertTrue("at $level", checked.size <= DetectTuning.MAX_EXTRA_CHECKS && checked.containsAll(prev))
+                prev = checked
+            }
+        }
     }
 
     @Test
     fun adaptAsBeforeWithoutASensitivity() {
-        // The steps FaceAnalyzer.adapt took before (no sensitivity): GPU off, 640 px, fewer, back.
+        // The steps FaceAnalyzer.adapt took before: GPU off, 640 px, fewer, back.
         val p = Pacing(2, 960, false)
-        assertEquals(Pacing(2, 640, true) to PaceStep.GPU_OFF, DetectTuning.adapt(p, true, false, true, true, DetectMode.NORMAL, false, 2, 3, 640, 960))
-        assertEquals(Pacing(3, 960, true) to PaceStep.RATE, DetectTuning.adapt(p, true, false, true, false, DetectMode.NORMAL, false, 2, 3, 640, 960))
-        assertEquals(Pacing(2, 640, true) to PaceStep.SIDE, DetectTuning.adapt(p, true, false, false, false, DetectMode.NORMAL, false, 2, 3, 640, 960))
-        assertEquals(Pacing(3, 640, true) to PaceStep.RATE, DetectTuning.adapt(Pacing(2, 640, true), true, false, false, false, DetectMode.NORMAL, false, 2, 3, 640, 960))
-        assertEquals(Pacing(3, 640, true) to PaceStep.NONE, DetectTuning.adapt(Pacing(3, 640, true), true, false, false, false, DetectMode.NORMAL, false, 2, 3, 640, 960))
-        assertEquals(Pacing(2, 640, true) to PaceStep.RELAX, DetectTuning.adapt(Pacing(3, 640, true), false, true, false, false, DetectMode.NORMAL, false, 2, 3, 640, 960))
-        assertEquals(Pacing(2, 960, false) to PaceStep.RELAX, DetectTuning.adapt(Pacing(3, 960, true), false, true, true, false, DetectMode.NORMAL, false, 2, 3, 640, 960))
-        assertEquals(p to PaceStep.NONE, DetectTuning.adapt(p, false, false, false, false, DetectMode.NORMAL, false, 2, 3, 640, 960))
+        assertEquals(Pacing(2, 640, true) to PaceStep.GPU_OFF, DetectTuning.adapt(p, true, false, true, true, DetectMode.NORMAL, 2, 3, 640, 960))
+        assertEquals(Pacing(3, 960, true) to PaceStep.RATE, DetectTuning.adapt(p, true, false, true, false, DetectMode.NORMAL, 2, 3, 640, 960))
+        assertEquals(Pacing(2, 640, true) to PaceStep.SIDE, DetectTuning.adapt(p, true, false, false, false, DetectMode.NORMAL, 2, 3, 640, 960))
+        assertEquals(Pacing(3, 640, true) to PaceStep.RATE, DetectTuning.adapt(Pacing(2, 640, true), true, false, false, false, DetectMode.NORMAL, 2, 3, 640, 960))
+        assertEquals(Pacing(3, 640, true) to PaceStep.NONE, DetectTuning.adapt(Pacing(3, 640, true), true, false, false, false, DetectMode.NORMAL, 2, 3, 640, 960))
+        assertEquals(Pacing(2, 640, true) to PaceStep.RELAX, DetectTuning.adapt(Pacing(3, 640, true), false, true, false, false, DetectMode.NORMAL, 2, 3, 640, 960))
+        assertEquals(Pacing(2, 960, false) to PaceStep.RELAX, DetectTuning.adapt(Pacing(3, 960, true), false, true, true, false, DetectMode.NORMAL, 2, 3, 640, 960))
+        assertEquals(p to PaceStep.NONE, DetectTuning.adapt(p, false, false, false, false, DetectMode.NORMAL, 2, 3, 640, 960))
         // Fast: lite only, never fewer.
-        assertEquals(Pacing(6, 640, true) to PaceStep.LITE, DetectTuning.adapt(Pacing(6, 640, false), true, false, false, false, DetectMode.FAST, false, 6, 6, 640, 960))
-        // A sensitivity: its extra work goes first.
-        assertEquals(Pacing(2, 960, false, true) to PaceStep.SHED, DetectTuning.adapt(p, true, false, true, true, DetectMode.NORMAL, true, 2, 3, 640, 960))
+        assertEquals(Pacing(6, 640, true) to PaceStep.LITE, DetectTuning.adapt(Pacing(6, 640, false), true, false, false, false, DetectMode.FAST, 6, 6, 640, 960))
     }
 
     /** OpenCV's NMSBoxes as FaceDetectorYN calls it: scores over the threshold (strictly), stable-sorted highest first, cut to topK, then greedy. */

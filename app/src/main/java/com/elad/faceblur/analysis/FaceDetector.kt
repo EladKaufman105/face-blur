@@ -49,6 +49,13 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
     /** The last [detect] call's extra detections, for a sensitivity above 0 (see [DetectTuning]); else empty. */
     var lastExtras: List<Det> = emptyList()
         private set
+    /**
+     * The last [detect] call's time on a sensitivity's extra work, in microseconds: the pool's
+     * decoding, YuNet's whole run (see [DetectTuning.blockedWithoutExtras]), the pool's fusion and
+     * the extra crops. FaceAnalyzer keeps it out of the pacing.
+     */
+    var lastExtraUs = 0L
+        private set
 
     /**
      * @param lite a slow device: no YuNet, and crops only for uncertain faces.
@@ -58,8 +65,8 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
      * @param coarseMaySkip the coarse pass may be left out when the GPU's fine pass found only
      *   small faces (see [RetinaFaceDetector.detect]).
      * @param sensitivity 0..1 (see [DetectTuning]): above 0, the faces that only lower thresholds
-     *   find are left in [lastExtras] (re-checked on a crop too, unless [extraCrops] is false: a
-     *   device that can't keep up sheds that first). What is returned is the same whatever it is.
+     *   find are left in [lastExtras] (re-checked on a crop too; their time in [lastExtraUs]).
+     *   What is returned is the same whatever it is.
      *   YuNet runs once either way: above 0 from the pool's threshold, its default faces those
      *   over 0.4 of them (see [yunetDefault]).
      *
@@ -72,7 +79,6 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
         cpuSide: Int = RetinaFaceDetector.CPU_FINE_SIDE,
         coarseMaySkip: Boolean = false,
         sensitivity: Float = 0f,
-        extraCrops: Boolean = true,
     ): List<Det> {
         val w = bgr.cols()
         val h = bgr.rows()
@@ -100,17 +106,20 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
             crops++
         }
         // A sensitivity above 0: the pool's faces that aren't one of those, from the cut up, re-checked too (the likeliest first).
+        // Their crops don't vouch for nor strike the GPU or fp16: those decide as at sensitivity 0.
+        val e0 = System.nanoTime()
         lastExtras = if (rfPool == null) emptyList() else {
             val pool = DetectTuning.fuse(rfPool, ynPool, DetectTuning.POOL_YUNET_ONLY)
             DetectTuning.extras(kept, pool, DetectTuning.thresholds(sensitivity).cut).also { extra ->
-                if (extraCrops) for (d in extra.sortedByDescending { it.score }.take(DetectTuning.MAX_EXTRA_CHECKS)) {
+                for (d in DetectTuning.extraChecks(extra)) {
                     val c0 = System.nanoTime()
-                    d.verify = verify(bgr, d.box)
+                    d.verify = verify(bgr, d.box, judge = false)
                     cropUs += (System.nanoTime() - c0) / 1000
                     crops++
                 }
             }
         }
+        lastExtraUs = if (rfPool == null) 0L else retina.lastPoolUs + lastYunetUs + (System.nanoTime() - e0) / 1000
         lastCropUs = cropUs
         lastCrops = crops
         return kept
@@ -162,7 +171,8 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
     private fun yunetDefault(pool: List<Det>): List<Det> = pool.filter { it.score > YUNET_THRESHOLD }
 
     /** Re-detect on a square crop twice the box size, scaled to 192 px. */
-    private fun verify(bgr: Mat, b: Box): Float {
+    /** [judge] false: a sensitivity's extra crop, which leaves the GPU's and fp16's checks alone (see [RetinaFaceDetector.detectPlain]). */
+    private fun verify(bgr: Mat, b: Box, judge: Boolean = true): Float {
         val w = bgr.cols()
         val h = bgr.rows()
         val cx = b.cx * w
@@ -178,7 +188,7 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
         m.release()
         var best = 0f
         val s = VERIFY_SIDE.toFloat()
-        for (d in retina.detectPlain(crop, 0.05f)) {
+        for (d in retina.detectPlain(crop, 0.05f, judge)) {
             if (abs(d.box.cx * s - s / 2) < s * 0.25f && abs(d.box.cy * s - s / 2) < s * 0.25f && d.box.w * s > s * 0.2f) {
                 best = max(best, d.score)
             }
