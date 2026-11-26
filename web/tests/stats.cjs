@@ -61,7 +61,7 @@ const [, , url, video, out] = process.argv
       for (const c of ['backend', 'measured', 'gap', 'strength', 'workers', 'fine', 'coarse', 'gpu', 'check', 'crops', 'decode', 'cuts', 'merge']) detail[c] = await value(c)
       if (!/CPU|GPU/.test(detail.backend)) throw new Error(`${name}: backend "${detail.backend}"`)
       // What detection really covered: D (a second, the fewest in 2 s), G (frames, seconds), S (px, YuNet).
-      if (!/^[\d.]+ \/s · min [\d.—]+$/.test(detail.measured) || !/^\d+ \S+ · [\d.]+ s$/.test(detail.gap) || !/^\d+ px · (YuNet|\S+ YuNet)$/.test(detail.strength)) throw new Error(`${name}: measured ${JSON.stringify([detail.measured, detail.gap, detail.strength])}`)
+      if (!/^[\d.]+ \/s · \S+ [\d.—]+$/.test(detail.measured) || !/^\d+ \S+ · [\d.]+ \S+$/.test(detail.gap) || !/^\d+ px · (YuNet|\S+ YuNet)$/.test(detail.strength)) throw new Error(`${name}: measured ${JSON.stringify([detail.measured, detail.gap, detail.strength])}`)
       await p.screenshot({ path: `${out}/${name}_3_details.png` })
       await p.screenshot({ path: `${out}/${name}_3_details_full.png`, fullPage: true })
 

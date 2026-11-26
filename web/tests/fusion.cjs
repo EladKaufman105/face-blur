@@ -360,15 +360,18 @@ if (F.fuse([], []).length !== 0) fail('empty')
   }
 }
 
-// ---- the full rate: 15 a second or the app's cadence (every n-th frame, n = fps / 15 rounded), whichever is more; the floor is the app's 8 a second
+// ---- the full rate: 15 a second or the app's cadence (every n-th frame, n = fps / 15 rounded), whichever is more, never under 15 (the nominal frame rate
+// can read low: the gate takes every frame of a clip that really has fewer); the floor is the app's 8 a second
 {
-  for (const [f, r] of [[6, 6], [10, 10], [12, 12], [15, 15], [20, 20], [22, 22], [23.976, 15], [24, 15], [25, 15], [29.97, 15], [30, 15], [31, 15.5], [35, 17.5], [48, 16], [50, 50 / 3], [59.94, 15], [60, 15], [120, 15]])
+  for (const [f, r] of [[2, 15], [6, 15], [10, 15], [12, 15], [14, 15], [15, 15], [20, 20], [22, 22], [23.976, 15], [24, 15], [25, 15], [29.97, 15], [30, 15], [31, 15.5], [35, 17.5], [48, 16], [50, 50 / 3], [59.94, 15], [60, 15], [120, 15]])
     if (!near(P.fullRate(f), r, 1e-9)) fail('fullRate(' + f + ') = ' + P.fullRate(f) + ', not ' + r)
   for (const [f, r] of [[20, 20], [23.976, 11.988], [30, 15], [31, 15.5], [50, 50 / 3], [10, 10]]) if (!near(P.appRate(f), r, 1e-9)) fail('appRate(' + f + ')')
   if (P.MIN_RATE !== 8) fail('the floor is not 8 a second')
-  // What still counts as full, measured: 80% of the full rate, at most 97% of the app's cadence (23.976 fps: every second frame); wide: 80% of the frames.
+  // What still counts as full, measured where the frames come at f a second: 80% of the full rate (at most of the frames), at most 97% of the app's cadence (23.976 fps: every second frame); wide: 80% of the frames.
   for (const [f, s, n] of [[30, false, 12], [23.976, false, 0.97 * 11.988], [20, false, 16], [50, false, 0.8 * 50 / 3], [10, false, 8], [30, true, 24], [24, true, 19.2]])
     if (!near(P.needRate(f, s), n, 1e-9)) fail('needRate(' + f + ', ' + s + ') = ' + P.needRate(f, s))
+  // The full rate of a misread nominal 5 fps (15), where the frames come at 30: 12 needed, not 4.
+  if (!near(P.needRate(30, false, P.fullRate(5)), 12, 1e-9) || !near(P.needRate(20, false, 15), 12, 1e-9)) fail('needRate at the frames, not the nominal rate')
 }
 
 // ---- what detection really covered (lib/coverage.ts), on the worker's frames: B's scenarios
@@ -393,7 +396,7 @@ if (F.fuse([], []).length !== 0) fail('empty')
     ts.forEach((t, k) => { const r = Math.min(maxRate, rateAt(k)); if (g.take(t, r, cuts.has(k) || (sensitive && r >= maxRate))) got.push(k) })
     return got
   }
-  const measure = (ts, got, fps, sensitive, cuts = []) => C.measureCoverage(ts, got, cuts, { maxRate: sensitive ? fps : P.fullRate(fps), need: P.needRate(fps, sensitive), share: P.FULL_SHARE })
+  const measure = (ts, got, fps, sensitive, cuts = []) => { const maxRate = sensitive ? fps : P.fullRate(fps); return C.measureCoverage(ts, got, cuts, { needAt: (f) => P.needRate(f, sensitive, maxRate) }) }
   const dur = (ts) => ts[ts.length - 1] - ts[0] + 1e-9
   const ok = (m, what) => { if (m.short || m.cutsMissed) fail('a false notice: ' + what + ' ' + JSON.stringify(m)) }
   // P1. A device that keeps up, steady frame rates, any timestamps: no notice; D at least 97% of min(full, fps) and of the app's cadence, at most 5% over the full rate; gaps no longer than the app's (n frames).
@@ -432,12 +435,44 @@ if (F.fuse([], []).length !== 0) fail('empty')
     ok(m, 'P6 ' + fps + ' ' + secs)
     if (got[0] !== 0) fail('P6 the first frame')
   }
-  // P8. A device paced under the need is noticed, a little over it isn't: steady rates 3% under N, 1 a second over N.
+  // P8. A device paced under the need is noticed, one at it isn't (the meter allows a frame interval's need, under one detection, a window: the schedule's last frame
+  // can come up to a frame after it was due): steady rates 10% under N, and at N (+0.01: the pace's line, 12.01 a second on 25, 29.97 and 30 fps isn't reduced).
   for (const fps of FPS) for (const sensitive of [false, true]) for (const mode of ['exact', 'ms', '90k']) {
-    const ts = clip(fps, mode), n = P.needRate(fps, sensitive)
-    const under = measure(ts, detect(ts, fps, sensitive, () => 0.97 * n), fps, sensitive)
-    if (!under.short && n * 0.97 < (sensitive ? fps : P.fullRate(fps))) fail('P8 under the need, no notice: ' + JSON.stringify({ fps, sensitive, mode, n, under }))
-    if (n + 1 < (sensitive ? fps : P.fullRate(fps))) ok(measure(ts, detect(ts, fps, sensitive, () => n + 1), fps, sensitive), 'P8 over ' + fps + ' ' + sensitive + ' ' + mode)
+    const ts = clip(fps, mode), n = P.needRate(fps, sensitive), full = Math.min(fps, sensitive ? fps : P.fullRate(fps))
+    const under = measure(ts, detect(ts, fps, sensitive, () => 0.9 * n), fps, sensitive)
+    if (!under.short && n * 0.9 < full) fail('P8 under the need, no notice: ' + JSON.stringify({ fps, sensitive, mode, n, under }))
+    if (n + 0.01 < full) ok(measure(ts, detect(ts, fps, sensitive, () => n + 0.01), fps, sensitive), 'P8 at the need ' + fps + ' ' + sensitive + ' ' + mode)
+  }
+  for (const fps of [25, 29.97, 30]) {
+    const p = P.pace({ recentMs: 1000 / 12.01, rfMs: 70, fineMs: 60, workers: 1, maxRate: P.fullRate(fps), side: 960, startSide: 960, rate: 15, gpu: false, frameRate: fps })
+    const ts = clip(fps, 'ms', 60)
+    if (p.reduced || !near(p.rate, 12.01, 0.001) || measure(ts, detect(ts, fps, false, () => p.rate), fps, false).short) fail('N2: 12.01 a second on ' + fps + ' fps: ' + JSON.stringify(p))
+  }
+  // B1 (review). The nominal frame rate read under 15 (2, 5, 10, 14 over the first 120 frames: a dark start, a screen recording), then 60 s at 30 fps: never weaker
+  // than develop (15 a second, the next frame a period after the last) in count, gap or any 2 s; a device paced to the floor there is noticed (the need is the frames', not the nominal's).
+  const develop = (ts, rate) => { let last = -Infinity; const got = []; ts.forEach((t, k) => { if (t - last >= 1 / rate - 1e-3) { last = t; got.push(k) } }); return got }
+  const gapOf = (ts, got) => got.slice(1).reduce((m, k, j) => Math.max(m, ts[k] - ts[got[j]]), 0)
+  const in2s = (ts, got, t0) => got.filter((k) => ts[k] >= t0 && ts[k] < t0 + 2).length
+  for (const nominal of [2, 5, 10, 14]) for (const mode of ['ms', '90k']) {
+    const ts = []
+    for (let k = 0; k < 120; k++) ts.push(k / nominal)
+    const t1 = ts[119] + 1 / nominal
+    for (let k = 0; k < 60 * 30; k++) ts.push(t1 + k / 30)
+    for (let k = 0; k < ts.length; k++) ts[k] = mode === 'ms' ? Math.round(ts[k] * 1000) / 1000 : Math.round(ts[k] * 90000) / 90000
+    const got = detect(ts, nominal, false), dev = develop(ts, 15), m = measure(ts, got, nominal, false)
+    if (got.length < dev.length || gapOf(ts, got) > gapOf(ts, dev) + 1.5e-3) fail('B1 a misread nominal ' + nominal + ': weaker than develop ' + JSON.stringify({ got: got.length, dev: dev.length }))
+    for (let t0 = 0; t0 + 2 <= ts[ts.length - 1]; t0 += 0.5) if (in2s(ts, got, t0) < in2s(ts, dev, t0) - 1) fail('B1 fewer in 2 s than develop at ' + t0)
+    ok(m, 'B1 nominal ' + nominal)
+    if (!measure(ts, detect(ts, nominal, false, () => 8), nominal, false).short) fail('B1 the floor on a misread nominal ' + nominal + ' is silent')
+  }
+  // Under 15 fps with +-40% frame-time jitter: no fewer, no longer gaps than develop at 15 a second (every frame where no interval is under 1 / 15 s).
+  for (const fps of [5, 8, 10, 12, 14]) {
+    const ts = []
+    let t = 0
+    for (let k = 0; k < 60 * fps; k++) { ts.push(Math.round(t * 1000) / 1000); t += (0.6 + 0.8 * rnd()) / fps }
+    const got = detect(ts, fps, false), dev = develop(ts, 15)
+    if ((0.6 / fps >= 1 / 15 && got.length !== ts.length) || got.length < dev.length || gapOf(ts, got) > gapOf(ts, dev) + 1e-9) fail('jitter under 15 fps: ' + JSON.stringify({ fps, got: got.length, dev: dev.length, frames: ts.length }))
+    ok(measure(ts, got, fps, false), 'jitter ' + fps)
   }
   // P9. A dip of 3 s to 6 a second in a run at the full rate: noticed, where it is.
   for (const fps of [24, 25, 30, 50, 60]) {
@@ -484,8 +519,15 @@ if (F.fuse([], []).length !== 0) fail('empty')
     if (!gappy.short || gappy.maxGapFrames !== 34 || !near(gappy.maxGapS, 34 / 30)) fail('a hole in the detections: ' + JSON.stringify(gappy))
     const holes = ts.filter((t) => t < 3 || t >= 4.2)
     if (measure(holes, holes.map((_, k) => k).filter((k) => k % 2 === 0), 30, false).short) fail('a hole in the frames needs detections')
+    const longHole = ts.filter((t) => t < 3 || t >= 6)
+    if (measure(longHole, longHole.map((_, k) => k).filter((k) => k % 2 === 0), 30, false).short) fail('a hole of 3 s in the frames needs detections')
+    // N1 (review): a gap over 2 s within a shot (no window holds two detections) is judged by itself; also to a shot's end, and a shot with none.
+    const lone = measure(ts, ts.map((_, k) => k).filter((k) => k % 2 === 0 && (k < 90 || k > 170)), 30, false)
+    if (!lone.short || lone.shortAt > 3 || lone.minWindow > 0.5) fail('a gap of 2.7 s: ' + JSON.stringify(lone))
+    if (!measure(ts, ts.map((_, k) => k).filter((k) => k % 2 === 0 && k < 200), 30, false).short) fail('3.3 s to the end with no detection')
+    if (!measure(ts, [0], 30, false, [1]).short) fail('a shot of 10 s with no detection')
     // Fed as it goes: the same as at once.
-    const mt = new C.CoverageMeter({ maxRate: 15, need: 12, share: P.FULL_SHARE })
+    const mt = new C.CoverageMeter({ needAt: (f) => P.needRate(f, false, 15) })
     ts.forEach((t, k) => mt.frame(t, false, k % 3 === 0))
     const a = mt.result(true), b = measure(ts, ts.map((_, k) => k).filter((k) => k % 3 === 0), 30, false)
     if (JSON.stringify(a) !== JSON.stringify(b) || !a.short || !near(a.rate, 10, 0.1)) fail('the meter fed as it goes: ' + JSON.stringify({ a, b }))

@@ -12,8 +12,8 @@ const fs = require('fs')
 const { execFileSync } = require('child_process')
 const [, , url, video, out] = process.argv
 
-/** The full rate at [f] fps (lib/pace.ts's fullRate). */
-const fullRate = (f) => Math.max(Math.min(f, 15), f / Math.max(1, Math.round(f / 15)))
+/** The full rate at [f] fps (lib/pace.ts's fullRate), at most every frame. */
+const fullRate = (f) => Math.min(f, Math.max(15, f / Math.max(1, Math.round(f / 15))))
 
 ;(async () => {
   fs.mkdirSync(out, { recursive: true })

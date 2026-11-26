@@ -3,7 +3,8 @@
 // second of video, as every n-th frame (n = the frame rate / 15, rounded; at least 1): every frame
 // of a 20 fps clip, every second of a 31 fps one (15.5 a second), every third of a 50 fps one. The
 // full rate here is the more of the two (fullRate()): 15 a second (on any frame rate, see
-// DetectGate) or the app's cadence. Every frame in wide detection. A device that can't keep that up
+// DetectGate; on a clip with fewer frames, every frame) or the app's cadence. Every frame in wide
+// detection. A device that can't keep that up
 // goes lighter, stepwise, and says so (`reduced`), as the app's FaceAnalyzer.adapt does, down to 8
 // a second (the app's floor).
 //
@@ -81,22 +82,26 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 export const appRate = (fps: number) => fps / Math.max(1, Math.round(fps / RATE))
 
 /**
- * The full rate of normal detection at [fps]: 15 a second (at most every frame), or the app's
- * cadence where that is more (20 fps: every frame; 31 fps: 15.5; 50 fps: 16.7). Never less than
- * either, so never weaker than the app on a device that keeps up.
+ * The full rate of normal detection at a nominal [fps]: 15 a second, or the app's cadence where
+ * that is more (20 fps: every frame; 31 fps: 15.5; 50 fps: 16.7). Never less than either, so never
+ * weaker than the app on a device that keeps up. Never under 15, whatever [fps] says: the nominal
+ * frame rate is read from the first packets and can be low (a dark start, a screen recording with
+ * a long first frame) where the frames then come faster; DetectGate detects on every frame of a
+ * clip that really has fewer than the rate.
  */
-export const fullRate = (fps: number) => Math.max(Math.min(fps, RATE), appRate(fps))
+export const fullRate = (fps: number) => Math.max(RATE, appRate(fps))
 
 /** Normal detection at the app's own cadence isn't reduced (23.976 fps: every second frame, 12 a second, against 80% of 15). */
 export const APP_SHARE = 0.97
 
 /**
  * The fewest detections a second, measured (lib/coverage.ts), that still count as full detection
- * at [fps]: 80% of the full rate, and in normal detection no more than 97% of the app's own
- * cadence; wide (every frame): 80% of the frames.
+ * where the frames come at [fps] (the frame rate measured, not the nominal one): 80% of the full
+ * rate [maxRate] (at most of the frames), and in normal detection no more than 97% of the app's
+ * own cadence at [fps]; wide (every frame): 80% of the frames.
  */
-export const needRate = (fps: number, sensitive: boolean) =>
-  sensitive ? FULL_SHARE * fps : Math.min(FULL_SHARE * fullRate(fps), APP_SHARE * appRate(fps))
+export const needRate = (fps: number, sensitive: boolean, maxRate = sensitive ? fps : fullRate(fps)) =>
+  sensitive ? FULL_SHARE * fps : Math.min(FULL_SHARE * Math.min(maxRate, fps), APP_SHARE * appRate(fps))
 
 /** How far before its due time a frame still counts as due (s): timestamps rounded to the millisecond (WebM) land up to 0.5 ms early. */
 export const GATE_SLACK_S = 1e-3

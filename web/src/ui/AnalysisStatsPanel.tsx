@@ -83,8 +83,8 @@ function value(c: CellId, a: AnalysisStats): { num: string; unit?: string; after
     case 'decode': return ms(a.decodeWaitMs)
     case 'cuts': return ms(a.cutMs)
     case 'merge': return ms(a.mergeMs)
-    case 'measured': return { num: fmt(l.measured.rate), unit: '/s', after: `min ${l.measured.minWindow === null ? '—' : fmt(l.measured.minWindow)}` }
-    case 'gap': return { num: String(l.measured.gapFrames), unit: t('פריימים'), after: `${l.measured.gapS.toFixed(2)} s` }
+    case 'measured': return { num: fmt(l.measured.rate), unit: '/s', after: `${t('מינ׳')} ${l.measured.minWindow === null ? '—' : fmt(l.measured.minWindow)}` }
+    case 'gap': return { num: String(l.measured.gapFrames), unit: t('פריימים'), after: `${l.measured.gapS.toFixed(2)} ${t('שנ׳')}` }
     case 'strength': return { num: String(l.measured.minSide), unit: 'px', after: l.measured.yunet ? 'YuNet' : t('בלי YuNet') }
   }
 }

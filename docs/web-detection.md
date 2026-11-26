@@ -17,8 +17,10 @@ The full rate is 15 detections per second of video or the app's own cadence, whi
 (`fullRate` in `web/src/lib/pace.ts`). The app's `FaceAnalyzer` detects on every n-th frame,
 n = fps / 15 rounded (at least 1): every frame of a 20 fps clip (20 a second), every second frame
 of a 31 to 35 fps one (15.5 to 17.5), every third of a 50 fps one (16.7), every second of a 23.976
-or 30 fps one (12 and 15: there the web's 15 is more). A clip under 15 fps is detected on every
-frame. Wide detection: every frame.
+or 30 fps one (12 and 15: there the web's 15 is more). It is never under 15 a second, whatever
+the nominal frame rate (read from the first packets, it can be low: a dark start, a screen
+recording with a long first frame, where the frames then come faster); a clip that really has
+fewer frames is detected on every frame. Wide detection: every frame.
 
 The frames are picked on a fixed schedule (`DetectGate`): each detection is due a period (1 /
 rate) after the last one was due, not after the frame that met it. The old gate (the next frame at
@@ -61,12 +63,16 @@ The analysis also measures what detection really covered, from the frames that g
 (windows under 1 s, the end of a short shot, aren't judged); G, the longest gap between two
 detections in a shot (frames and seconds); whether each cut's frame was detected; and S, the
 smallest fine pass that ran and whether YuNet ran. A window is short when it has fewer detections
-than its need: per frame interval, min(N, 80% of min(full rate, the interval's frame rate)), with
-N = min(80% of the full rate, 97% of the app's cadence) (23.976 fps: 11.6, so the app's every second
-frame isn't reduced; 30 fps: 12; 20 fps: 16; wide: 80% of the frames). On a steady clip that is N;
-a stretch of a variable-rate clip with fewer frames needs fewer, a hole in the frames almost
-nothing. The stats panel ("Detected", "Longest gap", "Strength" under more details), its copied
-report and the result's log line show D, G and S.
+than its need, less one frame interval's (under one detection: the schedule may take its last
+frame up to a frame after it was due). The need, per frame interval, is N at the frame rate the
+frames really come at (1 / the interval, not the nominal rate): N = min(80% of the full rate, at
+most of the frames, 97% of the app's cadence) (23.976 fps: 11.6, so the app's every second frame
+isn't reduced; 30 fps: 12; 20 fps: 16; 10 fps: 8; wide: 80% of the frames). On a steady clip that
+is N; a stretch of a variable-rate clip with fewer frames needs fewer, a hole in the frames almost
+nothing. A gap of over 2 s within a shot (no window holds two detections; also to a shot's end,
+or a shot with none) is short when it needed a detection or more. The stats panel ("Detected",
+"Longest gap", "Strength" under more details), its copied report and the result's log line show
+D, G and S.
 
 A video is `reduced` when the pace says so (a smaller frame than the start, or a rate covering
 under 80% of the full rate's frames), when a window measures short, when YuNet is missing or
