@@ -11,9 +11,10 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * Hebrew <-> English translation with Google ML Kit, on the device (the language pack, ~30 MB,
- * is downloaded once). Every step has a time limit, so a stalled download or translation
- * fails instead of hanging.
+ * Translation between Hebrew, English, Arabic and Persian with Google ML Kit, on the device (a
+ * language pack of about 30 MB per language is downloaded once; a pair of two other languages
+ * goes through English). Every step has a time limit, so a stalled download or translation fails
+ * instead of hanging.
  */
 object Translator {
     private const val DOWNLOAD_TIMEOUT_MS = 5 * 60_000L
@@ -28,32 +29,30 @@ object Translator {
     }
 
     /**
-     * Translates each text to the other language, calling [onLine] with each result.
-     * @param from per text: "he" or "en" (translated to the other one), anything else is kept as is.
+     * Translates each of [items] (a text with its source and target language), calling [onLine]
+     * with each result. A text whose languages aren't translatable, or are the same, is kept as is.
      * @param onDownload called before a language pack may need downloading.
      */
     suspend fun translate(
-        texts: List<String>,
-        from: List<String>,
+        items: List<SubtitleEngine.Item>,
         onDownload: () -> Unit = {},
         onProgress: (Float) -> Unit = {},
         onLine: (Int, String) -> Unit = { _, _ -> },
     ): List<String> {
         val clients = HashMap<String, com.google.mlkit.nl.translate.Translator>()
         try {
-            val out = ArrayList<String>(texts.size)
-            texts.forEachIndexed { i, t ->
-                val lang = from[i]
-                val r = if (t.isBlank()) {
+            val out = ArrayList<String>(items.size)
+            items.forEachIndexed { i, item ->
+                val src = SubLanguages.mlKitTag(item.from)?.let { TranslateLanguage.fromLanguageTag(it) }
+                val dst = SubLanguages.mlKitTag(item.to)?.let { TranslateLanguage.fromLanguageTag(it) }
+                val r = if (item.text.isBlank()) {
                     ""
-                } else if (lang != "he" && lang != "en") {
-                    t
+                } else if (src == null || dst == null || src == dst) {
+                    item.text
                 } else {
-                    val client = clients[lang] ?: run {
-                        val src = if (lang == "en") TranslateLanguage.ENGLISH else TranslateLanguage.HEBREW
-                        val dst = if (lang == "en") TranslateLanguage.HEBREW else TranslateLanguage.ENGLISH
+                    val client = clients["$src>$dst"] ?: run {
                         val c = Translation.getClient(TranslatorOptions.Builder().setSourceLanguage(src).setTargetLanguage(dst).build())
-                        clients[lang] = c
+                        clients["$src>$dst"] = c
                         onDownload()
                         try {
                             withTimeout(DOWNLOAD_TIMEOUT_MS) { c.downloadModelIfNeeded(DownloadConditions.Builder().build()).await() }
@@ -63,14 +62,14 @@ object Translator {
                         c
                     }
                     try {
-                        withTimeout(LINE_TIMEOUT_MS) { client.translate(t).await() }
+                        withTimeout(LINE_TIMEOUT_MS) { client.translate(item.text).await() }
                     } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                         throw Failed("translation timed out", e)
                     }
                 }
                 out += r
                 onLine(i, r)
-                onProgress((i + 1f) / texts.size)
+                onProgress((i + 1f) / items.size)
             }
             return out
         } finally {

@@ -362,9 +362,9 @@ private fun SubsEdit(p: SubsPart, styleOpen: Boolean, onStyleOpen: (Boolean) -> 
             // The Hebrew model speaks Hebrew only: the other languages are for the multilingual one.
             val languages = listOf<Pair<String?, String>>(null to t("לפי המודל"), "he" to t("עברית")) +
                 (if ((p.model ?: SpeechModel.HEBREW) == SpeechModel.HEBREW) emptyList<Pair<String?, String>>()
-                else listOf<Pair<String?, String>>("en" to t("אנגלית"), "auto" to t("זיהוי אוטומטי")))
+                else listOf<Pair<String?, String>>("ar" to t("ערבית"), "en" to t("אנגלית"), "fa" to t("פרסית"), "auto" to t("זיהוי אוטומטי")))
             Chips(languages, p.language) { onChange(p.copy(language = it)) }
-            SwitchRow(t("הוסף תרגום"), p.translate ?: false, t("עברית לאנגלית ואנגלית לעברית, במכשיר")) { onChange(p.copy(translate = it)) }
+            SwitchRow(t("הוסף תרגום"), p.translate ?: false, t("עברית, אנגלית, ערבית ופרסית, במכשיר")) { onChange(p.copy(translate = it)) }
         }
         // The same style panel as the editor's: styles, fonts (imported too), colors, effect, size and position.
         Row(

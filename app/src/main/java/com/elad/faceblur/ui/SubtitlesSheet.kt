@@ -52,6 +52,7 @@ import com.elad.faceblur.edit.SubLang
 import com.elad.faceblur.i18n.t
 import com.elad.faceblur.pipeline.ExportOptions
 import com.elad.faceblur.subs.SpeechModel
+import com.elad.faceblur.subs.SubLanguages
 import com.elad.faceblur.subs.SubtitleEngine
 import com.elad.faceblur.subs.SubtitleStyle
 import com.elad.faceblur.edit.Speakers
@@ -67,6 +68,48 @@ internal fun subsStageText(stage: SubtitleEngine.Stage, p: Float): String = when
     SubtitleEngine.Stage.SPEECH -> t("מזהה דיבור… %d%%").format((p * 100).roundToInt())
     SubtitleEngine.Stage.PACK -> t("מוריד חבילת תרגום (פעם אחת)…")
     SubtitleEngine.Stage.TRANSLATE -> t("מתרגם… %d%%").format((p * 100).roundToInt())
+}
+
+/** The spoken-language choices for the multilingual model, in the web's order (auto, Hebrew, Arabic, English, Persian). */
+internal fun speechLanguageOptions(): List<Pair<String, String>> = SubLanguages.SPEECH.map { it to languageName(it) }
+
+/** A language by its code, in the app's language ("auto": detect it). */
+internal fun languageName(code: String): String = when (code) {
+    SubLanguages.HEBREW -> t("עברית")
+    SubLanguages.ENGLISH -> t("אנגלית")
+    SubLanguages.ARABIC -> t("ערבית")
+    SubLanguages.PERSIAN -> t("פרסית")
+    else -> t("זיהוי אוטומטי")
+}
+
+/** What the subtitles are translated into: automatic (English, or Hebrew for English speech) or one of the four languages. */
+@Composable
+internal fun TranslateToPicker(ctrl: EditorController, enabled: Boolean) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Caption(t("תרגום ל…"))
+        Chips(
+            listOf<Pair<String?, String>>(null to t("אוטומטי")) + SubLanguages.TRANSLATION.map { it to languageName(it) },
+            ctrl.translateTo,
+        ) { if (enabled) ctrl.changeTranslateTo(it) }
+        Text(
+            t("אוטומטי: לאנגלית, ודיבור באנגלית לעברית."),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Said under a subtitle whose translation is hidden in the video because it may carry a bleeped word. */
+@Composable
+internal fun HiddenTranslationNote(ctrl: EditorController, c: com.elad.faceblur.edit.Cue) {
+    @Suppress("UNUSED_VARIABLE") val v = ctrl.version
+    if (ctrl.translationHidden(c)) {
+        Text(
+            t("התרגום מוסתר בסרטון כי יש בכתובית מילים מוסתרות והתרגום לא נוצר מהטקסט המוסתר. תרגם שוב כדי להציג אותו."),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
 }
 
 private fun mb(bytes: Long) = ltr("%d MB".format((bytes / 1e6).roundToInt()))
@@ -88,6 +131,8 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
             },
         )
     }
+    // The spoken language for the multilingual model: "auto" detects it, the others force it (as on the web).
+    var speechPick by remember { mutableStateOf(SubLanguages.AUTO) }
     // With subtitles already made, creating them again folds away.
     var createOpen by remember { mutableStateOf(ctrl.model.cues.isEmpty()) }
     // In the timeline's place on a phone, beside the video on a tablet: like the other panels.
@@ -153,11 +198,18 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
                     ctrl.stylePanel = true
                 }
                 val missing = ctrl.untranslatedCount
-                if (missing > 0 && models != null) {
+                val again = ctrl.staleCount
+                if (missing + again > 0 && models != null) {
+                    Box(Modifier.padding(horizontal = 20.dp)) { TranslateToPicker(ctrl, !busy) }
                     ActionRow(
                         AppIcons.Translate,
                         if (ctrl.hasTranslation) t("השלם תרגום") else t("הוסף תרגום"),
-                        if (ctrl.hasTranslation) t("%d כתוביות עוד בלי תרגום").format(missing) else t("עברית לאנגלית ואנגלית לעברית, במכשיר"),
+                        if (ctrl.hasTranslation) {
+                            listOfNotNull(
+                                t("%d כתוביות עוד בלי תרגום").format(missing).takeIf { missing > 0 },
+                                t("%d לתרגום מחדש (מוסתרות בגלל מילים מוסתרות)").format(again).takeIf { again > 0 },
+                            ).joinToString(" · ")
+                        } else t("עברית, אנגלית, ערבית ופרסית, במכשיר"),
                         enabled = !busy,
                     ) { ctrl.translateSubtitles() }
                 }
@@ -186,11 +238,15 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
                             Text(
                                 when (choice) {
                                     SpeechModel.HEBREW -> t("מותאם לעברית ומבין גם אנגלית.")
-                                    SpeechModel.MULTILINGUAL -> t("מזהה כל שפה לבד. פחות מדויק בעברית.")
+                                    SpeechModel.MULTILINGUAL -> t("מזהה כל שפה לבד, או לפי הבחירה: עברית, ערבית, אנגלית ופרסית. פחות מדויק בעברית.")
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            if (choice == SpeechModel.MULTILINGUAL) {
+                                Caption(t("שפת הדיבור"))
+                                Chips(speechLanguageOptions(), speechPick) { if (!busy) speechPick = it }
+                            }
                             val ready = models.isReady(choice)
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
@@ -208,15 +264,16 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
                             Column(Modifier.weight(1f)) {
                                 Text(t("הוסף תרגום"), style = MaterialTheme.typography.titleSmall)
                                 Text(
-                                    t("עברית לאנגלית ואנגלית לעברית, במכשיר"),
+                                    t("עברית, אנגלית, ערבית ופרסית, במכשיר"),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                             Switch(checked = ctrl.translateOnCreate, onCheckedChange = { ctrl.changeTranslateOnCreate(it) }, enabled = !busy)
                         }
+                        if (ctrl.translateOnCreate) TranslateToPicker(ctrl, !busy)
                         if (dl == null && prog == null) {
-                            Button(onClick = { ctrl.makeSubtitles(choice) }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
+                            Button(onClick = { ctrl.makeSubtitles(choice, speechPick) }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
                                 Text(
                                     when {
                                         !models.isReady(choice) -> t("הורד מודל וצור כתוביות")
@@ -411,6 +468,7 @@ fun CueEditorDialog(ctrl: EditorController, style: SubtitleStyle = SubtitleStyle
                 OutlinedTextField(spoken, { spoken = it }, label = { Text(t("טקסט")) }, modifier = Modifier.fillMaxWidth())
                 if (showTranslation) {
                     OutlinedTextField(translation, { translation = it }, label = { Text(t("תרגום")) }, modifier = Modifier.fillMaxWidth())
+                    HiddenTranslationNote(ctrl, c)
                 }
                 // Who says it.
                 @Suppress("UNUSED_VARIABLE") val v = ctrl.version

@@ -6,6 +6,7 @@
 import { ALL_FORMATS, AudioSampleSink, BlobSource, Input } from 'mediabunny'
 import { pipeline, env } from '@huggingface/transformers'
 import type { Word } from '../lib/subtitles'
+import { isMemoryError } from '../lib/memerr'
 import type { Dtype } from '../lib/speech'
 // The runtime's own files, served by this site (not a CDN): the threads' workers start from the
 // same file, the page's isolation (COEP) has nothing to allow, and it works offline once cached.
@@ -13,7 +14,7 @@ import ortWasmUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-th
 import ortMjsUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs?url'
 
 export type SubsRequest = {
-  file: File; language: string | null; repo: string; device: 'webgpu' | 'wasm'
+  file: File; language: string | null; repo: string; revision: string | null; device: 'webgpu' | 'wasm'
   /** The file kinds of the encoder and the decoder. */
   encDtype: Dtype; dtype: Dtype
   /** WebAssembly threads (the page asks for more than one only when it is cross-origin isolated). */
@@ -40,7 +41,7 @@ self.onmessage = async (e: MessageEvent<SubsRequest>) => {
   try {
     await run(e.data)
   } catch (err) {
-    post({ type: 'error', code: 'failed', message: String((err as Error)?.message ?? err) })
+    post({ type: 'error', code: isMemoryError(err) ? 'memory' : 'failed', message: String((err as Error)?.message ?? err) })
   }
 }
 
@@ -118,7 +119,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 /** The model kept from the last job (the page keeps this worker for a while): the next job with the same model skips loading it. */
 let loaded: { key: string; asr: any } | null = null
 
-async function run({ file, language, repo, device, encDtype, dtype, threads }: SubsRequest) {
+async function run({ file, language, repo, revision, device, encDtype, dtype, threads }: SubsRequest) {
   post({ type: 'audio' })
   const x = await audio16k(file)
   if (!x || x.length < RATE / 2) return post({ type: 'error', code: 'no-audio', message: 'no sound' })
@@ -130,7 +131,11 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
     // Threads are for the CPU's path, and only in an isolated page (else the runtime would say it can't).
     wasm.numThreads = device === 'wasm' && self.crossOriginIsolated ? Math.max(1, threads) : 1
   }
-  const key = `${repo}|${device}|${encDtype}|${dtype}|${wasm?.numThreads}`
+  // Every request of the model (its metadata too) goes to the pinned commit: Transformers.js reads the
+  // revision into the URL of some requests only, and its metadata requests ignore it, so the commit goes
+  // into the path template itself (a fully cached model then needs no request to the Hub at all).
+  env.remotePathTemplate = revision ? `{model}/resolve/${revision}/` : '{model}/resolve/{revision}/'
+  const key = `${repo}|${revision ?? ''}|${device}|${encDtype}|${dtype}|${wasm?.numThreads}`
   // Phase: loading (or starting to download). The files' bytes come as 'download'; when they are all
   // here the sessions are created, which has no percent: 'load' says so.
   post({ type: 'load' })
@@ -144,11 +149,17 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
   let loading = true
   let news = 0
   let lastPost = 0
+  let loadTimer = 0
   let asr: any = loaded?.key === key ? loaded.asr : null
   if (!asr && loaded) { const old = loaded.asr; loaded = null; await Promise.race([old.dispose?.(), sleep(1000)]).catch(() => {}) }
   if (!asr) try { asr = await pipeline('automatic-speech-recognition', repo, {
     device,
-    dtype: { encoder_model: encDtype, decoder_model_merged: dtype },
+    // `model` too: Transformers.js 4.3.2's file listing for the download total (get_model_files -> selectDtype)
+    // looks the encoder's dtype up by its session key `model`, not `encoder_model` (a bug of the library), and
+    // without it falls back to the device's default (wasm: q8, encoder_model_quantized.onnx). That file is
+    // never loaded and may not exist (ivrit.ai's repo has only q4): one uncacheable request to the Hub per load.
+    // The sessions themselves read `encoder_model` and ignore `model`.
+    dtype: { model: encDtype, encoder_model: encDtype, decoder_model_merged: dtype },
     progress_callback: (p: any) => {
       const now = Date.now()
       if (p.status === 'progress_total') {
@@ -156,7 +167,8 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
         if (p.total > 0 && p.loaded >= p.total) {
           // All of what is known so far is here: if no other file starts soon, it is the loading.
           // (The page itself moves to its loading phase at once, from loaded >= total.)
-          setTimeout(() => { if (n === news && !loading) { loading = true; post({ type: 'load' }) } }, 1500)
+          clearTimeout(loadTimer)
+          loadTimer = setTimeout(() => { if (n === news && !loading) { loading = true; post({ type: 'load' }) } }, 1500) as unknown as number
         }
         loading = false
         // One message per update: it is also the sign of life, so no extra tick goes with it.
@@ -168,13 +180,18 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
       }
     },
   }) } catch (e) {
+    clearTimeout(loadTimer)
     // Threads that would not start (not a download that failed): the page tries once more with one.
     const message = String((e as Error)?.message ?? e)
+    if (isMemoryError(e)) return post({ type: 'error', code: 'memory', message })
     if ((wasm?.numThreads ?? 1) > 1 && !/could not locate file|failed to fetch|network|load failed|https?:\/\/|\b(40\d|50\d)\b/i.test(message)) {
       return post({ type: 'error', code: 'threads', message })
     }
     throw e
   }
+  // Loaded: a "loading" still pending from the last download message must not come after the recognition starts.
+  clearTimeout(loadTimer)
+  loading = true
 
   try {
     const words: Word[] = []

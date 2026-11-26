@@ -109,7 +109,7 @@ export function findFaces(file: File, sensitive: boolean, onProgress: (p: number
  */
 export async function transcribe(file: File, language: string | null, onStatus: (s: SpeechStatus) => void, signal?: AbortSignal) {
   try {
-    const plan = await confirmSpeech(signal)
+    const plan = await confirmSpeech(signal, language)
     if (!plan) throw new StepError(t('הורדת המודל לא אושרה'), 'declined')
     return (await transcribeFile(file, language, { plan, onStatus, signal })).words
   } catch (e) {

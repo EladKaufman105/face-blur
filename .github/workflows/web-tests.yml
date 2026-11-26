@@ -10,7 +10,7 @@ on:
         type: boolean
         default: true
       subtitles:
-        description: Also run the subtitles test (Whisper, a 1.4 GB model download)
+        description: Also run the subtitles test (Whisper, a 2.2 GB model download)
         type: boolean
         default: false
 

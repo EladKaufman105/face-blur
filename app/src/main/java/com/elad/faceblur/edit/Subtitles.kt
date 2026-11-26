@@ -1,5 +1,6 @@
 package com.elad.faceblur.edit
 
+import com.elad.faceblur.subs.SubLanguages
 import java.util.TreeMap
 import kotlin.math.ceil
 import kotlin.math.max
@@ -60,6 +61,7 @@ object Subtitles {
             src,
             if (timed) cs.flatMap { it.words!! } else null,
             f.speaker,
+            cs.map { it.trm }.distinct().singleOrNull(),
         )
     }
 
@@ -104,7 +106,7 @@ object Subtitles {
     fun splitAt(c: Cue, bounds: IntArray, group: Int, newId: () -> Int): List<Cue> {
         val src = words(c.srcText)
         val k = bounds.size - 1
-        if (k <= 1) return listOf(Cue(newId(), c.startMs, c.endMs, c.he, c.en, group, c.src, c.words, c.speaker))
+        if (k <= 1) return listOf(Cue(newId(), c.startMs, c.endMs, c.he, c.en, group, c.src, c.words, c.speaker, c.trm))
         val srcIsEnglish = c.src == "en" || (c.src == "" && c.he.isBlank())
         val other = words(c.otherText)
         val otherParts = spread(other, (0 until k).map { bounds[it + 1] - bounds[it] })
@@ -128,7 +130,7 @@ object Subtitles {
             val otherText = otherParts[j]
             val he = if (srcIsEnglish) otherText else srcText
             val en = if (srcIsEnglish) srcText else otherText
-            out += Cue(newId(), start, end, he, en, group, c.src, wt?.subList(a, e)?.toList(), c.speaker)
+            out += Cue(newId(), start, end, he, en, group, c.src, wt?.subList(a, e)?.toList(), c.speaker, c.trm)
         }
         return out
     }
@@ -150,8 +152,9 @@ object Subtitles {
             if (i !in hide) m.value
             else {
                 val w = m.value
-                val a = w.indexOfFirst { it.isLetterOrDigit() }
-                val b = w.indexOfLast { it.isLetterOrDigit() }
+                // A mark (Hebrew point, Arabic diacritic) belongs to its letter: none is left showing, as on the web.
+                val a = w.indexOfFirst { SubLanguages.isWordChar(it) }
+                val b = w.indexOfLast { SubLanguages.isWordChar(it) }
                 // Always 4 stars: the length shouldn't hint at the word.
                 if (a < 0) w else w.substring(0, a) + "****" + w.substring(b + 1)
             }
