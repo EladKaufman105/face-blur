@@ -68,10 +68,12 @@ export function installCrashReport() {
   // The same error again soon after it was closed (one thrown on every frame) doesn't reopen it.
   let last = '', lastAt = 0
   const keep = (what: string, e: unknown) => {
-    if (crashReport.value !== null) return
     const sig = String((e as Error)?.stack ?? (e as Error)?.message ?? e)
-    if (sig === last && Date.now() - lastAt < 10000) { lastAt = Date.now(); return }
-    last = sig; lastAt = Date.now()
+    const now = Date.now()
+    const repeat = sig === last && now - lastAt < 10000
+    if (sig === last) lastAt = now
+    if (crashReport.value !== null || repeat) return
+    last = sig; lastAt = now
     crashReport.value = technical(what, e)
   }
   addEventListener('error', (ev) => { if (reportable(ev.error, ev.filename)) keep('uncaught error', ev.error) })
