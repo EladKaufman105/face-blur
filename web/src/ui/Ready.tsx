@@ -35,7 +35,7 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
   const url = useMemo(() => URL.createObjectURL(file), [file])
   useEffect(() => () => URL.revokeObjectURL(url), [url])
   const [meta, setMeta] = useState<{ w: number; h: number; dur: number } | null>(null)
-  const [src, setSrc] = useState<{ fps: number; codec: string } | null>(null)
+  const [src, setSrc] = useState<{ fps: number; codec: string; bitrate: number; duration: number } | null>(null)
   const [look, setLook] = useState<Look>(loadLook)
   const [open, setOpen] = useState(false)
   const [sheet, setSheet] = useState(false)
@@ -78,7 +78,7 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
     const w = new Worker(new URL('../workers/follow.worker.ts', import.meta.url), { type: 'module' })
     w.onmessage = (e: MessageEvent<FollowMessage>) => {
       w.terminate()
-      if (e.data.type === 'times') setSrc({ fps: e.data.fps, codec: e.data.codec })
+      if (e.data.type === 'times') setSrc({ fps: e.data.fps, codec: e.data.codec, bitrate: e.data.bitrate, duration: e.data.duration })
     }
     w.onerror = () => w.terminate()
     w.postMessage({ type: 'times', file } satisfies FollowRequest)
@@ -192,6 +192,8 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
           height={meta.h}
           fps={src?.fps ?? null}
           sourceHevc={src?.codec === 'hevc'}
+          srcBitrate={src?.bitrate ?? null}
+          duration={Number.isFinite(meta.dur) && meta.dur > 0 ? meta.dur : src?.duration ?? 0}
           hasCues={false}
           options={options}
           onChange={setOptions}

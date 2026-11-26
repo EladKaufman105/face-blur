@@ -36,6 +36,9 @@ jobs:
       - uses: ./.github/actions/apt-install
         with:
           packages: ffmpeg fonts-dejavu-core
+      # Every t('<Hebrew>') in web/src has its English (as ci/i18n_check.py for the app).
+      - name: Every string has its English
+        run: python3 ci/web_i18n_check.py
       - name: Build
         working-directory: web
         run: |

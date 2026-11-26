@@ -76,7 +76,7 @@ case "${1:?shard}" in
     # Two fingers on the video resize the selected blur, one undo step each.
     t pinch.cjs "$U" $S/walk.mp4 $R/pinch   # 8
     ;;
-  4) # about 390 s
+  4) # about 420 s
     # The sound's cleanup, MP3 (from the editor and the home screen), a lower size and frame rate.
     t sound.cjs "$U" $S/speech_two.mp4 $S/speech_en.mp4 $S/classroom60.mp4 $R/sound   # 28
     # A sound step that fails never exports the original voice: the editor's export stays blocked, a batch item fails.
@@ -103,6 +103,10 @@ case "${1:?shard}" in
     (export VOICE=1; t e2e.cjs "$U" $S/speech_two.mp4 $R/voice)   # 58
     # Which speech model the subtitles tab offers (no download): ivrit.ai's for Hebrew, with its size; Whisper for the other languages.
     t subsplan.cjs "$U" $S/speech_two.mp4 $R/subsplan   # 15
+    # The editor as the app's, part three (in English): a subtitle merged with the one before or after it, a tablet's side panel with
+    # the selected subtitle's properties, the blur view (blur / outlines), the export's size estimate, a failed export's details to
+    # copy, the report of an error nothing caught.
+    t parity3.cjs "$U" $S/speech_two.mp4 $R/parity3   # 25
     # A template's translation (no model, a stubbed translator): the editor's switch and the video's four choices, the switch on the ready screen, translated in "save straight away" and in the editor it opens; a browser with none: a note, the subtitles kept.
     t tpltranslate.cjs "$U" $S/speech_two.mp4 $R/tpltranslate   # 22
     ;;
