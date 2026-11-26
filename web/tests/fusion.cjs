@@ -173,6 +173,34 @@ if (F.fuse([], []).length !== 0) fail('empty')
   if (P.runSide(960, 1000) !== 1000 || P.runSide(960, 1100) !== 960 || P.runSide(960) !== 960) fail('runSide')
 }
 
+// ---- the pacer: windows of 4 after the warm-up; the GPU's check against the CPU is taken out of a
+// detection's time but the detection counts. On a video with no faces the check runs on every
+// detection (it ends only after 3 frames with faces): a slow GPU must still be paced.
+{
+  const pc = new P.Pacer(3)
+  const got = []
+  for (let k = 0; k < 3 + 8; k++) {
+    const w = pc.add({ ms: 400 + 300, rfMs: 380, fineMs: 330, checkMs: 300 })
+    if (w) got.push(w)
+  }
+  if (got.length !== 2 || !near(got[0].recentMs, 400) || got[0].rfMs !== 380 || got[0].fineMs !== 330) fail('the pacer: ' + JSON.stringify(got))
+  // A slow GPU on a faceless clip: 1280 -> 960 -> 640 px as the windows come, the rate down.
+  let side = 1280, rate = 15
+  const pz = new P.Pacer(3)
+  for (let k = 0; k < 40; k++) {
+    const f = 400 * (side / 1280) ** 2, rf = f + 30
+    const w = pz.add({ ms: rf + 60 + 250, rfMs: rf, fineMs: f, checkMs: 250 })
+    if (!w) continue
+    const p = P.pace({ ...w, workers: 1, maxRate: 15, side, startSide: 1280, rate, gpu: true })
+    side = p.side; rate = p.rate
+  }
+  if (side !== 640 || rate >= 15) fail('a faceless clip on a slow GPU is not paced: ' + JSON.stringify({ side, rate }))
+  // A clip of 10 frames a second detected on every frame isn't reduced, though 10 is under 80% of 15.
+  const fps10 = P.pace({ recentMs: 90, rfMs: 80, fineMs: 70, workers: 1, maxRate: 15, side: 960, startSide: 960, rate: 15, gpu: false, frameRate: 10 })
+  if (fps10.reduced || fps10.side !== 960) fail('a 10 fps clip at every frame is reduced: ' + JSON.stringify(fps10))
+  if (!P.pace({ recentMs: 140, rfMs: 130, fineMs: 120, workers: 1, maxRate: 15, side: 640, startSide: 960, rate: 15, gpu: false, frameRate: 10 }).reduced) fail('fewer than every frame of a 10 fps clip, at 640 px, is not reduced')
+}
+
 // ---- never weaker than the web's detection before YuNet, on any device: simulated devices
 // (RetinaFace's fine pass = a fixed part + a part that grows with the area; a coarse pass over
 // 800 px; the re-check; YuNet beside it or after it; 1 to 4 detectors), each paced window by
@@ -184,7 +212,7 @@ if (F.fuse([], []).length !== 0) fail('empty')
   let cases = 0
   for (const gpu of [true, false]) for (const big of [3, 15, 40, 80, 150, 300, 800]) for (const fixed of [0, 10]) for (const coarse of [0, 5, 40])
   for (const check of [0, 10, 60]) for (const yunet of [5, 40, 150, 400]) for (const beside of [true, false]) for (const workers of gpu ? [1] : [1, 2, 4])
-  for (const maxRate of [15, 30]) for (const frameSide of [1280, 736, 480]) {
+  for (const maxRate of [15, 30]) for (const frameSide of [1280, 736, 480]) for (const frameRate of [undefined, 10]) {
     const start = gpu ? 1280 : 960
     const eff = (s) => P.runSide(s, frameSide)
     // [big]: the fine pass's area part at the starting size.
@@ -194,12 +222,12 @@ if (F.fuse([], []).length !== 0) fail('empty')
     let side = start, rate = maxRate
     let oldSide = gpu ? 960 : 640, oldRate = Math.min(maxRate, gpu ? 15 : 10)
     for (let k = 0; k < 12; k++) {
-      const p = P.pace({ recentMs: total(side), rfMs: rfOf(side), fineMs: fine(side), workers, maxRate, side, startSide: start, rate, gpu, frameSide })
+      const p = P.pace({ recentMs: total(side), rfMs: rfOf(side), fineMs: fine(side), workers, maxRate, side, startSide: start, rate, gpu, frameSide, frameRate })
       side = p.side; rate = p.rate
       const oldMs = rfOf(oldSide) + check
       oldRate = clamp(600 * workers / oldMs, 4, Math.min(maxRate, gpu ? 15 : 10))
       if (gpu && oldMs > 200 && oldSide > 640) oldSide = 640
-      if (eff(side) < eff(oldSide) || rate < oldRate - 1e-9) fail('weaker than before YuNet: ' + JSON.stringify({ gpu, big, fixed, coarse, check, yunet, beside, workers, maxRate, frameSide, k, side, rate, oldSide, oldRate }))
+      if (eff(side) < eff(oldSide) || rate < oldRate - 1e-9) fail('weaker than before YuNet: ' + JSON.stringify({ gpu, big, fixed, coarse, check, yunet, beside, workers, maxRate, frameSide, frameRate, k, side, rate, oldSide, oldRate }))
       cases++
     }
   }

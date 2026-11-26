@@ -54,6 +54,8 @@ export interface PaceIn {
   gpu: boolean
   /** The long side of the frames detection gets: a fine pass set bigger than that runs at that (the detector doesn't enlarge), so such a size step changes nothing. */
   frameSide?: number
+  /** The video's frame rate: a rate that still detects on every frame isn't reduced, whatever [maxRate] is (a 10 fps clip at 10 a second). */
+  frameRate?: number
 }
 
 export interface Pace {
@@ -83,12 +85,13 @@ export function oldRate(i: PaceIn): number {
  */
 export function pace(i: PaceIn): Pace {
   const eff = (s: number) => runSide(s, i.frameSide)
-  const target = Math.min(i.maxRate, SIZE_RATE)
+  // The rate the frame's size is judged against: no more than the video has frames (a 10 fps clip needs 10 a second, not 15).
+  const target = Math.min(i.maxRate, SIZE_RATE, i.frameRate ?? Infinity)
   const wanted = (BUDGET_MS * i.workers) / Math.max(1, i.recentMs)
   const floor = oldRate(i)
   const out = (rate: number, side = i.side): Pace => {
     const r = Math.min(i.maxRate, Math.max(rate, floor))
-    return { rate: r, side, reduced: eff(side) < eff(i.startSide) || r < i.maxRate * FULL_SHARE }
+    return { rate: r, side, reduced: eff(side) < eff(i.startSide) || r < Math.min(i.maxRate, i.frameRate ?? Infinity) * FULL_SHARE }
   }
   /** On the GPU, how long RetinaFace's own passes may take at a size before the frame leaves it. */
   const gpuLimit = (side: number) => (side > MID_SIDE ? GPU_SLOW_MS : OLD.gpuSlowMs)
@@ -110,4 +113,41 @@ export function pace(i: PaceIn): Pace {
   if (i.side > LOW_SIDE && eff(down) < eff(i.side) && (!i.gpu || i.rfMs > gpuLimit(i.side))) return out(i.rate, down)
   // Then fewer detections (never under the floor).
   return out(clamp(wanted, MIN_RATE, i.maxRate))
+}
+
+/** A detection's times (ms): whole, RetinaFace's passes (fine + coarse), its fine pass; and the GPU's check against the CPU inside it, if it ran. */
+export interface Timing {
+  ms: number
+  rfMs: number
+  fineMs: number
+  checkMs?: number
+}
+
+/**
+ * The detections' times, in windows of [WINDOW]: each full window gives the means the pace
+ * takes. The first [warmup] detections don't count (the shaders compile, the WebAssembly heap
+ * grows). The GPU's check against the CPU (on the first detections, and on every one until faces
+ * are seen, so on a video with none all along) isn't the device's pace: its time is taken out,
+ * the detection still counts.
+ */
+export class Pacer {
+  static readonly WINDOW = 4
+  private seen = 0
+  private window: Timing[] = []
+  private warmup: number
+
+  constructor(warmup: number) {
+    this.warmup = warmup
+  }
+
+  /** The means when [t] completes a window, else null. */
+  add(t: Timing): { recentMs: number; rfMs: number; fineMs: number } | null {
+    if (++this.seen <= this.warmup) return null
+    this.window.push({ ms: Math.max(0, t.ms - (t.checkMs ?? 0)), rfMs: t.rfMs, fineMs: t.fineMs })
+    if (this.window.length < Pacer.WINDOW) return null
+    const mean = (k: 'ms' | 'rfMs' | 'fineMs') => this.window.reduce((a, b) => a + b[k], 0) / this.window.length
+    const out = { recentMs: mean('ms'), rfMs: mean('rfMs'), fineMs: mean('fineMs') }
+    this.window = []
+    return out
+  }
 }

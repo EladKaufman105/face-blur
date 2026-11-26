@@ -2,7 +2,7 @@
 // on a regular subset of frames, then builds the face tracks and a thumbnail of each face.
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny'
 import { CPU_SIDE, FaceDetector, GPU_SIDE } from '../lib/detector'
-import { pace, runSide } from '../lib/pace'
+import { Pacer, pace, runSide, type Timing } from '../lib/pace'
 import { YunetWorker } from '../lib/yunet-worker'
 import { StatsHistory, summary, type AnalysisStats, type StatsSnapshot } from '../lib/analysis-stats'
 import { DetectorPool } from '../lib/detector-pool'
@@ -18,9 +18,6 @@ export type AnalyzeMessage =
   | { type: 'done'; times: Float64Array; width: number; height: number; fps: number; tracks: Track[]; cuts: number[]; lowConfidence: number; /** Detection ran lighter than the app's (see lib/pace.ts). */ reduced: boolean; thumbs: (ImageBitmap | null)[]; backend: string; ms: number }
   | { type: 'error'; code: string; message: string }
   | { type: 'log'; message: string }
-
-/** A detection's time (ms): whole, RetinaFace's passes (fine + coarse), its fine pass. */
-type Timing = { ms: number; rfMs: number; fineMs: number }
 
 export type Tune = { yunet?: boolean; side?: number; rate?: number; /** As if the device were too slow: the reduced mode from the start (the notice, the flag, the lower thresholds). */ reduced?: boolean }
 
@@ -74,13 +71,12 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
       log(`detector pool failed, one detector: ${String((err as Error)?.message ?? err)}`)
     }
   }
-  const detector = pool ? null : await FaceDetector.create(base + 'models/', backend, undefined, yunet)
-  if (tune?.side && detector) detector.side = tune.side
   // One detector here (the GPU's, or one on the CPU): YuNet in a worker of its own, so that it runs
-  // while RetinaFace does (else in this thread, after it). The pool's detectors (all the cores
-  // busy already) run it in theirs.
-  const ynWorker = detector && yunet && !detector.yunetMissing ? await YunetWorker.create(yunet) : null
-  if (ynWorker) detector!.useYunetWorker(ynWorker)
+  // while RetinaFace does (else, or if that worker fails, in this thread, after it). The pool's
+  // detectors (all the cores busy already) run it in theirs.
+  const ynWorker = !pool && yunet ? await YunetWorker.create(yunet) : null
+  const detector = pool ? null : await FaceDetector.create(base + 'models/', backend, undefined, yunet, ynWorker)
+  if (tune?.side && detector) detector.side = tune.side
   const backendNow = () => detector?.backend ?? 'wasm'
   // Why detection isn't on the GPU, for the stats panel.
   const noGpu = () => detector?.fellBack ?? (backend === 'wasm' ? 'forced with ?backend=wasm' : !gpu ? 'no WebGPU in this browser' : 'no WebGPU adapter')
@@ -121,10 +117,10 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   if (tune?.reduced) reduce('forced for a test')
   // A pinned tune weaker than the default is a reduced detection like any other (a size that changes nothing for this video isn't).
   const long = Math.max(width, height)
-  if (tune && (Math.min(long, tune.side ?? startSide) < Math.min(long, cpuOnly ? CPU_SIDE : GPU_SIDE) || (tune.rate ?? maxRate) < maxRate)) reduce('a weaker tune')
+  if (tune && (Math.min(long, tune.side ?? startSide) < Math.min(long, cpuOnly ? CPU_SIDE : GPU_SIDE) || (tune.rate ?? maxRate) < Math.min(maxRate, nominalFps))) reduce('a weaker tune')
   const spent: number[] = []
-  /** The detections' times since the last pace step: whole, RetinaFace's passes, its fine pass (ms). */
-  let sinceStep: Timing[] = []
+  // The detections' times, in windows (the first ones, warm-up, left out).
+  const pacer = new Pacer((pool?.size ?? 1) + 2)
 
   const sink = new CanvasSink(video, { width: iw, height: ih, fit: 'fill', poolSize: 3 })
   const cuts = new CutDetector()
@@ -137,8 +133,7 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   let found = 0
   let decodeWait = 0, detectMs = 0, cutMs = 0, poolWait = 0
   // Where a detection's result goes (in the pool, in any order), and the pace follows from it.
-  let seen = 0
-  const recordDets = (i: number, got: Det[], tm: Timing, skip = false, yunetOk = true) => {
+  const recordDets = (i: number, got: Det[], tm: Timing, yunetOk = true) => {
     const ms = tm.ms
     // YuNet lost on the way (a session that fails to run): from here on it is the reduced mode.
     if (!yunetOk || detector?.yunetMissing) reduce('YuNet failed')
@@ -147,19 +142,16 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
     dets.set(i, got)
     found = Math.max(found, got.filter((d) => d.score >= 0.6).length)
     // After the first (warm-up) detections, every 4 detections: the pace that keeps analysis
-    // near the video's own speed (see lib/pace.ts).
+    // near the video's own speed (see lib/pace.ts). The GPU's check against the CPU is taken out
+    // of a detection's time (it runs until faces are seen: on a video with none, all along).
     spent.push(ms)
-    seen++
-    // The first detections (warm-up: the shaders compile, the WebAssembly heap grows) and the GPU's check against the CPU aren't the device's pace.
-    if (!skip && seen > (pool?.size ?? 1) + 2) sinceStep.push(tm)
     if (detector) fineSide = Math.min(fineSide, detector.side)
-    if (!tune && sinceStep.length >= 4) {
-      const mean = (k: keyof Timing) => sinceStep.reduce((a, b) => a + b[k], 0) / sinceStep.length
-      const recent = mean('ms'), rfMs = mean('rfMs'), fineMs = mean('fineMs')
-      sinceStep = []
+    const w = pacer.add(tm)
+    if (!tune && w) {
+      const { recentMs: recent, rfMs } = w
       const gpuNow = backendNow() === 'webgpu'
       const startNow = gpuNow ? GPU_SIDE : CPU_SIDE
-      const p = pace({ recentMs: recent, rfMs, fineMs, workers: pool?.size ?? 1, maxRate, side: fineSide, startSide: startNow, rate, gpu: gpuNow, frameSide })
+      const p = pace({ ...w, workers: pool?.size ?? 1, maxRate, side: fineSide, startSide: startNow, rate, gpu: gpuNow, frameSide, frameRate: nominalFps })
       rate = p.rate
       if (p.side !== fineSide) {
         fineSide = Math.min(p.side, startNow, startSide)
@@ -209,9 +201,9 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
         await pool.detect(canvas, i, recordDets, fineSide, lowThr)
       } else {
         const td = performance.now()
-        const wasChecking = detector!.checking
+        const checkBefore = detector!.stats.check
         const got = await detector!.detect(canvas)
-        recordDets(i, got, { ms: performance.now() - td, ...detector!.last }, wasChecking)
+        recordDets(i, got, { ms: performance.now() - td, ...detector!.last, checkMs: detector!.stats.check - checkBefore })
       }
     }
     const now = performance.now()

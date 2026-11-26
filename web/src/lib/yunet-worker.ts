@@ -57,10 +57,15 @@ export class YunetWorker {
     }
     const id = this.next++
     return new Promise((done) => {
-      this.waiting.set(id, done)
+      // A worker that doesn't answer (hung) counts as failed: detection goes on with YuNet in the caller's thread.
+      const timer = setTimeout(() => this.fail(`no answer in ${YunetWorker.TIMEOUT_MS} ms`), YunetWorker.TIMEOUT_MS)
+      this.waiting.set(id, (d) => { clearTimeout(timer); done(d) })
       this.w.postMessage({ type: 'frame', id, frame, threshold } satisfies YunetRequest, [frame])
     })
   }
+
+  /** A run takes ~20-150 ms; one not answered in this long means a hung worker. */
+  static readonly TIMEOUT_MS = 10000
 
   private settle(id: number, dets: Det[] | null) {
     const done = this.waiting.get(id)

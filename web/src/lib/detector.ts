@@ -52,13 +52,12 @@ export class FaceDetector {
   private cpu: Session | null = null
   private yunetModel: Uint8Array | null
   private yn: Yunet | null = null
-  /** YuNet in a worker of its own (runs while RetinaFace does); dropped if it fails, for [yn]. */
+  /** YuNet in a worker of its own (runs while RetinaFace does); dropped if it fails, for [yn] (made then). */
   private ynWorker: YunetWorker | null = null
   private thr = RF_THRESHOLD
   private ynThr = YUNET_THRESHOLD
   // The GPU's results are compared with the CPU's on the first frames with faces.
-  /** Public for the pacing: a detection made while the GPU is being checked against the CPU isn't the device's pace. */
-  checking: boolean
+  private checking: boolean
   private agreed = 0
   private gpuMs = 0
   private cpuMs = 0
@@ -94,8 +93,11 @@ export class FaceDetector {
     return this.gpu ? 'webgpu' : 'wasm'
   }
 
-  /** [base]: the folder with retinaface_fp32.onnx, retinaface_fp16.onnx and yunet.onnx; [fp32], [yunet]: those models' bytes if already loaded. */
-  static async create(base: string, force?: Backend, fp32?: Uint8Array, yunet?: Uint8Array | null): Promise<FaceDetector> {
+  /**
+   * [base]: the folder with retinaface_fp32.onnx, retinaface_fp16.onnx and yunet.onnx; [fp32], [yunet]: those models' bytes if already loaded.
+   * [ynWorker]: YuNet already running in a worker of its own (from [yunet]): this thread's YuNet is then made only if that worker fails (one YuNet runtime, not two, on a phone short of memory).
+   */
+  static async create(base: string, force?: Backend, fp32?: Uint8Array, yunet?: Uint8Array | null, ynWorker?: YunetWorker | null): Promise<FaceDetector> {
     // One thread: ORT's thread pool can't start from inside a bundled module worker (WebGPU is
     // the fast path anyway).
     ort.env.wasm.numThreads = 1
@@ -118,8 +120,7 @@ export class FaceDetector {
           const model = half ? await load('retinaface_fp16.onnx') : model32
           const s = await ort.InferenceSession.create(model, { executionProviders: ['webgpu'], graphOptimizationLevel: 'all' })
           const g = new FaceDetector(s, model32, half ? 'fp16' : 'fp32', ynBytes)
-          // YuNet's session here too: a failure to start it shows (yunetMissing) before the first frame.
-          await g.yunetLocal()
+          await g.startYunet(ynWorker)
           return g
         }
       } catch (e) {
@@ -128,7 +129,7 @@ export class FaceDetector {
     }
     const d = new FaceDetector(null, model32, 'fp32', ynBytes)
     await d.cpuSession()
-    await d.yunetLocal()
+    await d.startYunet(ynWorker)
     return d
   }
 
@@ -151,9 +152,10 @@ export class FaceDetector {
     return this.yn
   }
 
-  /** From now on YuNet runs in [w], at the same time as RetinaFace (this thread's YuNet stays, for if [w] fails). */
-  useYunetWorker(w: YunetWorker) {
-    if (!this.yunetMissing) this.ynWorker = w
+  /** YuNet in [w] (it runs at the same time as RetinaFace), else in this thread, started now: a failure to start it shows (yunetMissing) before the first frame. */
+  private async startYunet(w?: YunetWorker | null) {
+    if (w && !this.yunetMissing) this.ynWorker = w
+    else await this.yunetLocal()
   }
 
   /** YuNet on [frame] in this thread: its faces as fractions of the frame. */
