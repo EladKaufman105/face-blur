@@ -234,3 +234,28 @@ export function NoFaces({ file, canEdit, sensitive, reduced, onEdit, onRetry, on
     </main>
   )
 }
+
+/**
+ * "Blur and save straight" found faces that are to be checked (detection ran lighter than the
+ * app's on this device, or some face has no clear detection behind it): nothing is saved until the
+ * user says so. The editor is the primary way on.
+ */
+export function CheckFaces({ reduced, onEdit, onSave, onBack }: { reduced: boolean; onEdit: () => void; onSave: () => void; onBack: () => void }) {
+  return (
+    <main class="ready check-faces">
+      <section class="card message-card">
+        <div class="row">
+          <div class="face-icon"><FaceIcon /></div>
+          <strong class="grow">{t('זיהוי לא בטוח')}</strong>
+        </div>
+        {reduced && <DetectionNotice />}
+        <p class="small muted" style="margin:0">{t('כדאי לבדוק את הפנים בעורך.')}</p>
+        <div class="actions">
+          <button class="btn primary check-edit" onClick={onEdit}>{t('פתח בעורך')}</button>
+          <button class="btn tonal check-save" onClick={onSave}>{t('שמור בכל זאת')}</button>
+          <button class="btn ghost" onClick={onBack}>{t('חזרה')}</button>
+        </div>
+      </section>
+    </main>
+  )
+}

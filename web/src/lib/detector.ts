@@ -35,6 +35,8 @@ export interface DetectStats {
   check: number
   verify: number
   nms: number
+  /** Faces YuNet found (before the fusion), summed: 0 means it never ran. */
+  yunetFaces: number
 }
 
 type Session = ort.InferenceSession
@@ -48,10 +50,12 @@ export class FaceDetector {
   private yunetModel: Uint8Array | null
   private yn: Session | null = null
   private ynCanvas = new OffscreenCanvas(YUNET_SIDE, YUNET_SIDE)
+  private ynInput = new Float32Array(3 * YUNET_SIDE * YUNET_SIDE)
   private thr = RF_THRESHOLD
   private ynThr = YUNET_THRESHOLD
   // The GPU's results are compared with the CPU's on the first frames with faces.
-  private checking: boolean
+  /** Public for the pacing: a detection made while the GPU is being checked against the CPU isn't the device's pace. */
+  checking: boolean
   private agreed = 0
   private gpuMs = 0
   private cpuMs = 0
@@ -61,7 +65,7 @@ export class FaceDetector {
   fellBack: string | null = null
   /** YuNet couldn't be loaded: RetinaFace alone (weaker than the app's detection). */
   yunetMissing = false
-  readonly stats: DetectStats = { detections: 0, pre: 0, inf: 0, dec: 0, coarse: 0, coarseRuns: 0, check: 0, verify: 0, nms: 0 }
+  readonly stats: DetectStats = { detections: 0, pre: 0, inf: 0, dec: 0, coarse: 0, coarseRuns: 0, check: 0, verify: 0, nms: 0, yunetFaces: 0 }
 
   private constructor(private gpu: Session | null, private model32: Uint8Array, public precision: 'fp16' | 'fp32', yunet: Uint8Array | null) {
     this.checking = gpu !== null
@@ -90,7 +94,11 @@ export class FaceDetector {
     // the fast path anyway).
     ort.env.wasm.numThreads = 1
     ort.env.logLevel = 'error'
-    const load = async (name: string) => new Uint8Array(await (await fetch(base + name)).arrayBuffer())
+    const load = async (name: string) => {
+      const r = await fetch(base + name)
+      if (!r.ok) throw new Error(`${name}: ${r.status}`)
+      return new Uint8Array(await r.arrayBuffer())
+    }
     const model32 = fp32 ?? await load('retinaface_fp32.onnx')
     // yunet === null: the caller tried and failed. Without it detection goes on (RetinaFace alone) and says so.
     const ynBytes = yunet !== undefined ? yunet : await load('yunet.onnx').catch((e) => { console.warn('ONIT: no YuNet', e); return null })
@@ -103,7 +111,10 @@ export class FaceDetector {
           const half = adapter.features?.has?.('shader-f16') === true
           const model = half ? await load('retinaface_fp16.onnx') : model32
           const s = await ort.InferenceSession.create(model, { executionProviders: ['webgpu'], graphOptimizationLevel: 'all' })
-          return new FaceDetector(s, model32, half ? 'fp16' : 'fp32', ynBytes)
+          const g = new FaceDetector(s, model32, half ? 'fp16' : 'fp32', ynBytes)
+          // YuNet's session here too: a failure to start it shows (yunetMissing) before the first frame.
+          await g.yunetSession()
+          return g
         }
       } catch (e) {
         console.warn('ONIT: no WebGPU face detection', e)
@@ -149,7 +160,7 @@ export class FaceDetector {
     ctx.drawImage(frame, 0, 0, w, h)
     const px = ctx.getImageData(0, 0, S, S).data
     const n = S * S
-    const input = new Float32Array(3 * n)
+    const input = this.ynInput
     // BGR, 0..255 as they are (no mean).
     for (let i = 0, j = 0; i < n; i++, j += 4) {
       input[i] = px[j + 2]
@@ -157,8 +168,19 @@ export class FaceDetector {
       input[2 * n + i] = px[j]
     }
     const t = new ort.Tensor('float32', input, [1, 3, S, S])
-    const r = await sess.run({ input: t })
-    t.dispose()
+    let r: Awaited<ReturnType<Session['run']>>
+    try {
+      r = await sess.run({ input: t })
+    } catch (e) {
+      // YuNet fails to run: detection goes on with RetinaFace alone, and says so (yunetMissing).
+      console.warn('ONIT: YuNet failed', e)
+      this.yn = null
+      this.yunetModel = null
+      this.yunetMissing = true
+      return []
+    } finally {
+      t.dispose()
+    }
     const get = (k: string) => r[k].data as Float32Array
     return decodeYunet({ cls: [get('cls_8'), get('cls_16'), get('cls_32')], obj: [get('obj_8'), get('obj_16'), get('obj_32')], bbox: [get('bbox_8'), get('bbox_16'), get('bbox_32')] }, w, h, this.ynThr)
   }
@@ -202,7 +224,9 @@ export class FaceDetector {
     t = performance.now()
     const rf = nmsIou(out, 0.4)
     // YuNet adds the faces RetinaFace misses and raises the score where both agree; its time and the fusion count as the merge.
-    const kept = fuse(rf, await this.yunet(src))
+    const yn = await this.yunet(src)
+    st.yunetFaces += yn.length
+    const kept = fuse(rf, yn)
     st.nms += performance.now() - t
     // Re-check the uncertain ones (up to 12, all crops in one run); confident faces count as
     // strong evidence in the tracker without it.

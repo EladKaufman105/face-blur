@@ -56,7 +56,7 @@ case "${1:?shard}" in
     # A subtitle edited so a bleeped word may show: the alert, the mark on the timeline, the export asking first; a deleted subtitle's bleeps listed.
     t maskwarn.cjs "$U" $S/speech_two.mp4 $R/maskwarn   # 15
     ;;
-  3) # 255 s
+  3) # about 320 s (255 before the reduced-detection test, 65)
     # Subtitle design: styles, fonts (one imported with Hebrew, one without), effects, burned into the export.
     t style.cjs "$U" $S/speech_two.mp4 ../app/src/main/assets/fonts/heebo.ttf /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf $R/style   # 33
     # Face detection on the CPU path, the editor, the export: desktop and a phone.
@@ -69,8 +69,8 @@ case "${1:?shard}" in
     t templates.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/templates   # 95
     # The speech model's flow with no download: faster / better quality kept, a stuck recognition ends with an error and a retry, Cancel ends the worker, a template asks before downloading.
     t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 40
-    # Detection that ran lighter than the app's is never silent: the notice in the editor and on the "no faces" screen (he and en), none after a full run.
-    t reduced.cjs "$U" $S/walk.mp4 $R/reduced   # 40
+    # Detection that ran lighter than the app's is never silent: the notice in the editor, on a phone, on the "no faces" screen (he and en), none after a full run; "blur and save straight" stopping at the check screen.
+    t reduced.cjs "$U" $S/walk.mp4 $R/reduced   # 65
     # The watermark's logo kept between visits and a template's logo shown; the template editor asking before it drops changes, and "Edit" for the chosen template (ready screen, batch); the safe zone's switch, chooser and mock (9:16 only, never in the export); the thin scrubber over a phone's panel; the low-confidence rule.
     t parity2.cjs "$U" $S/speech_two.mp4 $S/stress_cuts.mp4 $R/parity2   # 30
     # Two fingers on the video resize the selected blur, one undo step each.

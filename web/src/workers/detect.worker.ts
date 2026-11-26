@@ -9,7 +9,7 @@ export type DetectRequest =
   | { type: 'frame'; id: number; frame: ImageBitmap; side: number; reduced: boolean }
 export type DetectReply =
   | { type: 'ready'; precision: string; yunet: boolean }
-  | { type: 'dets'; id: number; dets: Det[]; ms: number; stats: DetectStats }
+  | { type: 'dets'; id: number; dets: Det[]; ms: number; stats: DetectStats; yunet: boolean }
   | { type: 'error'; message: string }
 
 const post = (m: DetectReply) => (self as unknown as Worker).postMessage(m)
@@ -31,7 +31,7 @@ self.onmessage = async (e: MessageEvent<DetectRequest>) => {
       f.close()
       const t = performance.now()
       const dets = await detector.detect(canvas)
-      post({ type: 'dets', id: m.id, dets, ms: performance.now() - t, stats: detector.stats })
+      post({ type: 'dets', id: m.id, dets, ms: performance.now() - t, stats: detector.stats, yunet: !detector.yunetMissing })
     }
   } catch (err) {
     post({ type: 'error', message: String((err as Error)?.message ?? err) })

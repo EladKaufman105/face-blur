@@ -316,7 +316,8 @@ async function processOne(b: Batch, item: BatchItem) {
     const srt = s.saveSrt && p.cues.length ? new Blob([toSrt(cutCues(p.cues, new CutMap(p.cuts)))], { type: 'application/x-subrip' }) : null
     item.output = { name: base + '.mp4', blob: r.blob, url, srt: srt ? { name: base + '.srt', url: URL.createObjectURL(srt) } : null }
     if (id && thumb) saveProject(id, { thumb }, state).catch(() => {})
-    if (b.autoDownload) download(item.output.url, item.output.name)
+    // A video saved on its own (a template's "save straight") whose faces are to be checked isn't downloaded unasked: it waits in the list, flagged.
+    if (b.autoDownload && !(item.lowConfidence && !b.folder)) download(item.output.url, item.output.name)
     item.progress = 1
     item.status = noFaces ? 'nofaces' : 'saved'
     // What this device does, for the next estimate.

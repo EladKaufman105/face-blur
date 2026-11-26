@@ -58,7 +58,7 @@ export class DetectorPool {
   }
 
   /** Hands [frame] (copied here, so the canvas can be reused at once) to a free worker; call [free] first. */
-  async detect(canvas: OffscreenCanvas, id: number, done: (id: number, dets: Det[], ms: number) => void, side: number, reduced: boolean) {
+  async detect(canvas: OffscreenCanvas, id: number, done: (id: number, dets: Det[], ms: number, skip: boolean, yunet: boolean) => void, side: number, reduced: boolean) {
     const frame = await createImageBitmap(canvas)
     const w = this.idle.pop()
     if (!w) {
@@ -70,7 +70,7 @@ export class DetectorPool {
       const m = e.data
       if (m.type === 'dets') {
         this.last.set(w, m.stats)
-        done(m.id, m.dets, m.ms)
+        done(m.id, m.dets, m.ms, false, m.yunet)
         this.idle.push(w)
         this.waiting.shift()?.()
         if (--this.running === 0) this.drained.splice(0).forEach((r) => r())
@@ -89,7 +89,7 @@ export class DetectorPool {
 
   /** The workers' timings added up. */
   stats(): DetectStats {
-    const sum: DetectStats = { detections: 0, pre: 0, inf: 0, dec: 0, coarse: 0, coarseRuns: 0, check: 0, verify: 0, nms: 0 }
+    const sum: DetectStats = { detections: 0, pre: 0, inf: 0, dec: 0, coarse: 0, coarseRuns: 0, check: 0, verify: 0, nms: 0, yunetFaces: 0 }
     for (const s of this.last.values()) for (const k of Object.keys(sum) as (keyof DetectStats)[]) sum[k] += s[k]
     return sum
   }

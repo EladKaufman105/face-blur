@@ -83,12 +83,18 @@ if (F.fuse([], []).length !== 0) fail('empty')
   if (!near(d[0].score, .9, 1e-6) || !near(d[0].cx, 164 / 640) || !near(d[0].cy, 84 / 360) || !near(d[0].w, 16 / 640) || !near(d[0].h, 24 / 360)) fail('decode box ' + JSON.stringify(d[0]))
   // A lower threshold (the reduced mode) finds the weak one too.
   if (F.decodeYunet(o, 640, 360, F.YUNET_THRESHOLD_REDUCED).length < 2) fail('the lower threshold finds more')
-  // A face centered in the padding (below the picture, which is 360 px high) is none.
+  // A box wholly in the padding (below the picture, 360 px high) is none; one partly in it is cut to the picture.
   const p = levels()
   const m = 50 * 80 + 20
   p.cls[0][m] = 1; p.obj[0][m] = 1
   p.bbox[0].set([.5, .5, Math.log(2), Math.log(2)], m * 4)
   if (F.decodeYunet(p, 640, 360, 0.4).length !== 0) fail('a face in the padding')
+  const e = levels()
+  const n = 44 * 80 + 20 // y = 44.5 * 8 = 356, 16 px high: 348..364, the picture ends at 360
+  e.cls[0][n] = 1; e.obj[0][n] = 1
+  e.bbox[0].set([.5, .5, Math.log(2), Math.log(2)], n * 4)
+  const cut = F.decodeYunet(e, 640, 360, 0.4)
+  if (cut.length !== 1 || !near(cut[0].h, 12 / 360) || !near(cut[0].cy, 354 / 360) || !near(cut[0].w, 16 / 640)) fail('a box cut to the picture: ' + JSON.stringify(cut))
   // The scores are clamped to 0..1 (a model's output may leave it a little).
   const q = levels()
   q.cls[0][i] = 1.4; q.obj[0][i] = 1.2
@@ -96,25 +102,51 @@ if (F.fuse([], []).length !== 0) fail('empty')
   if (!near(F.decodeYunet(q, 640, 640, 0.4)[0].score, 1)) fail('clamped score')
 }
 
-// ---- the pace: keeps up as it is; too slow: a smaller frame first, then fewer detections a second
+// ---- the pace: keeps up as it is; too slow: on the CPU the smaller frame first, then fewer detections; on the GPU fewer detections first
 {
-  const fast = P.pace(40, 1, 15, 1280)
-  if (fast.reduced || fast.side !== 1280 || fast.rate !== 15) fail('a fast device is reduced: ' + JSON.stringify(fast))
+  const base = { workers: 1, maxRate: 15, side: 1280, startSide: 1280, rate: 15, gpu: true }
+  const P2 = (o) => P.pace({ ...base, ...o })
+  const fast = P2({ recentMs: 40 })
+  if (fast.reduced || fast.side !== 1280 || fast.rate !== 15) fail('a fast GPU is reduced: ' + JSON.stringify(fast))
   // 13 a second wanted of 15: within 80%, not reduced.
-  const ok = P.pace(1000 / 13, 1, 15, 1280)
+  const ok = P2({ recentMs: 1000 / 13 })
   if (ok.reduced || ok.side !== 1280 || !near(ok.rate, 13, 1e-6)) fail('a little under: ' + JSON.stringify(ok))
-  const slow = P.pace(200, 1, 15, 1280)
-  if (!slow.reduced || slow.side !== 960) fail('1280 -> 960: ' + JSON.stringify(slow))
-  const slower = P.pace(200, 1, 15, 960)
-  if (!slower.reduced || slower.side !== 640) fail('960 -> 640: ' + JSON.stringify(slower))
-  const floor = P.pace(1000, 1, 15, 640)
-  if (!floor.reduced || floor.side !== 640 || floor.rate !== 4) fail('at the floor: ' + JSON.stringify(floor))
-  const crawl = P.pace(5000, 1, 15, 640)
+  // A GPU at 10 a second (100 ms): the rate drops, the frame stays 1280 (and 960 floor is the develop's).
+  const mid = P2({ recentMs: 100 })
+  if (!mid.reduced || mid.side !== 1280 || !near(mid.rate, 10)) fail('GPU at 100 ms: rate first: ' + JSON.stringify(mid))
+  // Under the floor (8 a second, 125 ms): the frame shrinks to 960 first, the rate as it was; 960 is the floor for a GPU under 80 ms... which this is not (130 ms): it may go to 640.
+  const floor = P2({ recentMs: 130 })
+  if (floor.side !== 960 || floor.rate !== 15) fail('GPU under the floor: 1280 -> 960, rate unchanged: ' + JSON.stringify(floor))
+  const slowGpu = P2({ recentMs: 130, side: 960 })
+  if (slowGpu.side !== 640) fail('a GPU slower than 80 ms may go below 960: ' + JSON.stringify(slowGpu))
+  // A GPU under 80 ms never goes below 960 (wanted 8 to 12 at 80-125 ms is the rate's job; here under 80 ms wanted > 12).
+  const quick = P2({ recentMs: 79, side: 960 })
+  if (quick.side < 960) fail('a quick GPU below 960: ' + JSON.stringify(quick))
+  // The rate's own floor at 960 on a GPU that is not slow cannot be reached under 80 ms; with several detectors the wanted rate doubles.
+  if (P2({ recentMs: 130, workers: 2 }).side !== 1280) fail('detectors in parallel on the GPU')
+  const step = P2({ recentMs: 130, rate: 11 })
+  if (step.rate !== 11) fail('a size step lowered the rate: ' + JSON.stringify(step))
+  // The frame steps back up when timings recover (time grows with the area): at 640 px 25 ms a detection would be 56 ms at 960.
+  const up = P2({ recentMs: 25, side: 640, rate: 8 })
+  if (up.side !== 960 || up.rate < 15 * 0.8) fail('back up from 640: ' + JSON.stringify(up))
+  const up2 = P2({ recentMs: 25, side: 960 })
+  if (up2.side !== 1280) fail('back up from 960: ' + JSON.stringify(up2))
+  const stay = P2({ recentMs: 60, side: 960 })
+  if (stay.side !== 960) fail('not back up when 1280 would be slow: ' + JSON.stringify(stay))
+  // The CPU: 960 -> 640 first, then fewer detections.
+  const c = { ...base, gpu: false, side: 960, startSide: 960 }
+  const c1 = P.pace({ ...c, recentMs: 200 })
+  if (!c1.reduced || c1.side !== 640 || c1.rate !== 15) fail('CPU 960 -> 640, rate unchanged: ' + JSON.stringify(c1))
+  const c2 = P.pace({ ...c, recentMs: 400, side: 640 })
+  if (!c2.reduced || c2.side !== 640 || c2.rate !== 4) fail('CPU at 640, fewer: ' + JSON.stringify(c2))
+  const crawl = P.pace({ ...c, recentMs: 5000, side: 640 })
   if (crawl.rate !== P.MIN_RATE) fail('the fewest a second: ' + JSON.stringify(crawl))
-  // More detectors side by side get more time each.
-  if (P.pace(250, 2, 15, 960).reduced !== true || P.pace(250, 4, 15, 960).reduced !== false) fail('detectors in parallel')
-  // Wide detection (every frame of a 30 fps video) is judged against 30.
-  if (!P.pace(100, 1, 30, 960).reduced) fail('sensitive')
+  if (P.pace({ ...c, recentMs: 250, workers: 4 }).reduced !== false || P.pace({ ...c, recentMs: 250, workers: 2 }).reduced !== true) fail('CPU detectors in parallel')
+  // Wide detection (every frame of a 30 fps video): the rate is judged against 30 but the frame against 15, so a device that keeps up with 15 keeps its size.
+  const w = P.pace({ ...base, maxRate: 30, rate: 30, recentMs: 60 })
+  if (!w.reduced || w.side !== 1280 || w.rate < 15) fail('sensitive keeps its size: ' + JSON.stringify(w))
+  const wc = P.pace({ ...c, maxRate: 30, rate: 30, recentMs: 60 })
+  if (wc.side !== 960) fail('sensitive on the CPU keeps its size: ' + JSON.stringify(wc))
 }
 
 // ---- the flag: low-confidence faces, or detection that ran reduced

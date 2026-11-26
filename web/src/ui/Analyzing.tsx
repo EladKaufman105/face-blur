@@ -18,8 +18,10 @@ type Props = {
   onCancel: () => void
 }
 
-/** For tests: ?detect=yunet:0,side:640,rate:5 pins detection (no YuNet, a 640 px fine pass, 5 detections a second), with no pacing; reduced:1 starts it in the reduced mode. */
+/** For tests, on localhost only: ?detect=yunet:0,side:640,rate:5 pins detection (no YuNet, a 640 px fine pass, 5 detections a second), with no pacing; reduced:1 starts it in the reduced mode. */
 function tuneFromUrl(): Tune | undefined {
+  // Only on this computer (the tests' server): on the site it would weaken detection with a link.
+  if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return undefined
   const q = new URLSearchParams(location.search).get('detect')
   if (!q) return undefined
   const kv = Object.fromEntries(q.split(',').map((p) => p.split(':')))

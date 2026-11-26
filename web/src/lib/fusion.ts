@@ -45,7 +45,7 @@ export interface YunetLevels {
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v)
 
 /**
- * YuNet's faces, as FaceDetectorYN decodes them: the model's input is [side] x [side] px, the
+ * YuNet's faces, as FaceDetectorYN decodes them (boxes cut to the picture): the model's input is [side] x [side] px, the
  * picture drawn in its top left corner at [w] x [h] px; boxes come back as fractions of that
  * picture. Score = sqrt(class x objectness), kept at [threshold] or more, then NMS at [YUNET_NMS].
  */
@@ -64,9 +64,11 @@ export function decodeYunet(o: YunetLevels, w: number, h: number, threshold: num
       const bw = Math.exp(bb[i * 4 + 2]) * stride
       const bh = Math.exp(bb[i * 4 + 3]) * stride
       if (bw <= 1 || bh <= 1) continue
-      // A face centered in the model's padding is none.
-      if (cx > w || cy > h) continue
-      raw.push({ cx: cx / w, cy: cy / h, w: bw / w, h: bh / h, score, verify: 0 })
+      // The part of the box in the model's padding is cut off (a face at the edge keeps its visible part); a box wholly in it is none.
+      const x1 = Math.max(0, cx - bw / 2), x2 = Math.min(w, cx + bw / 2)
+      const y1 = Math.max(0, cy - bh / 2), y2 = Math.min(h, cy + bh / 2)
+      if (x2 - x1 <= 1 || y2 - y1 <= 1) continue
+      raw.push({ cx: (x1 + x2) / 2 / w, cy: (y1 + y2) / 2 / h, w: (x2 - x1) / w, h: (y2 - y1) / h, score, verify: 0 })
     }
   })
   return nmsIou(raw, YUNET_NMS)

@@ -10,7 +10,7 @@ import { track } from '../lib/tracker'
 import { lowConfidenceTracks } from '../lib/lowconf'
 import type { Det, Track } from '../lib/types'
 
-export type AnalyzeRequest = { file: File; sensitive: boolean; base: string; backend?: 'webgpu' | 'wasm'; /** How many CPU detectors to run side by side (default: by core count). */ workers?: number; /** For tests (the page's ?detect=yunet:0,side:640,rate:5): detection pinned to these settings, no pacing, no reduced mode. */ tune?: Tune }
+export type AnalyzeRequest = { file: File; sensitive: boolean; base: string; backend?: 'webgpu' | 'wasm'; /** How many CPU detectors to run side by side (default: by core count). */ workers?: number; /** For tests on localhost only (the page's ?detect=yunet:0,side:640,rate:5): detection pinned to these settings, no pacing. A tune weaker than the default marks the video reduced, with the thresholds as they are. */ tune?: Tune }
 export type AnalyzeMessage =
   | { type: 'ready'; backend: string; width: number; height: number; duration: number; fps: number }
   | { type: 'progress'; done: number; total: number; preview?: ImageBitmap; dets?: Det[]; faces: number; backend: string; stats: AnalysisStats }
@@ -94,15 +94,21 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   let rate = tune?.rate ? Math.min(maxRate, tune.rate) : maxRate
   let fineSide = startSide
   let reduced = false
+  // `reduced`: lighter than the app's (the notice, the flag). Then the score thresholds drop too (a doubtful face is blurred rather than missed), except in a test's pinned tune.
+  let lowThr = false
   const reduce = (why: string) => {
-    if (tune && !tune.reduced) return
     if (!reduced) log(`detection reduced: ${why}`)
     reduced = true
-    detector?.setReduced(true)
+    if (!tune || tune.reduced) {
+      lowThr = true
+      detector?.setReduced(true)
+    }
   }
   // No YuNet (the model couldn't be loaded): weaker than the app's detection.
   if (detector?.yunetMissing || (pool && !pool.yunet)) reduce('no YuNet')
   if (tune?.reduced) reduce('forced for a test')
+  // A pinned tune weaker than the default is a reduced detection like any other.
+  if (tune && ((tune.side ?? startSide) < (cpuOnly ? CPU_SIDE : GPU_SIDE) || (tune.rate ?? maxRate) < maxRate)) reduce('a weaker tune')
   const spent: number[] = []
   let sinceStep: number[] = []
 
@@ -117,7 +123,10 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   let found = 0
   let decodeWait = 0, detectMs = 0, cutMs = 0, poolWait = 0
   // Where a detection's result goes (in the pool, in any order), and the pace follows from it.
-  const recordDets = (i: number, got: Det[], ms: number) => {
+  let seen = 0
+  const recordDets = (i: number, got: Det[], ms: number, skip = false, yunetOk = true) => {
+    // YuNet lost on the way (a session that fails to run): from here on it is the reduced mode.
+    if (!yunetOk || detector?.yunetMissing) reduce('YuNet failed')
     lastDets = got
     detectMs += ms
     dets.set(i, got)
@@ -125,15 +134,19 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
     // After the first (warm-up) detections, every 4 detections: the pace that keeps analysis
     // near the video's own speed (see lib/pace.ts).
     spent.push(ms)
-    sinceStep.push(ms)
+    seen++
+    // The first detections (warm-up: the shaders compile, the WebAssembly heap grows) and the GPU's check against the CPU aren't the device's pace.
+    if (!skip && seen > (pool?.size ?? 1) + 2) sinceStep.push(ms)
     if (detector) fineSide = Math.min(fineSide, detector.side)
-    if (!tune && spent.length >= (pool?.size ?? 1) + 4 && sinceStep.length >= 4) {
+    if (!tune && sinceStep.length >= 4) {
       const recent = sinceStep.slice(-4).reduce((a, b) => a + b, 0) / 4
       sinceStep = []
-      const p = pace(recent, pool?.size ?? 1, maxRate, fineSide)
+      const gpuNow = backendNow() === 'webgpu'
+      const startNow = gpuNow ? GPU_SIDE : CPU_SIDE
+      const p = pace({ recentMs: recent, workers: pool?.size ?? 1, maxRate, side: fineSide, startSide: startNow, rate, gpu: gpuNow })
       rate = p.rate
       if (p.side !== fineSide) {
-        fineSide = p.side
+        fineSide = Math.min(p.side, startNow, startSide)
         if (detector) detector.side = fineSide
       }
       if (p.reduced) reduce(`${recent.toFixed(0)} ms a detection: ${fineSide} px, ${rate.toFixed(1)}/s`)
@@ -177,11 +190,12 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
         const tp = performance.now()
         await pool.free()
         poolWait += performance.now() - tp
-        await pool.detect(canvas, i, recordDets, fineSide, reduced)
+        await pool.detect(canvas, i, recordDets, fineSide, lowThr)
       } else {
         const td = performance.now()
+        const wasChecking = detector!.checking
         const got = await detector!.detect(canvas)
-        recordDets(i, got, performance.now() - td)
+        recordDets(i, got, performance.now() - td, wasChecking)
       }
     }
     const now = performance.now()
@@ -207,7 +221,7 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   diffs.sort((a, b) => a - b)
   const fps = Math.min(240, Math.max(5, diffs.length ? 1 / diffs[diffs.length >> 1] : nominalFps))
   const tracks = track(n, dets, cutList, fps, height / width, sensitive)
-  log(`result detections ${dets.size}, faces ${faces50}, tracks ${tracks.length}, reduced ${reduced}`)
+  log(`result detections ${dets.size}, faces ${faces50}, tracks ${tracks.length}, reduced ${reduced}, yunet ${(pool?.stats() ?? detector!.stats).yunetFaces}`)
 
   // A square thumbnail of each face, from its clearest frame. The frames are decoded in one
   // pass in time order (each packet at most once): fetching them one by one, each from its

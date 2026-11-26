@@ -32,10 +32,35 @@ const EN = 'Detection reduced on this device; check faces.'
     }
     const notice = (p) => p.evaluate(() => document.querySelector('.detect-reduced')?.textContent?.trim() ?? null)
 
-    // A full run (the app's size, YuNet on): no notice.
-    let p = await open('he-IL', 'yunet:1,side:960,rate:1.5', video, '.editor')
+    // A full run (the app's size, YuNet on, 15 a second; the clip is short and has no faces): no notice.
+    let p = await open('he-IL', 'yunet:1,side:960', bars, '.no-faces')
     if ((await notice(p)) !== null) fail('a full detection shows the reduced notice')
     console.log('full: no notice')
+    // A pinned tune weaker than the default (no YuNet, a smaller frame, fewer detections) is reduced too: the notice shows.
+    for (const weak of ['yunet:0', 'side:640', 'rate:2']) {
+      p = await open('he-IL', weak, bars, '.no-faces')
+      if ((await notice(p)) !== HE) fail(`a weaker tune (${weak}) without the notice`)
+    }
+    console.log('weaker tunes: the notice')
+
+    // "Blur and save straight" with faces to be checked: nothing is saved unasked. The editor is the primary way on; "save anyway" goes on.
+    {
+      const q = await (await b.newContext({ viewport: { width: 1366, height: 860 }, locale: 'he-IL' })).newPage()
+      q.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`))
+      await q.goto(`${url}&detect=yunet:1,side:640,rate:1.5,reduced:1`)
+      await q.setInputFiles('.hero input[type=file]', video)
+      await q.waitForFunction(() => document.querySelectorAll('.info-chip').length === 3, null, { timeout: 30000 })
+      await q.click('.blur-save')
+      await q.click('.export-go')
+      await q.waitForSelector('.check-faces', { timeout: 600000 })
+      const m = await q.evaluate(() => ({ notice: document.querySelector('.check-faces .detect-reduced')?.textContent.trim(), buttons: [...document.querySelectorAll('.check-faces .btn')].map((e) => [e.textContent.trim(), e.className.includes('primary')]), exporting: !!document.querySelector('.result, .live') }))
+      if (m.notice !== HE || m.buttons[0][0] !== 'פתח בעורך' || !m.buttons[0][1] || m.buttons[1][0] !== 'שמור בכל זאת' || m.exporting) fail('the check screen: ' + JSON.stringify(m))
+      await q.screenshot({ path: `${out}/0_check.png` })
+      await q.click('.check-edit')
+      await q.waitForSelector('.editor .tabs', { timeout: 30000 })
+      if ((await q.evaluate(() => document.querySelector('.detect-reduced')?.textContent.trim())) !== HE) fail('the editor after the check screen has no notice')
+      console.log('save straight: stops at the check screen, opens the editor with the notice')
+    }
 
     // Reduced, Hebrew: the notice stays while the editor is used.
     p = await open('he-IL', 'yunet:1,side:640,rate:1.5,reduced:1', video, '.editor')
@@ -61,8 +86,6 @@ const EN = 'Detection reduced on this device; check faces.'
     p = await open('he-IL', 'yunet:1,side:640,rate:1.5,reduced:1', bars, '.no-faces')
     if ((await notice(p)) !== HE) fail('no faces: the notice is missing')
     console.log('no faces reduced:', await notice(p))
-    p = await open('he-IL', 'yunet:1,side:960,rate:1.5', bars, '.no-faces')
-    if ((await notice(p)) !== null) fail('no faces: a notice with a full detection')
     console.log('reduced: ok')
   } catch (e) {
     console.error('FAIL', e.message)

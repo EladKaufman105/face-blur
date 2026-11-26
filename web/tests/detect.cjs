@@ -26,8 +26,8 @@ async function run(b, clip, detect) {
   const line = logs.find((l) => /ONIT analyze: result /.test(l))
   await p.context().close()
   if (!line) throw new Error('no result line for ' + clip + '\n' + logs.join('\n'))
-  const m = /detections (\d+), faces (\d+), tracks (\d+)/.exec(line)
-  return { detections: +m[1], faces: +m[2], tracks: +m[3], s: ms / 1000 }
+  const m = /detections (\d+), faces (\d+), tracks (\d+), reduced \w+, yunet (\d+)/.exec(line)
+  return { detections: +m[1], faces: +m[2], tracks: +m[3], yunet: +m[4], s: ms / 1000 }
 }
 
 ;(async () => {
@@ -43,6 +43,8 @@ async function run(b, clip, detect) {
       rows.push(row)
       console.log(JSON.stringify(row))
       if (old.detections !== now.detections) throw new Error(`${row.clip}: not the same frames (${old.detections} vs ${now.detections})`)
+      // YuNet ran in the new run (its faces were counted before the fusion) and not in the old.
+      if (old.yunet !== 0 || now.yunet === 0) throw new Error(`${row.clip}: YuNet ran ${now.yunet} / ${old.yunet} faces (new / old)`)
       if (now.faces < old.faces) throw new Error(`${row.clip}: the new detector found fewer faces (${now.faces} < ${old.faces})`)
     }
     fs.writeFileSync(`${out}/detect.json`, JSON.stringify(rows, null, 1))
