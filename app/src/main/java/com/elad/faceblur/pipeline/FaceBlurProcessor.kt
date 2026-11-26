@@ -406,9 +406,7 @@ class FaceBlurProcessor(private val context: Context) {
             out.delete()
         }
         // Subtitle files in the cut video's time.
-        val srtCues = if (cutMap.isEmpty) cues else cues.mapNotNull { c ->
-            cutMap.mapMs(c.startMs, c.endMs)?.let { (a, b) -> c.copy().also { it.startMs = a; it.endMs = b } }
-        }
+        val srtCues = cutMap.mapCues(cues)
         val srts = if (export.saveSrt && srtCues.isNotEmpty()) withContext(Dispatchers.IO) {
             Srt.saveAll(context, base, srtCues)
         } else 0

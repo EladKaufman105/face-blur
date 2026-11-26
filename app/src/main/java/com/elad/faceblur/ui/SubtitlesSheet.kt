@@ -135,6 +135,7 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
     var speechPick by remember { mutableStateOf(SubLanguages.AUTO) }
     // With subtitles already made, creating them again folds away.
     var createOpen by remember { mutableStateOf(ctrl.model.cues.isEmpty()) }
+    val saveSrt = rememberSrtSave(ctrl)
     // In the timeline's place on a phone, beside the video on a tablet: like the other panels.
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
       Column(Modifier.fillMaxWidth()) {
@@ -197,6 +198,7 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
                     ctrl.subsSheet = false
                     ctrl.stylePanel = true
                 }
+                ActionRow(AppIcons.Download, t("שמור SRT עכשיו"), t("קובצי SRT ב-Download/ONIT, בלי לייצא את הסרטון"), enabled = !busy, onClick = saveSrt)
                 val missing = ctrl.untranslatedCount
                 val again = ctrl.staleCount
                 if (missing + again > 0 && models != null) {

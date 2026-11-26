@@ -50,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDirection
@@ -134,6 +135,7 @@ fun AllSubtitlesPanel(ctrl: EditorController, modifier: Modifier = Modifier, sty
     val nowMs = ctrl.nowMs
     val current = cues.indexOfFirst { nowMs >= it.startMs && nowMs < it.endMs }
     val translated = ctrl.hasTranslation
+    val saveSrt = rememberSrtSave(ctrl)
     // Follow the playback.
     LaunchedEffect(current, ctrl.playing) {
         if (ctrl.playing && current >= 0) list.animateScrollToItem(current)
@@ -148,6 +150,10 @@ fun AllSubtitlesPanel(ctrl: EditorController, modifier: Modifier = Modifier, sty
                     )
                 }
                 IconButton(onClick = { findOpen = !findOpen }) { Icon(Icons.Filled.Search, t("חפש והחלף")) }
+                // The subtitles as .srt files now, without exporting.
+                if (cues.isNotEmpty()) {
+                    IconButton(onClick = saveSrt, enabled = !ctrl.subsBusy, modifier = Modifier.testTag(Tags.SRT_SAVE)) { Icon(AppIcons.Download, t("שמור SRT עכשיו")) }
+                }
             }
             if (ctrl.bleepMode) {
                 Text(
