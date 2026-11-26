@@ -70,7 +70,7 @@ case "${1:?shard}" in
     # The speech model's flow with no download: faster / better quality kept, a stuck recognition ends with an error and a retry, Cancel ends the worker, a template asks before downloading.
     t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 40
     # Detection that ran lighter than the app's is never silent: the notice in the editor and on the "no faces" screen (he and en), none after a full run.
-    t reduced.cjs "$U" $S/classroom.mp4 $R/reduced   # 30
+    t reduced.cjs "$U" $S/walk.mp4 $R/reduced   # 40
     # The watermark's logo kept between visits and a template's logo shown; the template editor asking before it drops changes, and "Edit" for the chosen template (ready screen, batch); the safe zone's switch, chooser and mock (9:16 only, never in the export); the thin scrubber over a phone's panel; the low-confidence rule.
     t parity2.cjs "$U" $S/speech_two.mp4 $S/stress_cuts.mp4 $R/parity2   # 30
     # Two fingers on the video resize the selected blur, one undo step each.

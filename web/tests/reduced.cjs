@@ -26,18 +26,19 @@ const EN = 'Detection reduced on this device; check faces.'
       await p.setInputFiles('.hero input[type=file]', file)
       await p.waitForSelector('.ready')
       await p.click('.blur-faces')
-      await p.waitForSelector(selector, { timeout: 600000 })
+      await p.waitForSelector('.editor, .no-faces, .card.error', { timeout: 600000 })
+      if (!(await p.$(selector))) throw new Error(`wanted ${selector}, got ` + (await p.evaluate(() => document.querySelector('main')?.className)))
       return p
     }
     const notice = (p) => p.evaluate(() => document.querySelector('.detect-reduced')?.textContent?.trim() ?? null)
 
     // A full run (the app's size, YuNet on): no notice.
-    let p = await open('he-IL', 'yunet:1,side:960,rate:1', video, '.editor')
+    let p = await open('he-IL', 'yunet:1,side:960,rate:1.5', video, '.editor')
     if ((await notice(p)) !== null) fail('a full detection shows the reduced notice')
     console.log('full: no notice')
 
     // Reduced, Hebrew: the notice stays while the editor is used.
-    p = await open('he-IL', 'yunet:1,side:640,rate:1,reduced:1', video, '.editor')
+    p = await open('he-IL', 'yunet:1,side:640,rate:1.5,reduced:1', video, '.editor')
     if ((await notice(p)) !== HE) fail('Hebrew notice: ' + (await notice(p)))
     await p.click('.tabs button[data-g=sound]')
     await p.waitForTimeout(500)
@@ -46,16 +47,16 @@ const EN = 'Detection reduced on this device; check faces.'
     console.log('reduced he:', await notice(p))
 
     // English.
-    p = await open('en-US', 'yunet:1,side:640,rate:1,reduced:1', video, '.editor')
+    p = await open('en-US', 'yunet:1,side:640,rate:1.5,reduced:1', video, '.editor')
     if ((await notice(p)) !== EN) fail('English notice: ' + (await notice(p)))
     await p.screenshot({ path: `${out}/2_reduced_en.png` })
     console.log('reduced en:', await notice(p))
 
     // No face found by a reduced detection: the screen says that too (a miss may be the lighter detection's).
-    p = await open('he-IL', 'yunet:1,side:640,rate:1,reduced:1', bars, '.no-faces')
+    p = await open('he-IL', 'yunet:1,side:640,rate:1.5,reduced:1', bars, '.no-faces')
     if ((await notice(p)) !== HE) fail('no faces: the notice is missing')
     console.log('no faces reduced:', await notice(p))
-    p = await open('he-IL', 'yunet:1,side:960,rate:1', bars, '.no-faces')
+    p = await open('he-IL', 'yunet:1,side:960,rate:1.5', bars, '.no-faces')
     if ((await notice(p)) !== null) fail('no faces: a notice with a full detection')
     console.log('reduced: ok')
   } catch (e) {
