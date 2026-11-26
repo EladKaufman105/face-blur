@@ -65,6 +65,7 @@ jobs:
               - '.github/workflows/**'
               - '.github/actions/**'
               - 'ci/web-tests.sh'
+              - 'ci/web_i18n_check.py'
               - 'web/**'
               # What web/scripts/copy-assets.mjs takes from the Android app.
               - 'app/src/main/assets/retinaface_mv2.onnx'

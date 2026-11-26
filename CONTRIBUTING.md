@@ -27,7 +27,7 @@ With the repository setting "Automatically delete head branches" on, a feature b
 
 Commit messages are one short plain sentence about the user-visible effect. An area prefix is optional (`Editor: ...`, `Web: ...`).
 
-Every user-visible string needs its English text. The UI is Hebrew and English. Check with `python3 ci/i18n_check.py`.
+Every user-visible string needs its English text. The UI is Hebrew and English. Check with `python3 ci/i18n_check.py` (the app) and `python3 ci/web_i18n_check.py` (the web app).
 
 ## Build locally
 

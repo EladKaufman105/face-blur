@@ -87,7 +87,7 @@ case "${1:?shard}" in
     # The speech model's flow with no download: faster / better quality kept, a stuck recognition ends with an error and a retry, Cancel ends the worker, a template asks before downloading.
     t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 38
     ;;
-  5) # about 185 s
+  5) # about 210 s
     # A subtitle edited so a bleeped word may show: the alert, the mark on the timeline, the export asking first; a deleted subtitle's bleeps listed.
     t maskwarn.cjs "$U" $S/speech_two.mp4 $R/maskwarn   # 37
     # The landing page (/home/): it loads whole, its parts work, its links lead to the editor.
@@ -103,6 +103,10 @@ case "${1:?shard}" in
       # Editing on a phone.
       t edit.cjs "$U" $S/speech_two.mp4 $R/editp phone   # 18
     fi
+    # The editor as the app's, part three (in English): a subtitle merged with the one before or after it, a tablet's side panel with
+    # the selected subtitle's properties, the blur view (blur / outlines), the export's size estimate, a failed export's details to
+    # copy, the report of an error nothing caught.
+    t parity3.cjs "$U" $S/speech_two.mp4 $R/parity3   # 25
     ;;
   6) # about 188 s
     # The sound's cleanup, MP3 (from the editor and the home screen), a lower size and frame rate.
