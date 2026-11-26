@@ -876,6 +876,8 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   /* Short of room (a narrow phone, or the BETA mark in the bar), Export keeps only its icon: its name stays for screen readers. */
   @container (max-width: 359px) { .editor.narrow .top-row .btn.primary { width: 44px; padding-inline: 0; justify-content: center; } .editor.narrow .top-row .exp-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } }
   @container (max-width: 405px) { .editor.narrow .top-row.beta .btn.primary { width: 44px; padding-inline: 0; justify-content: center; } .editor.narrow .top-row.beta .exp-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } }
+  /* The safe zone's switch and the blur view both there (one icon more): Export keeps only its icon sooner, and in the beta the BETA mark gives way. */
+  @container (max-width: 420px) { .editor.narrow .top-row.many .btn.primary { width: 44px; padding-inline: 0; justify-content: center; } .editor.narrow .top-row.many .exp-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } .editor.narrow .top-row.many .beta-mini { display: none; } }
   .editor.narrow .player > .row .export-bar .save-template-btn { padding-inline: 0; }
   /* What does not fit is taken from the panel (its body scrolls), never from the bar of groups. */
   .editor.narrow > .side { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; padding: 0 0 max(4px, env(safe-area-inset-bottom)); }
@@ -1012,6 +1014,10 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .cue-field { display: grid; gap: 4px; }
 .cue-prop-row { gap: var(--space-2); align-items: center; }
 .cue-sheet-acts { gap: var(--space-2); }
+.cue-props.in-side { background: none; border: 0; padding: 0; }
+.cue-merge-row, .cue-side-acts { gap: var(--space-2); flex-wrap: wrap; }
+.cue-side { display: grid; gap: var(--space-3); }
+.btn.danger { color: #e5484d; }
 .editor.narrow .player > .cue-props { order: 6; }
 .editor.narrow .player > .cue-bar { order: 5; }
 .cue-bar .ctx-act { min-width: 52px; padding-inline: 3px; }
@@ -1019,7 +1025,7 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .tpl-leave { padding: var(--space-3); border: 1px solid var(--outline-soft); border-radius: var(--radius-card); background: var(--surface-2); }
 
 /* The safe zone's chooser: a strip of its own above the video, a pill of three equal logos with a highlight that slides. */
-.safe-toggle.on { color: var(--primary); }
+.safe-toggle.on, .blur-view.on { color: var(--primary); }
 .safe-strip { flex: none; height: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; transition: height var(--motion-panel) ease; }
 .safe-strip.open { height: 48px; }
 .safe-pill { position: relative; box-sizing: border-box; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; width: clamp(240px, var(--w, 240px), calc(100% - 24px)); padding: 2px; border-radius: 999px; background: var(--surface-3); border: 1px solid var(--outline-soft); --seg: calc((100% - 12px) / 3); }
@@ -1038,3 +1044,9 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 
 /* A subtitle that may show a bleeped word (its text was edited): marked on the timeline. */
 .tl-cue.warn { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+/* A failure's technical details (folded) and the report of an error nothing caught, as the app's. */
+.error-details { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 10px; }
+.error-details-text { flex: 1 1 100%; margin: 0; max-height: 240px; overflow: auto; padding: var(--space-3); border-radius: var(--radius-control); background: var(--surface-3); font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word; text-align: left; }
+.crash-back { z-index: 60; }
+.crash-dialog { grid-template-rows: auto auto minmax(0, 1fr) auto; }

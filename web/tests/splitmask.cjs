@@ -29,6 +29,11 @@ const toks = (s) => s.match(/\S+/g) ?? []
   const q = splitCueAtTime(cues[0], 1.45, words, b)
   eq('rep2 playhead split', q.map((h) => maskCue(h, words, b)), ['you', '**** ok.'])
 }
+// ---- sentence ends, as the app's (SubLanguages.endsSentence): . ? ! … and the Arabic question mark and full stop
+{
+  const words = W([['هل', 1.0], ['أنت؟', 1.2], ['نعم۔', 1.4], ['تمام.', 1.6], ['שלום!', 1.8], ['טוב…', 2.0], ['ok?', 2.2], ['x', 2.4]])
+  eq('sentence ends', wordsToCues(words).map((c) => c.text), ['هل أنت؟', 'نعم۔', 'تمام.', 'שלום!', 'טוב…', 'ok?', 'x'])
+}
 // ---- saved projects: the words a subtitle had by time are kept once
 {
   const words = W([['a', 1.0], ['b', 1.5], ['[x]', 1.7], ['c', 2.0]])

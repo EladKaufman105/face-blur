@@ -635,6 +635,21 @@ const EN: Record<string, string> = {
   'עשית שינויים בתבנית שלא נשמרו.': "You made changes to the template that aren't saved.",
   'המשך לערוך': 'Keep editing',
   'בטל שינויים': 'Discard changes',
+  // Parity with the app: the export's size estimate, failures' details and the crash report, the blur view, subtitle properties.
+  'יוצא: %s · %s · גודל משוער %s': 'Output: %s · %s · about %s',
+  'המכשיר לא הצליח לשמור ברזולוציה הזו. בחר 1080p או 720p בהגדרות הייצוא ונסה שוב.': "The device couldn't save at this resolution. Choose 1080p or 720p in the export settings and try again.",
+  'המכשיר לא הצליח לפענח את הסרטון הזה. נסה רזולוציה נמוכה יותר בהגדרות הייצוא.': "The device couldn't decode this video. Try a lower resolution in the export settings.",
+  'אין מספיק זיכרון במכשיר לייצוא הזה. סגור לשוניות אחרות, או בחר רזולוציה נמוכה יותר בהגדרות הייצוא, ונסה שוב.': 'Not enough memory on this device for this export. Close other tabs, or choose a lower resolution in the export settings, then try again.',
+  'לא הצלחתי לקרוא או לכתוב את הקובץ. בדוק שיש מקום פנוי במכשיר ונסה שוב.': "Couldn't read or write the file. Check there's free space on the device, then try again.",
+  'משהו השתבש בעיבוד. נסה שוב; אם זה חוזר, העתק את הפרטים הטכניים ושלח אותם.': 'Something went wrong while processing. Try again; if it happens again, copy the technical details and send them.',
+  'פרטים טכניים': 'Technical details',
+  'הסתר פרטים טכניים': 'Hide technical details',
+  'העתק את הפרטים': 'Copy the details',
+  'הפרטים הועתקו': 'Details copied',
+  'האפליקציה נתקלה בשגיאה. העתק את הפרטים ושלח אותם כדי שאפשר יהיה לתקן אותה. שום דבר לא נשלח מכאן בעצמו.': 'The app ran into an error. Copy the details and send them so it can be fixed. Nothing is sent from here by itself.',
+  'מאפיינים': 'Properties',
+  'תצוגה': 'Preview',
+  'תצוגה: טשטוש או קווי מתאר': 'Preview: blur or outlines',
 }
 
 /** More English (the beta's own strings, see ui/Beta.tsx). */

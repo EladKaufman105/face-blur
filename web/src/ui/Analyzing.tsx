@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
+import { technical } from '../lib/errors'
 import { t, duration } from '../i18n'
 import type { Analysis } from '../lib/types'
 import type { AnalyzeMessage, AnalyzeRequest } from '../workers/analyze.worker'
@@ -14,7 +15,8 @@ type Props = {
   /** The first of two steps (found, then saved straight away). */
   twoSteps?: boolean
   onDone: (a: Analysis, thumbs: (string | null)[], ms: number, backend: string) => void
-  onError: (message: string) => void
+  /** What went wrong, and its technical details (to copy). */
+  onError: (message: string, details?: string) => void
   onCancel: () => void
 }
 
@@ -79,12 +81,12 @@ export function Analyzing({ file, sensitive, twoSteps, onDone, onError, onCancel
         worker.terminate()
       } else if (m.type === 'error') {
         worker.terminate()
-        onError(m.code === 'codec' ? t('הדפדפן לא מצליח לפענח את הסרטון הזה (%s). נסה Chrome או Safari מעודכנים.', m.message.replace("can't decode ", '')) : t('לא ניתן לפתוח את הסרטון') + ` (${m.message})`)
+        onError(m.code === 'codec' ? t('הדפדפן לא מצליח לפענח את הסרטון הזה (%s). נסה Chrome או Safari מעודכנים.', m.message.replace("can't decode ", '')) : t('לא ניתן לפתוח את הסרטון') + ` (${m.message})`, technical('face detection', m.message, m.code))
       }
     }
     worker.onerror = (e) => {
       worker.terminate()
-      onError(e.message || t('משהו השתבש'))
+      onError(t('משהו השתבש בעיבוד. נסה שוב; אם זה חוזר, העתק את הפרטים הטכניים ושלח אותם.'), technical('face detection worker', e.message || 'error'))
     }
     const forced = new URLSearchParams(location.search).get('backend')
     const req: AnalyzeRequest = { file, sensitive, base: new URL('.', document.baseURI).href, backend: forced === 'wasm' || forced === 'webgpu' ? forced : undefined, workers: Number(new URLSearchParams(location.search).get('workers')) || undefined }

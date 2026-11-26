@@ -10,6 +10,10 @@ font.load().then((f) => document.fonts.add(f)).catch(() => {})
 
 import { startServiceWorker } from './lib/isolation'
 import { loadLogo } from './lib/logostore'
+import { installCrashReport } from './lib/errors'
+
+// An error nothing caught is shown with its details to copy (as the app's crash report); nothing is sent.
+installCrashReport()
 
 // The service worker (public/sw.js) receives videos shared to the installed app and makes the page
 // cross-origin isolated (WebAssembly threads); see lib/isolation.ts. The first visit reloads once,

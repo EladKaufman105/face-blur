@@ -2,7 +2,7 @@
 
 The app (`app/`) and the web app (`web/`) offer the same features. This file tracks where they differ. The `parity` agent (`.claude/agents/parity.md`) keeps it current.
 
-Source: parity audit of `origin/develop` at bf160f9 (2026-11-26). Paths: `A` = `app/src/main/java/com/elad/faceblur`, `W` = `web/src`. "unverified" means it could not be confirmed from code alone.
+Source: parity audit of `origin/develop` at bf160f9 (2026-11-26), refreshed at f60e7ba (2026-11-26) for the app's PR #34 (no-blur warning, MP3 with edits, find faces, face list, SRT import) and the web's parity gaps (sentence ends, merge with the previous subtitle, size estimate, error details and report, blur view, subtitle properties on a tablet, web i18n check). Paths: `A` = `app/src/main/java/com/elad/faceblur`, `W` = `web/src`. "unverified" means it could not be confirmed from code alone.
 
 Status values:
 
@@ -31,10 +31,10 @@ Rows marked **privacy** must be closed first.
 | Feature | App | Web | Status | Note / link |
 |---|---|---|---|---|
 | Face detection strength (**privacy**) | RetinaFace fused with YuNet, 1280 px GPU / 960 px CPU, 15/s | RetinaFace only; 960 px GPU / 640 px CPU; rate drops to 4/s on slow devices (`W/lib/detector.ts:14`, `W/workers/analyze.worker.ts:105`) | differs | More missed faces on web. Add YuNet or warn when rate or size was reduced |
-| Low-confidence faces flag | Batch flags uncertain videos (`A/batch/BatchRunner.kt:101`) | Not flagged | gap-web | Port `lowConfidenceTracks` |
+| Low-confidence faces flag | Batch flags uncertain videos (`A/batch/BatchRunner.kt:101`) | Batch flags them too: "Uncertain detection: worth checking the faces in the editor" (`W/lib/lowconf.ts`, `W/lib/batch.ts:284`, `W/ui/Batch.tsx:271`) | same | |
 | "No faces" path | "Mark by hand" / "Try extended detection" | Same (`W/ui/Ready.tsx:222`) | same | |
-| Template with face blur OFF, Ready screen (**privacy**) | Button still says "Blur faces"; no warning (`A/ui/ReadyScreen.kt:70`, `A/MainViewModel.kt:830`) | "Open in editor" and red alert "faces will NOT be blurred" (`Ready.tsx:136`) | gap-app | User can believe faces are blurred. Copy the web behaviour |
-| Blur-off template, "Blur and save straight" (**privacy**) | Saves straight (`start()` -> `startTool(null, tpl)` -> `render(auto=true)`), but the button still says "טשטש ושמור ישר" (`ReadyScreen.kt:81`, `MainViewModel.kt:830`) | Label "Save straight", batch-of-one path runs (`Ready.tsx:138`, `app.tsx:138`) | differs | The app's label claims blur that does not happen. PR #34 changes the label |
+| Template with face blur OFF, Ready screen (**privacy**) | "Open in editor", "no face blur: the editor opens" and a red alert "faces will NOT be blurred" (`A/ui/ReadyScreen.kt:69`, `NoBlurWarning` `:131`) | "Open in editor" and red alert "faces will NOT be blurred" (`W/ui/Ready.tsx:137`) | same | Same Hebrew strings on both |
+| Blur-off template, "Blur and save straight" (**privacy**) | "Or: save straight, no editor", the sheet's button "Save straight"; no detection, the template's processing applied (`A/ui/ReadyScreen.kt:85`, `:124`, `A/template/StartRoute.kt`) | Label "Save straight", batch-of-one path runs (`W/ui/Ready.tsx:139`, `:199`, `W/app.tsx`) | same | |
 | Template picker on Ready | Cards, "Edit" next to chosen template (`A/ui/TemplatesUi.kt:255`) | Cards, inline rename, no Edit (`W/ui/TemplatePicker.tsx:55`) | gap-web | Add Edit |
 | Speech model on Ready | Row with download button | Dialog with size (`W/ui/SpeechUi.tsx`) | differs | |
 | Blur and save straight | Export sheet, then auto flow | Same (`Ready.tsx:196`) | same | |
@@ -46,16 +46,16 @@ Rows marked **privacy** must be closed first.
 
 | Feature | App | Web | Status | Note / link |
 |---|---|---|---|---|
-| Top bar | Back, title, blur view toggle, safe zone, undo, redo, Export | Back, undo, redo, save template, settings, Export (`W/ui/Editor.tsx:1262`) | differs | |
-| Blur view toggle (blur / outlines) | Yes (`A/ui/EditorScreen.kt:322`) | None | gap-web | Optional |
+| Top bar | Back, title, Properties (tablet, panel closed), blur view toggle, safe zone, undo, redo, Export | Back, Properties (tablet, panel closed), safe zone, undo, redo, blur view, save template, settings, Export (`W/ui/Editor.tsx` `editTools`) | differs | Order and the web's save-template and settings icons |
+| Blur view toggle (blur / outlines) | Eye icon: the real blur in the player, or outlines only (`A/ui/EditorScreen.kt:333`, `A/edit/EditorController.kt` `togglePreview`) | Eye icon `.blur-view` (shown once there are blurs): the blur, or each blur as a light shape with its number; editor only, never the export (`W/ui/Editor.tsx` `blurView`, `web/tests/parity3.cjs`) | same | |
 | Transport | Time, prev, play, next, zoom -/+ | Prev, play, next, time; zoom by pinch and keys | differs | Web: add zoom buttons (unverified) |
 | Mini scrubber while a panel is open (phone) | `MiniScrubber` (`A/ui/EditorShell.kt:518`) | Thin range input at the top of the open phone panel (`W/ui/Editor.tsx`, `web/tests/parity2.cjs`) | same | Hidden under 600 px of height |
 | Keyboard shortcuts | none | Space, J/K/L, arrows, Ctrl+Z, Delete, Esc (`Editor.tsx:1385`) | exception | Platform: keyboard |
 | Timeline lanes | Filmstrip, subtitles, sounds, blur, cuts, bleep marks | Filmstrip, subtitles, sounds, faces, cuts; bleep marks not seen (unverified) | differs | |
 | Subtitle clips on timeline | Tap selects, drag edges to retime (`EditorScreen.kt:1353`) | Tap selects, handles retime, one undo step (`W/ui/Timeline.tsx`, `web/tests/cues.cjs`) | same | Web clamps to the neighbours; the app lets them overlap |
 | Group bar | 6 groups with "on" dot | 6 groups | same | |
-| Per-face list | No list; each blur is a clip | Thumbnails, tap to turn on/off, All / None (`Editor.tsx:1116`) | gap-app | Add per-face toggle |
-| Find faces after entering via a tool | Not available (`A/MainViewModel.kt:892`) | "Find faces" in Faces tab (`Editor.tsx:1099`) | gap-app | |
+| Per-face list | Tiles with a picture of each face, tap to turn its blur off or on, All / None, one undo step each (`A/ui/FacesList.kt`, in the privacy panel `A/ui/EditorScreen.kt:611`) | Thumbnails, tap to turn on/off, All / None (`W/ui/Editor.tsx`, Faces tab) | same | |
+| Find faces after entering via a tool | "Find faces" in the privacy panel of a session opened without detection; the edits stay (`A/ui/FacesList.kt:58`, `A/edit/EditorController.kt:1091`) | "Find faces" in Faces tab (`W/ui/Editor.tsx`) | same | |
 
 ## Editor: tools by group
 
@@ -73,10 +73,10 @@ Rows marked **privacy** must be closed first.
 | Subtitles: translate | ML Kit on the device between he, en, ar and fa, every pair (two non-English languages go through English; one pack per language, downloaded once); "Translate to" chips: automatic, he, en, ar, fa (`A/subs/Translator.kt`, `A/subs/SubtitleEngine.kt`) | Translator API in Chrome/Edge only; he/en/ar/fa (`W/lib/translate.ts:5`) | differs | Differs only in engine and availability. The app keeps the "Translate to" choice per project; a subtitle holds the spoken text and one translation |
 | Subtitles: Arabic and Persian text on screen | Right to left by the text, joined letters, line breaks by the system text layout; the bundled fonts have no Arabic letters, so the system font draws them (same as the web: `system-ui`) in the preview and the burned-in video | Same: canvas, bundled font then `system-ui` (`W/lib/substyle.ts` `fontFamily`) | same | Unverified on a device: the weight of the fallback glyphs follows the system font. Neither platform bundles an Arabic font; add one to both if the result looks thin |
 | Subtitles: bleep words in Arabic and Persian | A bleeped word is hidden with its diacritics (marks count as part of the word) and the punctuation around it kept, like the web (`A/edit/Subtitles.kt` `mask`) | `maskCue` and `normWord` (`W/lib/subtitles.ts`) | same | The app masks by place (time), so it needs no text matching and has no `normWord`; the web needs it to find a bleeped word in edited text |
-| Subtitles: sentence ends | `. ? ! …` and the Arabic question mark and full stop (`؟ ۔`) | `. ? ! …` only (`W/lib/subtitles.ts` `wordsToCues`) | gap-web | Web: add `؟` and `۔` to the sentence end test |
+| Subtitles: sentence ends | `. ? ! …` and the Arabic question mark and full stop (`؟ ۔`) (`A/subs/SubLanguages.kt:96`) | Same (`W/lib/subtitles.ts` `wordsToCues`, `web/tests/splitmask.cjs`) | same | |
 | Subtitles: SRT file name and import by language | Import: Arabic and Persian text is spoken text in that language; saved files are named by the language most of the text is in (no duplicate file when both slots have the same text) (`.ar.srt`, `.fa.srt`, `.he.srt`, `.en.srt`) | Web SRT import and download: unverified for Arabic and Persian | differs | Check the web names and the import of Arabic text |
 | Subtitles: speakers | Find speakers, colors, per-cue dot | `W/ui/Speakers.tsx` | same | |
-| Subtitles: import SRT | None | Import with replace confirmation (`W/ui/EditorTabs.tsx:549`) | gap-app | |
+| Subtitles: import SRT | "Import SRT file" in the subtitles sheet and the list; replacing asks first and says how many bleeps go; one undo step (`A/ui/SrtImport.kt:39`) | Import with replace confirmation (`W/ui/EditorTabs.tsx:560`) | same | |
 | Subtitles: download SRT now | Only at export | Button in list plus export option | gap-app | |
 | Subtitles: find and replace, split rule | Yes | Yes | same | |
 | Subtitles: bleep words placement | Under Sound > Voice and bleeps, and list header | Under Subtitles > Bleep words | differs | Align placement or accept |
@@ -100,16 +100,16 @@ Rows marked **privacy** must be closed first.
 |---|---|---|---|---|
 | Layout rule | `isWide()` (`A/ui/Adaptive.kt:49`) | Media queries for 601-1100 px; desktop layout above | exception | Desktop layout is web only |
 | Side rail, panel beside video, panel hide | Yes | Yes (`web/tests/parity.cjs`) | same | |
-| Properties panel for selected clip | Blur, subtitle, sound | Blur bar and sound bar only | gap-web | Needs subtitle selection |
+| Properties panel for selected clip | The side panel shows the selected blur's, subtitle's or sound's properties; "Properties" in the top bar when the panel is closed (`A/ui/EditorScreen.kt:1733` `PropertiesPanel`) | Subtitle: the same, in the side panel (text, translation, speaker, times, start / end here, split, merge with the previous or next, delete; `W/ui/CueBar.tsx` `CueSidePanel`, `web/tests/parity3.cjs`). Blur and sound: their bars (`W/ui/BlurBar.tsx`, the transport row) | differs | Web: blur and sound properties in the side panel too. The web shows a speaker only once speakers were found |
 
 ## Selection and context bars
 
 | Feature | App | Web | Status | Note / link |
 |---|---|---|---|---|
 | Selected blur | Bar: Properties, Split, Follow, Delete | Bar: Show/Blur toggle, Split, Start/End here, Follow, Size, Delete (`W/ui/BlurBar.tsx:48`) | differs | See per-face toggle |
-| Selected subtitle | Bar and properties: text, translation, speaker, times, start/end here, split, merge, delete | Same (`W/ui/CueBar.tsx`) | same | |
+| Selected subtitle | Bar and properties: text, translation, speaker, times, start/end here, split, merge, delete | Same (`W/ui/CueBar.tsx`; on a tablet the properties are in the side panel) | same | |
 | Selected sound | Play, Move here, Delete; volume, start | Inline name, volume, Move here, Delete; no Play | differs | Web: add Play |
-| Merge subtitle | With previous or next | With next only | gap-web | |
+| Merge subtitle | The bar's Merge: with the next, the last with the previous; the subtitle's editor: "merge with previous" and "merge with next" (`A/ui/EditorShell.kt:285`, `A/ui/SubtitlesSheet.kt:523`) | Same: the bar's Merge, and both in the properties (`W/ui/CueBar.tsx` `.cue-merge-prev`, `.cue-merge-next`; `web/tests/parity3.cjs`) | same | |
 
 ## Safe zone
 
@@ -122,17 +122,17 @@ Rows marked **privacy** must be closed first.
 | Feature | App | Web | Status | Note / link |
 |---|---|---|---|---|
 | Resolution, format, fps, quality, codec | `A/ui/SettingsPanels.kt:110` | `W/ui/ExportSheet.tsx:60` | same | |
-| Estimated output size | "Output: WxH, fps, about X MB" | None | gap-web | Bitrate math in `W/lib/exportopts.ts` |
+| Estimated output size | "Output: WxH · fps · about X MB" (`A/ui/SettingsPanels.kt:280`, `A/pipeline/ExportOptions.kt` `estimatedBytes`) | Same text and math: the video bitrate asked for plus 128 kbps of sound, over the video's length (`W/lib/exportopts.ts` `estimatedBytes`, `W/ui/ExportSheet.tsx`, `web/tests/parity3.cjs`) | same | Neither takes the cuts off the length |
 | Subtitles in export | 4 choices plus burn | Burn toggle; language set in translation card | differs | |
 | SRT file | Saved to Download/ONIT | Download link after export | differs | |
 | Watermark row in sheet | Edit button | None (own tab) | differs | |
-| MP3 with edits (**privacy**) | MP3 tool converts the raw sound; no voice change or cuts (`A/audio/Mp3Encoder.kt:56`) | MP3 in export sheet applies cuts, cleanup, voice change, effects | gap-app | Raw voice can leave the device. Apply edits or warn |
+| MP3 with edits (**privacy**) | The export sheet's "sound only (MP3)" applies voice change, cuts, bleeps, effects and cleanup; a failure fails the export, the original sound is never saved instead; all muted: nothing to save (`A/audio/Mp3Plan.kt`, `A/MainViewModel.kt:976` `exportMp3`) | MP3 in export sheet applies cuts, cleanup, voice change, effects | same | The home screen's MP3 tool converts an unedited video on both |
 | Sound failure gate (**privacy**) | Audio processors run in the export pipeline, failure fails export (`A/pipeline/FaceBlurProcessor.kt:303`); unverified that every path is closed | Explicit: voice-change failure blocks export (`Editor.tsx:675`, `Exporting.tsx:39`) | differs | App: verify fail-closed, add a test |
 | Lost-bleeps warning | None; bleeps stored as time ranges | Warning when new subtitles drop bleeped words | exception | App design avoids the loss |
-| Location and phone metadata scrubbed (**privacy**) | `Mp4Privacy.scrub`, run as `runCatching { ... }.getOrDefault(-1)` and the file is saved anyway (`A/pipeline/FaceBlurProcessor.kt:364`) | `allowTransformationMetadata:false`, `web/tests/privacy.cjs` | differs | App scrub is fail-open (fix pending). MP3 path unverified on both |
+| Location and phone metadata scrubbed (**privacy**) | `Mp4Privacy.scrubOrFail`: a failed scrub fails the export, nothing is saved (`A/pipeline/FaceBlurProcessor.kt:402`, `A/pipeline/Mp4Privacy.kt:17`) | `allowTransformationMetadata:false`, `web/tests/privacy.cjs` | same | MP3 path unverified on both |
 | Result screen | Share, Open, back to editing, face count, review note | Save, Share, SRT, back to editing, review note | differs | "Open" has no web equivalent |
 | Output location | `Movies/ONIT`, `Download/ONIT` | Browser download | exception | Platform |
-| Error handling | Friendly mapping, technical details, send-report dialog | Plain messages, no report | gap-web | Add copy-details |
+| Error handling | Friendly mapping, technical details folded under it, sent with the share sheet (`A/pipeline/ProcessingErrors.kt`, `A/ui/MainScreen.kt` `MessageCard`) | Friendly mapping of the export's failures (the app's texts), technical details folded under it, copied to the clipboard (`W/lib/errors.ts`, `W/ui/ErrorReport.tsx`, `W/ui/Exporting.tsx`, `web/tests/parity3.cjs`) | same | Web copies instead of sharing: the page sends nothing itself |
 
 ## Templates
 
@@ -157,10 +157,10 @@ Rows marked **privacy** must be closed first.
 | Runs in background | Foreground service, survives screen off | Only while the tab is open; Wake Lock | exception | See Accepted exceptions |
 | Queue, ETA, percent, skip, cancel all | Yes | Yes | same | |
 | Results location | `Movies/ONIT` plus projects folder | Blobs in memory, per-file download, "Save all" | exception | Memory pressure for 10 long videos (unverified) |
-| Flags | Failed, no faces, low confidence, step failed | Failed, no faces, step note | gap-web | Low confidence, see above |
+| Flags | Failed, no faces, low confidence, step failed | Failed, no faces, low confidence, step note (`W/lib/batch.ts` `needsCheck`) | same | |
 | Free-storage check | Device storage | Browser quota | differs | |
 | Speech model | Download button | Notice plus dialog | differs | |
-| Blur-off warning (**privacy**) | None | Red alert "faces will not be blurred in these videos" (`W/ui/Batch.tsx:155`) | gap-app | Add to app batch setup |
+| Blur-off warning (**privacy**) | Red alert "faces will not be blurred in these videos" (`A/ui/BatchScreens.kt:138`) | Same (`W/ui/Batch.tsx:155`) | same | |
 | Folders in Projects | Rename/delete, locked while running | Rename/delete with confirm | same | |
 
 ## Settings
@@ -186,12 +186,12 @@ Rows marked **privacy** must be closed first.
 
 | Feature | App | Web | Status | Note / link |
 |---|---|---|---|---|
-| No-face-blur warning (**privacy**) | Missing in Ready and batch | Present | gap-app | Same rows as above |
+| No-face-blur warning (**privacy**) | Ready and batch (`A/ui/ReadyScreen.kt:87`, `A/ui/BatchScreens.kt:138`) | Present | same | Same rows as above |
 | Voice change is not an anonymity guarantee | Yes | Yes | same | |
 | Review-before-posting note | Yes | Yes | same | |
 | Detection reduced on slow device | n/a | Message when WebGPU missing | exception | Web only |
 | Unsupported browser | n/a | WebCodecs check | exception | Web only |
-| Crash / report dialog | Yes (`A/CrashLog.kt`) | None | gap-web | |
+| Crash / report dialog | Yes (`A/CrashLog.kt`, `CrashDialog` in `A/ui/MainScreen.kt`): the last crash on the next launch, Send | An error nothing caught opens "Something went wrong" with its details, Copy and Close (`W/lib/errors.ts` `installCrashReport`, `W/ui/ErrorReport.tsx` `CrashDialog`) | same | Web shows it at once (the page keeps running) and copies instead of sending |
 | Empty states | Same | Same | same | |
 | Progress stage chips | Same | Same | same | |
 
@@ -199,7 +199,7 @@ Rows marked **privacy** must be closed first.
 
 | Feature | App | Web | Status | Note / link |
 |---|---|---|---|---|
-| Coverage check | CI `ci/i18n_check.py` | No CI check for web; scan found only lazy Beta strings (`W/ui/Beta.tsx:28`) | gap-web | Add a web key check to `pr.yml` |
+| Coverage check | CI `ci/i18n_check.py` | CI `ci/web_i18n_check.py` in the web build job (`.github/workflows/web-tests.yml`, part of `web-build`): every `t('<Hebrew>')` in `web/src` has English in `W/i18n.ts` or a table given to `addEnglish` (templates, beta) | same | Only literal keys are checked on both |
 | Fallback | Missing English shows Hebrew | Same | same | |
 | Wording differences | Voice labels "Low, Disguised, No sound"; stabilize "already steady" | "Deep, Disguise, Mute"; "barely moves" | differs | Unify |
 | RTL / LTR | Timeline forced LTR | Same (`dir=ltr`) | same | |
@@ -226,6 +226,6 @@ Differences that are allowed. Add a row here, with a reason, before marking anyt
 - Privacy behaviour (blur, bleep, voice change, export gates, data staying on the device) must be identical or stricter on both sides. Never weaken a gate to match the other platform.
 - Keep UI structure and names the same; use each platform's idioms.
 - A platform-specific difference is allowed only when it is listed under "Accepted exceptions" with a reason.
-- Every user-visible string has Hebrew and English on both platforms. `ci/i18n_check.py` checks only the app; check web strings by hand against `web/src/i18n.ts` and `templates-en.ts`.
+- Every user-visible string has Hebrew and English on both platforms. `ci/i18n_check.py` checks the app and `ci/web_i18n_check.py` the web app (literal `t('...')` keys); strings passed through a variable are checked by hand.
 - Release PRs (develop to main) list the open `gap-*` rows in the release notes.
 - Run the `parity` agent with `audit` from time to time, and before a release, to refresh this file.

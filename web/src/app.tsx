@@ -26,12 +26,13 @@ import { current as batchNow, running as batchRunning, startBatch, version as ba
 import { videoSize as sizeOf } from './lib/templaterun'
 import './ui/templates-en'
 import { SpeechAsk } from './ui/SpeechUi'
+import { CrashDialog, ErrorDetails } from './ui/ErrorReport'
 
 /** A tool from the home screen: a group of the editor, or straight to an MP3. */
 type Tool = EditorTab | 'mp3'
 
 type Screen =
-  | { name: 'home'; error?: string }
+  | { name: 'home'; error?: string; details?: string }
   | { name: 'ready'; file: File }
   | { name: 'analyzing'; file: File; save?: { look: Look; options: ExportOptions }; template?: TemplateSettings | null }
   | { name: 'noFaces'; file: File; analysis: Analysis; save?: { look: Look; options: ExportOptions }; template?: TemplateSettings | null }
@@ -116,7 +117,8 @@ export function App() {
     <div class="app">
       <Header />
       <SpeechAsk />
-      {screen.name === 'home' && !job && <Home onPick={pick} onTool={pickTool} onProject={openProject} onBatch={() => { if (supported()) setScreen({ name: 'batchSetup' }) }} onQueue={() => setScreen({ name: 'batch' })} error={screen.error} />}
+      <CrashDialog />
+      {screen.name === 'home' && !job && <Home onPick={pick} onTool={pickTool} onProject={openProject} onBatch={() => { if (supported()) setScreen({ name: 'batchSetup' }) }} onQueue={() => setScreen({ name: 'batch' })} error={screen.error} details={screen.details} />}
       {screen.name === 'batchSetup' && !job && <BatchSetup onBack={() => setScreen({ name: 'home' })} onStarted={() => setScreen({ name: 'batch' })} />}
       {screen.name === 'batch' && !job && <BatchQueue onHome={() => setScreen({ name: 'home' })} onCheck={(id) => { void openProject(id) }} />}
       {screen.name === 'ready' && !job && (
@@ -168,7 +170,7 @@ export function App() {
           sensitive={sensitive}
           twoSteps={!!screen.save}
           onCancel={() => setScreen({ name: 'ready', file: screen.file })}
-          onError={(error) => setScreen({ name: 'home', error })}
+          onError={(error, details) => setScreen({ name: 'home', error, details })}
           onDone={(analysis, thumbs, ms, backend) => {
             const save = screen.save
             const template = screen.template
@@ -307,7 +309,7 @@ function Settings({ onClose }: { onClose: () => void }) {
   )
 }
 
-function Home({ onPick, onTool, onProject, onBatch, onQueue, error }: { onPick: (f: File) => void; onTool: (f: File, tab: Tool) => void; onProject: (id: string) => void; onBatch: () => void; onQueue: () => void; error?: string }) {
+function Home({ onPick, onTool, onProject, onBatch, onQueue, error, details }: { onPick: (f: File) => void; onTool: (f: File, tab: Tool) => void; onProject: (id: string) => void; onBatch: () => void; onQueue: () => void; error?: string; details?: string }) {
   const input = useRef<HTMLInputElement>(null)
   const toolInput = useRef<HTMLInputElement>(null)
   const toolTab = useRef<Tool>('subs')
@@ -412,6 +414,7 @@ function Home({ onPick, onTool, onProject, onBatch, onQueue, error }: { onPick: 
           <div class="card error">
             <strong>{t('משהו השתבש')}</strong>
             <p class="small" style="margin:6px 0 0">{error}</p>
+            {details && <ErrorDetails details={details} />}
           </div>
         )}
       </div>
