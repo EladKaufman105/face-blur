@@ -65,8 +65,14 @@ let installed = false
 export function installCrashReport() {
   if (installed) return
   installed = true
+  // The same error again soon after it was closed (one thrown on every frame) doesn't reopen it.
+  let last = '', lastAt = 0
   const keep = (what: string, e: unknown) => {
-    if (crashReport.value === null) crashReport.value = technical(what, e)
+    if (crashReport.value !== null) return
+    const sig = String((e as Error)?.stack ?? (e as Error)?.message ?? e)
+    if (sig === last && Date.now() - lastAt < 10000) { lastAt = Date.now(); return }
+    last = sig; lastAt = Date.now()
+    crashReport.value = technical(what, e)
   }
   addEventListener('error', (ev) => { if (reportable(ev.error, ev.filename)) keep('uncaught error', ev.error) })
   addEventListener('unhandledrejection', (ev) => { if (reportable(ev.reason)) keep('unhandled promise rejection', ev.reason) })
