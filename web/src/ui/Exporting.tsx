@@ -8,13 +8,15 @@ import { CutMap } from '../lib/cutmap'
 import { DEFAULT_EXPORT } from '../lib/exportopts'
 import { cutCues, toSrt } from '../lib/subtitles'
 import { releaseSpeechForExport } from '../lib/speech'
+import { friendlyExport, technical } from '../lib/errors'
+import { ErrorDetails } from './ErrorReport'
 
 export type { ExportJob }
 
 export function Exporting({ job, onBack, onNew, onEdit }: { job: ExportJob; onBack: () => void; onNew: () => void; /** Open the editor on what was saved straight away. */ onEdit?: () => void }) {
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState<{ blob: Blob; ms: number } | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<{ message: string; details: string } | null>(null)
   const started = useMemo(() => performance.now(), [job])
   // The export as it's made: a small picture now and then.
   const live = useRef<HTMLCanvasElement>(null)
@@ -36,15 +38,15 @@ export function Exporting({ job, onBack, onNew, onEdit }: { job: ExportJob; onBa
         }
         m.bitmap.close()
       } else if (m.type === 'done') { setResult({ blob: m.blob, ms: m.ms }); worker.terminate() }
-      else { setError(m.code === 'anonymize' ? t('השינוי בקול או הצפצופים לא הוחלו, ולכן שום דבר לא יוצא (כדי שהקול המקורי לא יישמר)') : m.message); worker.terminate() }
+      else { setError({ message: friendlyExport(m.code, m.message), details: technical('export', m.message, m.code) }); worker.terminate() }
     }
-    worker.onerror = (e) => { setError(e.message || 'error'); worker.terminate() }
+    worker.onerror = (e) => { setError({ message: friendlyExport('failed', e.message || ''), details: technical('export worker', e.message || 'error') }); worker.terminate() }
     let cancelled = false
     ;(async () => {
       const { req, transfer } = await exportRequest(job)
       if (cancelled) return
       worker.postMessage(req, transfer)
-    })().catch((e) => setError(String(e?.message ?? e)))
+    })().catch((e) => setError({ message: friendlyExport('failed', String(e?.message ?? e)), details: technical('export request', e) }))
     return () => { cancelled = true; worker.terminate() }
   }, [job])
 
@@ -68,7 +70,8 @@ export function Exporting({ job, onBack, onNew, onEdit }: { job: ExportJob; onBa
       <main class="side narrow">
         <div class="card error">
           <strong>{t('משהו השתבש')}</strong>
-          <p class="small" style="margin:6px 0 12px">{error}</p>
+          <p class="small export-error" style="margin:6px 0 12px">{error.message}</p>
+          <ErrorDetails details={error.details} />
           <button class="btn tonal" onClick={onBack}>{job.standalone ? t('חזרה') : t('חזרה לעריכה')}</button>
         </div>
       </main>

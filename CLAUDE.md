@@ -59,7 +59,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 
 - Open a PR from `develop` into `main`. Skip the code-review loop. Each change was reviewed on its way into `develop`, and the user tests the beta on a device.
 - Check that PR checks are green.
-- Check that the release is the beta the user tested: nothing outside `web/` changed on `develop` since the newest beta tag. `git diff --name-only <newest vX.Y.Z-beta.N> origin/develop -- . ':!web' ':!.github/workflows/web.yml' ':!.github/workflows/web-tests.yml' ':!.github/actions' ':!ci/web-tests.sh' ':!ci/publish-pages.sh' ':!ci/pages-build.sh' ':!.github/workflows/models.yml' ':!docs' ':!.claude' ':!.github/pull_request_template.md' ':!.github/workflows/parity-hint.yml'` must print nothing.
+- Check that the release is the beta the user tested: nothing outside `web/` changed on `develop` since the newest beta tag. `git diff --name-only <newest vX.Y.Z-beta.N> origin/develop -- . ':!web' ':!.github/workflows/web.yml' ':!.github/workflows/web-tests.yml' ':!.github/actions' ':!ci/web-tests.sh' ':!ci/publish-pages.sh' ':!ci/pages-build.sh' ':!ci/web_i18n_check.py' ':!.github/workflows/models.yml' ':!docs' ':!.claude' ':!.github/pull_request_template.md' ':!.github/workflows/parity-hint.yml'` must print nothing.
 - If it prints files, warn the user. Let them choose: wait for the next beta and test it, or release anyway. If that next beta never came because its e2e failed, fix that first with a normal PR into `develop`.
 - Write release notes in the PR body: the PRs merged into `develop` since the last release, and the open `gap-*` rows of `docs/parity.md`.
 - Ask the user "Release X.Y.Z?". Merge only after a clear yes. Same for hotfix PRs into `main`.
