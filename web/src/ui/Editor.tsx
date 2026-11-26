@@ -42,6 +42,7 @@ import type { VoiceFx } from '../lib/voice'
 import type { AudioMessage, AudioRequest } from '../workers/audio.worker'
 import { exportOptionsOf, hasProcessing, savedLanguage, styleOf, type TemplateSettings } from '../lib/template'
 import { Aborted, findPauses, transcribe } from '../lib/templaterun'
+import { translateCues, translateNote } from '../lib/translate'
 import { releaseSpeechForExport } from '../lib/speech'
 import { SaveTemplate } from './SaveTemplate'
 
@@ -531,12 +532,22 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           setBleeped(new Set())
           setCues(cs)
           if (cs.length === 0) notes.push(t('לא נמצא דיבור בסרטון'))
+          else if (tpl.translate) {
+            // The template's translation (as the app's): each subtitle that still says what was translated takes it.
+            run(t('מתרגם… %d%', 0))
+            try {
+              const tr = new Map((await translateCues(cs, tpl.language, (stage, p) => setTplRun({ step: stage === 'download' ? t('מוריד את חבילת השפה… %d%', Math.round(p * 100)) : t('מתרגם… %d%', Math.round(p * 100)), progress: p, notes: [...notes] }), ctl.signal)).map((c) => [c.id, c]))
+              setCues((now) => now.map((c) => { const x = tr.get(c.id); return x && x.text === c.text ? { ...c, tr: x.tr, trm: x.trm } : c }))
+            } catch (e) {
+              if (ctl.signal.aborted) return
+              notes.push(translateNote(e))
+            }
+          }
         } catch (e) {
           if (e instanceof Aborted) return
           notes.push((e as any)?.code === 'no-audio' ? t('לסרטון אין פס קול.') : t('הכתוביות לא נוצרו: %s', String((e as Error)?.message ?? e).slice(0, 160)))
           // A stuck or failed recognition can be run again from the subtitles tab.
         }
-        if (tpl.translate) notes.push(t('התרגום לא נתמך בעיבוד אוטומטי, והכתוביות נשארו בשפת הדיבור'))
       }
       if (tpl.cutSilences || tpl.cutFillers) {
         run(t('חותך'))

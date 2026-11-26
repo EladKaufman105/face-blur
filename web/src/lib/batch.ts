@@ -11,6 +11,7 @@ import { batchName, createProject, saveProject, deleteProject, summarize, type P
 import { keepAwake } from './wakelock'
 import { cutCues, toSrt } from './subtitles'
 import { CutMap } from './cutmap'
+import { prepareTranslation } from './translate'
 
 export const MAX_VIDEOS = 10
 
@@ -200,6 +201,8 @@ function worthSaving(s: TemplateSettings): boolean {
 /** Starts processing [files] with [settings] ([templateName]: what it's called in the queue). Returns at once; the work goes on. */
 export function startBatch(files: File[], settings: TemplateSettings, templateName: string, opts: { folder: boolean; autoDownload: boolean }): Batch {
   const at = Date.now()
+  // Started by a tap: the translator's language pack can be downloaded now (later it can't).
+  prepareTranslation(settings)
   // A finished batch being replaced: its saved videos' links go.
   if (current.value?.finished) releaseOutputs(current.value)
   const b: Batch = {

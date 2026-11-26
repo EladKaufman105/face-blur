@@ -35,7 +35,7 @@ Rows marked **privacy** must be closed first.
 | "No faces" path | "Mark by hand" / "Try extended detection" | Same (`W/ui/Ready.tsx:222`) | same | |
 | Template with face blur OFF, Ready screen (**privacy**) | Button still says "Blur faces"; no warning (`A/ui/ReadyScreen.kt:70`, `A/MainViewModel.kt:830`) | "Open in editor" and red alert "faces will NOT be blurred" (`Ready.tsx:136`) | gap-app | User can believe faces are blurred. Copy the web behaviour |
 | Blur-off template, "Blur and save straight" (**privacy**) | Saves straight (`start()` -> `startTool(null, tpl)` -> `render(auto=true)`), but the button still says "טשטש ושמור ישר" (`ReadyScreen.kt:81`, `MainViewModel.kt:830`) | Label "Save straight", batch-of-one path runs (`Ready.tsx:138`, `app.tsx:138`) | differs | The app's label claims blur that does not happen. PR #34 changes the label |
-| Template picker on Ready | Cards, "Edit" next to chosen template (`A/ui/TemplatesUi.kt:255`) | Cards, inline rename, no Edit (`W/ui/TemplatePicker.tsx:55`) | gap-web | Add Edit |
+| Template picker on Ready | Cards, "Edit" next to chosen template (`A/ui/TemplatesUi.kt:255`) | Cards, inline rename, "Edit" next to chosen template; saved edits apply (`W/ui/TemplatePicker.tsx:76`) | same | Tested in `W/tests/parity2.cjs` |
 | Speech model on Ready | Row with download button | Dialog with size (`W/ui/SpeechUi.tsx`) | differs | |
 | Blur and save straight | Export sheet, then auto flow | Same (`Ready.tsx:196`) | same | |
 | Analysis stats panel | Tap percentage | Tap or `?debug` | same | |
@@ -140,12 +140,12 @@ Rows marked **privacy** must be closed first.
 |---|---|---|---|---|
 | Built-in looks | Clean, Bold, News, Minimal | Same | same | |
 | Editor surface | Full page, live preview, 7 categories | Sheet, live preview, 7 categories (`W/ui/TemplateEditor.tsx:42`) | differs | Look only |
-| Leave with unsaved changes | Asks "Save changes?" | Esc or backdrop discards silently (`TemplateEditor.tsx:56`) | gap-web | Data loss; add confirm |
-| Edit entry points | Settings, Ready, batch setup | Settings only | gap-web | |
+| Leave with unsaved changes | Asks "Save changes?" | Esc, backdrop, X and Cancel ask "Save changes?" (save, keep editing, discard) (`W/ui/TemplateEditor.tsx:262`) | same | Tested in `W/tests/parity2.cjs` |
+| Edit entry points | Settings, Ready, batch setup | Settings, Ready, batch setup (`W/ui/TemplatePicker.tsx:76`, `W/ui/Batch.tsx:148`) | same | |
 | New template from scratch | Only "Save as template" | "New template" in Settings | gap-app | |
 | Save from editor | Export sheet, category checkboxes | Button in editor, same categories | same | |
 | Spoken language / model | Model and language choice | "The language I chose" or fixed; model auto | differs | |
-| Translate in template | Yes | Stored, not run in automatic processing (`W/lib/templaterun.ts:258`) | gap-web | Surface in picker |
+| Translate in template | Yes; automatic: to English, English speech to Hebrew | Same: switch in the editor (`W/ui/TemplateEditor.tsx:161`), shown in the picker (`W/ui/TemplatePicker.tsx:106`), run in automatic processing and in the editor (`W/lib/templaterun.ts:263`, `W/ui/Editor.tsx:539`) | same | Browser's own translator (Chrome and Edge on a computer); elsewhere a note and the subtitles stay untranslated. Tested in `W/tests/tpltranslate.cjs` (stubbed translator) |
 | Per-template logo | `<id>.wm.png` | `imageData` data URL | differs | |
 | Rename | Settings list | Settings and inline on Ready | differs | |
 

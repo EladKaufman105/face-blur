@@ -19,6 +19,7 @@ import { ASPECT_RATIO, cropFraction, reframePath, steady, type Steady } from './
 import type { PeopleMasks } from './background'
 import { exportOptionsOf, hasProcessing, styleOf, type TemplateSettings } from './template'
 import { t } from '../i18n'
+import { translateCues, translateNote } from './translate'
 
 /** A job that was stopped (skipped or cancelled). */
 export class Aborted extends Error {
@@ -193,7 +194,7 @@ export type Processed = {
 }
 
 /** Where a step is, for the queue: its name and how far (0..1) in the video's whole work. */
-export type Phase = 'read' | 'faces' | 'subtitles' | 'download' | 'sound' | 'picture' | 'export'
+export type Phase = 'read' | 'faces' | 'subtitles' | 'download' | 'translate' | 'sound' | 'picture' | 'export'
 
 /** The share of a video's bar that each part takes. */
 export function shares(s: TemplateSettings): { faces: number; processing: number; export: number } {
@@ -255,7 +256,16 @@ export async function processVideo(file: File, s: TemplateSettings, report: (pha
       if (e instanceof Aborted) throw e
       notes.push((e as StepError).code === 'no-audio' ? t('לסרטון אין פס קול.') : t('הכתוביות לא נוצרו: %s', message(e)))
     }
-    if (s.translate) notes.push(t('התרגום לא נתמך בעיבוד אוטומטי, והכתוביות נשארו בשפת הדיבור'))
+    // The translation, as the app's template (automatic: to English, English speech to Hebrew). The subtitles stay if it fails.
+    if (s.translate && cues.length > 0) {
+      try {
+        within('translate', 1)
+        cues = await translateCues(cues, s.language, (stage, p) => within('translate', 1, stage === 'download' ? t('מוריד את חבילת השפה… %d%', Math.round(p * 100)) : `${Math.round(p * 100)}%`), signal)
+      } catch (e) {
+        if (signal?.aborted) throw new Aborted()
+        notes.push(translateNote(e))
+      }
+    }
     stepNo++
   }
 
