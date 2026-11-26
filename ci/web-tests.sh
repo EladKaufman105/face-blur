@@ -95,11 +95,36 @@ case "${1:?shard}" in
     t keys.cjs "$U" $S/walk.mp4 $R/keys.png   # 6
     # A deep voice on a clip with speech.
     (export VOICE=1; t e2e.cjs "$U" $S/speech_two.mp4 $R/voice)   # 43
+    # Which speech model the subtitles tab offers (no download): ivrit.ai's for Hebrew, with its size; Whisper for the other languages.
+    t subsplan.cjs "$U" $S/speech_two.mp4 $R/subsplan   # 15
     ;;
   subs) # Whisper's model downloads from Hugging Face: its own job, only when subtitle code changes. The small one (whisper-base, 77 MB on the CPU) is forced: the phone path, and quick. The page is isolated here (threads), as on the site.
     t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base" $S/speech_en.mp4 $R/subs   # 60
     # The same clip on one thread (as before the page was isolated): the two recognition times are in the log.
     t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base&threads=1" $S/speech_en.mp4 $R/subs1
+    # Hebrew with ivrit.ai's model (the app's), on the CPU: a clip of Hebrew speech made here by a text-to-speech
+    # voice (edge-tts, Microsoft's he-IL voice; nothing of a person's), over the picture of walk.mp4. The model is 760 MB.
+    # The test runs twice (the second time with the Hub blocked). If the voice service can't be reached the test is
+    # skipped with a warning (it isn't the app's failure); speech_he.mp4 on the test-media branch would replace this.
+    mkdir -p /tmp/he
+    HE=$S/speech_he.mp4
+    if [ ! -s "$HE" ]; then
+      TEXT="שלום, קוראים לי אבי ואני גר בתל אביב. היום מזג האוויר יפה מאוד בישראל."
+      HE=/tmp/he/speech_he.mp4
+      # (Inside the if, a failed install takes the skip below instead of failing the shard under set -e.)
+      if python3 -m venv /tmp/he/venv && /tmp/he/venv/bin/pip install --quiet edge-tts==7.3.1; then
+        # (A try that fails can leave part of a file: each try starts without one.)
+        for i in 1 2 3; do rm -f /tmp/he/he.mp3; /tmp/he/venv/bin/edge-tts --voice he-IL-AvriNeural --text "$TEXT" --write-media /tmp/he/he.mp3 && break || { rm -f /tmp/he/he.mp3; sleep 5; }; done
+      fi
+      # A voice file that ffmpeg can't read (cut off) is the voice service's failure too: skipped.
+      if ! { [ -s /tmp/he/he.mp3 ] && ffmpeg -v error -y -stream_loop -1 -i $S/walk.mp4 -i /tmp/he/he.mp3 -map 0:v -map 1:a -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 $HE; }; then
+        echo "::warning::edge-tts could not be installed or reached, or its voice file was unreadable: the Hebrew subtitles test (tests/subshe.cjs) was skipped"
+        HE=
+      fi
+    fi
+    if [ -n "$HE" ]; then
+      t subshe.cjs "http://localhost:4173/?backend=wasm" $HE "תל אביב|ישראל" $R/subshe   # model download + two CPU runs, minutes
+    fi
     ;;
   *) echo "unknown shard: $1" >&2; exit 2 ;;
 esac

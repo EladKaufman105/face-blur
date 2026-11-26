@@ -91,7 +91,7 @@ export function BatchSetup({ onBack, onStarted, initial }: { onBack: () => void;
   const [auto, setAuto] = useState(true)
   const [space, setSpace] = useState<{ need: number; free: number | null } | null>(null)
   const [note, setNote] = useState<string | null>(null)
-  const { plan: speechPlan, cached } = useSpeechPlan()
+  const { plan: speechPlan, cached } = useSpeechPlan(settings.language)
   useEffect(() => { storageCheck(files).then(setSpace) }, [files])
   useEffect(() => {
     let live = true
@@ -157,7 +157,7 @@ export function BatchSetup({ onBack, onStarted, initial }: { onBack: () => void;
         {settings.createSubs && cached === false && (
           <>
             <p class="small batch-model" style="margin:0;color:var(--primary)">{t('כתוביות צריכות מודל זיהוי דיבור, שמורידים פעם אחת (%d MB).', mbOf(speechPlan))}</p>
-            <QualityChoice />
+            <QualityChoice language={settings.language} />
           </>
         )}
         {tight && <p class="small batch-space" style="margin:0;color:#e5484d">{t('אין מספיק מקום בדפדפן לשמירת הפרויקטים (%s פנוי, צריך כ-%s). אפשר להסיר סרטונים או למחוק פרויקטים.', mb(space!.free!), mb(space!.need))}</p>}

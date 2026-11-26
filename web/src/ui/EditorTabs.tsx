@@ -14,7 +14,7 @@ import { canTranslate, guessLang, LANG_NAMES, translateAll } from '../lib/transl
 import { MAX_SPEAKERS } from '../lib/speakers'
 import { SpeakerDot, SpeakersCard } from './Speakers'
 import { VOICES, type VoiceFx } from '../lib/voice'
-import { currentPlan, grantSpeech, mbOf, probeDevice, SpeechAborted, transcribeFile, type SpeechStatus } from '../lib/speech'
+import { currentPlan, grantSpeech, langChoice, mbOf, probeDevice, setLangChoice, SpeechAborted, transcribeFile, type SpeechStatus } from '../lib/speech'
 import { QualityChoice, SpeechProgress, useSpeechPlan } from './SpeechUi'
 import type { Cleanup } from '../lib/cleanup'
 
@@ -371,6 +371,7 @@ function SpeechNote() {
   return (
     <p class="small muted speech-note" style="margin:10px 0 0">
       {t('הזיהוי רץ על המכשיר עם Whisper, והקול לא עוזב אותו.')}{' '}
+      {plan.model === 'ivrit' && <>{t('מודל העברית של ivrit.ai, כמו באפליקציה.')}{' '}</>}
       {cached ? t('המודל כבר במכשיר.') : t('בפעם הראשונה יורד מודל של כ-%d MB (נשמר בדפדפן לפעמים הבאות).', mbOf(plan))}
     </p>
   )
@@ -462,7 +463,8 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
     // The words stay the same, so the bleeped words stay bleeped.
     onReplace(wordsToCues(words, rule.words, rule.chars), words, bleeped)
   }
-  const [lang, setLang] = useState<string | null>(() => { try { return localStorage.getItem(storageKey('subs.lang')) } catch { return null } })
+  const lang = langChoice.value
+  const setLang = setLangChoice
   const [run, setRun] = useState<SubsRun>(null)
   const ctl = useRef<AbortController | null>(null)
   // The words and bleeps as they are now (undo or a tap may change them while the speech model runs).
@@ -482,7 +484,7 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
     setRun({ stage: 'audio' })
     try {
       const d = await probeDevice()
-      const plan = currentPlan(d)
+      const plan = currentPlan(d, lang)
       // Pressing "create subtitles" is the go-ahead: the size was shown above the button.
       grantSpeech(plan)
       const r = await transcribeFile(file, lang, { plan, onStatus: (s) => { if (ctl.current === c) setRun(s) }, signal: c.signal })
@@ -674,7 +676,7 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
               <p class="small muted" style="margin:0 0 8px">{t('שפת הדיבור')}</p>
               <div class="chips scroll-row lang-chips">
                 {LANGUAGES.map(([code, label]) => (
-                  <button class={'chip' + (lang === code ? ' on' : '')} onClick={() => { setLang(code); try { if (code) localStorage.setItem(storageKey('subs.lang'), code); else localStorage.removeItem(storageKey('subs.lang')) } catch {} }}>{t(label)}</button>
+                  <button class={'chip' + (lang === code ? ' on' : '')} onClick={() => setLang(code)}>{t(label)}</button>
                 ))}
               </div>
               {bleeped.size > 0 && (

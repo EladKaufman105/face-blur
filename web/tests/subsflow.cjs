@@ -43,7 +43,7 @@ const [, , base, video, out] = process.argv
   try {
     // ---- the choice: sizes before anything downloads, kept after a reload
     await openSubs(url)
-    const chips = await p.evaluate(() => [...document.querySelectorAll('.speech-quality .chip')].map((c) => [c.dataset.q, c.textContent.trim(), c.classList.contains('on')]))
+    const chips = await p.evaluate(() => [...document.querySelectorAll('.speech-quality .chip:not([data-q=hebrew])')].map((c) => [c.dataset.q, c.textContent.trim(), c.classList.contains('on')]))
     console.log('quality chips:', JSON.stringify(chips))
     if (chips.length !== 2 || chips.some((c) => !/\d+\s*MB/.test(c[1]))) fail('the choice does not show sizes: ' + JSON.stringify(chips))
     if (hung !== 0) fail('something was requested before the go-ahead')
@@ -75,6 +75,8 @@ const [, , base, video, out] = process.argv
     // ---- retry, then Cancel: the worker ends at once.
     await p.click('text=נסה שוב')
     await p.waitForSelector('.speech-cancel')
+    // The worker starts a moment after the progress shows (the device is asked first) and the page hears of it over a slower line: give it up to 3 s.
+    for (let i = 0; i < 30 && alive.size < 1; i++) await p.waitForTimeout(100)
     if (alive.size !== 1) fail('expected one worker running, got ' + alive.size)
     const t0 = Date.now()
     await p.click('.speech-cancel')

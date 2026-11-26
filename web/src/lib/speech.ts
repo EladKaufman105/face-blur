@@ -7,17 +7,24 @@ import { storageKey } from './channel'
 import { lang, t } from '../i18n'
 import type { SubsMessage, SubsRequest } from '../workers/subs.worker'
 import type { Word } from './subtitles'
+import { isMemoryError } from './memerr'
 
 /** What the person picks: "fast" (small, light on a phone) or "better" (bigger, slower, more exact). */
-export type Quality = 'fast' | 'better'
+/** "hebrew": the Hebrew model asked for by name (the only way a phone gets it: it is big). */
+export type Quality = 'fast' | 'better' | 'hebrew'
 export type Dtype = 'fp32' | 'fp16' | 'q4' | 'q4f16' | 'q8'
-type ModelKey = 'base' | 'small' | 'large'
+export type ModelKey = 'base' | 'small' | 'large' | 'ivrit'
 
 /** Hugging Face repos by onnx-community: Whisper with word timings (cross-attention alignment heads in their generation config). */
-const MODELS: Record<ModelKey, { repo: string; label: string }> = {
+const MODELS: Record<ModelKey, { repo: string; label: string; revision?: string }> = {
   base: { repo: 'onnx-community/whisper-base_timestamped', label: 'Whisper base' },
   small: { repo: 'onnx-community/whisper-small_timestamped', label: 'Whisper small' },
   large: { repo: 'onnx-community/whisper-large-v3-turbo_timestamped', label: 'Whisper large-v3-turbo' },
+  // ivrit.ai's Hebrew fine-tune of Whisper large-v3-turbo (Apache-2.0): the model the Android app runs
+  // for Hebrew (as ggml q5_0). This is a community ONNX export of the same checkpoint, exported with the
+  // attention outputs that word timings need (the official ivrit.ai ONNX export has none). Pinned to one
+  // commit, so a change of that repo can't change what the site runs.
+  ivrit: { repo: 'instush/ivrit-whisper-large-v3-turbo-timestamped-onnx', label: 'ivrit.ai large-v3-turbo', revision: 'c71eadaca74c0923a06632bdaeb7413ff9cff4cf' },
 }
 
 /** File sizes in bytes (as listed on the Hub) of the encoder and the decoder, by dtype. The tokenizer and config files add a few MB. */
@@ -25,11 +32,13 @@ const ENC_BYTES: Record<ModelKey, Partial<Record<Dtype, number>>> = {
   base: { q4: 18771046, q8: 23159167, fp16: 41270731, fp32: 82451730 },
   small: { q4: 66178491, q8: 92240498, fp16: 176483570 },
   large: { q4f16: 370035242, q4: 425003939 },
+  ivrit: { q4: 425000087 },
 }
 const DEC_BYTES: Record<ModelKey, Partial<Record<Dtype, number>>> = {
   base: { q4: 123738327, q8: 53712708, q4f16: 68541844 },
   small: { q4: 233421212, q8: 156795750, q4f16: 145778021 },
   large: { q4f16: 193566135, q4: 334207912 },
+  ivrit: { q4: 334048758 },
 }
 const EXTRA_BYTES = 4e6
 const SUFFIX: Record<Dtype, string> = { fp32: '', fp16: '_fp16', q4: '_q4', q4f16: '_q4f16', q8: '_quantized' }
@@ -38,6 +47,8 @@ export interface SpeechPlan {
   quality: Quality
   model: ModelKey
   repo: string
+  /** The commit of the repo the files are read at (null: its latest). */
+  revision: string | null
   device: 'webgpu' | 'wasm'
   /** The file kinds: the encoder's, and the decoder's. */
   encDtype: Dtype
@@ -70,7 +81,11 @@ function guess(): Device {
   const nav = navigator as any
   const mem: number | undefined = nav.deviceMemory
   const cores = navigator.hardwareConcurrency || 4
-  return { weak: isMobile() || (mem !== undefined && mem < 8) || cores < 4, gpu: null, probed: false }
+  // A tablet that says it isn't mobile (Android's tablets do) is a touch device with a small memory all the same:
+  // a touch-first pointer and no (or a small) memory reading counts as weak.
+  let touchFirst = false
+  try { touchFirst = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches } catch {}
+  return { weak: isMobile() || (mem !== undefined && mem < 8) || cores < 4 || (touchFirst && mem === undefined), gpu: null, probed: false }
 }
 
 /** What this device is (the graphics processor is added once it was asked, see [probeDevice]). */
@@ -105,7 +120,7 @@ const KEY = 'subs.quality'
 function readChoice(): Quality | null {
   try {
     const v = localStorage.getItem(storageKey(KEY))
-    return v === 'fast' || v === 'better' ? v : null
+    return v === 'fast' || v === 'better' || v === 'hebrew' ? v : null
   } catch { return null }
 }
 /** What the person picked ("faster" / "better quality"); null: the device's default. Kept per channel (release and beta apart). */
@@ -118,18 +133,41 @@ export function setQuality(q: Quality) {
 /** Test flags (the address): subsmodel=base|small|large forces the model, subswatch=N the watchdog's seconds, backend=wasm|webgpu the processor. */
 const param = (name: string) => new URLSearchParams(location.search).get(name)
 
-export function defaultQuality(d: Device): Quality {
+export function defaultQuality(d: Device, language: string | null = null): Quality {
+  // The Hebrew model is the default only where it runs well: a page with threads (cross-origin isolated) or a big graphics processor.
+  if (!d.weak && hebrew(language ?? spokenLanguage(null)) && (self.crossOriginIsolated || d.gpu?.big)) return 'better'
   return !d.weak && d.gpu?.big ? 'better' : 'fast'
 }
 
 const forcedModel = (): ModelKey | null => {
   const f = param('subsmodel')
-  return f === 'base' || f === 'small' || f === 'large' ? f : null
+  return f === 'base' || f === 'small' || f === 'large' || f === 'ivrit' ? f : null
 }
 
-function modelFor(q: Quality, d: Device): ModelKey {
+/**
+ * Hebrew has its own model, as in the app (ivrit.ai): "better quality" in Hebrew is that model, on
+ * any device that is not a phone it is the default too. "Faster" stays the generic small one, and a
+ * phone starts on it (the ivrit.ai model is a 760 MB download and a lot of memory for a phone's page).
+ */
+export const hebrew = (language: string | null) => language === 'hebrew' || language === 'he'
+
+/**
+ * The choice as it applies to [language] on [d]: "Hebrew model" ('hebrew') is a choice of a weak device for
+ * Hebrew only. It is kept (localStorage) when the language changes, so for any other language it is "better
+ * quality" (the multilingual model, by the rules of "better"), and on a computer, where "better" in Hebrew is
+ * that model already, it is "better" too (the chip that shows as chosen).
+ */
+export function effectiveQuality(q: Quality, d: Device, language: string | null): Quality {
+  return q === 'hebrew' && (!hebrew(language) || !d.weak) ? 'better' : q
+}
+
+function modelFor(q: Quality, d: Device, language: string | null): ModelKey {
   const forced = forcedModel()
   if (forced) return forced
+  // Only Hebrew ever gets the Hebrew model. "Better quality" in Hebrew is that model, but not on a phone or
+  // another weak device (it needs a lot of memory): there it is only the choice named "Hebrew model"
+  // ('hebrew'), so a stored "better" never becomes it.
+  if (hebrew(language) && (q === 'hebrew' || (q === 'better' && !d.weak))) return 'ivrit'
   if (d.weak) return q === 'fast' ? 'base' : 'small'
   return q === 'fast' ? 'small' : 'large'
 }
@@ -138,19 +176,23 @@ function modelFor(q: Quality, d: Device): ModelKey {
 export const gpuFailed = signal(false)
 
 /** The plan for [quality] on [d]: the model, the processor, the file kinds and what they weigh. */
-export function planFor(quality: Quality, d: Device, forceCpu = gpuFailed.value): SpeechPlan {
-  let model = modelFor(quality, d)
+export function planFor(choice: Quality, d: Device, forceCpu = gpuFailed.value, language: string | null = spokenLanguage(null)): SpeechPlan {
+  const quality = effectiveQuality(choice, d, language)
+  let model = modelFor(quality, d, language)
   const wanted = param('backend')
   // A phone runs on the CPU unless the address asks for its graphics processor (?backend=webgpu): that
   // path is for trying it (its results can't be checked here), the CPU's is the one known to be right.
   let dev: 'webgpu' | 'wasm' = d.weak || !d.gpu || forceCpu ? 'wasm' : 'webgpu'
   if (!forceCpu && (wanted === 'wasm' || (wanted === 'webgpu' && d.gpu))) dev = wanted
-  if (dev === 'webgpu' && model === 'large' && !d.gpu?.big) dev = 'wasm'
+  if (dev === 'webgpu' && (model === 'large' || model === 'ivrit') && !d.gpu?.big) dev = 'wasm'
   // The big model on the CPU takes minutes for each 30 seconds: "better" is the small one there.
+  // (Not the Hebrew one: it is the app's model for Hebrew, slow on a CPU as well, and has no small kin.)
   if (dev === 'wasm' && model === 'large' && !forcedModel()) model = 'small'
   const f16 = dev === 'webgpu' && d.gpu?.f16 === true
   let encDtype: Dtype, dtype: Dtype
-  if (model === 'large') encDtype = dtype = f16 ? 'q4f16' : 'q4'
+  // The Hebrew model is only there as 4-bit (on the CPU and the graphics processor alike).
+  if (model === 'ivrit') encDtype = dtype = 'q4'
+  else if (model === 'large') encDtype = dtype = f16 ? 'q4f16' : 'q4'
   else if (dev === 'wasm') encDtype = dtype = 'q8'
   else if (d.weak) {
     // A phone's graphics processor (only by asking for it, see below): the encoder in the half or full
@@ -165,7 +207,7 @@ export function planFor(quality: Quality, d: Device, forceCpu = gpuFailed.value)
   }
   const enc = ENC_BYTES[model][encDtype]!, dec = DEC_BYTES[model][dtype]!
   return {
-    quality, model, repo: MODELS[model].repo, device: dev, encDtype, dtype, threads: dev === 'wasm' ? wasmThreads(d) : 1,
+    quality, model, repo: MODELS[model].repo, revision: MODELS[model].revision ?? null, device: dev, encDtype, dtype, threads: dev === 'wasm' ? wasmThreads(d) : 1,
     files: [`onnx/encoder_model${SUFFIX[encDtype]}.onnx`, `onnx/decoder_model_merged${SUFFIX[dtype]}.onnx`], bytes: enc + dec + EXTRA_BYTES,
   }
 }
@@ -189,11 +231,12 @@ export function wasmThreads(_d: Device = device.value): number {
 let threadsFailed = false
 
 /** What a download agreement is for: the model and its file kinds. */
-const planKey = (p: SpeechPlan) => `${p.repo}|${p.encDtype}|${p.dtype}`
+const planKey = (p: SpeechPlan) => `${p.repo}|${p.revision ?? ''}|${p.encDtype}|${p.dtype}`
 
 /** The plan the person's choice (or the device's default) gives. */
-export function currentPlan(d: Device = device.value): SpeechPlan {
-  return planFor(qualityChoice.value ?? defaultQuality(d), d)
+export function currentPlan(d: Device = device.value, language: string | null = null): SpeechPlan {
+  const l = spokenLanguage(language)
+  return planFor(qualityChoice.value ?? defaultQuality(d, l), d, gpuFailed.value, l)
 }
 
 export const mbOf = (plan: SpeechPlan) => Math.max(1, Math.round(plan.bytes / 1e6))
@@ -203,16 +246,41 @@ export async function planCached(plan: SpeechPlan): Promise<boolean> {
   try {
     if (!('caches' in window) || !(await caches.has('transformers-cache'))) return false
     const urls = (await (await caches.open('transformers-cache')).keys()).map((r) => r.url)
-    return plan.files.every((f) => urls.some((u) => u.includes(`${plan.repo}/resolve/`) && u.includes(f)))
+    return plan.files.every((f) => urls.some((u) => u.includes(`${plan.repo}/resolve/${plan.revision ? plan.revision + '/' : ''}`) && u.includes(f)))
   } catch {
     return false
   }
 }
 
+/**
+ * A pinned model whose pin changed leaves the files of its old commit in the browser (hundreds of MB that
+ * nothing reads any more): they go, once a visit. Only this repo's files at another commit (or at a branch
+ * such as `main`) are removed: `<repo>/resolve/<other>/...`; other models and the pinned commit are kept.
+ */
+const pruned = new Set<string>()
+export async function dropOldRevisions(plan: Pick<SpeechPlan, 'repo' | 'revision'>): Promise<number> {
+  if (!plan.revision || pruned.has(plan.repo)) return 0
+  pruned.add(plan.repo)
+  let n = 0
+  try {
+    if (!('caches' in self) || !(await caches.has('transformers-cache'))) return 0
+    const cache = await caches.open('transformers-cache')
+    const base = `/${plan.repo}/resolve/`
+    for (const req of await cache.keys()) {
+      let path: string
+      try { path = new URL(req.url).pathname } catch { continue }
+      if (!path.startsWith(base) || path.startsWith(`${base}${plan.revision}/`)) continue
+      if (await cache.delete(req)) n++
+    }
+    if (n) console.info(`ONIT subs: removed ${n} files of ${plan.repo} at an old commit`)
+  } catch {}
+  return n
+}
+
 // ------------------------------------------------------------------ asking before a download
 
 /** An open question to the person (a dialog in app.tsx shows it): download the speech model? */
-export const speechAsk = signal<{ id: number } | null>(null)
+export const speechAsk = signal<{ id: number; language: string | null } | null>(null)
 type Answer = Quality | null | 'closed'
 let asking: { id: number; promise: Promise<Answer>; answer: (q: Answer) => void; waiters: Set<AbortSignal | undefined> } | null = null
 let askId = 0
@@ -231,10 +299,10 @@ export function answerSpeechAsk(q: Quality | null) {
  * is asked first (with the size, and "faster" / "better quality"), so a big download and a hot phone
  * never start by themselves. Returns null when they decline (for this run [signal] only).
  */
-export async function confirmSpeech(signal?: AbortSignal): Promise<SpeechPlan | null> {
+export async function confirmSpeech(signal?: AbortSignal, language: string | null = null): Promise<SpeechPlan | null> {
   if (signal?.aborted) throw new SpeechAborted()
   const d = await probeDevice()
-  let plan = currentPlan(d)
+  let plan = currentPlan(d, language)
   if (granted.has(planKey(plan)) || (await planCached(plan))) return plan
   if (signal && declinedRuns.has(signal)) return null
   if (!asking) {
@@ -242,7 +310,7 @@ export async function confirmSpeech(signal?: AbortSignal): Promise<SpeechPlan | 
     let answer!: (q: Answer) => void
     const promise = new Promise<Answer>((r) => { answer = r })
     asking = { id, promise, waiters: new Set(), answer: (q) => { asking = null; speechAsk.value = null; answer(q) } }
-    speechAsk.value = { id }
+    speechAsk.value = { id, language }
   }
   const mine = asking
   mine.waiters.add(signal)
@@ -262,7 +330,7 @@ export async function confirmSpeech(signal?: AbortSignal): Promise<SpeechPlan | 
     for (const w of mine.waiters) if (w) declinedRuns.add(w)
     return null
   }
-  plan = planFor(q, d)
+  plan = planFor(q, d, gpuFailed.value, spokenLanguage(language))
   granted.add(planKey(plan))
   return plan
 }
@@ -279,7 +347,7 @@ export type SpeechStatus =
   | { stage: 'download'; progress: number; loaded: number; total: number }
   | { stage: 'load' }
   | { stage: 'recognize'; progress: number }
-  | { stage: 'fallback' }
+  | { stage: 'fallback'; /** The same model, on the CPU (the Hebrew one), not a smaller one. */ same?: boolean }
 
 export class SpeechAborted extends Error {
   constructor() { super('aborted') }
@@ -297,7 +365,7 @@ const LIMITS = { audio: 90, load: 150, download: 60 }
  */
 function recognizeLimit(plan: SpeechPlan): number {
   if (plan.device === 'webgpu') return 120
-  return plan.model === 'large' ? 600 : plan.model === 'small' ? 300 : 120
+  return plan.model === 'large' || plan.model === 'ivrit' ? 600 : plan.model === 'small' ? 300 : 120
 }
 
 function limitFor(phase: keyof typeof LIMITS | 'recognize', plan: SpeechPlan): number {
@@ -305,17 +373,22 @@ function limitFor(phase: keyof typeof LIMITS | 'recognize', plan: SpeechPlan): n
   return (forced > 0 ? forced : phase === 'recognize' ? recognizeLimit(plan) : LIMITS[phase]) * 1000
 }
 
+const readLang = (): string | null => { try { return localStorage.getItem(storageKey('subs.lang')) } catch { return null } }
+/** The speech language the person chose last (null: automatic); kept per channel. Hebrew has its own model, so the plan follows it. */
+export const langChoice = signal<string | null>(readLang())
+export function setLangChoice(code: string | null) {
+  langChoice.value = code
+  try { if (code) localStorage.setItem(storageKey('subs.lang'), code); else localStorage.removeItem(storageKey('subs.lang')) } catch {}
+}
+
 /**
  * The language Whisper is told. Transformers.js 4.3.2 has no language detection (a missing
  * language decodes as English), so "automatic" is the language the person chose last, else the
  * app's own (Hebrew in the Hebrew app).
  */
-function spokenLanguage(language: string | null): string {
+export function spokenLanguage(language: string | null): string {
   if (language) return language
-  try {
-    const l = localStorage.getItem(storageKey('subs.lang'))
-    if (l) return l
-  } catch {}
+  if (langChoice.value) return langChoice.value
   // The app's language as the person set it (not the phone's: many Hebrew speakers keep it in English).
   return lang.value === 'he' ? 'hebrew' : 'english'
 }
@@ -396,6 +469,8 @@ export function transcribeFile(
     const onAbort = () => end(() => reject(new SpeechAborted()))
     signal?.addEventListener('abort', onAbort)
 
+    // The files of an old pin of this model are dropped (they never load again).
+    void dropOldRevisions(opts.plan)
     let usedFallback = false
     let usedOneThread = false
     const attempt = (plan: SpeechPlan) => {
@@ -406,28 +481,47 @@ export function transcribeFile(
       worker = w
       const failOrFallback = (code: string, message: string) => {
         if (finished || worker !== w) return
+        // A lack of memory says so whatever phase or kind of error it came in (it is never "threads" or the graphics processor's).
+        if (code !== 'stalled' && isMemoryError(message)) code = 'memory'
         // Threads that don't start (a phone that refuses the shared memory): once more with one, in a new worker.
         // (Only the worker's own 'threads' says so: a stalled or failed download is not the threads.)
-        if (plan.device === 'wasm' && plan.threads > 1 && !usedOneThread && code === 'threads') {
+        // A lack of memory while the model loads with threads gets the same second try: each thread reserves
+        // memory of its own, so one thread may fit where several don't.
+        const loadingPhase = phase === 'load' || phase === 'download'
+        if (plan.device === 'wasm' && plan.threads > 1 && !usedOneThread && (code === 'threads' || (code === 'memory' && loadingPhase))) {
           usedOneThread = true
-          threadsFailed = true
+          if (code === 'threads') threadsFailed = true // (only a 'threads' failure sets this for later jobs: not a lack of memory)
           stop()
           attempt({ ...plan, threads: 1 })
+          return
+        }
+        if (code === 'memory') {
+          end(() => reject(new SpeechError(t('אין מספיק זיכרון במכשיר לזיהוי הדיבור. אפשר לבחור "מהיר" (מודל קטן יותר).'), 'memory')))
+          return
+        }
+        // The Hebrew model's repo answers that a file isn't there (or isn't open to us): it was removed or closed
+        // (it is one uploader's repo, see docs/parity.md). Say so, and what still works (not the graphics processor's fault).
+        if (plan.model === 'ivrit' && /could not locate file|unauthorized access to file|forbidden access to file/i.test(message)) {
+          end(() => reject(new SpeechError(t('לא ניתן להוריד את מודל העברית (ivrit.ai) מ-Hugging Face. אפשר לבחור "מהיר" (מודל רב-לשוני).'), 'missing')))
           return
         }
         if (plan.device === 'webgpu' && !usedFallback && code !== 'no-audio' && (phase === 'load' || phase === 'recognize')) {
           usedFallback = true
           gpuFailed.value = true
           stop()
-          const cpu = planFor('fast', device.value, true)
+          // The Hebrew model goes on the CPU as itself (the same files); the others go to a smaller model.
+          const same = plan.model === 'ivrit'
+          const cpu = same ? planFor(plan.quality, device.value, true, lang) : planFor('fast', device.value, true, lang)
           // No download that wasn't asked for: only a CPU model that is already here.
           planCached(cpu).then((have) => {
             if (finished) return
             if (have) {
-              onStatus({ stage: 'fallback' })
+              onStatus({ stage: 'fallback', same })
               attempt(cpu)
             } else {
-              end(() => reject(new SpeechError(t('המעבד הגרפי לא הצליח. אפשר ללחוץ שוב כדי להמשיך על המעבד עם מודל קטן יותר (כ-%d MB, יורד פעם אחת).', mbOf(cpu)), 'gpu')))
+              end(() => reject(new SpeechError(same
+                ? t('המעבד הגרפי לא הצליח. אפשר ללחוץ שוב כדי להמשיך על המעבד עם אותו מודל.')
+                : t('המעבד הגרפי לא הצליח. אפשר ללחוץ שוב כדי להמשיך על המעבד עם מודל קטן יותר (כ-%d MB, יורד פעם אחת).', mbOf(cpu)), 'gpu')))
             }
           })
           return
@@ -451,13 +545,14 @@ export function transcribeFile(
         switch (m.type) {
           case 'tick': return
           case 'audio': phase = 'audio'; return onStatus({ stage: 'audio' })
-          case 'load': phase = 'load'; return onStatus({ stage: 'load' })
+          // (A late "loading" after the recognition started is ignored: the recognition's longer limit stays.)
+          case 'load': if (phase === 'recognize') return; phase = 'load'; return onStatus({ stage: 'load' })
           case 'download':
             // Everything known so far is here: the loading starts (its limit), until another file starts.
             phase = m.total > 0 && m.loaded >= m.total ? 'load' : 'download'
             return onStatus({ stage: 'download', progress: m.progress, loaded: m.loaded, total: m.total })
           case 'transcribe': phase = 'recognize'; return onStatus({ stage: 'recognize', progress: m.progress })
-          case 'done': console.info(`ONIT subs: ${m.device}, model ${m.ms.load} ms, recognition ${m.ms.recognize} ms (to the first token ${m.ms.first}, ${m.ms.tokens} tokens ${m.ms.decode}, word timings ${m.ms.after})`); return end(() => resolve({ words: m.words, plan }), plan)
+          case 'done': console.info(`ONIT subs: ${plan.model} (${plan.repo}) ${m.device}, model ${m.ms.load} ms, recognition ${m.ms.recognize} ms (to the first token ${m.ms.first}, ${m.ms.tokens} tokens ${m.ms.decode}, word timings ${m.ms.after})`); return end(() => resolve({ words: m.words, plan }), plan)
           case 'error': return failOrFallback(m.code, m.message)
         }
       }
@@ -465,7 +560,7 @@ export function transcribeFile(
       // model loads with threads, an uncaught error is that (download errors come as messages).
       w.onerror = (e) => failOrFallback(plan.device === 'wasm' && plan.threads > 1 && (phase === 'load' || phase === 'download') ? 'threads' : 'failed', e.message || 'error')
       w.onmessageerror = () => failOrFallback('failed', 'error')
-      const req: SubsRequest = { file, language: lang, repo: plan.repo, device: plan.device, encDtype: plan.encDtype, dtype: plan.dtype, threads: plan.threads }
+      const req: SubsRequest = { file, language: lang, repo: plan.repo, revision: plan.revision, device: plan.device, encDtype: plan.encDtype, dtype: plan.dtype, threads: plan.threads }
       w.postMessage(req)
     }
     attempt(opts.plan)
