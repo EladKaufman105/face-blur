@@ -19,3 +19,5 @@ fun EditorController.projectFields(style: SubtitleStyle, export: ExportOptions? 
     .put("stabilize", stabilizeLevel)
     .put("settings", session.settings.let { st -> JSONObject().put("mode", st.mode.name).put("strength", st.strength.toDouble()).put("padding", st.padding.toDouble()).put("sensitive", st.sensitive) })
     .also { o -> if (export != null) o.put("export", export.toJson()) }
+    // What the subtitles are translated into (kept so "complete translation" after reopening keeps the language).
+    .also { o -> translateTo?.let { o.put("translateTo", it) } }

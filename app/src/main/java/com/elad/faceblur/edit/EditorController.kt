@@ -18,6 +18,7 @@ import com.elad.faceblur.track.FaceTimeline
 import com.elad.faceblur.subs.ModelManager
 import com.elad.faceblur.prefs.AppPrefs
 import com.elad.faceblur.subs.SpeechModel
+import com.elad.faceblur.subs.SubLanguages
 import com.elad.faceblur.subs.SubtitleEngine
 import com.elad.faceblur.subs.SpeakerDetector
 import com.elad.faceblur.audio.AudioEdit
@@ -198,6 +199,10 @@ class EditorController(
         private set
     /** Translate new subtitles when they're created (remembered). */
     var translateOnCreate by mutableStateOf(prefs?.subsTranslate ?: false)
+        private set
+
+    /** What subtitles are translated into: "he", "en", "ar" or "fa"; null: English (Hebrew for English speech). This session only. */
+    var translateTo by mutableStateOf<String?>(null)
         private set
     private var pendingTextSnapshot = false
     private var subsJob: Job? = null
@@ -633,12 +638,16 @@ class EditorController(
         sync()
     }
 
-    /** Downloads [m] if needed, then transcribes the video with it. */
-    fun makeSubtitles(m: SpeechModel) {
+    /**
+     * Downloads [m] if needed, then transcribes the video with it. [lang]: the spoken language the
+     * person picked for the multilingual model ("he", "ar", "en", "fa"; null or "auto": detect it);
+     * the Hebrew model is always Hebrew.
+     */
+    fun makeSubtitles(m: SpeechModel, lang: String? = null) {
         val mm = models ?: return
         if (subsJob?.isActive == true || mm.downloading != null) return
         if (mm.isReady(m)) {
-            generateSubtitles(m)
+            generateSubtitles(m, lang)
             return
         }
         subsJob = scope.launch {
@@ -650,7 +659,7 @@ class EditorController(
                 notice = t("הורדת המודל נכשלה: %s").format(e.message ?: e.javaClass.simpleName)
                 return@launch
             }
-            generateSubtitles(m)
+            generateSubtitles(m, lang)
         }
     }
 
@@ -686,9 +695,9 @@ class EditorController(
     }
 
     /** Transcribes the video with [m] (downloaded) and fills the subtitles. */
-    fun generateSubtitles(m: SpeechModel) {
+    fun generateSubtitles(m: SpeechModel, lang: String? = null) {
         val path = models?.file(m)?.takeIf { models.isReady(m) }?.absolutePath ?: return
-        generateSubtitles(path, m.language)
+        generateSubtitles(path, if (m == SpeechModel.HEBREW) m.language else SubLanguages.speechCode(lang))
     }
 
     fun generateSubtitles(modelPath: String, lang: String) {
@@ -733,22 +742,21 @@ class EditorController(
         }
     }
 
-    /** Sentences (groups) that have only one of the two languages: (group, he, en). */
-    private fun untranslated(): List<Triple<Int, String, String>> {
-        val groups = LinkedHashMap<Int, MutableList<Cue>>()
-        for (c in model.cues.sortedBy { it.startMs }) groups.getOrPut(c.group) { ArrayList() } += c
-        return groups.mapNotNull { (g, cs) ->
-            val he = cs.joinToString(" ") { it.he.trim() }.trim()
-            val en = cs.joinToString(" ") { it.en.trim() }.trim()
-            if (he.isBlank() == en.isBlank()) null else Triple(g, he, en)
-        }
-    }
+    /** What needs translating now (see [EditModel.translationJobs]). */
+    private fun jobs() = model.translationJobs(audio.maskWords)
 
-    val untranslatedCount get() = untranslated().size
+    /** Sentences with a spoken text and no translation yet. */
+    val untranslatedCount get() = jobs().count { !it.overwrites }
+
+    /** Sentences whose translation is hidden over bleeped words (they translate again from the masked text). */
+    val staleCount get() = jobs().count { it.overwrites }
+
+    /** Whether [c]'s translation is hidden in the video: it may carry a bleeped word (see [EditModel.translationShown]). */
+    fun translationHidden(c: Cue) = c.otherText.isNotBlank() && !model.translationShown(c, audio.maskWords)
 
     /** Translates the subtitles that have only one language (again, after a failure). */
     fun translateSubtitles() {
-        if (subsJob?.isActive == true || untranslatedCount == 0) return
+        if (subsJob?.isActive == true || jobs().isEmpty()) return
         subsJob = scope.launch {
             try {
                 translateMissing()
@@ -761,17 +769,22 @@ class EditorController(
 
     /** Whole sentences translate better than pieces of them: one per group. */
     private suspend fun translateMissing() {
-        val todo = untranslated()
+        val todo = jobs()
         if (todo.isEmpty()) return
         subsProgress = SubtitleEngine.Stage.TRANSLATE to 0f
+        // Translations that were typed by hand and are hidden get replaced: one step brings them back.
+        if (todo.any { it.overwrites }) model.beginTranslationBatch()
         try {
             SubtitleEngine.translateLines(
-                todo.map { it.second to it.third },
+                todo.map { it.pair },
+                todo.map { it.src },
+                translateTo,
                 { st, p -> main.post { if (subsProgress != null) subsProgress = st to p } },
             ) { i, he, en ->
-                val (g, he0, _) = todo[i]
+                val job = todo[i]
                 main.post {
-                    if (he0.isBlank()) model.fillGroup(g, he, intoEnglish = false) else model.fillGroup(g, en, intoEnglish = true)
+                    if (job.pair.first.isBlank()) model.fillGroup(job.group, he, intoEnglish = false, source = job.source)
+                    else model.fillGroup(job.group, en, intoEnglish = true, source = job.source)
                     sync()
                 }
             }
@@ -1352,6 +1365,11 @@ class EditorController(
         if (model.cues.isEmpty()) return
         model.regroup(rule)
         sync()
+    }
+
+    /** Picks what subtitles are translated into (null: English, or Hebrew for English speech). */
+    fun changeTranslateTo(v: String?) {
+        translateTo = v?.takeIf { SubLanguages.translatable(it) }
     }
 
     fun changeTranslateOnCreate(v: Boolean) {
