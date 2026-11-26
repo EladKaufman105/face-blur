@@ -76,7 +76,7 @@ case "${1:?shard}" in
     # Two fingers on the video resize the selected blur, one undo step each.
     t pinch.cjs "$U" $S/walk.mp4 $R/pinch   # 8
     ;;
-  4) # about 295 s
+  4) # about 325 s
     # The sound's cleanup, MP3 (from the editor and the home screen), a lower size and frame rate.
     t sound.cjs "$U" $S/speech_two.mp4 $S/speech_en.mp4 $S/classroom60.mp4 $R/sound   # 19
     # A sound step that fails never exports the original voice: the editor's export stays blocked, a batch item fails.
@@ -95,8 +95,8 @@ case "${1:?shard}" in
     t usernotes.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/usernotes   # 60
     # Speakers found from their voices (the sample's two halves).
     t speakers.cjs "$U" $S/speech_two.mp4 $R/speakers   # 8
-    # Face detection as strong as the app's: RetinaFace + YuNet at 960 px finds at least as many faces as the old web detector (RetinaFace alone, 640 px) on the same frames of the stress clip and the classroom.
-    t detect.cjs "$U" $R/detect 1.5 $S/stress_cuts.mp4 $S/classroom.mp4   # 70
+    # Face detection with YuNet: RetinaFace + YuNet at 960 px (in the detector workers, and as one detector with YuNet in its own worker) finds no fewer faces than the old web detector (RetinaFace alone, 640 px) on the same frames of the stress clip and the classroom.
+    t detect.cjs "$U" $R/detect 1.5 $S/stress_cuts.mp4 $S/classroom.mp4   # about 100 (70 before the one-detector run)
     # The keyboard: groups by number, play / pause, a frame step, undo and redo.
     t keys.cjs "$U" $S/walk.mp4 $R/keys.png   # 6
     # A deep voice on a clip with speech.

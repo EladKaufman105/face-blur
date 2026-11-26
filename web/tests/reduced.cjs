@@ -14,6 +14,8 @@ const EN = 'Detection reduced on this device; check faces.'
   fs.mkdirSync(out, { recursive: true })
   const bars = `${out}/bars.mp4`
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=24:duration=2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', bars])
+  const bars720 = `${out}/bars720.mp4`
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=24:duration=2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', bars720])
   const b = await chromium.launch()
   const logs = []
   const fail = (m) => { throw new Error(m) }
@@ -37,11 +39,15 @@ const EN = 'Detection reduced on this device; check faces.'
     if ((await notice(p)) !== null) fail('a full detection shows the reduced notice')
     console.log('full: no notice')
     // A pinned tune weaker than the default (no YuNet, a smaller frame, fewer detections) is reduced too: the notice shows.
-    for (const weak of ['yunet:0', 'side:640', 'rate:2']) {
-      p = await open('he-IL', weak, bars, '.no-faces')
+    for (const [weak, file] of [['yunet:0', bars], ['side:640', bars720], ['rate:2', bars]]) {
+      p = await open('he-IL', weak, file, '.no-faces')
       if ((await notice(p)) !== HE) fail(`a weaker tune (${weak}) without the notice`)
     }
     console.log('weaker tunes: the notice')
+    // A smaller frame that changes nothing for this video (640 px on a 640 x 360 clip) isn't weaker: no notice.
+    p = await open('he-IL', 'side:640', bars, '.no-faces')
+    if ((await notice(p)) !== null) fail('640 px on a 640 px video shows the reduced notice')
+    console.log('a size that changes nothing: no notice')
 
     // "Blur and save straight" with faces to be checked: nothing is saved unasked. The editor is the primary way on; "save anyway" goes on.
     {

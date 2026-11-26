@@ -1,16 +1,30 @@
 // How fast face detection runs on this device. The app's detection is the reference: the fine
 // pass at 1280 px (GPU) or 960 px (CPU), up to 15 detections per second of video. A device that
 // can't keep that up goes lighter, stepwise, and says so (`reduced`), as the app's
-// FaceAnalyzer.adapt does: on the CPU the smaller frame first, then fewer detections; on the GPU
-// fewer detections first, and a smaller frame only if even that fails (never below 960 px unless
-// the GPU is slower than the app's 80 ms threshold).
+// FaceAnalyzer.adapt does.
+//
+// Two times drive it. The whole detection's (RetinaFace, YuNet, the re-check of uncertain faces)
+// sets the rate. RetinaFace's own passes (fine + coarse) set the frame's size: YuNet runs on a
+// fixed 640 x 640 input whatever the frame's size, so its cost never makes the frame smaller.
+//
+// It is never weaker than the web's detection before YuNet (`OLD`: RetinaFace alone at 960 px on
+// the GPU and 640 px on the CPU; on the GPU 640 px once a detection took over 200 ms; 600 ms of
+// detection per second of video, at most 15 a second on the GPU and 10 on the CPU, at least 4):
+//  - the frame never goes below that detection's size on this device: on the CPU 640 px; on the
+//    GPU 960 px, and 640 px only once RetinaFace's own passes at 960 px take over 200 ms (then
+//    that detection, which also re-checked uncertain faces, took longer still and was at 640 px);
+//  - the rate never goes below that detection's rate on this device, at either of its sizes: its
+//    time is at least RetinaFace's fine pass at 640 px (estimated from the fine pass now, scaled
+//    down by the area, which underestimates it: the fixed costs don't shrink), so the rate from
+//    that time is at least the rate it had.
+// So YuNet's cost can make the analysis take longer, but never makes detection lighter than it
+// was before YuNet.
 
-/** The smallest the fine pass gets (the app's LOW_SIDE), the fewest detections per second, and the GPU's floor in detections per second before it shrinks the frame. */
+/** The smallest the fine pass gets (the app's LOW_SIDE), the size between, and the fewest detections per second. */
 export const LOW_SIDE = 640
 export const MID_SIDE = 960
 export const MIN_RATE = 4
-export const GPU_FLOOR_RATE = 8
-/** A GPU slower than this per detection (ms) may go below 960 px (the app's GPU_SLOW_MS). */
+/** On the GPU, the fine pass leaves 1280 px only when RetinaFace's own passes take longer than this (ms; the app's GPU_SLOW_MS). */
 export const GPU_SLOW_MS = 80
 /** Detection time allowed per second of video, per detector: analysis stays near the video's own speed. */
 export const BUDGET_MS = 1000
@@ -18,10 +32,16 @@ export const BUDGET_MS = 1000
 export const FULL_SHARE = 0.8
 /** The rate size steps are judged against: sensitive mode (every frame) never shrinks the frame to chase 30 a second. */
 export const SIZE_RATE = 15
+/** The web's detection before YuNet, the floor (see above). */
+export const OLD = { gpuSide: 960, lowSide: 640, gpuSlowMs: 200, budgetMs: 600, gpuRate: 15, cpuRate: 10 } as const
 
 export interface PaceIn {
-  /** The mean time of the latest detections, ms (not the GPU's check against the CPU, not the first ones). */
+  /** The mean time of the latest detections, whole (RetinaFace, YuNet, the re-check, the fusion), ms (not the GPU's check against the CPU, not the first ones). */
   recentMs: number
+  /** Of that, RetinaFace's own passes (fine + coarse: pixels to tensor, inference, decoding), ms. */
+  rfMs: number
+  /** Of that, the fine pass alone, ms. */
+  fineMs: number
   /** Detectors running side by side. */
   workers: number
   /** The rate wanted: 15, or every frame when sensitive. */
@@ -32,6 +52,8 @@ export interface PaceIn {
   /** The rate now. */
   rate: number
   gpu: boolean
+  /** The long side of the frames detection gets: a fine pass set bigger than that runs at that (the detector doesn't enlarge), so such a size step changes nothing. */
+  frameSide?: number
 }
 
 export interface Pace {
@@ -39,8 +61,20 @@ export interface Pace {
   rate: number
   /** The fine pass's long side from now on. */
   side: number
-  /** Detection is lighter than the app's (a smaller frame, or a rate under 80% of the wanted). */
+  /** Detection is lighter than the app's (a smaller frame than it would have, or a rate under 80% of the wanted). */
   reduced: boolean
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+
+/** The long side the fine pass really runs at when set to [side] (as FaceDetector.detect: it resizes only a frame over 5% bigger). */
+export const runSide = (side: number, frameSide?: number) => (frameSide !== undefined && frameSide <= side * 1.05 ? frameSide : side)
+
+/** The highest rate the detection before YuNet could have had on this device, at either of its sizes (see above): the floor of the rate. */
+export function oldRate(i: PaceIn): number {
+  const now = runSide(i.side, i.frameSide), low = runSide(OLD.lowSide, i.frameSide)
+  const ms = i.fineMs * Math.min(1, (low / now) ** 2)
+  return clamp((OLD.budgetMs * i.workers) / Math.max(1, ms), MIN_RATE, Math.min(i.maxRate, i.gpu ? OLD.gpuRate : OLD.cpuRate))
 }
 
 /**
@@ -48,26 +82,32 @@ export interface Pace {
  * size allows); a rate step leaves the size. When timings recover, the size steps back up.
  */
 export function pace(i: PaceIn): Pace {
+  const eff = (s: number) => runSide(s, i.frameSide)
   const target = Math.min(i.maxRate, SIZE_RATE)
   const wanted = (BUDGET_MS * i.workers) / Math.max(1, i.recentMs)
-  const stay = (rate: number, side = i.side): Pace => ({ rate, side, reduced: side < i.startSide || rate < i.maxRate * FULL_SHARE })
-  if (wanted >= i.maxRate * FULL_SHARE) {
-    // Keeps up. If the frame was shrunk: back up a step when the bigger one would keep up too (time grows about with its area).
+  const floor = oldRate(i)
+  const out = (rate: number, side = i.side): Pace => {
+    const r = Math.min(i.maxRate, Math.max(rate, floor))
+    return { rate: r, side, reduced: eff(side) < eff(i.startSide) || r < i.maxRate * FULL_SHARE }
+  }
+  /** On the GPU, how long RetinaFace's own passes may take at a size before the frame leaves it. */
+  const gpuLimit = (side: number) => (side > MID_SIDE ? GPU_SLOW_MS : OLD.gpuSlowMs)
+  if (wanted >= target * FULL_SHARE) {
+    // Keeps up. If the frame was shrunk: back up a step when the bigger one would keep up too (RetinaFace's time grows about with the area, YuNet's doesn't).
     if (i.side < i.startSide) {
       const up = Math.min(i.startSide, i.side < MID_SIDE ? MID_SIDE : i.startSide)
-      if (wanted * (i.side / up) ** 2 >= target * FULL_SHARE * 1.25) return stay(Math.min(i.maxRate, wanted), up)
+      const rfUp = i.rfMs * (eff(up) / eff(i.side)) ** 2
+      const wantedUp = (BUDGET_MS * i.workers) / Math.max(1, i.recentMs - i.rfMs + rfUp)
+      // On the GPU not back over the bigger size's own limit (no back and forth).
+      if ((!i.gpu || rfUp <= gpuLimit(up)) && wantedUp >= target * FULL_SHARE * 1.25) return out(Math.min(i.maxRate, wantedUp), up)
     }
-    return stay(Math.min(i.maxRate, wanted))
+    return out(Math.min(i.maxRate, wanted))
   }
-  const rate = Math.min(i.maxRate, Math.max(MIN_RATE, wanted))
-  if (i.gpu) {
-    // Fewer detections first; the frame shrinks only if the floor can't be met, and below 960 only for a GPU as slow as that.
-    if (wanted >= GPU_FLOOR_RATE) return stay(rate)
-    const floor = i.recentMs > GPU_SLOW_MS ? LOW_SIDE : Math.min(MID_SIDE, i.side)
-    if (i.side > floor) return stay(i.rate, i.side > MID_SIDE ? MID_SIDE : LOW_SIDE)
-    return stay(rate)
-  }
-  // The CPU: the smaller frame first (960 -> 640), then fewer detections.
-  if (i.side > LOW_SIDE && wanted < target * FULL_SHARE) return stay(i.rate, i.side > MID_SIDE ? MID_SIDE : LOW_SIDE)
-  return stay(rate)
+  // Too slow. A smaller frame first, if it makes a difference: on the CPU always (960 -> 640);
+  // on the GPU only when RetinaFace's own passes are what is slow (1280 -> 960 over 80 ms,
+  // 960 -> 640 over 200 ms).
+  const down = i.side > MID_SIDE ? MID_SIDE : LOW_SIDE
+  if (i.side > LOW_SIDE && eff(down) < eff(i.side) && (!i.gpu || i.rfMs > gpuLimit(i.side))) return out(i.rate, down)
+  // Then fewer detections (never under the floor).
+  return out(clamp(wanted, MIN_RATE, i.maxRate))
 }

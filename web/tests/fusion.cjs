@@ -1,7 +1,8 @@
 // Face detection's pure parts: the box geometry, YuNet's output decoding, the fusion of RetinaFace
 // with YuNet (as the app's FaceDetector.kt: noisy-or where both agree, YuNet's own faces from 0.6
 // at 0.85 of their score, NMS at 0.4), the pace (1280 / 960 / 640 px, 15 to 4 detections a
-// second) and the low-confidence flag. Pure: no browser.
+// second; YuNet's cost never shrinks the frame; never weaker than the web's detection before
+// YuNet, on simulated devices) and the low-confidence flag. Pure: no browser.
 // Run: node tests/fusion.cjs
 const path = require('path')
 const { execFileSync } = require('child_process')
@@ -102,51 +103,107 @@ if (F.fuse([], []).length !== 0) fail('empty')
   if (!near(F.decodeYunet(q, 640, 640, 0.4)[0].score, 1)) fail('clamped score')
 }
 
-// ---- the pace: keeps up as it is; too slow: on the CPU the smaller frame first, then fewer detections; on the GPU fewer detections first
+// ---- the pace: keeps up as it is; too slow: on the CPU the smaller frame first, then fewer detections; on the GPU the frame only when RetinaFace's own passes are slow
 {
-  const base = { workers: 1, maxRate: 15, side: 1280, startSide: 1280, rate: 15, gpu: true }
-  const P2 = (o) => P.pace({ ...base, ...o })
+  // rfMs / fineMs default to the whole time (YuNet free), unless a case says otherwise.
+  const P2 = (o) => P.pace({ workers: 1, maxRate: 15, side: 1280, startSide: 1280, rate: 15, gpu: true, rfMs: o.recentMs, fineMs: o.recentMs, ...o })
   const fast = P2({ recentMs: 40 })
   if (fast.reduced || fast.side !== 1280 || fast.rate !== 15) fail('a fast GPU is reduced: ' + JSON.stringify(fast))
-  // 13 a second wanted of 15: within 80%, not reduced.
+  // 13 a second wanted of 15: within 80%, not reduced (and here the floor, the old detection's rate, is 15 anyway).
   const ok = P2({ recentMs: 1000 / 13 })
-  if (ok.reduced || ok.side !== 1280 || !near(ok.rate, 13, 1e-6)) fail('a little under: ' + JSON.stringify(ok))
-  // A GPU at 10 a second (100 ms): the rate drops, the frame stays 1280 (and 960 floor is the develop's).
-  const mid = P2({ recentMs: 100 })
-  if (!mid.reduced || mid.side !== 1280 || !near(mid.rate, 10)) fail('GPU at 100 ms: rate first: ' + JSON.stringify(mid))
-  // Under the floor (8 a second, 125 ms): the frame shrinks to 960 first, the rate as it was; 960 is the floor for a GPU under 80 ms... which this is not (130 ms): it may go to 640.
-  const floor = P2({ recentMs: 130 })
-  if (floor.side !== 960 || floor.rate !== 15) fail('GPU under the floor: 1280 -> 960, rate unchanged: ' + JSON.stringify(floor))
-  const slowGpu = P2({ recentMs: 130, side: 960 })
-  if (slowGpu.side !== 640) fail('a GPU slower than 80 ms may go below 960: ' + JSON.stringify(slowGpu))
-  // A GPU under 80 ms never goes below 960 (wanted 8 to 12 at 80-125 ms is the rate's job; here under 80 ms wanted > 12).
-  const quick = P2({ recentMs: 79, side: 960 })
-  if (quick.side < 960) fail('a quick GPU below 960: ' + JSON.stringify(quick))
-  // The rate's own floor at 960 on a GPU that is not slow cannot be reached under 80 ms; with several detectors the wanted rate doubles.
-  if (P2({ recentMs: 130, workers: 2 }).side !== 1280) fail('detectors in parallel on the GPU')
-  const step = P2({ recentMs: 130, rate: 11 })
-  if (step.rate !== 11) fail('a size step lowered the rate: ' + JSON.stringify(step))
-  // The frame steps back up when timings recover (time grows with the area): at 640 px 25 ms a detection would be 56 ms at 960.
+  if (ok.reduced || ok.side !== 1280 || ok.rate < 13 - 1e-6) fail('a little under: ' + JSON.stringify(ok))
+  const okCpu = P2({ recentMs: 1000 / 13, gpu: false, side: 960, startSide: 960, fineMs: 200 })
+  if (okCpu.reduced || okCpu.side !== 960 || !near(okCpu.rate, 13)) fail('a little under, CPU: ' + JSON.stringify(okCpu))
+  // A GPU whose RetinaFace takes over 80 ms at 1280 px: 960 px, the rate as it was.
+  const slow1280 = P2({ recentMs: 100, rfMs: 90, fineMs: 80 })
+  if (!slow1280.reduced || slow1280.side !== 960 || slow1280.rate !== 15) fail('GPU over 80 ms at 1280: 960 px: ' + JSON.stringify(slow1280))
+  const step = P2({ recentMs: 420, rfMs: 400, fineMs: 380, rate: 11 })
+  if (step.side !== 960 || step.rate !== 11) fail('a size step changed the rate: ' + JSON.stringify(step))
+  // At 960 px, under 200 ms: the frame stays, fewer detections (not under the floor: the old detection's rate at 640 px).
+  const mid = P2({ recentMs: 160, rfMs: 150, fineMs: 120, side: 960 })
+  const midFloor = Math.min(15, 600 / (120 * (640 / 960) ** 2))
+  if (!mid.reduced || mid.side !== 960 || !near(mid.rate, Math.max(1000 / 160, midFloor))) fail('GPU at 960 px, 150 ms: fewer detections: ' + JSON.stringify(mid))
+  // Over 200 ms at 960 px (the old detection's own rule): 640 px.
+  const slowGpu = P2({ recentMs: 260, rfMs: 220, fineMs: 200, side: 960 })
+  if (slowGpu.side !== 640) fail('a GPU over 200 ms at 960 px: 640 px: ' + JSON.stringify(slowGpu))
+  // THE REVIEW'S CASE: a fast GPU, a slow CPU: YuNet (a fixed 150 ms) makes the detection slow, RetinaFace is quick. The frame never leaves its starting size, and the rate stays the old detection's (15).
+  {
+    let side = 1280, rate = 15
+    for (let k = 0; k < 40; k++) {
+      const rf = 25 * (side / 1280) ** 2
+      const p = P2({ recentMs: rf + 150, rfMs: rf, fineMs: rf * 0.9, side, rate })
+      if (p.side < 1280 || p.rate < 15) fail('YuNet cost shrank the GPU detection: ' + JSON.stringify({ k, ...p }))
+      side = p.side; rate = p.rate
+    }
+    // The same at 960 px (a GPU without much to spare) and on the CPU: YuNet alone never shrinks the frame.
+    const g960 = P2({ recentMs: 70 + 150, rfMs: 70, fineMs: 60 })
+    if (g960.side !== 1280) fail('GPU at 70 ms + YuNet 150: ' + JSON.stringify(g960))
+  }
+  // The frame steps back up when timings recover (RetinaFace's time grows with the area, YuNet's doesn't).
   const up = P2({ recentMs: 25, side: 640, rate: 8 })
   if (up.side !== 960 || up.rate < 15 * 0.8) fail('back up from 640: ' + JSON.stringify(up))
   const up2 = P2({ recentMs: 25, side: 960 })
   if (up2.side !== 1280) fail('back up from 960: ' + JSON.stringify(up2))
   const stay = P2({ recentMs: 60, side: 960 })
   if (stay.side !== 960) fail('not back up when 1280 would be slow: ' + JSON.stringify(stay))
-  // The CPU: 960 -> 640 first, then fewer detections.
-  const c = { ...base, gpu: false, side: 960, startSide: 960 }
-  const c1 = P.pace({ ...c, recentMs: 200 })
+  // Not back up over the bigger size's limit (no back and forth): 50 ms at 960 would be 89 ms at 1280 (over 80).
+  if (P2({ recentMs: 55, rfMs: 50, fineMs: 45, side: 960 }).side !== 960) fail('back and forth on the GPU')
+  // The CPU: 960 -> 640 first, then fewer detections, never under the old detection's rate (10 a second at most on the CPU).
+  const C = (o) => P2({ gpu: false, side: 960, startSide: 960, ...o })
+  const c1 = C({ recentMs: 200 })
   if (!c1.reduced || c1.side !== 640 || c1.rate !== 15) fail('CPU 960 -> 640, rate unchanged: ' + JSON.stringify(c1))
-  const c2 = P.pace({ ...c, recentMs: 400, side: 640 })
+  const c2 = C({ recentMs: 400, side: 640 })
   if (!c2.reduced || c2.side !== 640 || c2.rate !== 4) fail('CPU at 640, fewer: ' + JSON.stringify(c2))
-  const crawl = P.pace({ ...c, recentMs: 5000, side: 640 })
+  // The old detection would have run 600 / 100 = 6 a second here: not fewer, though YuNet makes the whole 400 ms.
+  const c3 = C({ recentMs: 400, rfMs: 100, fineMs: 100, side: 640 })
+  if (!near(c3.rate, 6)) fail('CPU: the floor: ' + JSON.stringify(c3))
+  const crawl = C({ recentMs: 5000, side: 640 })
   if (crawl.rate !== P.MIN_RATE) fail('the fewest a second: ' + JSON.stringify(crawl))
-  if (P.pace({ ...c, recentMs: 250, workers: 4 }).reduced !== false || P.pace({ ...c, recentMs: 250, workers: 2 }).reduced !== true) fail('CPU detectors in parallel')
+  if (C({ recentMs: 250, workers: 4 }).reduced !== false || C({ recentMs: 250, workers: 2 }).reduced !== true) fail('CPU detectors in parallel')
   // Wide detection (every frame of a 30 fps video): the rate is judged against 30 but the frame against 15, so a device that keeps up with 15 keeps its size.
-  const w = P.pace({ ...base, maxRate: 30, rate: 30, recentMs: 60 })
+  const w = P2({ maxRate: 30, rate: 30, recentMs: 60 })
   if (!w.reduced || w.side !== 1280 || w.rate < 15) fail('sensitive keeps its size: ' + JSON.stringify(w))
-  const wc = P.pace({ ...c, maxRate: 30, rate: 30, recentMs: 60 })
-  if (wc.side !== 960) fail('sensitive on the CPU keeps its size: ' + JSON.stringify(wc))
+  if (C({ maxRate: 30, rate: 30, recentMs: 60 }).side !== 960) fail('sensitive on the CPU keeps its size')
+  // A video smaller than a size step: the step changes nothing, so it isn't taken and isn't "reduced" (a 720 px video on the GPU runs at 720 px at 1280 or 960).
+  const small = P2({ recentMs: 100, rfMs: 90, fineMs: 80, frameSide: 720 })
+  if (small.side !== 1280) fail('a size step that changes nothing: ' + JSON.stringify(small))
+  if (P2({ recentMs: 40, side: 960, frameSide: 720 }).reduced) fail('960 px on a 720 px video is reduced')
+  const s640 = P2({ recentMs: 75, side: 640, frameSide: 720 })
+  if (s640.side !== 640 || !s640.reduced) fail('640 px on a 720 px video is not reduced: ' + JSON.stringify(s640))
+  if (P.runSide(960, 1000) !== 1000 || P.runSide(960, 1100) !== 960 || P.runSide(960) !== 960) fail('runSide')
+}
+
+// ---- never weaker than the web's detection before YuNet, on any device: simulated devices
+// (RetinaFace's fine pass = a fixed part + a part that grows with the area; a coarse pass over
+// 800 px; the re-check; YuNet beside it or after it; 1 to 4 detectors), each paced window by
+// window by the new rule and by the old one (develop: RetinaFace alone, 960 px on the GPU, 640 on
+// the CPU, 640 on the GPU past 200 ms; 600 ms a second of video, 15 / 10 at most, 4 at least).
+// At every window the new frame is no smaller and the new rate no lower.
+{
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+  let cases = 0
+  for (const gpu of [true, false]) for (const big of [3, 15, 40, 80, 150, 300, 800]) for (const fixed of [0, 10]) for (const coarse of [0, 5, 40])
+  for (const check of [0, 10, 60]) for (const yunet of [5, 40, 150, 400]) for (const beside of [true, false]) for (const workers of gpu ? [1] : [1, 2, 4])
+  for (const maxRate of [15, 30]) for (const frameSide of [1280, 736, 480]) {
+    const start = gpu ? 1280 : 960
+    const eff = (s) => P.runSide(s, frameSide)
+    // [big]: the fine pass's area part at the starting size.
+    const fine = (s) => big * (eff(s) / eff(start)) ** 2 + fixed
+    const rfOf = (s) => fine(s) + (eff(s) > 800 ? coarse : 0)
+    const total = (s) => (beside ? Math.max(rfOf(s), yunet) : rfOf(s) + yunet) + check
+    let side = start, rate = maxRate
+    let oldSide = gpu ? 960 : 640, oldRate = Math.min(maxRate, gpu ? 15 : 10)
+    for (let k = 0; k < 12; k++) {
+      const p = P.pace({ recentMs: total(side), rfMs: rfOf(side), fineMs: fine(side), workers, maxRate, side, startSide: start, rate, gpu, frameSide })
+      side = p.side; rate = p.rate
+      const oldMs = rfOf(oldSide) + check
+      oldRate = clamp(600 * workers / oldMs, 4, Math.min(maxRate, gpu ? 15 : 10))
+      if (gpu && oldMs > 200 && oldSide > 640) oldSide = 640
+      if (eff(side) < eff(oldSide) || rate < oldRate - 1e-9) fail('weaker than before YuNet: ' + JSON.stringify({ gpu, big, fixed, coarse, check, yunet, beside, workers, maxRate, frameSide, k, side, rate, oldSide, oldRate }))
+      cases++
+    }
+  }
+  if (cases < 10000) fail('too few cases: ' + cases)
 }
 
 // ---- the flag: low-confidence faces, or detection that ran reduced
