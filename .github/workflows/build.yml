@@ -290,14 +290,13 @@ jobs:
           cp app/build/outputs/apk/release/*.apk "out/$APK_NAME.apk"
           sha256sum out/*.apk
 
-      # The beta and release APKs are only needed in this run (the release asset keeps them; a
-      # release's is kept a week in case its upload fails). The RC is kept 90 days, until main
+      # The beta and release APKs are kept a week, in case the release asset's upload fails. The RC is kept 90 days, until main
       # promotes it.
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.kind == 'rc' && 'release-candidate' || 'release-apk' }}
           path: out/*.apk
-          retention-days: ${{ matrix.kind == 'rc' && 90 || matrix.kind == 'release' && 7 || 1 }}
+          retention-days: ${{ matrix.kind == 'rc' && 90 || 7 }}
           compression-level: 0
           if-no-files-found: error
 
