@@ -7,6 +7,7 @@
 // have the same feature, so a template can later be exported from one and imported in the other.
 // What only the web has (a logo or background picture as a data URL, the subtitle style's
 // bleep mask, speakers and show choice) goes in extra keys that the app ignores.
+import { roundUp } from './sensitivity'
 import { DEFAULT_LOOK, loadLook, type BlurMode, type Look } from './types'
 import { DEFAULT_SUB_STYLE, normalizeStyle, SUB_EFFECTS, SUB_FONTS, type SubStyle } from './substyle'
 import { NO_BACKGROUND, type Background, type BgFill, type BgKey } from './background'
@@ -382,8 +383,8 @@ export function templateToJson(t: Template): Record<string, unknown> {
 const bool = (v: unknown) => (typeof v === 'boolean' ? v : undefined)
 const int = (v: unknown) => (typeof v === 'number' && isFinite(v) ? Math.round(v) : undefined)
 const float = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : undefined)
-/** A number within 0..1 (the sensitivity). */
-const unit = (v: unknown) => (typeof v === 'number' && isFinite(v) ? Math.min(1, Math.max(0, v)) : undefined)
+/** The sensitivity: within 0..1, up to the next 5% step (lib/sensitivity.ts). */
+const unit = (v: unknown) => (typeof v === 'number' && isFinite(v) ? roundUp(v) : undefined)
 
 /** A template from its JSON (the app's shape); null if [o] isn't one. */
 export function templateFromJson(o: any): Template | null {

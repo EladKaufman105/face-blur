@@ -314,6 +314,7 @@ fun MainScreen(vm: MainViewModel) {
                                 icon = AppIcons.Face,
                                 color = Feature.FACES.tint,
                             )
+                            if (s.fast) FastDetectionWarning()
                         }
                         is UiState.AudioDone -> {
                             val context = androidx.compose.ui.platform.LocalContext.current

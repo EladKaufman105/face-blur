@@ -41,6 +41,12 @@ data class Thresholds(
     val shortVerified: Float,
 )
 
+/** How detection runs now on a device (see [DetectTuning.adapt]): every [every]-th frame, the CPU's fine pass at [cpuSide] px, [lite] checks, and whether a sensitivity's extra work is [shed]. */
+data class Pacing(val every: Int, val cpuSide: Int, val lite: Boolean, val shed: Boolean = false)
+
+/** What a step of [DetectTuning.adapt] did. */
+enum class PaceStep { NONE, SHED, GPU_OFF, SIDE, RATE, LITE, RELAX }
+
 /**
  * The detection modes' pacing and the sensitivity setting, as plain values (no Android, no
  * OpenCV), so they can be tested on the JVM.
@@ -124,6 +130,45 @@ object DetectTuning {
     }
 
     /**
+     * One step of FaceAnalyzer.adapt (about every 1.5 s), as plain values. [blocked]: the frames
+     * waited for a free detector over a third of the time (detection holds the analysis back);
+     * [relaxed]: under a tenth. When blocked, the lightest change first:
+     *  1. a sensitivity above 0 ([extras]) sheds its own extra work (the extra detections' crops):
+     *     the default detection then costs what it costs at sensitivity 0, so a sensitivity never
+     *     makes the default detection lighter than it is at 0;
+     *  2. a GPU too slow ([gpuSlow]) gives way to the CPU, at [lowSide] px, lite;
+     *  3. on the CPU, the fine pass at [lowSide] px, lite;
+     *  4. fewer detections (up to every [maxEvery]-th frame), lite;
+     *  5. fast mode (its rate already the floor): lite.
+     * When relaxed, back a step toward every [baseEvery]-th frame, and the full checks once there.
+     */
+    fun adapt(
+        p: Pacing,
+        blocked: Boolean,
+        relaxed: Boolean,
+        gpuActive: Boolean,
+        gpuSlow: Boolean,
+        mode: DetectMode,
+        extras: Boolean,
+        baseEvery: Int,
+        maxEvery: Int,
+        lowSide: Int,
+        fineSide: Int,
+    ): Pair<Pacing, PaceStep> = when {
+        blocked && extras && !p.shed -> p.copy(shed = true) to PaceStep.SHED
+        blocked && gpuActive && gpuSlow -> p.copy(cpuSide = lowSide, lite = true) to PaceStep.GPU_OFF
+        blocked && !gpuActive && p.cpuSide > lowSide -> p.copy(cpuSide = lowSide, lite = true) to PaceStep.SIDE
+        blocked && p.every < maxEvery -> p.copy(every = p.every + 1, lite = true) to PaceStep.RATE
+        blocked && mode == DetectMode.FAST && !p.lite -> p.copy(lite = true) to PaceStep.LITE
+        blocked -> p to PaceStep.NONE
+        relaxed && p.every > baseEvery -> {
+            val every = p.every - 1
+            p.copy(every = every, lite = if (every == baseEvery && (gpuActive || p.cpuSide == fineSide)) false else p.lite) to PaceStep.RELAX
+        }
+        else -> p to PaceStep.NONE
+    }
+
+    /**
      * RetinaFace's faces [rf] and YuNet's [yn] as one list (YuNet adds the faces RetinaFace
      * misses and raises the score where both agree), then NMS at 0.4: a YuNet face that no
      * RetinaFace face overlaps is added at 0.85 of its score when it is [yunetOnly] or more.
@@ -186,6 +231,9 @@ object DetectTuning {
     /** [s] on the setting's steps of 5% (the slider's), within 0..1. */
     fun quantize(s: Float): Float = kotlin.math.round(clamp(s) * STEPS) / STEPS
 
+    /** [s] up to the next 5% step (a template's value between steps never ends up less sensitive), within 0..1. */
+    fun roundUp(s: Float): Float = kotlin.math.ceil(clamp(s) * STEPS - 1e-3f) / STEPS
+
     /** The steps a sensitivity of [s] goes through: 5%, 10%, ... up to [s] (none at 0). */
     fun levels(s: Float): List<Float> = (1..kotlin.math.round(clamp(s) * STEPS).toInt()).map { it / STEPS }
 
@@ -194,24 +242,44 @@ object DetectTuning {
      * ([levels]) the tracks [more] makes at each step's thresholds ([combine]). Each step only
      * adds, so a higher sensitivity has every box a lower one has: it never blurs less.
      */
-    fun widen(base: List<TreeMap<Int, Box>>, s: Float, more: (Float) -> List<TreeMap<Int, Box>>): List<TreeMap<Int, Box>> =
-        levels(s).fold(base) { acc, level -> combine(acc, more(level)) }
+    fun widen(
+        base: List<TreeMap<Int, Box>>,
+        s: Float,
+        cancelled: () -> Boolean = { false },
+        more: (Float) -> List<TreeMap<Int, Box>>,
+    ): List<TreeMap<Int, Box>> {
+        var out = base
+        for (level in levels(s)) {
+            // A pass given up (a new pass or close): stop between steps.
+            if (cancelled()) break
+            out = combine(out, more(level))
+        }
+        return out
+    }
 
     /** Steps of the setting. */
     private const val STEPS = 20f
 
+    /**
+     * Mostly the same face: IoU over [SAME_FACE_IOU] on at least half the frames both tracks have
+     * (both are contiguous). Tracks apart in time are rejected at once, and the count stops as
+     * soon as the answer is known.
+     */
     private fun sameFace(a: TreeMap<Int, Box>, b: TreeMap<Int, Box>): Boolean {
         val from = max(a.firstKey(), b.firstKey())
         val to = kotlin.math.min(a.lastKey(), b.lastKey())
         if (from > to) return false
-        var shared = 0
+        val shared = to - from + 1
         var over = 0
+        var seen = 0
         for (f in from..to) {
-            val x = a[f] ?: continue
-            val y = b[f] ?: continue
-            shared++
-            if (Geometry.iou(x, y) > SAME_FACE_IOU) over++
+            val x = a[f]
+            val y = b[f]
+            seen++
+            if (x != null && y != null && Geometry.iou(x, y) > SAME_FACE_IOU) over++
+            if (over * 2 >= shared) return true
+            if ((over + shared - seen) * 2 < shared) return false
         }
-        return shared > 0 && over * 2 >= shared
+        return false
     }
 }

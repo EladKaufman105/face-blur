@@ -90,7 +90,7 @@ export function Analyzing({ file, sensitive, fast, sensitivity, twoSteps, onDone
           b.close()
           return c.toDataURL('image/jpeg', 0.85)
         })
-        onDone({ times: m.times, width: m.width, height: m.height, fps: m.fps, tracks: m.tracks, cuts: m.cuts, lowConfidence: m.lowConfidence, reduced: m.reduced, fast: m.fast, sensitivity: m.sensitivity }, thumbs, m.ms, m.backend)
+        onDone({ times: m.times, width: m.width, height: m.height, fps: m.fps, tracks: m.tracks, cuts: m.cuts, lowConfidence: m.lowConfidence, reduced: m.reduced, fast: m.fast, sensitive: m.sensitive, sensitivity: m.sensitivity }, thumbs, m.ms, m.backend)
         worker.terminate()
       } else if (m.type === 'error') {
         worker.terminate()

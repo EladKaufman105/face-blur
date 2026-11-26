@@ -56,6 +56,101 @@ class DetectModesTest {
         assertEquals(DetectMode.EXTENDED, DetectMode.of(sensitive = true, fast = true))
     }
 
+    // ------------------------------------------------------------------ a device that just keeps up
+
+    /**
+     * A simulated device, window by window (FaceAnalyzer.adapt's 1.5 s): each detection costs its
+     * fine pass (by the side's area), less for lite checks, more with a sensitivity's extra crops
+     * (unless shed); the frames wait (blocked) when the detections a second cost more than
+     * [capacity], and keep up easily under 70% of it. Returns the state after each window.
+     */
+    private fun simulate(capacity: Float, mode: DetectMode, sensitivity: Float, fps: Float = 30f, gpu: Boolean = false, windows: Int = 40): List<Pacing> {
+        val (base, most) = DetectTuning.cadence(mode, fps)
+        var p = Pacing(base, if (mode == DetectMode.FAST) 640 else 960, false)
+        var gpuOn = gpu
+        val out = ArrayList<Pacing>()
+        repeat(windows) {
+            val fine = if (gpuOn) 30f else 100f * (p.cpuSide / 960f) * (p.cpuSide / 960f)
+            val cost = (fine + 40f) * (if (p.lite) 0.8f else 1f) * (if (sensitivity > 0f && !p.shed) 1.4f else 1f)
+            val load = fps / p.every * cost / capacity
+            val (next, step) = DetectTuning.adapt(p, load > 1f, load < 0.7f, gpuOn, gpuOn && fine > 25f, mode, sensitivity > 0f, base, most, 640, 960)
+            if (step == PaceStep.GPU_OFF) gpuOn = false
+            p = next
+            out += p
+        }
+        return out
+    }
+
+    /** At least as strong: as many detections or more, a frame as big or bigger, the full checks if [b] has them. */
+    private fun noWeaker(a: Pacing, b: Pacing) = a.every <= b.every && a.cpuSide >= b.cpuSide && (!a.lite || b.lite)
+
+    @Test
+    fun aSensitivityNeverMakesTheDefaultDetectionLighter() {
+        for (mode in DetectMode.entries) for (gpu in listOf(false, true)) for (fps in listOf(24f, 30f, 60f)) {
+            for (cap in (200..3000 step 50).map { it.toFloat() }) {
+                val s0 = simulate(cap, mode, 0f, fps, gpu)
+                val s1 = simulate(cap, mode, 1f, fps, gpu)
+                val what = "$mode gpu=$gpu $fps fps, capacity $cap"
+                // Window by window no weaker than sensitivity 0 (shedding the extra work comes first, so it is a window behind at most).
+                for (k in s0.indices) assertTrue("$what, window $k: ${s1[k]} vs ${s0[k]}", noWeaker(s1[k], s0[k]) || (k > 0 && noWeaker(s1[k], s0[k - 1])))
+                val e0 = s0.last()
+                val e1 = s1.last()
+                // (A device on the edge may go back and forth between two states: then a window behind.)
+                assertTrue("$what: ends ${e1} vs ${e0}", noWeaker(e1, e0) || noWeaker(e1, s0[s0.size - 2]))
+                // Never fewer default detections over the run.
+                assertTrue(what, s1.sumOf { 1.0 / it.every } >= s0.sumOf { 1.0 / it.every } - 1e-9)
+            }
+        }
+        // A device that just keeps up at sensitivity 0 (no step at all) only sheds the extra crops at 1.
+        val s0 = simulate(2200f, DetectMode.NORMAL, 0f)
+        val s1 = simulate(2200f, DetectMode.NORMAL, 1f)
+        assertTrue(s0.all { it == Pacing(2, 960, false) })
+        assertEquals(Pacing(2, 960, false, shed = true), s1.last())
+    }
+
+    @Test
+    fun adaptAsBeforeWithoutASensitivity() {
+        // The steps FaceAnalyzer.adapt took before (no sensitivity): GPU off, 640 px, fewer, back.
+        val p = Pacing(2, 960, false)
+        assertEquals(Pacing(2, 640, true) to PaceStep.GPU_OFF, DetectTuning.adapt(p, true, false, true, true, DetectMode.NORMAL, false, 2, 3, 640, 960))
+        assertEquals(Pacing(3, 960, true) to PaceStep.RATE, DetectTuning.adapt(p, true, false, true, false, DetectMode.NORMAL, false, 2, 3, 640, 960))
+        assertEquals(Pacing(2, 640, true) to PaceStep.SIDE, DetectTuning.adapt(p, true, false, false, false, DetectMode.NORMAL, false, 2, 3, 640, 960))
+        assertEquals(Pacing(3, 640, true) to PaceStep.RATE, DetectTuning.adapt(Pacing(2, 640, true), true, false, false, false, DetectMode.NORMAL, false, 2, 3, 640, 960))
+        assertEquals(Pacing(3, 640, true) to PaceStep.NONE, DetectTuning.adapt(Pacing(3, 640, true), true, false, false, false, DetectMode.NORMAL, false, 2, 3, 640, 960))
+        assertEquals(Pacing(2, 640, true) to PaceStep.RELAX, DetectTuning.adapt(Pacing(3, 640, true), false, true, false, false, DetectMode.NORMAL, false, 2, 3, 640, 960))
+        assertEquals(Pacing(2, 960, false) to PaceStep.RELAX, DetectTuning.adapt(Pacing(3, 960, true), false, true, true, false, DetectMode.NORMAL, false, 2, 3, 640, 960))
+        assertEquals(p to PaceStep.NONE, DetectTuning.adapt(p, false, false, false, false, DetectMode.NORMAL, false, 2, 3, 640, 960))
+        // Fast: lite only, never fewer.
+        assertEquals(Pacing(6, 640, true) to PaceStep.LITE, DetectTuning.adapt(Pacing(6, 640, false), true, false, false, false, DetectMode.FAST, false, 6, 6, 640, 960))
+        // A sensitivity: its extra work goes first.
+        assertEquals(Pacing(2, 960, false, true) to PaceStep.SHED, DetectTuning.adapt(p, true, false, true, true, DetectMode.NORMAL, true, 2, 3, 640, 960))
+    }
+
+    /** OpenCV's NMSBoxes as FaceDetectorYN calls it: scores over the threshold (strictly), stable-sorted highest first, cut to topK, then greedy. */
+    private fun nmsBoxes(c: List<Det>, threshold: Float, nms: Float, topK: Int): List<Det> {
+        val keep = ArrayList<Det>()
+        for (d in c.filter { it.score > threshold }.sortedByDescending { it.score }.take(topK)) {
+            if (keep.all { Geometry.iou(it.box, d.box) <= nms }) keep += d
+        }
+        return keep
+    }
+
+    @Test
+    fun yunetOnceFromThePoolThresholdIsTheSameDefaultFaces() {
+        val r = java.util.Random(5)
+        repeat(500) {
+            // Candidates with ties in score (as quantized model outputs can have).
+            val c = List(r.nextInt(80)) {
+                val w = 0.02f + r.nextFloat() * 0.2f
+                Det(Box(r.nextFloat(), r.nextFloat(), w, w), (r.nextInt(100) / 100f))
+            }
+            val direct = nmsBoxes(c, 0.4f, 0.3f, 5000)
+            val viaPool = nmsBoxes(c, DetectTuning.POOL_YUNET, 0.3f, 20000).filter { it.score > 0.4f }
+            assertEquals(direct.size, viaPool.size)
+            direct.zip(viaPool).forEach { (a, b) -> assertSame(a, b) }
+        }
+    }
+
     // ------------------------------------------------------------------ sensitivity mapping
 
     @Test
@@ -92,6 +187,11 @@ class DetectModesTest {
         assertEquals(0.05f, DetectTuning.quantize(0.03f), 0f)
         assertEquals(0.4f, DetectTuning.quantize(0.41f), 1e-6f)
         assertEquals(1f, DetectTuning.quantize(3f), 0f)
+        assertEquals(0.35f, DetectTuning.roundUp(0.31f), 1e-6f)
+        assertEquals(0.35f, DetectTuning.roundUp(0.35f), 1e-6f)
+        assertEquals(0.05f, DetectTuning.roundUp(0.001f), 1e-6f)
+        assertEquals(0f, DetectTuning.roundUp(0f), 0f)
+        assertEquals(1f, DetectTuning.roundUp(9f), 0f)
         assertEquals(emptyList<Float>(), DetectTuning.levels(0f))
         assertEquals(listOf(0.05f, 0.1f, 0.15f), DetectTuning.levels(0.15f))
         assertEquals(20, DetectTuning.levels(1f).size)

@@ -177,6 +177,8 @@ class FaceAnalyzer private constructor(
     private val followed = ArrayList<Followed>()
     @Volatile private var detectEvery = baseEvery
     @Volatile private var lite = false
+    // A sensitivity above 0 whose extra crops were left out: the device can't keep up with them (see [DetectTuning.adapt]).
+    @Volatile private var shedExtras = false
     // The latest finished detection found a big face: the coarse pass, which fits those, then
     // runs on every detection (see [RetinaFaceDetector.detect]).
     @Volatile private var bigFace = false
@@ -252,6 +254,7 @@ class FaceAnalyzer private constructor(
         cuts.clear()
         detectEvery = baseEvery
         lite = false
+        shedExtras = false
         bigFace = false
         cpuSide = startCpuSide
         windowStart = 0L
@@ -354,7 +357,7 @@ class FaceAnalyzer private constructor(
                     if (gen == generation) {
                         val d0 = SystemClock.elapsedRealtime()
                         val det = detector()
-                        val found = det.detect(frame, lite, known, cpuSide, maySkipCoarse, sensitivity)
+                        val found = det.detect(frame, lite, known, cpuSide, maySkipCoarse, sensitivity, extraCrops = !shedExtras)
                         detectMsTotal.addAndGet(SystemClock.elapsedRealtime() - d0)
                         detections.incrementAndGet()
                         fineUsTotal.addAndGet(det.lastFineUs)
@@ -433,34 +436,40 @@ class FaceAnalyzer private constructor(
         }
         val span = now - windowStart
         if (span < 1500 || idx < 20) return
-        if (blockedMs > span / 3) {
-            val g = gpu
-            if (g != null && g.active && g.inferMs > GPU_SLOW_MS) {
-                // A GPU this slow (one lane, ~2-10 frames a second) holds back the CPU's cores:
-                // they do better together, at the lighter size a device like this needs.
-                g.disable("slow (${g.inferMs.roundToInt()} ms)")
-                cpuSide = LOW_SIDE
-                lite = true
+        val g = gpu
+        val gpuActive = g != null && g.active
+        val (next, step) = DetectTuning.adapt(
+            Pacing(detectEvery, cpuSide, lite, shedExtras),
+            blocked = blockedMs > span / 3,
+            relaxed = blockedMs < span / 10,
+            gpuActive = gpuActive,
+            gpuSlow = gpuActive && g!!.inferMs > GPU_SLOW_MS,
+            mode = mode,
+            extras = sensitivity > 0f,
+            baseEvery = baseEvery,
+            maxEvery = maxEvery,
+            lowSide = LOW_SIDE,
+            fineSide = RetinaFaceDetector.CPU_FINE_SIDE,
+        )
+        when (step) {
+            PaceStep.SHED -> android.util.Log.i("ONIT", "face detection slower than the video: the sensitivity's extra crops left out")
+            // A GPU this slow (one lane, ~2-10 frames a second) holds back the CPU's cores:
+            // they do better together, at the lighter size a device like this needs.
+            PaceStep.GPU_OFF -> {
+                g!!.disable("slow (${g.inferMs.roundToInt()} ms)")
                 android.util.Log.i("ONIT", "the GPU takes ${g.inferMs.roundToInt()} ms a frame: CPU at $LOW_SIDE px from now on")
-            } else if ((g == null || !g.active) && cpuSide > LOW_SIDE) {
-                cpuSide = LOW_SIDE
-                lite = true
-                android.util.Log.i("ONIT", "face detection slower than the video: $LOW_SIDE px, lite")
-            } else if (detectEvery < maxEvery) {
-                detectEvery++
-                lite = true
-                android.util.Log.i("ONIT", "face detection slower than the video: every $detectEvery frames, lite")
-            } else if (mode == DetectMode.FAST && !lite) {
-                // Fast mode never goes under 5 a second: lighter checks only.
-                lite = true
-                android.util.Log.i("ONIT", "fast face detection slower than the video: lite")
             }
-        } else if (blockedMs < span / 10 && detectEvery > baseEvery) {
-            // Detection keeps up easily now (the GPU's check is over, say): back toward the
-            // usual pace, and the full checks once there.
-            detectEvery--
-            if (detectEvery == baseEvery && (gpu?.active == true || cpuSide == RetinaFaceDetector.CPU_FINE_SIDE)) lite = false
+            PaceStep.SIDE -> android.util.Log.i("ONIT", "face detection slower than the video: $LOW_SIDE px, lite")
+            PaceStep.RATE -> android.util.Log.i("ONIT", "face detection slower than the video: every ${next.every} frames, lite")
+            // Fast mode never goes under 5 a second: lighter checks only.
+            PaceStep.LITE -> android.util.Log.i("ONIT", "fast face detection slower than the video: lite")
+            // Detection keeps up easily now (the GPU's check is over, say): back toward the usual pace.
+            PaceStep.RELAX, PaceStep.NONE -> Unit
         }
+        detectEvery = next.every
+        cpuSide = next.cpuSide
+        lite = next.lite
+        shedExtras = next.shed
         windowStart = now
         blockedMs = 0L
     }
@@ -494,7 +503,8 @@ class FaceAnalyzer private constructor(
         if (sensitivity > 0f && extraDets.isNotEmpty()) {
             // A sensitivity above 0: the default tracks as they are, and step by step the faces
             // the lower thresholds add (see [DetectTuning.widen]).
-            tracks = DetectTuning.widen(tracks, sensitivity) { level ->
+            val gen = generation
+            tracks = DetectTuning.widen(tracks, sensitivity, cancelled = { gen != generation || Thread.currentThread().isInterrupted }) { level ->
                 val thr = DetectTuning.thresholds(level)
                 val all = HashMap<Int, List<Det>>(dets)
                 for ((i, extra) in extraDets) {

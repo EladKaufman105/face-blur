@@ -187,6 +187,10 @@ private fun BlurSettings(vm: MainViewModel) {
                 }
                 Icon(Icons.Filled.KeyboardArrowDown, null, Modifier.rotate(turn), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            // Fast detection's warning stays in view with the settings folded (open, it is under the choice).
+            if (!open && vm.detectMode == com.elad.faceblur.analysis.DetectMode.FAST) {
+                FastDetectionWarning(Modifier.padding(start = Space.L, end = Space.L, bottom = Space.M))
+            }
             AnimatedVisibility(
                 open,
                 enter = expandVertically(tween(Motion.PANEL)) + fadeIn(tween(Motion.CONTENT)),

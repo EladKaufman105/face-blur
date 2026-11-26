@@ -1501,8 +1501,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             <canvas ref={canvas} width={W} height={H} />
             <canvas ref={rings} class="layer" width={W} height={H} />
             <canvas ref={overlay} class="layer" width={W} height={H} />
-            {an.reduced && narrow && <DetectionNotice overlay />}
-            {an.fast && !an.reduced && narrow && <DetectionNotice overlay fast />}
+            {(an.reduced || an.fast) && narrow && <DetectionNotice overlay reduced={!!an.reduced} fast={!!an.fast} />}
           </div>
           <video ref={video} src={url} playsInline preload="auto" />
           {adding && <div class="screen-hint">{t('הקש על הסרטון במקום שצריך לטשטש')}</div>}
@@ -1684,7 +1683,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     {saveTpl && (
       <SaveTemplate
         settings={{
-          blurOff: false, look, sensitive: false, fast: !!an.fast, sensitivity: an.sensitivity ?? 0, createSubs: cues.length > 0, language: savedLanguage(lang.value === 'he'), translate: false, subStyle,
+          blurOff: false, look, sensitive: !!an.sensitive, fast: !!an.fast, sensitivity: an.sensitivity ?? 0, createSubs: cues.length > 0, language: savedLanguage(lang.value === 'he'), translate: false, subStyle,
           split: { words: 0, chars: 0 }, burn: exportOpts.burn === false ? 'NONE' : subStyle.show === 'tr' ? 'TRANSLATED' : subStyle.show === 'both' ? 'BOTH' : 'ORIGINAL', saveSrt: exportOpts.srt,
           voice, denoise, enhance, loud: loudOn, cutSilences: cuts.length > 0, minPauseMs: 800, cutFillers: cuts.length > 0 && cues.length > 0,
           background, stabilize: steadyLevel, aspect: exportOpts.aspect, shortSide: exportOpts.shortSide, fps: exportOpts.fps, quality: exportOpts.quality, codec: exportOpts.codec, watermark: mark,

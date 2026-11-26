@@ -58,7 +58,7 @@ export class DetectorPool {
   }
 
   /** Hands [frame] (copied here, so the canvas can be reused at once) to a free worker; call [free] first. */
-  async detect(canvas: OffscreenCanvas, id: number, done: (id: number, dets: Det[], t: { ms: number; rfMs: number; fineMs: number }, yunet: boolean, extras: Det[]) => void, side: number, reduced: boolean, sensitivity = 0) {
+  async detect(canvas: OffscreenCanvas, id: number, done: (id: number, dets: Det[], t: { ms: number; rfMs: number; fineMs: number; extraMs?: number }, yunet: boolean, extras: Det[]) => void, side: number, reduced: boolean, sensitivity = 0) {
     const frame = await createImageBitmap(canvas)
     const w = this.idle.pop()
     if (!w) {
@@ -70,7 +70,7 @@ export class DetectorPool {
       const m = e.data
       if (m.type === 'dets') {
         this.last.set(w, m.stats)
-        done(m.id, m.dets, { ms: m.ms, rfMs: m.rfMs, fineMs: m.fineMs }, m.yunet, m.extras ?? [])
+        done(m.id, m.dets, { ms: m.ms, rfMs: m.rfMs, fineMs: m.fineMs, extraMs: m.extraMs }, m.yunet, m.extras ?? [])
         this.idle.push(w)
         this.waiting.shift()?.()
         if (--this.running === 0) this.drained.splice(0).forEach((r) => r())

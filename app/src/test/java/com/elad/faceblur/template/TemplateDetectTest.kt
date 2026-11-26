@@ -70,6 +70,14 @@ class TemplateDetectTest {
     }
 
     @Test
+    fun sensitivityBetweenStepsRoundsUp() {
+        val t = Template.fromJson(JSONObject("{\"id\":\"g\",\"name\":\"n\",\"blur\":{\"sensitivity\":0.31}}"))!!
+        assertEquals(0.35f, t.blur!!.sensitivity!!, 1e-6f)
+        val u = Template.fromJson(JSONObject("{\"id\":\"h\",\"name\":\"n\",\"blur\":{\"sensitivity\":0.01}}"))!!
+        assertEquals(0.05f, u.blur!!.sensitivity!!, 1e-6f)
+    }
+
+    @Test
     fun savedTemplateHasTheChoices() {
         val t = TemplateSettings(fast = true, sensitivity = 0.25f).toTemplate("s", "Saved", setOf(TemplateCategory.BLUR))
         assertEquals(DetectMode.FAST, t.blur!!.detect)

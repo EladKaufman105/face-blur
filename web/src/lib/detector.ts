@@ -73,7 +73,9 @@ export class FaceDetector {
   /** YuNet couldn't be loaded: RetinaFace alone (weaker than the app's detection). */
   yunetMissing = false
   /** The latest detection's RetinaFace passes (ms): the fine one, and fine + coarse (the pacing's inputs, see lib/pace.ts). */
-  readonly last = { fineMs: 0, rfMs: 0 }
+  readonly last = { fineMs: 0, rfMs: 0, extraMs: 0 }
+  /** Time this detection spent on a sensitivity's extra work (the pool's decoding, fusion and crops), kept out of the pace's timings. */
+  private extraMs = 0
   readonly stats: DetectStats = { detections: 0, pre: 0, inf: 0, dec: 0, coarse: 0, coarseRuns: 0, check: 0, verify: 0, nms: 0, yunetFaces: 0 }
 
   private constructor(private gpu: Session | null, private model32: Uint8Array, public precision: 'fp16' | 'fp32', yunet: Uint8Array | null) {
@@ -213,6 +215,7 @@ export class FaceDetector {
     const rfPool: Det[] | undefined = more ? [] : undefined
     const ynJob = ynWorker ? createImageBitmap(src).then((b) => ynWorker.run(b, ynThr), () => null) : null
     const out: Det[] = []
+    this.extraMs = 0
     // Below ~800 px the fine pass's biggest anchors (512 px) already cover the biggest faces.
     const big = Math.max(src.width, src.height) > 800
     let t = performance.now()
@@ -225,13 +228,15 @@ export class FaceDetector {
       st.check += performance.now() - t
     }
     t = performance.now()
+    let e0 = this.extraMs
     out.push(...await this.run(src, this.thr, 0, st, rfPool))
-    const fineMs = performance.now() - t
+    const fineMs = performance.now() - t - (this.extraMs - e0)
     let coarseMs = 0
     if (big) {
       t = performance.now()
+      e0 = this.extraMs
       out.push(...await this.run(coarse, this.thr, COARSE_MIN_BOX, undefined, rfPool))
-      coarseMs = performance.now() - t + shrinkMs
+      coarseMs = performance.now() - t - (this.extraMs - e0) + shrinkMs
       st.coarse += performance.now() - t
       st.coarseRuns++
     }
@@ -256,10 +261,13 @@ export class FaceDetector {
     // A sensitivity above 0: the pool's faces that aren't one of those, from the cut up, re-checked too (the likeliest first).
     this.lastExtras = []
     if (rfPool) {
+      const te = performance.now()
       this.lastExtras = extras(kept, fuse(rfPool, ynAll, POOL_YUNET_ONLY), thresholds(this.sens).cut)
       await this.verify(src, [...this.lastExtras].sort((a, b) => b.score - a.score).slice(0, MAX_EXTRA_CHECKS))
+      this.extraMs += performance.now() - te
     }
     st.verify += performance.now() - t
+    this.last.extraMs = this.extraMs
     return kept
   }
 
@@ -347,7 +355,11 @@ export class FaceDetector {
     const [loc, conf] = await this.infer(input, [1, 3, h, w])
     const t2 = performance.now()
     const dets = this.decode(loc, conf, w, h, threshold, minBox)
-    if (pool) pool.push(...this.decode(loc, conf, w, h, Math.min(threshold, POOL_RF), minBox))
+    if (pool) {
+      const tp = performance.now()
+      pool.push(...this.decode(loc, conf, w, h, Math.min(threshold, POOL_RF), minBox))
+      this.extraMs += performance.now() - tp
+    }
     if (st) {
       st.pre += t1 - t0
       st.inf += t2 - t1

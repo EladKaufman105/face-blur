@@ -88,7 +88,7 @@ sealed interface UiState {
     data class Editing(val info: VideoInfo, val editor: EditorController) : UiState
     data class Done(val info: VideoInfo, val result: Outcome.Saved, val canEdit: Boolean, val subsOnly: Boolean = false, /** The faces were found with fast detection: its warning stays on the result. */ val fast: Boolean = false) : UiState
     /** [note]: what the template's processing could not do (shown beside the message). */
-    data class NoFaces(val info: VideoInfo, val canEdit: Boolean, val note: String? = null) : UiState
+    data class NoFaces(val info: VideoInfo, val canEdit: Boolean, val note: String? = null, /** Found with fast detection: its warning shows here too. */ val fast: Boolean = false) : UiState
     /** A saved project whose video can't be read any more: pick it again. [wrong]: the last pick was another video. */
     data class Relink(val project: ProjectMeta, val wrong: Boolean = false) : UiState
     /**
@@ -911,7 +911,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // No faces and nothing the template really changed: no copy of the same video is saved.
                     val changed = tpl != null && (TemplateRunner.changesVideo(ctrl, tpl) || TemplateRunner.exportChangesVideo(getApplication(), tpl.export))
                     if (session.model.tracks.isEmpty() && !changed) {
-                        state = UiState.NoFaces(info, canEdit = true, note = failure)
+                        state = UiState.NoFaces(info, canEdit = true, note = failure, fast = settings.fast)
+                    } else if (settings.fast) {
+                        // Fast detection may have missed a face for a moment: never saved unseen. The editor
+                        // opens (its notice says why) and the video is saved from there, as the web app's check screen.
+                        state = UiState.Editing(info, ctrl)
                     } else {
                         render(ctrl, auto = true)
                     }

@@ -2,8 +2,8 @@
 //  - the ready screen: three modes (fast's warning shows when it is picked), the sensitivity slider and the summary line;
 //  - a fast run measured near 5 detections a second (not reduced), its notice kept in the editor (Hebrew; English on a
 //    phone as a pill over the video), and "blur and save straight" stopping at the check screen;
-//  - a higher sensitivity on a crowded clip: no fewer face tracks than the default.
-// Run: node tests/fast.cjs <url> <video> <crowded video> <out dir>
+//  - a higher sensitivity on a clip with many faces (stress_cuts): extra detections found, no fewer face tracks than the default.
+// Run: node tests/fast.cjs <url> <video> <video with many faces> <out dir>
 const { chromium } = require('playwright')
 const fs = require('fs')
 const [, , url, video, crowd, out] = process.argv
@@ -63,6 +63,10 @@ const PILL_EN = 'Fast detection: small or distant faces may be missed for a mome
     ui = await p.evaluate(() => ({ warning: document.querySelector('.fast-warning')?.textContent.trim() ?? null, summary: document.querySelector('.fold-summary')?.textContent.trim(), value: document.querySelector('.sensitivity-value')?.textContent.trim() }))
     if (ui.warning !== WARN_HE || !ui.summary.endsWith('זיהוי מהיר · רגישות 40%') || ui.value !== '40%') fail('the ready screen, fast at 40%: ' + JSON.stringify(ui))
     await p.screenshot({ path: `${out}/0_ready_fast.png`, fullPage: true })
+    // Folded, the warning stays in view.
+    await p.click('.blur-settings')
+    if ((await p.evaluate(() => document.querySelector('.fast-warning-folded')?.textContent.trim())) !== WARN_HE) fail('the fast warning with the settings folded')
+    await p.click('.blur-settings')
     console.log('ready screen:', ui.summary)
 
     // ---- a fast run: about 5 detections a second, not reduced; the notice stays in the editor
@@ -100,6 +104,16 @@ const PILL_EN = 'Fast detection: small or distant faces may be missed for a mome
     if (pill !== PILL_EN) fail('the English pill: ' + pill)
     await p.screenshot({ path: `${out}/3_editor_phone_en.png` })
     console.log('phone en: pill')
+    // Fast and reduced (forced, as a device too slow would): both said, one under the other, over the video.
+    p = await page('en-US', true)
+    await p.goto(url + '&detect=yunet:1,side:960,reduced:1')
+    await ready(p, video, 'fast', 0)
+    await p.click('.blur-faces')
+    await p.waitForSelector('.editor .tabs', { timeout: 600000 })
+    const both = await p.evaluate(() => [...document.querySelectorAll('.detect-pills > div')].map((e) => e.className.split(' ')[0]))
+    if (JSON.stringify(both) !== JSON.stringify(['detect-reduced', 'detect-fast'])) fail('fast and reduced on a phone: ' + JSON.stringify(both))
+    await p.screenshot({ path: `${out}/3b_editor_phone_both.png` })
+    console.log('phone: both notices')
 
     // ---- "blur and save straight" in fast mode: stops at the check screen, with the warning
     p = await page('he-IL')
@@ -112,10 +126,13 @@ const PILL_EN = 'Fast detection: small or distant faces may be missed for a mome
     await p.screenshot({ path: `${out}/4_check_fast.png` })
     console.log('save straight: the check screen')
 
-    // ---- the sensitivity on a crowded clip: no fewer face tracks than the default
+    // ---- the sensitivity on a clip with many faces: extra detections, no fewer face tracks than the default
+    // Detection pinned (960 px, 15 a second, no pacing), so both runs detect the same frames whatever the machine's timing:
+    // the default detections are then the same, and a sensitivity can only add.
     const counts = []
     for (const s of [0, 1]) {
       p = await page('he-IL')
+      await p.goto(url + '&detect=yunet:1,side:960,rate:15')
       await ready(p, crowd, 'normal', s)
       await p.click('.blur-faces')
       await p.waitForSelector('.editor .tabs, .no-faces', { timeout: 600000 })
@@ -124,6 +141,7 @@ const PILL_EN = 'Fast detection: small or distant faces may be missed for a mome
       counts.push(c)
     }
     if (counts[1].tracks < counts[0].tracks) fail(`sensitivity 1 found fewer faces: ${counts[1].tracks} < ${counts[0].tracks}`)
+    if (counts[0].extra !== 0 || counts[1].extra === 0) fail(`extra detections: ${counts[0].extra} at 0, ${counts[1].extra} at 1`)
     console.log(`sensitivity: ${counts[0].tracks} tracks at 0, ${counts[1].tracks} at 1 (${counts[1].extra} extra detections)`)
     console.log('fast: ok')
   } catch (e) {

@@ -885,6 +885,30 @@ if (!L.isLowConfidence({ fast: true }) || L.isLowConfidence({ fast: false })) fa
   }
 }
 
+// ---- sensitivity on a device that just keeps up: its extra work (taken out of the timings) never makes the default detection lighter
+{
+  for (const [label, gpu, workers, ms, rf, fine, fps] of [['CPU just keeping up', false, 2, 130, 90, 80, 30], ['CPU slow', false, 2, 400, 300, 260, 30], ['GPU just keeping up', true, 1, 64, 40, 35, 30], ['GPU slow', true, 1, 140, 100, 90, 24], ['one CPU', false, 1, 70, 50, 45, 25]]) {
+    const run = (extra) => {
+      let rate = P.fullRate(fps), side = gpu ? 1280 : 960, reduced = false, n = 0
+      const g = new P.DetectGate(15), pacer = new P.Pacer(3), steps = []
+      for (let k = 0; k < 60 * fps; k++) {
+        const t = k / fps
+        if (!g.take(t, rate)) continue
+        n++
+        // The extra crops and decoding: in the detection's time, and reported as extraMs.
+        const w = pacer.add({ ms: ms + extra, rfMs: rf, fineMs: fine, extraMs: extra })
+        if (!w) continue
+        const p = P.pace({ ...w, workers, maxRate: P.fullRate(fps), side, startSide: gpu ? 1280 : 960, rate, gpu, frameSide: gpu ? 1280 : 960, frameRate: fps, nominal: fps })
+        rate = p.rate; side = p.side; reduced ||= p.reduced
+        steps.push(rate + '@' + side)
+      }
+      return { n, rate, side, reduced, steps: steps.join(' ') }
+    }
+    const s0 = run(0), s1 = run(90)
+    if (s1.n < s0.n || s1.rate < s0.rate || s1.side < s0.side || s1.reduced !== s0.reduced || s1.steps !== s0.steps) fail('a sensitivity made the default detection lighter (' + label + '): ' + JSON.stringify({ s0, s1 }))
+  }
+}
+
 // ---- sensitivity: 0 is the default exactly; higher only ever lowers a threshold, never under the minimum
 {
   const D = S.DEFAULT_THRESHOLDS
@@ -899,6 +923,7 @@ if (!L.isLowConfidence({ fast: true }) || L.isLowConfidence({ fast: false })) fa
     prev = t
   }
   if (!(S.POOL_RF <= S.MOST.cut && S.POOL_YUNET <= S.MOST.cut && S.MOST.strong < F.CLEAR)) fail('the pool')
+  if (S.roundUp(0.31) !== 0.35 || S.roundUp(0.35) !== 0.35 || S.roundUp(0.001) !== 0.05 || S.roundUp(0) !== 0 || S.roundUp(4) !== 1) fail('roundUp')
   if (S.quantize(0.02) !== 0 || S.quantize(0.03) !== 0.05 || S.quantize(7) !== 1 || S.levels(0).length !== 0 || JSON.stringify(S.levels(0.15)) !== JSON.stringify([0.05, 0.1, 0.15]) || S.levels(1).length !== 20) fail('steps')
 }
 

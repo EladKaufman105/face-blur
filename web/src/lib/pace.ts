@@ -257,12 +257,17 @@ export function pace(i: PaceIn): Pace {
   return out(clamp(wanted, Math.min(MIN_RATE, i.maxRate), i.maxRate))
 }
 
-/** A detection's times (ms): whole, RetinaFace's passes (fine + coarse), its fine pass; and the GPU's check against the CPU inside it, if it ran. */
+/**
+ * A detection's times (ms): whole, RetinaFace's passes (fine + coarse), its fine pass; and the GPU's check against the CPU inside
+ * it, if it ran, and a sensitivity's extra work (lib/sensitivity.ts), both left out of the pace: a sensitivity never makes the
+ * default detection lighter.
+ */
 export interface Timing {
   ms: number
   rfMs: number
   fineMs: number
   checkMs?: number
+  extraMs?: number
 }
 
 /**
@@ -285,7 +290,7 @@ export class Pacer {
   /** The means when [t] completes a window, else null. */
   add(t: Timing): { recentMs: number; rfMs: number; fineMs: number } | null {
     if (++this.seen <= this.warmup) return null
-    this.window.push({ ms: Math.max(0, t.ms - (t.checkMs ?? 0)), rfMs: t.rfMs, fineMs: t.fineMs })
+    this.window.push({ ms: Math.max(0, t.ms - (t.checkMs ?? 0) - (t.extraMs ?? 0)), rfMs: t.rfMs, fineMs: t.fineMs })
     if (this.window.length < Pacer.WINDOW) return null
     const mean = (k: 'ms' | 'rfMs' | 'fineMs') => this.window.reduce((a, b) => a + b[k], 0) / this.window.length
     const out = { recentMs: mean('ms'), rfMs: mean('rfMs'), fineMs: mean('fineMs') }

@@ -175,7 +175,7 @@ data class Template(
                 blur = o.optJSONObject("blur")?.let { b ->
                     BlurPart(
                         b.boolOrNull("none"), b.enumOrNull<BlurMode>("mode"), b.floatOrNull("strength"), b.floatOrNull("padding"), b.boolOrNull("sensitive"),
-                        b.boolOrNull("fast"), b.floatOrNull("sensitivity")?.takeIf { !it.isNaN() }?.coerceIn(0f, 1f),
+                        b.boolOrNull("fast"), b.floatOrNull("sensitivity")?.takeIf { !it.isNaN() }?.let { com.elad.faceblur.analysis.DetectTuning.roundUp(it) },
                     )
                 },
                 subs = o.optJSONObject("subs")?.let { s ->

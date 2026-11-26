@@ -175,8 +175,20 @@ box, so a higher sensitivity has every box a lower one has, and the extra detect
 include those at a lower one. A track the extra faces add has no clear detection behind it, so a
 batch flags the video for a look.
 
+A sensitivity never makes the default detection lighter on a slow device: the time of its extra
+work (the pool's decoding, fusion and crops) is kept out of the timings the pace follows, as the
+GPU's check is (`extraMs`), so the rate and the frame's size are those of sensitivity 0. The
+app's FaceAnalyzer can't separate that time (it measures the frames' wait for a detector), so
+when detection holds it back the first thing it drops is the extra crops (`DetectTuning.adapt`),
+before the frame's size, the lite checks or the rate; its YuNet runs once (from the pool's
+threshold, the default faces those over 0.4, the same faces by OpenCV's NMS), as here. A
+template's sensitivity between steps rounds up to the next 5%.
+
 `web/tests/fusion.cjs` checks that 0 is the default exactly (thresholds, the tracker, no tracker run),
 that the thresholds only go down, that YuNet's faces from a threshold up don't depend on the lower
 ones, that the extra detections are nested, and on 150 simulated scenes (weak faces, clutter) that a
 higher sensitivity never covers fewer face-frames than a lower one and never changes a default track
-(and that it does find more). The app's `DetectModesTest` does the same on the JVM.
+(and that it does find more), and on simulated devices (CPUs and GPUs that just keep up, and slow
+ones) that a sensitivity's extra time changes no step of the pace. The app's `DetectModesTest` does
+the same on the JVM, with its adapt steps on simulated devices (never lighter than at 0, the extra
+crops shed first) and YuNet's faces from the pool's threshold against OpenCV's NMS.

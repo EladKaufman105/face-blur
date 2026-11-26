@@ -155,6 +155,8 @@ export function Ready({ file, detect, onDetect, onBlur, onBlurAndSave, onReplace
             </span>
             <span class={'chevron' + (open ? ' up' : '')} aria-hidden="true">⌄</span>
           </button>
+          {/* Fast detection's warning stays in view with the settings folded (open, it is under the choice). */}
+          {!open && detect.mode === 'fast' && <p class="small fast-warning fast-warning-folded" role="note">{t('זיהוי מהיר בודק פחות פריימים, ולכן מהיר יותר. הוא עלול לפספס לרגע פנים קטנות, רחוקות או בקצה המסך. כדאי לצפות בתוצאה לפני שמשתפים.')}</p>}
           {open && (
             <div class="fold-body">
               <p class="small muted" style="margin:0">{t('אפשר לשנות את המראה גם אחר כך, בעורך.')}</p>

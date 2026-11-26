@@ -66,6 +66,8 @@ const STEPS = 20
 export const clamp = (s: unknown): number => (typeof s === 'number' && Number.isFinite(s) ? Math.min(1, Math.max(0, s)) : 0)
 /** [s] on the setting's steps of 5%. */
 export const quantize = (s: unknown): number => Math.round(clamp(s) * STEPS) / STEPS
+/** [s] up to the next 5% step (a template's value between steps never ends up less sensitive), within 0..1. */
+export const roundUp = (s: unknown): number => Math.ceil(clamp(s) * STEPS - 1e-3) / STEPS
 /** The steps a sensitivity of [s] goes through: 5%, 10%, ... up to [s] (none at 0). */
 export const levels = (s: unknown): number[] => Array.from({ length: Math.round(clamp(s) * STEPS) }, (_, i) => (i + 1) / STEPS)
 
@@ -93,17 +95,23 @@ const boxAt = (t: Track, f: number): Det | null => {
 }
 const lastOf = (t: Track) => t.first + t.boxes.length / 4 - 1
 
-/** Mostly the same face: IoU over SAME_FACE_IOU on at least half the frames both have. */
+/**
+ * Mostly the same face: IoU over SAME_FACE_IOU on at least half the frames both have (both are contiguous). Tracks apart in
+ * time are rejected at once, and the count stops as soon as the answer is known.
+ */
 function sameFace(a: Track, b: Track): boolean {
   const from = Math.max(a.first, b.first), to = Math.min(lastOf(a), lastOf(b))
-  let shared = 0, over = 0
+  if (from > to) return false
+  const shared = to - from + 1
+  let over = 0, seen = 0
   for (let f = from; f <= to; f++) {
     const x = boxAt(a, f), y = boxAt(b, f)
-    if (!x || !y) continue
-    shared++
-    if (iou(x, y) > SAME_FACE_IOU) over++
+    seen++
+    if (x && y && iou(x, y) > SAME_FACE_IOU) over++
+    if (over * 2 >= shared) return true
+    if ((over + shared - seen) * 2 < shared) return false
   }
-  return shared > 0 && over * 2 >= shared
+  return false
 }
 
 /**

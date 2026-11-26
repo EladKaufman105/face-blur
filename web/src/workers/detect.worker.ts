@@ -10,7 +10,7 @@ export type DetectRequest =
 export type DetectReply =
   | { type: 'ready'; precision: string; yunet: boolean }
   /** [ms]: the whole detection; [rfMs], [fineMs]: RetinaFace's passes, its fine pass (the pacing's inputs). */
-  | { type: 'dets'; id: number; dets: Det[]; ms: number; rfMs: number; fineMs: number; stats: DetectStats; yunet: boolean; /** A sensitivity above 0: the extra faces. */ extras: Det[] }
+  | { type: 'dets'; id: number; dets: Det[]; ms: number; rfMs: number; fineMs: number; /** A sensitivity's extra work, left out of the pace. */ extraMs?: number; stats: DetectStats; yunet: boolean; /** A sensitivity above 0: the extra faces. */ extras: Det[] }
   | { type: 'error'; message: string }
 
 const post = (m: DetectReply) => (self as unknown as Worker).postMessage(m)
