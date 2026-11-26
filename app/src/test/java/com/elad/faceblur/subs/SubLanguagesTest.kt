@@ -215,7 +215,7 @@ class ArabicSubtitlesTest {
         assertEquals("ar", Srt.tag(cues, english = false))
         assertEquals("en", Srt.tag(cues, english = true))
         assertEquals("he", Srt.tag(emptyList(), english = false))
-        val fa = listOf(Cue(1, 0, 1000, "سلام", "שלום", 1, "fa"))
+        val fa = listOf(Cue(1, 0, 1000, "سلام چطوری", "שלום", 1, "fa"))
         assertEquals("fa", Srt.tag(fa, english = false))
         assertEquals("he", Srt.tag(fa, english = true))
     }
