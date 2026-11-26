@@ -6,6 +6,7 @@
 import { ALL_FORMATS, AudioSampleSink, BlobSource, Input } from 'mediabunny'
 import { pipeline, env } from '@huggingface/transformers'
 import type { Word } from '../lib/subtitles'
+import { isMemoryError } from '../lib/memerr'
 import type { Dtype } from '../lib/speech'
 // The runtime's own files, served by this site (not a CDN): the threads' workers start from the
 // same file, the page's isolation (COEP) has nothing to allow, and it works offline once cached.
@@ -40,7 +41,7 @@ self.onmessage = async (e: MessageEvent<SubsRequest>) => {
   try {
     await run(e.data)
   } catch (err) {
-    post({ type: 'error', code: 'failed', message: String((err as Error)?.message ?? err) })
+    post({ type: 'error', code: isMemoryError(err) ? 'memory' : 'failed', message: String((err as Error)?.message ?? err) })
   }
 }
 
@@ -130,6 +131,10 @@ async function run({ file, language, repo, revision, device, encDtype, dtype, th
     // Threads are for the CPU's path, and only in an isolated page (else the runtime would say it can't).
     wasm.numThreads = device === 'wasm' && self.crossOriginIsolated ? Math.max(1, threads) : 1
   }
+  // Every request of the model (its metadata too) goes to the pinned commit: Transformers.js reads the
+  // revision into the URL of some requests only, and its metadata requests ignore it, so the commit goes
+  // into the path template itself (a fully cached model then needs no request to the Hub at all).
+  env.remotePathTemplate = revision ? `{model}/resolve/${revision}/` : '{model}/resolve/{revision}/'
   const key = `${repo}|${revision ?? ''}|${device}|${encDtype}|${dtype}|${wasm?.numThreads}`
   // Phase: loading (or starting to download). The files' bytes come as 'download'; when they are all
   // here the sessions are created, which has no percent: 'load' says so.
@@ -148,7 +153,6 @@ async function run({ file, language, repo, revision, device, encDtype, dtype, th
   if (!asr && loaded) { const old = loaded.asr; loaded = null; await Promise.race([old.dispose?.(), sleep(1000)]).catch(() => {}) }
   if (!asr) try { asr = await pipeline('automatic-speech-recognition', repo, {
     device,
-    ...(revision ? { revision } : {}),
     dtype: { encoder_model: encDtype, decoder_model_merged: dtype },
     progress_callback: (p: any) => {
       const now = Date.now()
@@ -171,6 +175,7 @@ async function run({ file, language, repo, revision, device, encDtype, dtype, th
   }) } catch (e) {
     // Threads that would not start (not a download that failed): the page tries once more with one.
     const message = String((e as Error)?.message ?? e)
+    if (isMemoryError(e)) return post({ type: 'error', code: 'memory', message })
     if ((wasm?.numThreads ?? 1) > 1 && !/could not locate file|failed to fetch|network|load failed|https?:\/\/|\b(40\d|50\d)\b/i.test(message)) {
       return post({ type: 'error', code: 'threads', message })
     }

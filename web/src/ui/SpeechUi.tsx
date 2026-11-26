@@ -26,6 +26,10 @@ export function QualityChoice({ cls, language = null }: { cls?: string; language
   const d = device.value
   const { plan } = useSpeechPlan(language)
   const options: [Quality, string][] = [['fast', 'מהיר'], ['better', 'איכות טובה יותר']]
+  // On a phone or another weak device the Hebrew model (ivrit.ai) is its own choice, named, with a warning:
+  // it needs a lot of memory, so "better quality" there stays the small multilingual model.
+  const hebrewChoice = d.weak && spokenLanguage(language) === 'hebrew'
+  if (hebrewChoice) options.push(['hebrew', 'מודל עברית'])
   const sizes = options.map(([q]) => planFor(q, d, gpuFailed.value, spokenLanguage(language)))
   const [have, setHave] = useState<boolean[]>([false, false])
   useEffect(() => {
@@ -40,6 +44,7 @@ export function QualityChoice({ cls, language = null }: { cls?: string; language
           {t(label)} · <span dir="ltr">{have[k] ? t('במכשיר') : `${mbOf(sizes[k])} MB`}</span>
         </button>
       ))}
+      {hebrewChoice && plan.quality === 'hebrew' && <p class="small speech-memory" style="flex-basis:100%;margin:6px 0 0;color:var(--primary)">{t('מודל העברית (ivrit.ai) גדול וצריך הרבה זיכרון. אם הדף נסגר או נתקע, בחרו "מהיר".')}</p>}
     </div>
   )
 }
@@ -50,7 +55,7 @@ export function speechLine(s: SpeechStatus): { text: string; progress: number | 
     case 'audio': return { text: t('מכין את הקול…'), progress: null }
     case 'download': return { text: t('מוריד את המודל…'), progress: s.progress }
     case 'load': return { text: t('טוען את המודל למכשיר…'), progress: null }
-    case 'fallback': return { text: t('המעבד הגרפי לא הגיב. ממשיך על המעבד עם מודל קטן יותר…'), progress: null }
+    case 'fallback': return { text: s.same ? t('המעבד הגרפי לא הגיב. ממשיך על המעבד עם אותו מודל…') : t('המעבד הגרפי לא הגיב. ממשיך על המעבד עם מודל קטן יותר…'), progress: null }
     case 'recognize': return { text: t('מזהה דיבור…'), progress: s.progress }
   }
 }

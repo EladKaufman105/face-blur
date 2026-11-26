@@ -7,9 +7,11 @@ import { storageKey } from './channel'
 import { lang, t } from '../i18n'
 import type { SubsMessage, SubsRequest } from '../workers/subs.worker'
 import type { Word } from './subtitles'
+import { isMemoryError } from './memerr'
 
 /** What the person picks: "fast" (small, light on a phone) or "better" (bigger, slower, more exact). */
-export type Quality = 'fast' | 'better'
+/** "hebrew": the Hebrew model asked for by name (the only way a phone gets it: it is big). */
+export type Quality = 'fast' | 'better' | 'hebrew'
 export type Dtype = 'fp32' | 'fp16' | 'q4' | 'q4f16' | 'q8'
 export type ModelKey = 'base' | 'small' | 'large' | 'ivrit'
 
@@ -79,7 +81,11 @@ function guess(): Device {
   const nav = navigator as any
   const mem: number | undefined = nav.deviceMemory
   const cores = navigator.hardwareConcurrency || 4
-  return { weak: isMobile() || (mem !== undefined && mem < 8) || cores < 4, gpu: null, probed: false }
+  // A tablet that says it isn't mobile (Android's tablets do) is a touch device with a small memory all the same:
+  // a touch-first pointer and no (or a small) memory reading counts as weak.
+  let touchFirst = false
+  try { touchFirst = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches } catch {}
+  return { weak: isMobile() || (mem !== undefined && mem < 8) || cores < 4 || (touchFirst && mem === undefined), gpu: null, probed: false }
 }
 
 /** What this device is (the graphics processor is added once it was asked, see [probeDevice]). */
@@ -114,7 +120,7 @@ const KEY = 'subs.quality'
 function readChoice(): Quality | null {
   try {
     const v = localStorage.getItem(storageKey(KEY))
-    return v === 'fast' || v === 'better' ? v : null
+    return v === 'fast' || v === 'better' || v === 'hebrew' ? v : null
   } catch { return null }
 }
 /** What the person picked ("faster" / "better quality"); null: the device's default. Kept per channel (release and beta apart). */
@@ -128,7 +134,8 @@ export function setQuality(q: Quality) {
 const param = (name: string) => new URLSearchParams(location.search).get(name)
 
 export function defaultQuality(d: Device, language: string | null = null): Quality {
-  if (!d.weak && hebrew(language ?? spokenLanguage(null))) return 'better'
+  // The Hebrew model is the default only where it runs well: a page with threads (cross-origin isolated) or a big graphics processor.
+  if (!d.weak && hebrew(language ?? spokenLanguage(null)) && (self.crossOriginIsolated || d.gpu?.big)) return 'better'
   return !d.weak && d.gpu?.big ? 'better' : 'fast'
 }
 
@@ -147,7 +154,9 @@ const hebrew = (language: string | null) => language === 'hebrew' || language ==
 function modelFor(q: Quality, d: Device, language: string | null): ModelKey {
   const forced = forcedModel()
   if (forced) return forced
-  if (q === 'better' && hebrew(language)) return 'ivrit'
+  // "Better quality" in Hebrew is the Hebrew model, but not on a phone or another weak device (it needs a lot
+  // of memory): there it is only the choice named "Hebrew model" ('hebrew'), so a stored "better" never becomes it.
+  if (q === 'hebrew' || (q === 'better' && hebrew(language) && !d.weak)) return 'ivrit'
   if (d.weak) return q === 'fast' ? 'base' : 'small'
   return q === 'fast' ? 'small' : 'large'
 }
@@ -301,7 +310,7 @@ export type SpeechStatus =
   | { stage: 'download'; progress: number; loaded: number; total: number }
   | { stage: 'load' }
   | { stage: 'recognize'; progress: number }
-  | { stage: 'fallback' }
+  | { stage: 'fallback'; /** The same model, on the CPU (the Hebrew one), not a smaller one. */ same?: boolean }
 
 export class SpeechAborted extends Error {
   constructor() { super('aborted') }
@@ -433,28 +442,38 @@ export function transcribeFile(
       worker = w
       const failOrFallback = (code: string, message: string) => {
         if (finished || worker !== w) return
+        // A lack of memory says so whatever phase or kind of error it came in (it is never "threads" or the graphics processor's).
+        if (code !== 'stalled' && isMemoryError(message)) code = 'memory'
         // Threads that don't start (a phone that refuses the shared memory): once more with one, in a new worker.
         // (Only the worker's own 'threads' says so: a stalled or failed download is not the threads.)
         if (plan.device === 'wasm' && plan.threads > 1 && !usedOneThread && code === 'threads') {
           usedOneThread = true
-          threadsFailed = true
+          threadsFailed = true // (only a 'threads' failure sets this: not a lack of memory)
           stop()
           attempt({ ...plan, threads: 1 })
+          return
+        }
+        if (code === 'memory') {
+          end(() => reject(new SpeechError(t('אין מספיק זיכרון במכשיר לזיהוי הדיבור. אפשר לבחור "מהיר" (מודל קטן יותר).'), 'memory')))
           return
         }
         if (plan.device === 'webgpu' && !usedFallback && code !== 'no-audio' && (phase === 'load' || phase === 'recognize')) {
           usedFallback = true
           gpuFailed.value = true
           stop()
-          const cpu = planFor('fast', device.value, true, lang)
+          // The Hebrew model goes on the CPU as itself (the same files); the others go to a smaller model.
+          const same = plan.model === 'ivrit'
+          const cpu = same ? planFor(plan.quality, device.value, true, lang) : planFor('fast', device.value, true, lang)
           // No download that wasn't asked for: only a CPU model that is already here.
           planCached(cpu).then((have) => {
             if (finished) return
             if (have) {
-              onStatus({ stage: 'fallback' })
+              onStatus({ stage: 'fallback', same })
               attempt(cpu)
             } else {
-              end(() => reject(new SpeechError(t('המעבד הגרפי לא הצליח. אפשר ללחוץ שוב כדי להמשיך על המעבד עם מודל קטן יותר (כ-%d MB, יורד פעם אחת).', mbOf(cpu)), 'gpu')))
+              end(() => reject(new SpeechError(same
+                ? t('המעבד הגרפי לא הצליח. אפשר ללחוץ שוב כדי להמשיך על המעבד עם אותו מודל.')
+                : t('המעבד הגרפי לא הצליח. אפשר ללחוץ שוב כדי להמשיך על המעבד עם מודל קטן יותר (כ-%d MB, יורד פעם אחת).', mbOf(cpu)), 'gpu')))
             }
           })
           return

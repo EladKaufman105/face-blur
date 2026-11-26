@@ -36,7 +36,9 @@ one by one; the look (blur, pixels, cover), strength and size match the app.
 Web subtitles use Whisper through Transformers.js (the models come from Hugging Face on first use and stay in the
 browser; the sound never leaves the device). Hebrew uses ivrit.ai's large-v3-turbo fine-tune (Apache-2.0), the same
 checkpoint as the app, as the community ONNX export `instush/ivrit-whisper-large-v3-turbo-timestamped-onnx` (Apache-2.0,
-4-bit, 763 MB, with the attention outputs word timings need), pinned to one commit in `web/src/lib/speech.ts`. Arabic,
+4-bit, 763 MB, with the attention outputs word timings need), pinned to one commit in `web/src/lib/speech.ts`: the
+worker puts that commit into the request path of every file, so a cached model needs no request to the Hub. On a
+phone the Hebrew model is a separate, named choice (it needs a lot of memory). Arabic,
 Persian and English use onnx-community's multilingual Whisper.
 
 Build: `cd web && npm ci && npm run build` (needs python3 with onnx, numpy and

@@ -104,13 +104,25 @@ case "${1:?shard}" in
     t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base&threads=1" $S/speech_en.mp4 $R/subs1
     # Hebrew with ivrit.ai's model (the app's), on the CPU: a clip of Hebrew speech made here by a text-to-speech
     # voice (edge-tts, Microsoft's he-IL voice; nothing of a person's), over the picture of walk.mp4. The model is 760 MB.
+    # The test runs twice (the second time with the Hub blocked). If the voice service can't be reached the test is
+    # skipped with a warning (it isn't the app's failure); speech_he.mp4 on the test-media branch would replace this.
     mkdir -p /tmp/he
-    TEXT="שלום, קוראים לי אבי ואני גר בתל אביב. היום מזג האוויר יפה מאוד בישראל."
-    python3 -m venv /tmp/he/venv && /tmp/he/venv/bin/pip install --quiet edge-tts
-    for i in 1 2 3; do /tmp/he/venv/bin/edge-tts --voice he-IL-AvriNeural --text "$TEXT" --write-media /tmp/he/he.mp3 && break || sleep 5; done
-    test -s /tmp/he/he.mp3
-    ffmpeg -v error -y -stream_loop -1 -i $S/walk.mp4 -i /tmp/he/he.mp3 -map 0:v -map 1:a -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 /tmp/he/speech_he.mp4
-    t subshe.cjs "http://localhost:4173/?backend=wasm" /tmp/he/speech_he.mp4 "תל אביב|ישראל" $R/subshe   # model download + CPU run, minutes
+    HE=$S/speech_he.mp4
+    if [ ! -s "$HE" ]; then
+      TEXT="שלום, קוראים לי אבי ואני גר בתל אביב. היום מזג האוויר יפה מאוד בישראל."
+      HE=/tmp/he/speech_he.mp4
+      python3 -m venv /tmp/he/venv && /tmp/he/venv/bin/pip install --quiet edge-tts==7.3.1
+      for i in 1 2 3; do /tmp/he/venv/bin/edge-tts --voice he-IL-AvriNeural --text "$TEXT" --write-media /tmp/he/he.mp3 && break || sleep 5; done
+      if [ -s /tmp/he/he.mp3 ]; then
+        ffmpeg -v error -y -stream_loop -1 -i $S/walk.mp4 -i /tmp/he/he.mp3 -map 0:v -map 1:a -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 $HE
+      else
+        echo "::warning::edge-tts could not be reached: the Hebrew subtitles test (tests/subshe.cjs) was skipped"
+        HE=
+      fi
+    fi
+    if [ -n "$HE" ]; then
+      t subshe.cjs "http://localhost:4173/?backend=wasm" $HE "תל אביב|ישראל" $R/subshe   # model download + two CPU runs, minutes
+    fi
     ;;
   *) echo "unknown shard: $1" >&2; exit 2 ;;
 esac

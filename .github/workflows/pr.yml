@@ -60,6 +60,7 @@ jobs:
               - 'web/src/workers/subs.worker.ts'
               - 'web/src/lib/subtitles.ts'
               - 'web/src/lib/speech.ts'
+              - 'web/src/lib/memerr.ts'
               - 'web/src/lib/isolation.ts'
               - 'web/public/sw.js'
               - 'web/src/lib/templaterun.ts'

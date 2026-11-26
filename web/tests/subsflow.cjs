@@ -43,7 +43,7 @@ const [, , base, video, out] = process.argv
   try {
     // ---- the choice: sizes before anything downloads, kept after a reload
     await openSubs(url)
-    const chips = await p.evaluate(() => [...document.querySelectorAll('.speech-quality .chip')].map((c) => [c.dataset.q, c.textContent.trim(), c.classList.contains('on')]))
+    const chips = await p.evaluate(() => [...document.querySelectorAll('.speech-quality .chip:not([data-q=hebrew])')].map((c) => [c.dataset.q, c.textContent.trim(), c.classList.contains('on')]))
     console.log('quality chips:', JSON.stringify(chips))
     if (chips.length !== 2 || chips.some((c) => !/\d+\s*MB/.test(c[1]))) fail('the choice does not show sizes: ' + JSON.stringify(chips))
     if (hung !== 0) fail('something was requested before the go-ahead')
