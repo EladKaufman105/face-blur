@@ -20,7 +20,11 @@ of a 31 to 35 fps one (15.5 to 17.5), every third of a 50 fps one (16.7), every 
 or 30 fps one (12 and 15: there the web's 15 is more). It is never under 15 a second, whatever
 the nominal frame rate (read from the first packets, it can be low: a dark start, a screen
 recording with a long first frame, where the frames then come faster); a clip that really has
-fewer frames is detected on every frame. Wide detection: every frame.
+fewer frames is detected on every frame. Wide detection: every frame, at the frame rate measured
+as the frames come (`FrameRate`: the median of the last 31 intervals; the nominal one when within
+3% of it): a screen recording that reads 8 fps and runs at 60 has a full rate of 60, which the
+pace can lower (to 8 a second at least) on a device that can't keep it up; every frame only while
+the rate covers the frames (`follow()`).
 
 The frames are picked on a fixed schedule (`DetectGate`): each detection is due a period (1 /
 rate) after the last one was due, not after the frame that met it. The old gate (the next frame at
@@ -56,7 +60,9 @@ timings recover. The timings are taken in windows of 4 detections after the firs
 check against the CPU (which runs until 3 frames with faces were seen, so on a video with none all
 along) is taken out of a detection's time. The rate is judged by the frames it covers (min(rate,
 fps)) against the full rate's: under 80% is reduced. A clip with fewer frames a second than 15
-needs no more than that, and the frame isn't shrunk to reach 15.
+needs no more than that, and the frame isn't shrunk to reach 15. The frames covered are judged
+against the frame rate measured (a nominal rate that reads high doesn't make a full detection
+look reduced); the frame's size against min(15, the nominal rate), as the detection before did.
 
 It is never weaker than the web's detection before YuNet (RetinaFace alone at 960 px on the GPU,
 640 px on the CPU, 600 ms of detection per second of video): the frame never goes below that

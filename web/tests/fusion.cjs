@@ -756,6 +756,84 @@ if (F.fuse([], []).length !== 0) fail('empty')
     }
   }
   if (cases < 1000) fail('too few cases: ' + cases)
+
+  // Round 3 (review): the frame rate measured as the frames come (FrameRate) drives wide detection (its full rate, and every frame only while the rate covers
+  // the frames: follow()) and the pace's 'reduced'; the frame's size is judged against the nominal rate as before. A screen recording that reads 5 to 24 fps
+  // and runs at 60, in wide detection, on slow and mid devices: the pace lowers the rate (every frame for ever was 3600 detections a minute at 400 ms each),
+  // never fewer detections nor a longer gap than develop (PR #37's pace and gate on the same device), and the measure says so when it is short.
+  {
+    const fr = new P.FrameRate(15)
+    for (let k = 0; k < 40; k++) fr.add(Math.round((k / 15) * 1000) / 1000)
+    if (fr.fps !== 15) fail('FrameRate: 15 fps in milliseconds is ' + fr.fps)
+    const f2 = new P.FrameRate(8)
+    for (let k = 0; k < 4; k++) f2.add(k / 60)
+    if (f2.fps !== 8) fail('FrameRate: the nominal rate until 5 intervals')
+    for (let k = 4; k < 40; k++) f2.add(k / 60)
+    f2.add(10)
+    if (!near(f2.fps, 60, 1e-6)) fail('FrameRate: 60 fps read as 8 (and a hole): ' + f2.fps)
+    const a = P.follow(60, 8, 8), b = P.follow(60, 60, 20), c = P.follow(30, 60, 60), d = P.follow(60, 8, 5, true)
+    if (a.rate !== 60 || !a.all || b.rate !== 20 || b.all || c.rate !== 30 || !c.all || d.rate !== 5 || d.all) fail('follow(): ' + JSON.stringify({ a, b, c, d }))
+    // The frame's size is judged against the nominal rate (as develop): a CPU at 10.5 a second on a clip read as 24 fps that runs at 12 takes the smaller frame, as develop did.
+    const q = (o) => P.pace({ recentMs: 1000 / 10.5, rfMs: 80, fineMs: 70, workers: 1, maxRate: 15, side: 960, startSide: 960, rate: 15, gpu: false, ...o })
+    if (q({ frameRate: 12, nominal: 24 }).side !== q({ frameRate: 24 }).side || q({ frameRate: 24 }).side !== 640) fail('the size judged against the measured rate')
+  }
+  for (const [nominal, fps, ms, workers] of [[5, 60, 400, 1], [8, 60, 400, 1], [8, 60, 400, 4], [10, 60, 90, 1], [24, 60, 40, 1], [12, 30, 150, 2]]) {
+    const ts = Array.from({ length: 60 * fps }, (_, k) => Math.round((k / fps) * 1000) / 1000)
+    const tm = (side) => ({ ms: ms * (side / 960) ** 2, rfMs: 0.7 * ms * (side / 960) ** 2, fineMs: 0.6 * ms * (side / 960) ** 2 })
+    // The worker's way.
+    let maxRate = nominal, rate = nominal, all = true, side = 960, reduced = false
+    const g = new P.DetectGate(nominal), fr = new P.FrameRate(nominal), pacer = new P.Pacer(workers + 2), mm = new C.CoverageMeter({ needAt: (f) => P.needRate(f, true, maxRate) }), got = []
+    ts.forEach((t, k) => {
+      fr.add(t)
+      ;({ maxRate, rate, all } = P.follow(fr.fps, maxRate, rate))
+      const take = g.take(t, rate, false, all)
+      mm.frame(t, false, take, rate)
+      if (!take) return
+      got.push(k)
+      const w = pacer.add(tm(side))
+      if (!w) return
+      const p = P.pace({ ...w, workers, maxRate, side, startSide: 960, rate, gpu: false, frameSide: 1280, frameRate: fr.fps, nominal })
+      rate = p.rate; side = p.side; reduced ||= p.reduced
+    })
+    reduced ||= mm.result(true).short
+    // develop (PR #37): maxRate and the frame rate the nominal one, its gate.
+    let r37 = nominal, s37 = 960
+    const sn = snap(), p37 = new P.Pacer(workers + 2), dev = []
+    ts.forEach((t, k) => {
+      if (!sn(t, r37, false)) return
+      dev.push(k)
+      const w = p37.add(tm(s37))
+      if (!w) return
+      const p = pace37({ ...w, workers, maxRate: nominal, side: s37, startSide: 960, rate: r37, gpu: false, frameSide: 1280, frameRate: nominal })
+      r37 = p.rate; s37 = p.side
+    })
+    const what = JSON.stringify({ nominal, fps, ms, workers, n: got.length, dev: dev.length, rate })
+    const gapOf = (x) => x.slice(1).reduce((m2, k, j) => Math.max(m2, ts[k] - ts[x[j]]), 0)
+    // Bounded: the pace's rate with the old gate beside it (at most the nominal rate), a little warm-up; not every frame.
+    if (got.length > 60 * 2 * Math.max(rate, P.MIN_RATE) + 120 || (1000 * workers) / ms < fps / 2 && got.length > 0.6 * ts.length) fail('wide detection on a misread frame rate is not paced: ' + what)
+    if (got.length < dev.length || gapOf(got) > gapOf(dev) + 1e-9) fail('wide detection on a misread frame rate is weaker than develop: ' + what)
+    if (rate < 0.8 * fps && !reduced) fail('wide detection under 80% of the frames, silent: ' + what)
+  }
+  // The nominal rate read high (120 for 30 fps in wide detection, 50 for 25 in normal): on a device that keeps up, every frame (wide) or the full rate, no 'reduced'.
+  for (const [nominal, fps, sensitive] of [[120, 30, true], [60, 24, true], [50, 25, false], [120, 30, false]]) {
+    const ts = Array.from({ length: 30 * fps }, (_, k) => Math.round((k / fps) * 1000) / 1000)
+    let maxRate = sensitive ? nominal : P.fullRate(nominal), rate = maxRate, all = sensitive, side = 1280, reduced = false
+    const g = new P.DetectGate(sensitive ? nominal : 15), fr = new P.FrameRate(nominal), pacer = new P.Pacer(3), mm = new C.CoverageMeter({ needAt: (f) => P.needRate(f, sensitive, maxRate) }), got = []
+    ts.forEach((t, k) => {
+      fr.add(t)
+      if (sensitive) ({ maxRate, rate, all } = P.follow(fr.fps, maxRate, rate))
+      const take = g.take(t, rate, false, all)
+      mm.frame(t, false, take, rate)
+      if (!take) return
+      got.push(k)
+      const w = pacer.add({ ms: 1000 / (sensitive ? 36 : 20), rfMs: 15, fineMs: 12 })
+      if (!w) return
+      const p = P.pace({ ...w, workers: 1, maxRate, side, startSide: 1280, rate, gpu: true, frameSide: 1280, frameRate: fr.fps, nominal })
+      rate = p.rate; side = p.side; reduced ||= p.reduced
+    })
+    reduced ||= mm.result(true).short
+    if (reduced || side !== 1280 || (sensitive && got.length < 0.95 * ts.length)) fail('a nominal rate read high: ' + JSON.stringify({ nominal, fps, sensitive, reduced, side, n: got.length, of: ts.length, rate }))
+  }
 }
 
 // ---- the flag: low-confidence faces, or detection that ran reduced

@@ -63,8 +63,14 @@ export interface PaceIn {
   gpu: boolean
   /** The long side of the frames detection gets: a fine pass set bigger than that runs at that (the detector doesn't enlarge), so such a size step changes nothing. */
   frameSide?: number
-  /** The video's frame rate: a rate that still detects on every frame isn't reduced, whatever [maxRate] is (a 10 fps clip at 10 a second). */
+  /** The video's frame rate (measured, FrameRate): a rate that still detects on every frame isn't reduced, whatever [maxRate] is (a 10 fps clip at 10 a second). */
   frameRate?: number
+  /**
+   * The nominal frame rate, read from the first packets: the frame's size is judged against
+   * min(15, it), as the detection before (develop) did, so a measured rate that differs never
+   * keeps a bigger frame where that detection took a smaller one and more frames, nor the reverse.
+   */
+  nominal?: number
 }
 
 export interface Pace {
@@ -153,6 +159,51 @@ export class DetectGate {
   }
 }
 
+/**
+ * The frame rate the frames really come at: the median of the last [FrameRate.KEEP] intervals
+ * (duplicate times left out), between 1 and 240; the nominal one until 5 intervals are in, and
+ * while the measure is within 3% of it. The
+ * nominal rate is read from the first packets and can be far off (a screen recording that reads 8
+ * fps and runs at 60, a dark start, or one that reads high).
+ */
+export class FrameRate {
+  static readonly KEEP = 31
+  private dts: number[] = []
+  private prev = NaN
+  private nominal: number
+
+  constructor(nominal: number) {
+    this.nominal = nominal
+  }
+
+  add(ts: number) {
+    if (Number.isFinite(this.prev) && ts > this.prev) {
+      this.dts.push(ts - this.prev)
+      if (this.dts.length > FrameRate.KEEP) this.dts.shift()
+    }
+    this.prev = ts
+  }
+
+  get fps(): number {
+    if (this.dts.length < 5) return this.nominal
+    const d = [...this.dts].sort((a, b) => a - b)
+    const fps = Math.min(240, Math.max(1, 1 / d[d.length >> 1]))
+    // Within 3% of the nominal rate: the nominal one (times rounded to the millisecond read 14.93 for 15).
+    return Math.abs(fps / this.nominal - 1) < 0.03 ? this.nominal : fps
+  }
+}
+
+/**
+ * Wide detection (every frame) as the measured frame rate [fps] changes: the full rate is [fps]; a
+ * rate at the full one follows it (unless [pinned] by a test), a lower one (the pace's) stays,
+ * under the full one. Every frame ([all]) while the rate covers the frames (fps at most 5% over
+ * it); else the schedule at the rate, which the pace can lower (to 8 a second at least).
+ */
+export function follow(fps: number, maxRate: number, rate: number, pinned = false): { maxRate: number; rate: number; all: boolean } {
+  const r = Math.min(fps, !pinned && rate >= maxRate - 1e-9 ? fps : rate)
+  return { maxRate: fps, rate: r, all: fps <= r * 1.05 }
+}
+
 /** The frames a second DetectGate detects on at [rate] in a video of [frameRate]: the rate, at most every frame. */
 export const covered = (rate: number, frameRate?: number) => Math.min(rate, frameRate ?? Infinity)
 
@@ -173,8 +224,8 @@ export function oldRate(i: PaceIn): number {
  */
 export function pace(i: PaceIn): Pace {
   const eff = (s: number) => runSide(s, i.frameSide)
-  // The rate the frame's size is judged against: no more than the video has frames (a 10 fps clip needs 10 a second, not 15).
-  const target = Math.min(i.maxRate, SIZE_RATE, i.frameRate ?? Infinity)
+  // The rate the frame's size is judged against: no more than the video has frames (a 10 fps clip needs 10 a second, not 15); with the nominal frame rate, as before (see [nominal]).
+  const target = i.nominal !== undefined ? Math.min(SIZE_RATE, i.nominal) : Math.min(i.maxRate, SIZE_RATE, i.frameRate ?? Infinity)
   const wanted = (BUDGET_MS * i.workers) / Math.max(1, i.recentMs)
   const floor = oldRate(i)
   const out = (rate: number, side = i.side): Pace => {

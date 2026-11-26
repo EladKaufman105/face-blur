@@ -2,7 +2,7 @@
 // on a regular subset of frames, then builds the face tracks and a thumbnail of each face.
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny'
 import { CPU_SIDE, FaceDetector, GPU_SIDE } from '../lib/detector'
-import { DetectGate, Pacer, fullRate, needRate, pace, runSide, type Timing } from '../lib/pace'
+import { DetectGate, FrameRate, Pacer, follow, fullRate, needRate, pace, runSide, type Timing } from '../lib/pace'
 import { CoverageMeter, type Coverage } from '../lib/coverage'
 import { YunetWorker } from '../lib/yunet-worker'
 import { StatsHistory, summary, type AnalysisStats, type StatsSnapshot } from '../lib/analysis-stats'
@@ -106,8 +106,12 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   // That is never silent: the video is marked `reduced` (the editor says so, a batch flags it) and
   // detection gets lower score thresholds, so that two weak detections that agree can add up to a
   // face. Also when the frames really detected fall short (lib/coverage.ts), whatever the rate.
-  const maxRate = sensitive ? nominalFps : fullRate(nominalFps)
+  // In wide detection the full rate is the frame rate measured as the frames come (the nominal one
+  // can be far off, either way): every frame, or the pace's rate under it (see follow()).
+  let maxRate = sensitive ? nominalFps : fullRate(nominalFps)
   let rate = tune?.rate ? Math.min(maxRate, tune.rate) : maxRate
+  const frameRate = new FrameRate(nominalFps)
+  let all = sensitive && !tune?.rate
   let fineSide = startSide
   // The long side of the frames detection gets: a fine pass set bigger than that changes nothing.
   const frameSide = Math.max(iw, ih)
@@ -177,7 +181,7 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
       const { recentMs: recent, rfMs } = w
       const gpuNow = backendNow() === 'webgpu'
       const startNow = gpuNow ? GPU_SIDE : CPU_SIDE
-      const p = pace({ ...w, workers: pool?.size ?? 1, maxRate, side: fineSide, startSide: startNow, rate, gpu: gpuNow, frameSide, frameRate: nominalFps })
+      const p = pace({ ...w, workers: pool?.size ?? 1, maxRate, side: fineSide, startSide: startNow, rate, gpu: gpuNow, frameSide, frameRate: frameRate.fps, nominal: nominalFps })
       rate = p.rate
       if (p.side !== fineSide) {
         fineSide = Math.min(p.side, startNow, startSide)
@@ -218,7 +222,9 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
     const cut = cuts.isCut(canvas)
     cutMs += performance.now() - tc
     if (cut) cutList.push(i)
-    const take = gate.take(wc.timestamp, rate, cut, sensitive && rate >= maxRate)
+    frameRate.add(wc.timestamp)
+    if (sensitive) ({ maxRate, rate, all } = follow(frameRate.fps, maxRate, rate, !!tune?.rate))
+    const take = gate.take(wc.timestamp, rate, cut, all)
     meter.frame(wc.timestamp, cut, take, rate)
     cover = meter.result()
     if (cover.short && !reduced) reduce(measuredText(cover))
