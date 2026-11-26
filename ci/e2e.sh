@@ -4,9 +4,9 @@
 #   E2E_CLASSES   comma-separated test classes to run (default: all eight)
 #   E2E_SELFTEST  1 (default) to finish with the release build's self-test, 0 to skip it
 #   E2E_SHARD, E2E_SHARDS  run every E2E_SHARDS-th clip run of EndToEndTest, starting at E2E_SHARD (0-based)
-#   E2E_FULL      true: everything (the weekly run): @Weekly tests too, and -e full true (all 12
+#   E2E_FULL      true: everything (the weekly run): @Weekly tests too, and -e full true (all 13
 #                 EndToEndTest clip runs). Otherwise @Weekly tests are left out and EndToEndTest
-#                 does its 5 default runs.
+#                 does its 6 default runs.
 set -x
 ALL_CLASSES=com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.SubtitlesTest,com.elad.faceblur.ProjectsVoiceTest,com.elad.faceblur.LabsTest,com.elad.faceblur.BatchTest,com.elad.faceblur.models.ModelGateTest,com.elad.faceblur.models.ModelDownloaderTest
 CLASSES="${E2E_CLASSES:-$ALL_CLASSES}"

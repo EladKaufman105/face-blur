@@ -539,8 +539,9 @@ jobs:
           # Balanced by the measured class times (seconds, run 45828954854, less the tests moved
           # to @Weekly or the JVM). EndToEndTest is split in two by clip run (-e e2eShards 2,
           # run index % 2 == part): on a merge part 0 is portrait_rot90, headpose pixelate and
-          # classroom60 720p30, part 1 stress_cuts and classroom sensitive; with full=true the two
-          # parts cover all 12 runs. The release self-test (~75 s) runs in one shard. The model
+          # classroom60 720p30, part 1 stress_cuts, classroom sensitive and walk fast (sensitivity
+          # 50%, a short clip); with full=true the two
+          # parts cover all 13 runs. The release self-test (~75 s) runs in one shard. The model
           # tests (ModelGateTest ~80, ModelDownloaderTest a few s, estimates) go with the lightest.
           # 1: EndToEndTest part 1 (~130), LabsTest (~70)
           - shard: 1

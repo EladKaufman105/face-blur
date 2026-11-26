@@ -18,6 +18,7 @@ import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlin.math.roundToInt
 import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,8 +29,8 @@ import java.io.File
  * side-by-side frame sheets + the processed videos for inspection.
  *
  * By default only the runs with something no other test covers: the rotated clip, pixelate, scene
- * cuts, sensitive detection and the export with options (the other clips are exported by other
- * tests). `-e full true` (the weekly run) does all 12.
+ * cuts, sensitive detection, fast detection with a sensitivity and the export with options (the other clips are exported by other
+ * tests). `-e full true` (the weekly run) does all 13.
  */
 @RunWith(AndroidJUnit4::class)
 class EndToEndTest {
@@ -62,12 +63,16 @@ class EndToEndTest {
         val exportRun = names.firstOrNull { it.startsWith("classroom60") }
         val exportOpts = ExportOptions(shortSide = 720, fps = 30, quality = ExportQuality.SAVER, codec = ExportCodec.H264)
         if (exportRun != null) all += Run(exportRun, Settings(BlurMode.BLUR, 0.6f, 1.6f, false), withOpts = true)
+        // Fast detection (5 a second) with a sensitivity above 0: the whole path (the second YuNet, the extra
+        // detections and their crops, the tracker's steps) on a short clip with faces. Last, so the CI's
+        // two parts keep their runs (this one joins part 1).
+        names.firstOrNull { it.startsWith("walk") }?.let { all += Run(it, Settings(BlurMode.BLUR, 0.6f, 1.6f, false, fast = true, sensitivity = 0.5f)) }
 
         // Without `full`: portrait_rot90 (rotation), headpose pixelated, stress_cuts (scene cuts),
-        // classroom sensitive and classroom60 with options. walk, speech_*, green_screen and plain
-        // classroom are exported by other tests.
+        // classroom sensitive, walk fast at sensitivity 50% and classroom60 with options. walk,
+        // speech_*, green_screen and plain classroom are exported by other tests.
         val runs = if (full) all else all.filter { r ->
-            r.withOpts || r.settings.sensitive || r.settings.mode == BlurMode.PIXELATE ||
+            r.withOpts || r.settings.sensitive || r.settings.fast || r.settings.sensitivity > 0f || r.settings.mode == BlurMode.PIXELATE ||
                 r.name.startsWith("portrait_rot90") || r.name.startsWith("stress_cuts")
         }
         log.appendLine("runs (${if (full) "full" else "default"}): ${runs.size} of ${all.size}")
@@ -81,7 +86,8 @@ class EndToEndTest {
             if (shards > 1 && idx % shards != shard) continue
             val (name, settings, withOpts) = run
             val tag = name.removeSuffix(".mp4") + "_" + settings.mode.name.lowercase() +
-                (if (settings.sensitive) "_sens" else "") + (if (withOpts) "_720p30" else "")
+                (if (settings.sensitive) "_sens" else "") + (if (settings.fast) "_fast" else "") +
+                (if (settings.sensitivity > 0f) "_s${(settings.sensitivity * 100).roundToInt()}" else "") + (if (withOpts) "_720p30" else "")
             try {
                 val src = File(ctx.cacheDir, name)
                 assets.open("samples/$name").use { i -> src.outputStream().use { i.copyTo(it) } }
@@ -113,7 +119,11 @@ class EndToEndTest {
                         }
                         sheet(Uri.fromFile(src), outcome.uri, info.durationMs, File(outDir, "$tag.jpg"))
                     }
-                    Outcome.NoFaces -> log.appendLine("   NO FACES")
+                    Outcome.NoFaces -> {
+                        log.appendLine("   NO FACES")
+                        // walk has two people's faces: fast detection must still find them.
+                        if (settings.fast) failures += "$tag: no faces in fast detection"
+                    }
                 }
             } catch (e: Throwable) {
                 failures += tag
