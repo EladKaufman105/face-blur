@@ -73,3 +73,14 @@ export function videoBitrate(o: ExportOptions, srcW: number, srcH: number, srcFp
     : (srcBitrate > 0 ? Math.min(recommended, scaled) : recommended) * (o.quality === 'saver' ? 0.5 : 1)
   return Math.round(Math.min(150e6, Math.max(500e3, b)))
 }
+
+/** The sound's bitrate in the estimate (bits per second), as the app's. */
+const AUDIO_BITRATE = 128_000
+
+/** The exported file's size (bytes), estimated as the app's: the video bitrate asked for plus the sound's, over the whole video. */
+export function estimatedBytes(o: ExportOptions, srcW: number, srcH: number, srcFps: number, srcBitrate: number, hevc: boolean, seconds: number): number {
+  return ((videoBitrate(o, srcW, srcH, srcFps, srcBitrate, hevc) + AUDIO_BITRATE) * Math.max(0, seconds)) / 8
+}
+
+/** A file size as the app's export sheet says it: whole MB (at least 1), or GB with one decimal from 1 GB. */
+export const sizeText = (bytes: number) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1e6))} MB`)

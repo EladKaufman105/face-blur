@@ -89,7 +89,7 @@ export function wordsToCues(words: Word[], maxWords = 0, maxChars = 0): Cue[] {
     cur.push(x)
     chars += x.w.text.trim().length + 1
     const next = sorted[i + 1]?.w
-    const end = /[.?!…]$/.test(x.w.text.trim())
+    const end = /[.?!…؟۔]$/.test(x.w.text.trim())
     const pause = next !== undefined && next.start - x.w.end > PAUSE
     const full = next !== undefined && chars + next.text.trim().length > MAX_CHARS
     if (!next || end || pause || full) {

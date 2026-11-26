@@ -24,7 +24,7 @@ export type FollowRequest =
       guides: { first: number; boxes: Float32Array }[]
     }
 export type FollowMessage =
-  | { type: 'times'; times: Float64Array; fps: number; codec: string }
+  | { type: 'times'; times: Float64Array; fps: number; codec: string; bitrate: number; duration: number }
   | { type: 'progress'; progress: number }
   | { type: 'done'; first: number; boxes: Float32Array }
   | { type: 'error'; message: string }
@@ -58,7 +58,10 @@ async function times(file: File) {
   diffs.sort((a, b) => a - b)
   const fps = Math.min(240, Math.max(5, diffs.length ? 1 / diffs[diffs.length >> 1] : 30))
   const out = Float64Array.from(ts)
-  post({ type: 'times', times: out, fps, codec: video.codec ?? '' }, [out.buffer])
+  // The source's bitrate as the export reads it (its first packets), and its length: the export sheet's size estimate.
+  const stats = await video.computePacketStats(240).catch(() => null)
+  const duration = ts.length ? ts[ts.length - 1] - ts[0] + 1 / fps : 0
+  post({ type: 'times', times: out, fps, codec: video.codec ?? '', bitrate: stats?.averageBitrate ?? 0, duration }, [out.buffer])
 }
 
 async function follow(r: Extract<FollowRequest, { type: 'follow' }>) {

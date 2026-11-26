@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import { t } from '../i18n'
-import { fpsChoices, resolutionChoices, type ExportCodec, type ExportOptions, type ExportQuality } from '../lib/exportopts'
+import { estimatedBytes, fpsChoices, outputFps, outputSize, resolutionChoices, sizeText, type ExportCodec, type ExportOptions, type ExportQuality } from '../lib/exportopts'
 import { ASPECT_RATIO, cropFraction, type Aspect } from '../lib/camera'
 import { CloseIcon, SaveIcon } from './icons'
 
@@ -11,6 +11,9 @@ type Props = {
   fps: number | null
   /** The source's codec ('hevc' or another). */
   sourceHevc: boolean
+  /** The source's bitrate (bits per second; 0 when unknown, null until it's known) and its length (seconds): the size estimate. */
+  srcBitrate?: number | null
+  duration?: number
   hasCues: boolean
   /** Bleeped words the subtitles no longer have (they would be heard): said before exporting. */
   lostBleeps?: number
@@ -133,6 +136,13 @@ export function ExportSheet(p: Props) {
               </span>
             </label>
           )}
+          {o.format === 'mp4' && p.fps && p.srcBitrate != null && (p.duration ?? 0) > 0 && (() => {
+            // What comes out, as the app's sheet says: its size, frame rate and about how big the file is.
+            const [w, h] = outputSize(p.width, p.height, o.shortSide, o.aspect)
+            const hevc = o.codec === 'hevc' || (o.codec === 'same' && p.sourceHevc)
+            const bytes = estimatedBytes(o, p.width, p.height, p.fps, p.srcBitrate ?? 0, hevc, p.duration ?? 0)
+            return <p class="export-estimate" style="margin:0;font-weight:600">{t('יוצא: %s · %s · גודל משוער %s', `\u2066${w}×${h}\u2069`, `\u2066${Math.round(outputFps(p.fps, o.fps))} fps\u2069`, `\u2066${sizeText(bytes)}\u2069`)}</p>
+          })()}
         </div>
         <button class="btn primary export-go" disabled={blocked} onClick={p.onGo}><SaveIcon /> {o.format === 'mp3' ? t('שמור MP3') : p.action ?? t('ייצא')}</button>
       </div>
