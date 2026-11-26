@@ -3,12 +3,20 @@
 # CI runs it in shards (build.yml matrix), each with its own part of the work:
 #   E2E_CLASSES   comma-separated test classes to run (default: all six)
 #   E2E_SELFTEST  1 (default) to finish with the release build's self-test, 0 to skip it
-#   E2E_SHARD, E2E_SHARDS  run every E2E_SHARDS-th clip of EndToEndTest, starting at E2E_SHARD (0-based)
+#   E2E_SHARD, E2E_SHARDS  run every E2E_SHARDS-th clip run of EndToEndTest, starting at E2E_SHARD (0-based)
+#   E2E_FULL      true: everything (the weekly run): @Weekly tests too, and -e full true (all 12
+#                 EndToEndTest clip runs). Otherwise @Weekly tests are left out and EndToEndTest
+#                 does its 5 default runs.
 set -x
 ALL_CLASSES=com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.SubtitlesTest,com.elad.faceblur.ProjectsVoiceTest,com.elad.faceblur.LabsTest,com.elad.faceblur.BatchTest
 CLASSES="${E2E_CLASSES:-$ALL_CLASSES}"
 SHARD_ARGS=""
 [ -n "${E2E_SHARDS:-}" ] && SHARD_ARGS="-e e2eShards $E2E_SHARDS -e e2eShard ${E2E_SHARD:-0}"
+if [ "${E2E_FULL:-false}" = true ]; then
+  SCOPE_ARGS="-e full true"
+else
+  SCOPE_ARGS="-e notAnnotation com.elad.faceblur.Weekly"
+fi
 OUT=e2e-results
 mkdir -p "$OUT"
 
@@ -20,7 +28,7 @@ adb shell settings put global hide_error_dialogs 1 || true
 # The home screen app isn't needed and its "not responding" dialog steals the keys.
 adb shell pm disable-user --user 0 com.google.android.apps.nexuslauncher || true
 
-timeout 3300 adb shell am instrument -w -e class "$CLASSES" $SHARD_ARGS \
+timeout 3300 adb shell am instrument -w -e class "$CLASSES" $SHARD_ARGS $SCOPE_ARGS \
   com.elad.faceblur.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/instrument.txt"
 
 adb logcat -d -v time > "$OUT/logcat_full.txt"
@@ -38,16 +46,26 @@ grep -qE "^OK \([0-9]+ tests?\)" "$OUT/instrument.txt" || exit 1
 [ "${E2E_SELFTEST:-1}" = 1 ] || exit 0
 
 # The shipped build (minified by R8): installed over the test build, it runs its self-test
-# (every native / library pipeline once) on a video copied into its folder.
+# (every native / library pipeline once) on a video copied into its folder. Its files come from the
+# test APK (build-test put them in), else they are downloaded again.
 adb install -r -g app/build/outputs/apk/release/app-release.apk || exit 1
+M=e2e-selftest-media
+rm -rf "$M" && mkdir -p "$M"
+unzip -q -j -o app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
+    assets/samples/walk.mp4 assets/samples/speech_two.mp4 assets/models/ggml-tiny.bin assets/models/speaker.onnx \
+    assets/models/lraspp_mbv3_512x288_fp16.onnx assets/models/lraspp_mbv3_288x512_fp16.onnx -d "$M" || {
+  bash ci/fetch-test-media.sh || exit 1
+  cp app/src/androidTest/assets/samples/walk.mp4 app/src/androidTest/assets/samples/speech_two.mp4 app/src/androidTest/assets/models/* "$M/"
+}
+ls -la "$M"
 ST=/sdcard/Android/data/com.elad.faceblur/files/selftest
 adb shell mkdir -p $ST
-adb push app/src/androidTest/assets/samples/walk.mp4 $ST/walk.mp4
-adb push app/src/androidTest/assets/samples/speech_two.mp4 $ST/speech.mp4
-adb push app/src/androidTest/assets/models/ggml-tiny.bin $ST/ggml-tiny.bin
-adb push app/src/androidTest/assets/models/speaker.onnx $ST/speaker.onnx
-adb push app/src/androidTest/assets/models/lraspp_mbv3_512x288_fp16.onnx $ST/
-adb push app/src/androidTest/assets/models/lraspp_mbv3_288x512_fp16.onnx $ST/
+adb push "$M/walk.mp4" $ST/walk.mp4
+adb push "$M/speech_two.mp4" $ST/speech.mp4
+adb push "$M/ggml-tiny.bin" $ST/ggml-tiny.bin
+adb push "$M/speaker.onnx" $ST/speaker.onnx
+adb push "$M/lraspp_mbv3_512x288_fp16.onnx" $ST/
+adb push "$M/lraspp_mbv3_288x512_fp16.onnx" $ST/
 adb shell rm -f $ST/report.txt
 adb logcat -c
 adb shell am start -n com.elad.faceblur/.MainActivity --es selftest walk.mp4
