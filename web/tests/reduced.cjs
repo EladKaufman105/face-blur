@@ -18,8 +18,8 @@ const EN = 'Detection reduced on this device; check faces.'
   const logs = []
   const fail = (m) => { throw new Error(m) }
   try {
-    const open = async (locale, detect, file, selector) => {
-      const p = await (await b.newContext({ viewport: { width: 1366, height: 860 }, locale })).newPage()
+    const open = async (locale, detect, file, selector, phone) => {
+      const p = await (await b.newContext(phone ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale } : { viewport: { width: 1366, height: 860 }, locale })).newPage()
       p.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`))
       p.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`))
       await p.goto(`${url}&detect=${detect}`)
@@ -46,11 +46,16 @@ const EN = 'Detection reduced on this device; check faces.'
     await p.screenshot({ path: `${out}/1_reduced_he.png` })
     console.log('reduced he:', await notice(p))
 
-    // English.
-    p = await open('en-US', 'yunet:1,side:640,rate:1.5,reduced:1', video, '.editor')
+    // English, on a phone: a pill over the video, taking no room (the page doesn't scroll, the notice is inside the video's frame).
+    p = await open('en-US', 'yunet:1,side:640,rate:1.5,reduced:1', video, '.editor', true)
     if ((await notice(p)) !== EN) fail('English notice: ' + (await notice(p)))
-    await p.screenshot({ path: `${out}/2_reduced_en.png` })
-    console.log('reduced en:', await notice(p))
+    const m = await p.evaluate(() => {
+      const n = document.querySelector('.detect-reduced').getBoundingClientRect(), v = document.querySelector('.view').getBoundingClientRect()
+      return { inside: n.top >= v.top - 1 && n.bottom <= v.bottom + 1 && n.left >= v.left - 1 && n.right <= v.right + 1, h: n.height, w: n.width, vw: v.width, sideways: document.documentElement.scrollWidth > innerWidth, scrolls: document.documentElement.scrollHeight > document.documentElement.clientHeight + 0.5 }
+    })
+    if (!m.inside || m.sideways || m.scrolls || m.h > 40) fail('the phone notice: ' + JSON.stringify(m))
+    await p.screenshot({ path: `${out}/2_reduced_en_phone.png` })
+    console.log('reduced en (phone):', await notice(p), JSON.stringify(m))
 
     // No face found by a reduced detection: the screen says that too (a miss may be the lighter detection's).
     p = await open('he-IL', 'yunet:1,side:640,rate:1.5,reduced:1', bars, '.no-faces')
