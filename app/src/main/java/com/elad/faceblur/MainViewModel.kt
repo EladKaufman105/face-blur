@@ -49,6 +49,7 @@ import com.elad.faceblur.template.TemplateRunner
 import com.elad.faceblur.template.TemplateSettings
 import com.elad.faceblur.template.TemplateStore
 import com.elad.faceblur.template.applyAll
+import com.elad.faceblur.template.blankTemplate
 import com.elad.faceblur.template.fitSpeechModel
 import com.elad.faceblur.batch.BatchOwnFiles
 import com.elad.faceblur.batch.Batch
@@ -445,11 +446,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     fun editTemplate(id: String) {
+        newTemplateDraft = null
         editingTemplate = id
+    }
+
+    /** A new template open in the editor, not saved yet (null: none). It is kept only when the editor saves it. */
+    var newTemplateDraft by mutableStateOf<Template?>(null)
+        private set
+
+    /** "New template" (Settings): the editor opens on a template from scratch (the default settings). */
+    fun startNewTemplate() {
+        editingTemplate = null
+        newTemplateDraft = blankTemplate(templates.newId(), t("תבנית חדשה"))
     }
 
     fun closeTemplateEditor() {
         editingTemplate = null
+        newTemplateDraft = null
     }
 
     /** A template was saved or restored: if it is the one chosen, its settings are taken again. */

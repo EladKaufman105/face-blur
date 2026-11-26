@@ -305,6 +305,13 @@ fun TemplateSettings.toTemplate(id: String, name: String, keep: Set<TemplateCate
     export = ExportPart(export.aspect, export.shortSide, export.fps, export.quality, export.codec, export.watermark),
 ).only(keep)
 
+/**
+ * "New template" (Settings): the default settings' face blur and subtitles, the other categories
+ * off (as the web app's new template). It is a user template, saved only from the editor.
+ */
+fun blankTemplate(id: String, name: String): Template =
+    TemplateSettings().toTemplate(id, name, setOf(TemplateCategory.BLUR, TemplateCategory.SUBTITLES))
+
 /** What is chosen on the Ready screen and the batch setup: one template, the user's or a built-in look (null: none). */
 data class TemplateChoice(val id: String? = null) {
     val isEmpty get() = id == null

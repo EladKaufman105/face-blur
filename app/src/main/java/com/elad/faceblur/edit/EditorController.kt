@@ -1243,6 +1243,15 @@ class EditorController(
     /** Words bleeped in all subtitles. */
     val bleepedCount get() = model.cues.sumOf { model.bleepedWords(it).size }
 
+    /** The .srt files the export would save now (the same text, hidden words and times), one per language. */
+    fun srtFiles(): List<com.elad.faceblur.subs.Srt.SrtFile> = com.elad.faceblur.subs.Srt.files(model.srtCues(audio.maskWords))
+
+    /** Bleeped words would be in the .srt files as they are: hiding them in the subtitles is switched off. */
+    val srtShowsBleeps get() = !audio.maskWords && bleepedCount > 0
+
+    /** What the .srt files saved now are named by: the video's name. */
+    val srtBaseName get() = session.info.name
+
     // ------------------------------------------------------------------ background
 
     /** Background removal settings. */
