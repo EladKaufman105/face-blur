@@ -39,6 +39,9 @@ data class StatsSnapshot(
     val lite: Boolean,
     val workers: Int,
     val maxWorkers: Int,
+    /** The detection mode ("normal", "extended", "fast") and the sensitivity (0..1, see [DetectTuning]). */
+    val mode: String = "normal",
+    val sensitivity: Float = 0f,
 ) {
     val onGpu get() = accelerator != "cpu"
 
@@ -51,6 +54,8 @@ data class StatsSnapshot(
         if (frameMs + waitMs > 0) append(" · waiting ").append(100 * waitMs / (frameMs + waitMs)).append("%")
         append(" · ").append(workers).append('/').append(maxWorkers).append(" workers")
         if (noGpu != null && noGpu.isNotEmpty() && !onGpu) append(" · no GPU: ").append(noGpu)
+        if (mode != "normal") append(" · ").append(mode).append(" detection")
+        if (sensitivity > 0f) append(" · sensitivity ").append(kotlin.math.round(sensitivity * 100).toInt()).append('%')
     }
 }
 

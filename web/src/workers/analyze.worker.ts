@@ -305,7 +305,7 @@ async function analyze({ file, sensitive, fast: fastAsked, sensitivity: sensAske
   // The result, and what detection really covered: D (detections a second within shots, and the
   // fewest in a 2 s window against the need), G (the longest gap within a shot), S (the smallest
   // fine pass that ran, YuNet).
-  log(`result detections ${dets.size}, faces ${faces50}, tracks ${tracks.length}, reduced ${reduced}, mode ${mode}, sensitivity ${sensitivity}, extra ${[...extraDets.values()].reduce((a, e) => a + e.length, 0)}, yunet ${(pool?.stats() ?? detector!.stats).yunetFaces}; ${coverageText(cover, ranSide(), yunetOn)}`)
+  log(`result detections ${dets.size}, faces ${faces50}, tracks ${tracks.length}, reduced ${reduced}, yunet ${(pool?.stats() ?? detector!.stats).yunetFaces}; ${coverageText(cover, ranSide(), yunetOn)}; mode ${mode}, sensitivity ${sensitivity}, extra ${[...extraDets.values()].reduce((a, e) => a + e.length, 0)}`)
 
   // A square thumbnail of each face, from its clearest frame. The frames are decoded in one
   // pass in time order (each packet at most once): fetching them one by one, each from its

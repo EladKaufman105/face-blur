@@ -224,6 +224,8 @@ class FaceAnalyzer private constructor(
             lite = lite,
             workers = BASE_WORKERS + extraSlots,
             maxWorkers = WORKERS,
+            mode = mode.name.lowercase(),
+            sensitivity = sensitivity,
         )
     }
 

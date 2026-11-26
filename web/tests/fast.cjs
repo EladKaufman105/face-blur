@@ -44,8 +44,8 @@ const PILL_EN = 'Fast detection: small or distant faces may be missed for a mome
     const result = async (p) => {
       await p.waitForFunction(() => true)
       const line = p.results[p.results.length - 1] ?? fail('no result line')
-      const m = /tracks (\d+), reduced (\w+), mode (\w+), sensitivity ([\d.]+), extra (\d+).*; D ([\d.]+)\/s/.exec(line) ?? fail('result line: ' + line)
-      return { tracks: Number(m[1]), reduced: m[2] === 'true', mode: m[3], sensitivity: Number(m[4]), extra: Number(m[5]), rate: Number(m[6]), line }
+      const m = /tracks (\d+), reduced (\w+), .*; D ([\d.]+)\/s.*; mode (\w+), sensitivity ([\d.]+), extra (\d+)$/.exec(line) ?? fail('result line: ' + line)
+      return { tracks: Number(m[1]), reduced: m[2] === 'true', rate: Number(m[3]), mode: m[4], sensitivity: Number(m[5]), extra: Number(m[6]), line }
     }
 
     // ---- the ready screen (Hebrew): three modes, fast's warning, the slider and the summary

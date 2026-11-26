@@ -97,7 +97,7 @@ private object StatsLayout {
         CellSize.MID to listOf(Cell.FRAME, Cell.RESOLUTION, Cell.SAMPLING),
     )
     val Details = listOf(
-        CellSize.DETAIL to listOf(Cell.BACKEND),
+        CellSize.DETAIL to listOf(Cell.BACKEND, Cell.MODE),
         CellSize.DETAIL to listOf(Cell.WORKERS, Cell.FINE, Cell.COARSE),
         CellSize.DETAIL to listOf(Cell.GPU_CALL, Cell.YUNET, Cell.CROPS),
     )
@@ -126,7 +126,7 @@ private val MIN_TEXT = 8.sp
 /** What a cell shows. Resolution and sampling change in jumps: step charts. */
 private enum class Cell(val step: Boolean = false) {
     DETECT, WAIT, FRAME, RESOLUTION(step = true), SAMPLING(step = true),
-    BACKEND, WORKERS, FINE, COARSE, GPU_CALL, YUNET, CROPS,
+    BACKEND, MODE, WORKERS, FINE, COARSE, GPU_CALL, YUNET, CROPS,
 }
 
 private fun Cell.label(): String = when (this) {
@@ -136,6 +136,7 @@ private fun Cell.label(): String = when (this) {
     Cell.RESOLUTION -> t("רזולוציה")
     Cell.SAMPLING -> t("דגימה")
     Cell.BACKEND -> t("מנוע")
+    Cell.MODE -> t("סוג הזיהוי")
     Cell.WORKERS -> t("תהליכונים")
     Cell.FINE -> t("מעבר עדין")
     Cell.COARSE -> t("מעבר גס")
@@ -151,6 +152,7 @@ private fun Cell.info(): String = when (this) {
     Cell.RESOLUTION -> t("גודל התמונה שגלאי הפנים בודק. יורד אוטומטית במכשיר איטי.")
     Cell.SAMPLING -> t("כל כמה פריימים מחפשים פנים. \"קל\": בדיקה מהירה יותר; המעקב משלים בין הבדיקות.")
     Cell.BACKEND -> t("איפה רץ זיהוי הפנים: במעבד הגרפי (GPU) או במעבד, ובאיזה דיוק. כשאין GPU, כתוב למה.")
+    Cell.MODE -> t("רגיל, מורחב (כל פריים) או מהיר (5 בשנייה), והרגישות שנבחרה.")
     Cell.WORKERS -> t("כמה גלאים עובדים במקביל, מתוך המקסימום.")
     Cell.FINE -> t("זמן המעבר המפורט בכל זיהוי.")
     Cell.COARSE -> t("זמן המעבר המהיר שמוצא פנים גדולות.")
@@ -203,6 +205,16 @@ private fun Cell.value(s: AnalysisStats, small: SpanStyle): AnnotatedString = bu
             if (l.lite) word(" " + t("· קל"))
         }
         Cell.BACKEND -> append(ltr(backend(s)))
+        Cell.MODE -> {
+            append(
+                when (l.mode) {
+                    "fast" -> t("מהיר")
+                    "extended" -> t("מורחב")
+                    else -> t("רגיל")
+                },
+            )
+            if (l.sensitivity > 0f) word(" · ${(l.sensitivity * 100).roundToInt()}%")
+        }
         Cell.WORKERS -> num("${l.workers}/${l.maxWorkers}")
         Cell.FINE -> num(fmt(s.fineMs), "ms")
         Cell.COARSE -> num(fmt(s.coarseMs), "ms")

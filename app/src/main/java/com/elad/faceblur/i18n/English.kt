@@ -924,6 +924,7 @@ internal val English: Map<String, String> = mapOf(
     "מה במכשיר, הורדה ומחיקה, והורדות בסלולרי" to "What's on the device, download and delete, and mobile data",
     // Detection modes and sensitivity
     "סוג הזיהוי" to "Detection",
+    "רגיל, מורחב (כל פריים) או מהיר (5 בשנייה), והרגישות שנבחרה." to "Normal, extended (every frame) or fast (5 a second), and the sensitivity chosen.",
     "מהיר" to "Fast",
     "מורחב" to "Extended",
     "זיהוי מהיר" to "Fast detection",
