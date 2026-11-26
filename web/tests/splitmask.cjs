@@ -1,186 +1,222 @@
-// Splitting a subtitle never unmasks a bleeped word (the burned-in text keeps it as ****), and never makes a cue that ends before it starts.
-// Run: node tests/splitmask.cjs
+// Bleeped words never show in the subtitles. A subtitle holds its words by index (as the app: its text's words); the bleeped
+// ones are masked by place while the text is the words said, by text (and place, when they still fit) once it was edited, and
+// a subtitle that may still show one says so (maskWarning), which blocks the export until it is fixed or confirmed.
+// Covers split, merge, retime, delete, text edits, translation and undo, in random sequences. Pure: no browser.
+// Run: node tests/splitmask.cjs [rounds]
 const path = require('path')
 const fs = require('fs')
 const ts = require('typescript')
-// subtitles.ts on its own (its type imports and the style constants it re-exports are not needed here).
 const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/lib/subtitles.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
 const mod = { exports: {} }
 new Function('module', 'exports', 'require', code)(mod, mod.exports, () => ({}))
-const { splitCue, splitCueAtTime, maskCue, mergeCues, retimeCue, holds, normWord } = mod.exports
+const S = mod.exports
+const { splitCue, splitCueAtTime, maskCue, maskWarning, mergeCues, retimeCue, cueRoom, wordsToCues, migrateCues, normWord, shownText, trVisible, cueWi } = S
 const W = (list) => list.map(([text, start, end]) => ({ text: ' ' + text, start, end: end ?? start + 0.2 }))
 const fail = (m) => { console.error('FAIL', m); process.exit(1) }
+const eq = (name, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) fail(`${name}: ${JSON.stringify(got)} (wanted ${JSON.stringify(want)})`) }
 const toks = (s) => s.match(/\S+/g) ?? []
-/** The bleeped words' texts that start in [cue]'s stretch (with the 10 ms the masking allows at the outer edges). */
-const hiddenOf = (cue, words, b) => new Set([...b].filter((k) => { const at = words[k].start; return at >= (cue.ws ?? cue.start) - 0.01 && at < (cue.we ?? cue.end) + 0.01 }).map((k) => normWord(words[k].text)).filter(Boolean))
-/** A bleeped word's text shown, unmasked, in [cue] (by whole tokens): the one thing that must never happen. */
-const shows = (cue, words, b, hide) => toks(maskCue(cue, words, b)).filter((t) => hide.has(normWord(t)))
-function ok(name, parts, words, b, hide) {
-  for (const c of parts) {
-    if (!(c.start < c.end)) fail(`${name}: bad times ${JSON.stringify(c)}`)
-    const leak = shows(c, words, b, hide)
-    if (leak.length) fail(`${name}: ${leak} shows in "${maskCue(c, words, b)}" ${JSON.stringify(c)}`)
-  }
-}
-/** Every split of [cue]: refused, or nothing shows in either half. */
-function allSplits(name, cue, words, b) {
-  const hide = hiddenOf(cue, words, b)
-  let did = 0
-  for (let at = 1; at < cue.text.length; at++) { const r = splitCue(cue, at, words, b); if (r) { ok(`${name} @${at}`, r, words, b, hide); did++ } }
-  return did
-}
 
-// (a) the start dragged past the word, text edited, the word bleeped
+// ---- the words of a subtitle are made with it
 {
-  const words = W([['a', 1.0], ['b', 1.5], ['c', 2.0]])
-  const cue = { id: 1, start: 2.4, end: 3, ws: 1, we: 3, text: 'a b c d' }
+  const words = W([['you', 1.0], ['[music]', 1.2], ['bastard', 1.55], ['ok.', 1.6], ['next', 1.6]])
+  const cues = wordsToCues(words)
+  eq('wordsToCues', cues.map((c) => [c.text, c.wi]), [['you bastard ok.', [0, 2, 3]], ['next', [4]]])
+  // (Whisper gives "ok." and "next" the same start: the words are the subtitle's, not the time's.)
   const b = new Set([2])
-  if (maskCue(cue, words, b) !== 'a b **** d') fail('a: the original: ' + maskCue(cue, words, b))
-  const r = splitCueAtTime(cue, 2.7, words, b)
-  if (!r) fail('a refused')
-  ok('a', r, words, b, hiddenOf(cue, words, b))
+  eq('bleep from the chips', maskCue(cues[0], words, b), 'you **** ok.')
+  const p = splitCue(cues[0], cues[0].text.indexOf('ok.'), words, b)
+  eq('rep2 split', p.map((h) => [h.text, h.wi, maskCue(h, words, b)]), [['you bastard', [0, 2], 'you ****'], ['ok.', [3], 'ok.']])
+  const q = splitCueAtTime(cues[0], 1.45, words, b)
+  eq('rep2 playhead split', q.map((h) => maskCue(h, words, b)), ['you', '**** ok.'])
 }
-// (b) extra text before the words
+// ---- saved projects: the words a subtitle had by time are kept once
 {
-  const words = W([['a', 1.0], ['b', 1.5], ['c', 2.0]])
-  const cue = { id: 1, start: 1, end: 3, text: 'xx a b c' }
-  const r = splitCueAtTime(cue, 1.45, words, new Set([1]))
-  if (!r) fail('b refused')
-  ok('b', r, words, new Set([1]), new Set(['b']))
-  allSplits('b', cue, words, new Set([1]))
+  const words = W([['a', 1.0], ['b', 1.5], ['[x]', 1.7], ['c', 2.0]])
+  const old = [{ id: 1, start: 2.4, end: 3, ws: 1, we: 3, text: 'a b c d' }, { id: 2, start: 4, end: 5, text: 'zz' }]
+  const m = migrateCues(old, words)
+  eq('migrate', m.map((c) => [c.wi, 'ws' in c]), [[[0, 1, 3], false], [[], false]])
+  if (migrateCues(m, words) !== m) fail('migrating twice changed the list')
 }
-// (c) the edge clamp on the time
+// ---- text edits (probe 1, 1b, 2): the word stays masked, or the subtitle says it may show it
 {
-  const words = W([['a', 1.0], ['b', 1.1], ['c', 2.0]])
-  const cue = { id: 1, start: 1, end: 3, text: 'a b c' }
-  const r = splitCue(cue, 2, words, new Set([1]))
-  if (!r) fail('c refused')
-  ok('c', r, words, new Set([1]), new Set(['b']))
-  if (r[0].end !== 1.2) fail('c: the time was not held back from the edge: ' + r[0].end)
+  const w = W([['what', 0], ['the', 0.5], ['fork', 1]])
+  eq('1 edited text', maskCue({ id: 1, start: 0, end: 2, text: 'what the fuck', wi: [0, 1, 2] }, w, new Set([2])), 'what the ****')
+  const w2 = W([['כלב', 0], ['רע', 0.5]]), b = new Set([0])
+  for (const t of ['הכלב רע', 'כלבים רע', 'כֶּלֶב רע', 'כלב׳ רע', 'כ​לב רע', 'כלב־־רע', 'ו״כלב רע', 'כלב/רע', 'ש־הכלב רע', 'וכשהכלב רע', 'כלב רע רע רע', 'רע']) {
+    const c = { id: 1, start: 0, end: 2, text: t, wi: [0, 1] }
+    const m = maskCue(c, w2, b)
+    if (!m.includes('****') && !maskWarning(c, w2, b)) fail(`1b ${t}: shows the word and says nothing: ${m}`)
+  }
+  const cases = [['fuck,', 'Fuck,'], ['‏כלב', 'כלב'], ['כלב‏', '‏כלב‏'], ['🤬', '🤬'], ['fuck🤬', 'fuck🤬'], ['f*ck', 'f*ck'], ['ו-כלב', 'ו-כלב'], ['ו־כלב', 'ו־כלב'], ['é', 'é'], ['- fuck', '- fuck'], ['دڵ', 'دڵ'], ['والله', 'والله'], ['می‌خواهم', 'می‌خواهم'], ['İstanbul', 'İstanbul'], ['ß', 'SS']]
+  for (const [word, tok] of cases) {
+    const c = { id: 1, start: 0, end: 2, text: tok + ' x', wi: [0, 1] }
+    const m = maskCue(c, W([[word, 0], ['x', 1]]), new Set([0]))
+    if (!m.startsWith('****') && !/^[^\p{L}\p{N}]*\*\*\*\*/u.test(m)) fail(`2 ${JSON.stringify(word)} / ${JSON.stringify(tok)}: ${m}`)
+    if (!m.endsWith(' x')) fail('2 over-masked: ' + m)
+  }
+  // niqqud and a zero-width space are the same word
+  eq('normWord', [normWord('כֶּלֶב'), normWord('כ​לב'), normWord('"Damn,"')], ['כלב', 'כלב', 'damn'])
 }
-// t1.1: equal word starts straddling the split; the same bleeped text twice
-{
-  const words = W([['aa', 1.0], ['bad', 2.0], ['cc', 2.0], ['dd', 2.3], ['bad', 2.6], ['shit', 2.8]])
-  const cue = { id: 1, start: 1, end: 3.2, text: 'aa bad cc dd bad shit' }
-  const b = new Set([1, 5])
-  if (maskCue(cue, words, b) !== 'aa **** cc dd **** ****') fail('t1.1 mask: ' + maskCue(cue, words, b))
-  allSplits('t1.1', cue, words, b)
-}
-// t1.2: a bleeped word 10 ms before the boundary
-{
-  const words = W([['aa', 1.0], ['bad', 1.995], ['cc', 2.0], ['shit', 2.3], ['dd', 2.5], ['bad', 2.7]])
-  const cue = { id: 1, start: 1, end: 3.2, text: 'aa bad cc shit dd bad' }
-  const b = new Set([1, 3])
-  allSplits('t1.2', cue, words, b)
-  for (const t of [1.5, 2.0, 2.05, 2.4, 2.6]) { const r = splitCueAtTime(cue, t, words, b); if (r) ok('t1.2@' + t, r, words, b, hiddenOf(cue, words, b)) }
-}
-// t1.3: B deleted, A and C merged: "damn" is bleeped, its start is inside the merged stretch
-{
-  const words = W([['hello', 1.0], ['there', 1.3], ['the', 2.0], ['dog', 2.3], ['damn', 3.0], ['the', 3.3], ['cat', 3.6]])
-  const A = { id: 1, start: 1, end: 1.8, text: 'hello there' }, C = { id: 3, start: 3, end: 3.9, text: 'damn the cat' }
-  const b = new Set([4])
-  const m = mergeCues(A, C, words, b)
-  if (!m) fail('t1.3: refused')
-  if (maskCue(m, words, b) !== 'hello there **** the cat') fail('t1.3: ' + maskCue(m, words, b))
-}
-// t1.4 / t2: a noise token in the gap
-{
-  const words = W([['a', 1.0], ['bad', 1.3], ['x', 2.0], ['bad', 2.3]])
-  const A = { id: 1, start: 1, end: 1.8, text: 'a bad' }, B = { id: 2, start: 2, end: 2.8, text: 'x bad' }
-  const m = mergeCues(A, B, words, new Set([3]))
-  if (!m || maskCue(m, words, new Set([3])) !== 'a **** x ****') fail('t1.4: ' + (m && maskCue(m, words, new Set([3]))))
-  const w2 = W([['hello', 1.0], ['-', 1.9], ['damn', 2.0], ['-', 2.2], ['ok', 2.4]])
-  const A2 = { id: 1, start: 1, end: 1.8, text: 'hello' }, B2 = { id: 2, start: 2, end: 2.8, text: 'damn - ok' }
-  const m2 = mergeCues(A2, B2, w2, new Set([2]))
-  if (!m2 || maskCue(m2, w2, new Set([2])) !== 'hello **** - ok') fail('t2: ' + (m2 && maskCue(m2, w2, new Set([2]))))
-}
-// whole tokens: "classic ass"
+// ---- whole tokens (not "cl****ic"), duplicates by place, over-masking after an edit
 {
   const words = W([['classic', 1.0], ['ass', 1.5]])
-  const cue = { id: 1, start: 1, end: 2, text: 'classic ass' }
-  if (maskCue(cue, words, new Set([1])) !== 'classic ****') fail('classic ass: ' + maskCue(cue, words, new Set([1])))
-  if (maskCue({ ...cue, text: 'ass, classic' }, words, new Set([1])) !== '****, classic') fail('punctuation kept')
-  if (maskCue({ ...cue, text: 'Ass classic' }, words, new Set([1])) !== '**** classic') fail('case')
-  // A text edit: the word typed again is hidden by itself.
-  if (maskCue({ ...cue, text: 'ass classic ass' }, words, new Set([1])) !== '**** classic ****') fail('an edit shows the word')
+  eq('classic ass', maskCue({ id: 1, start: 1, end: 2, text: 'classic ass', wi: [0, 1] }, words, new Set([1])), 'classic ****')
+  const w = W([['x', 0], ['a', 0.5], ['b', 1], ['x', 1.5]])
+  const c = { id: 1, start: 0, end: 2, text: 'x a b x', wi: [0, 1, 2, 3] }
+  eq('4 one of two equal words', maskCue(c, w, new Set([0])), '**** a b x')
+  const rs = []
+  for (let at = 1; at < c.text.length; at++) { const r = splitCue(c, at, w, new Set([0])); if (r) rs.push(r.map((h) => maskCue(h, w, new Set([0]))).join('|')) }
+  if (rs.some((x) => !x.startsWith('****') || x.split('****').length !== 2)) fail('4 splits: ' + rs)
+  if (rs.length < 3) fail('4 duplicate-word splits were refused: ' + rs.length)
+  const ed = { ...c, text: 'x a b x c' }
+  eq('4 edited: every equal token', maskCue(ed, w, new Set([0])), '**** a b **** c')
 }
-// Hebrew with prefixes
+// ---- a bleeped word that is in no token: position when the count fits, else a warning
 {
-  const words = W([['כלב', 1.0], ['והחתול', 1.5], ['שלום', 2.0]])
-  const cue = { id: 1, start: 1, end: 3, text: 'הכלב ו-כלב והחתול שלום' }
-  const m = maskCue(cue, words, new Set([0, 1]))
-  if (m !== '**** **** **** שלום') fail('hebrew: ' + m)
-  // The attached form itself, bleeped.
-  if (maskCue({ ...cue, text: 'וכלב' }, W([['וכלב', 1.0]]), new Set([0])) !== '****') fail('hebrew attached form')
-  if (maskCue(cue, words, new Set([2])) !== 'הכלב ו-כלב והחתול ****') fail('hebrew plain: ' + maskCue(cue, words, new Set([2])))
+  const w = W([['a', 0], ['bad', 0.5], ['c', 1]])
+  const fits = { id: 1, start: 0, end: 2, text: 'a worse c', wi: [0, 1, 2] }
+  eq('renamed word, same count', [maskCue(fits, w, new Set([1])), maskWarning(fits, w, new Set([1]))], ['a **** c', false])
+  const lost = { id: 1, start: 0, end: 2, text: 'a worse c d', wi: [0, 1, 2] }
+  eq('renamed word, other count', [maskCue(lost, w, new Set([1])), maskWarning(lost, w, new Set([1]))], ['a worse c d', true])
+  if (maskWarning({ ...lost, text: 'a bad c d' }, w, new Set([1]))) fail('a warning with the word in the text')
+  if (maskWarning(lost, w, new Set())) fail('a warning with nothing bleeped')
 }
-// too short: no split; long enough: strictly inside
+// ---- merge keeps every word and never refuses; delete keeps the words (their bleeps stay)
+{
+  const words = W([['hello', 1.0], ['there', 1.3], ['the', 2.0], ['dog', 2.3], ['damn', 3.0], ['the', 3.3], ['cat', 3.6]])
+  const A = { id: 1, start: 1, end: 1.8, text: 'hello there', wi: [0, 1] }, C = { id: 3, start: 3, end: 3.9, text: 'damn the cat', wi: [4, 5, 6] }
+  const m = mergeCues(A, C)
+  eq('merge', [m.text, m.wi, maskCue(m, words, new Set([4]))], ['hello there damn the cat', [0, 1, 4, 5, 6], 'hello there **** the cat'])
+  const words2 = W([['hello', 1.0], ['-', 1.9], ['damn', 2.0], ['-', 2.2], ['ok', 2.4]])
+  const m2 = mergeCues({ id: 1, start: 1, end: 1.8, text: 'hello', wi: [0] }, { id: 2, start: 2, end: 2.8, text: 'damn ok', wi: [2, 4] })
+  eq('merge across noise', maskCue(m2, words2, new Set([2])), 'hello **** ok')
+}
+// ---- the translation never gives a word away
+{
+  const c = { id: 1, start: 0, end: 2, text: 'a bad c', wi: [0, 1, 2], tr: 'א רע ג' }
+  const m = 'a **** c'
+  eq('tr of the raw text, hidden', shownText(c, m, 'both'), m)
+  eq('tr of the masked text, shown', shownText({ ...c, tr: 'א **** ג', trm: m }, m, 'both'), m + '\nא **** ג')
+  eq('tr with no bleeps', shownText(c, 'a bad c', 'both'), 'a bad c\nא רע ג')
+  eq('tr after the text changed', trVisible({ ...c, tr: 'x', trm: m }, 'a ****  c'), false)
+  const j = mergeCues({ ...c, tr: 'א **** ג', trm: m }, { id: 2, start: 2, end: 3, text: 'd', wi: [3], tr: 'ד' })
+  eq('merge joins the translations with their sources', [j.tr, j.trm], ['א **** ג ד', 'a **** c d'])
+  eq('masking off shows it', shownText(c, 'a bad c', 'tr', false), 'א רע ג')
+}
+// ---- too short; strictly inside; retime clamps
 {
   const words = W([['a', 1.0, 1.1], ['b', 1.15, 1.25]])
-  if (splitCue({ id: 1, start: 1, end: 1.3, text: 'a b' }, 2, words) !== null) fail('a cue of 0.3 s was split')
-  if (splitCueAtTime({ id: 1, start: 1, end: 1.39, text: 'a b' }, 1.2, words) !== null) fail('a cue of 0.39 s was split')
-  const r = splitCue({ id: 1, start: 1, end: 1.4, text: 'a b' }, 2, words)
+  if (splitCue({ id: 1, start: 1, end: 1.3, text: 'a b', wi: [0, 1] }, 2, words) !== null) fail('a cue of 0.3 s was split')
+  if (splitCueAtTime({ id: 1, start: 1, end: 1.39, text: 'a b', wi: [0, 1] }, 1.2, words) !== null) fail('a cue of 0.39 s was split')
+  const r = splitCue({ id: 1, start: 1, end: 1.4, text: 'a b', wi: [0, 1] }, 2, words)
   if (!r || !(r[0].start < r[0].end && r[1].start < r[1].end)) fail('0.4 s cue: ' + JSON.stringify(r))
-}
-// retimeCue: the previous cue's end wins over the minimum length
-{
-  const c = { id: 1, start: 2, end: 2.05, text: 'x' }
+  const c = { id: 1, start: 2, end: 2.05, text: 'x', wi: [] }
   if (retimeCue(c, true, 0.5, 2.0, 3).start < 2.0) fail('retime start under lo')
   if (retimeCue(c, false, 9, 0, 2.06).end > 2.06) fail('retime end over hi')
-}
-// the stretches of two halves never share a word
-{
-  const words = W([['aa', 1.0], ['bb', 1.4], ['cc', 1.9], ['dd', 2.4]])
-  const cue = { id: 1, start: 1, end: 3, text: 'aa bb cc dd' }
-  for (let at = 1; at < cue.text.length; at++) { const r = splitCue(cue, at, words); if (r) for (const w of words) if (holds(r[0], w.start) && holds(r[1], w.start)) fail('a word held by both halves at ' + at) }
+  eq('retime keeps the words', retimeCue({ ...c, wi: [3, 4] }, true, 2.0, 0, 9).wi, [3, 4])
 }
 
-// Property test: random cues, words and bleeps; every split and every merge. A bleeped word's text never shows in a cue that holds it.
+// ---- random sequences: split (caret, playhead), merge, retime, delete, bleep (from the chips), text edit, translate, undo.
+// A leak: a bleeped word shown in a subtitle (its place's token while the text is as said, any token that says it once edited,
+// its text in the translation) with no warning on that subtitle.
 {
-  let seed = 12345
+  const rounds = Number(process.argv[2] || 5000)
+  let seed = 20260101
   const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32
   const pick = (a) => a[Math.floor(rnd() * a.length)]
-  const vocab = ['bad', 'ass', 'classic', 'a', 'the', 'cat', 'Damn', 'damn,', 'ok', 'כלב', 'והכלב', 'הכלב', 'שלום', '-', '...']
-  let splits = 0, merges = 0, refused = 0
-  for (let round = 0; round < 1500; round++) {
-    const n = 3 + Math.floor(rnd() * 8)
-    let t = 1
-    const list = []
-    for (let i = 0; i < n; i++) { t += rnd() < 0.25 ? 0 : 0.05 + rnd() * 0.5; list.push([pick(vocab), Math.round(t * 1000) / 1000]) }
-    const words = W(list)
-    const b = new Set(); words.forEach((_, k) => { if (rnd() < 0.3) b.add(k) })
-    // two cues over the words (cut at a random word), the text a random mix of the words, sometimes edited, sometimes windowed
-    const cut = 1 + Math.floor(rnd() * (n - 1))
-    const mk = (lo, hi, id) => {
-      const ws = words.slice(lo, hi)
-      const text = ws.map((w) => w.text.trim()).concat(rnd() < 0.3 ? [pick(vocab)] : []).join(' ')
-      const c = { id, start: Math.round((ws[0].start - rnd() * 0.05) * 1000) / 1000, end: Math.round((ws[ws.length - 1].end + rnd() * 0.3) * 1000) / 1000, text }
-      if (rnd() < 0.3) { c.ws = c.start; c.we = c.end; c.start = Math.round((c.start + rnd() * 0.4) * 1000) / 1000; if (c.start > c.end - 0.1) c.start = c.end - 0.1 }
-      return c
-    }
-    const A = mk(0, cut, 1), B = mk(cut, n, 2)
-    for (const cue of [A, B]) {
-      const hide = hiddenOf(cue, words, b)
-      for (let at = 1; at < cue.text.length; at++) {
-        const r = splitCue(cue, at, words, b)
-        if (!r) { refused++; continue }
-        splits++
-        ok(`split r${round} @${at} ${JSON.stringify(cue)}`, r, words, b, hide)
+  const vocab = ['bad', 'ass', 'a', 'the', 'cat', 'Damn', 'damn,', 'ok', 'כלב', 'והכלב', 'הכלב', 'שלום', 'לא', 'ולא', 'x', 'classic', '🤬']
+  const ops = { split: 0, splitT: 0, merge: 0, retime: 0, bleep: 0, del: 0, edit: 0, tr: 0, undo: 0, refused: 0, warned: 0 }
+  let leaks = 0
+  const edits = [
+    (t) => t.replace(/\S+/, (w) => w + 's'), (t) => 'so ' + t, (t) => t + ' extra', (t) => t.replace(/\S+/, 'fine'),
+    (t) => t.replace(/ /, '  '), (t) => t.replace(/\S+/, (w) => 'ה' + w), (t) => t.replace(/\S+/, (w) => w.split('').join('​')),
+    (t) => t.replace(/\S+/, (w) => w + 'ְ'), (t) => t.split(' ').reverse().join(' '), (t) => t.toUpperCase(), (t) => t.split(' ').slice(1).join(' ') || 'zz',
+  ]
+  const check = (cues, words, b, log, round) => {
+    for (const x of cues) {
+      const wi = cueWi(x)
+      const mine = wi.filter((k) => b.has(k))
+      if (!mine.length) continue
+      const m = maskCue(x, words, b), warn = maskWarning(x, words, b)
+      const tk = toks(x.text), mt = toks(m)
+      const exact = tk.length === wi.length && wi.every((k, p) => normWord(tk[p]) === normWord(words[k].text) || (normWord(tk[p]) === '' && tk[p] === words[k].text.trim()))
+      const bad = []
+      if (exact) wi.forEach((k, p) => { if (b.has(k) && !mt[p].includes('****')) bad.push(`place ${p}`) })
+      else if (!warn) {
+        const keys = new Set(mine.map((k) => normWord(words[k].text)).filter(Boolean))
+        mt.forEach((t, p) => { if (keys.has(normWord(t))) bad.push(`token ${t}`) })
+        if (tk.length === wi.length) wi.forEach((k, p) => { if (b.has(k) && !mt[p].includes('****')) bad.push(`place ${p}`) })
       }
-      for (const tm of [cue.start + 0.1, (cue.start + cue.end) / 2, cue.end - 0.1]) {
-        const r = splitCueAtTime(cue, tm, words, b)
-        if (r) { splits++; ok('splitAtTime r' + round, r, words, b, hide) }
-      }
-    }
-    const m = mergeCues(A, B, words, b)
-    if (!m) refused++
-    else {
-      merges++
-      const hide = new Set([...hiddenOf(A, words, b), ...hiddenOf(B, words, b)])
-      ok('merge r' + round + ' ' + JSON.stringify([A, B]), [m], words, b, hide)
+      // the translation: shown only when it was made from this masked text, or nothing is masked
+      const shown = shownText(x, m, 'both')
+      if (x.tr && shown.includes(x.tr) && m !== (x.trm ?? x.text)) bad.push('translation')
+      if (x.tr && x.trm === undefined && m !== x.text && shown.includes('\n')) bad.push('translation of the raw text')
+      if (bad.length) { leaks++; if (leaks <= 3) console.log('LEAK', bad, { round, cue: x, masked: m, warn, words: words.map((w) => w.text.trim()), b: [...b], log }) }
+      if (warn) ops.warned++
     }
   }
-  console.log(`property: ${splits} splits, ${merges} merges, ${refused} refused`)
-  if (splits < 1000 || merges < 100) fail('the property test did too little')
+  for (let round = 0; round < rounds && leaks < 5; round++) {
+    const n = 3 + Math.floor(rnd() * 12)
+    let t = 0.5
+    const words = []
+    for (let i = 0; i < n; i++) { t += rnd() < 0.2 ? 0 : rnd() < 0.5 ? 0.005 + rnd() * 0.02 : 0.05 + rnd() * 0.6; words.push({ text: ' ' + pick(vocab), start: +t.toFixed(3), end: +(t + 0.15).toFixed(3) }) }
+    let cues = wordsToCues(words, rnd() < 0.5 ? 0 : 2 + Math.floor(rnd() * 3))
+    let b = new Set()
+    const stack = []
+    const log = []
+    const dur = t + 2
+    const push = () => stack.push([cues, b])
+    for (let step = 0; step < 14; step++) {
+      const sorted = [...cues].sort((a, c) => a.start - c.start)
+      if (!sorted.length) break
+      const c = pick(sorted), ci = sorted.indexOf(c), r = rnd()
+      if (r < 0.2) {
+        const tk = [...c.text.matchAll(/\S+/g)]
+        if (tk.length < 2) continue
+        const at = rnd() < 0.7 ? tk[1 + Math.floor(rnd() * (tk.length - 1))].index : Math.floor(rnd() * c.text.length)
+        const p = splitCue(c, at, words, b)
+        log.push(['split', c.id, at, !!p])
+        if (!p) { ops.refused++; continue }
+        push(); ops.split++; cues = cues.flatMap((x) => (x.id === c.id ? p : [x]))
+      } else if (r < 0.32) {
+        const tm = c.start + rnd() * (c.end - c.start)
+        const p = splitCueAtTime(c, tm, words, b)
+        log.push(['splitT', c.id, tm, !!p])
+        if (!p) { ops.refused++; continue }
+        push(); ops.splitT++; cues = cues.flatMap((x) => (x.id === c.id ? p : [x]))
+      } else if (r < 0.44) {
+        const nx = sorted[ci + 1]
+        if (!nx) continue
+        log.push(['merge', c.id, nx.id])
+        push(); ops.merge++; cues = cues.filter((x) => x.id !== nx.id).map((x) => (x.id === c.id ? mergeCues(c, nx) : x))
+      } else if (r < 0.54) {
+        const [lo, hi] = cueRoom(cues, c, dur), st = rnd() < 0.5, at = (st ? c.start : c.end) + (rnd() - 0.5) * 2
+        log.push(['retime', c.id, st, at])
+        push(); ops.retime++; cues = cues.map((x) => (x.id === c.id ? retimeCue(x, st, at, lo, hi) : x))
+      } else if (r < 0.6) {
+        log.push(['del', c.id]); push(); ops.del++; cues = cues.filter((x) => x.id !== c.id)
+      } else if (r < 0.74) {
+        const held = cueWi(c)
+        if (!held.length) continue
+        const k = pick(held)
+        log.push(['bleep', c.id, k]); push(); ops.bleep++
+        b = new Set(b); if (b.has(k)) b.delete(k); else b.add(k)
+      } else if (r < 0.84) {
+        const text = pick(edits)(c.text)
+        log.push(['edit', c.id, text]); push(); ops.edit++; cues = cues.map((x) => (x.id === c.id ? { ...x, text } : x))
+      } else if (r < 0.9) {
+        // translated from the masked text (as the tab does), or an old translation of the raw text
+        const fromMasked = rnd() < 0.6, src = fromMasked ? maskCue(c, words, b) : c.text
+        log.push(['tr', c.id, fromMasked]); push(); ops.tr++
+        cues = cues.map((x) => (x.id === c.id ? (fromMasked ? { ...x, tr: '«T» ' + src, trm: src } : { ...x, tr: '«T» ' + src, trm: undefined }) : x))
+      } else if (stack.length) {
+        log.push(['undo']); ops.undo++; ;[cues, b] = stack.pop()
+      }
+      check(cues, words, b, log, round)
+    }
+  }
+  console.log('sequences:', JSON.stringify(ops), 'leaks', leaks)
+  if (leaks) fail(leaks + ' leaks')
+  if (ops.split + ops.splitT < rounds || ops.merge < rounds / 4 || ops.edit < rounds / 2 || ops.warned < 10) fail('the random test did too little: ' + JSON.stringify(ops))
 }
 console.log('PASS')

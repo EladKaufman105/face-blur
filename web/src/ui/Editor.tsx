@@ -33,7 +33,7 @@ import { cleanupOn, type Cleanup } from '../lib/cleanup'
 import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
 import { Analyzing } from './Analyzing'
 import { ChipTabs, PANEL_ID, STYLE_PARTS, subsOf, useNarrow, useTablet } from './panels'
-import { bleepRanges, cueAt, cueRoom, maskCue, mergeCues, retimeCue, shownText, splitCueAtTime, winEnd, winStart, type Cue, type SubStyle, type Word } from '../lib/subtitles'
+import { bleepRanges, cueAt, cueRoom, cueWi, maskCue, maskWarning, mergeCues, migrateCues, retimeCue, shownText, splitCueAtTime, trVisible, type Cue, type SubStyle, type Word } from '../lib/subtitles'
 import { DEFAULT_SUB_STYLE, loadSubFont, normalizeStyle } from '../lib/substyle'
 import { cueWordTimes, drawCue } from '../lib/subrender'
 import { getFont } from '../lib/projects'
@@ -187,7 +187,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [subTab, setSubTab] = useState<Record<string, string>>({})
   const [styleTab, setStyleTab] = useState('looks')
   const bodyRef = useRef<HTMLDivElement>(null)
-  const [cues, setCues] = useState<Cue[]>(saved?.cues ?? [])
+  const [cues, setCues] = useState<Cue[]>(() => migrateCues(saved?.cues ?? [], saved?.words ?? []))
   const [words, setWords] = useState<Word[]>(saved?.words ?? [])
   const [bleeped, setBleeped] = useState<Set<number>>(() => new Set(saved?.bleeped ?? []))
   const [tone, setTone] = useState(saved?.tone ?? true)
@@ -359,8 +359,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       if (cue) {
         const st = state.current.subStyle
         const text = state.current.subStyle.maskBleeped === false ? cue.text : maskCue(cue, state.current.words, state.current.bleeped)
-        const blocks = shownText(cue, text, st.show).split('\n')
-        const times = st.show === 'tr' ? [] : [cueWordTimes(text, winStart(cue), winEnd(cue), state.current.words)]
+        const blocks = shownText(cue, text, st.show, st.maskBleeped !== false).split('\n')
+        const times = st.show === 'tr' ? [] : [cueWordTimes(text, cue.wi, state.current.words)]
         drawCue(tc, blocks, cue.start, cue.end, state.current.mediaTime, { ...st, color: speakerColor(st.color, cue.speaker, st.speakerColors) }, fw, fh, times)
       }
       tc.restore()
@@ -1116,14 +1116,16 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     if (!selCue) return
     const next = sortedCues[cueAtIdx + 1]
     const prev = sortedCues[cueAtIdx - 1]
-    const refuse = () => setNotice(t('אי אפשר למזג: מילה מוסתרת הייתה מופיעה'))
-    if (next) { const m = mergeCues(selCue, next, words, bleeped); if (!m) return refuse(); setCuesH(cues.filter((c) => c.id !== next.id).map((c) => (c.id === selCue.id ? m : c)), true) }
-    else if (prev) { const m = mergeCues(prev, selCue, words, bleeped); if (!m) return refuse(); setCuesH(cues.filter((c) => c.id !== selCue.id).map((c) => (c.id === prev.id ? m : c)), true); setSelectedCue(prev.id) }
+    if (next) setCuesH(cues.filter((c) => c.id !== next.id).map((c) => (c.id === selCue.id ? mergeCues(selCue, next) : c)), true)
+    else if (prev) { setCuesH(cues.filter((c) => c.id !== selCue.id).map((c) => (c.id === prev.id ? mergeCues(prev, selCue) : c)), true); setSelectedCue(prev.id) }
   }
   function deleteCue() {
     if (!selCue) return
     setCuesH(cues.filter((c) => c.id !== selCue.id), true)
     setSelectedCue(null)
+    // Its words stay bleeped (the sound is as it was): the subtitles tab lists the bleeps no subtitle has and can remove them.
+    const n = cueWi(selCue).filter((k) => bleeped.has(k) && !cues.some((c) => c.id !== selCue.id && cueWi(c).includes(k))).length
+    if (n > 0) setNotice(n === 1 ? t('הכתובית נמחקה. מילה מצופצפת אחת נשארת מצופצפת בסאונד.') : t('הכתובית נמחקה. %d מילים מצופצפות נשארות מצופצפות בסאונד.', n))
   }
   const patchCue = (patch: Partial<Cue>) => { if (selCue) setCuesH(cues.map((c) => (c.id === selCue.id ? { ...c, ...patch } : c))) }
   const bleepMarks = useMemo(() => bleepRanges(words, bleeped), [words, bleeped])
@@ -1143,6 +1145,10 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   }
   /** A subtitle's text with the bleeped words hidden (unless they're to show as said). */
   const masked = (c: Cue) => (subStyle.maskBleeped === false ? c.text : maskCue(c, words, bleeped))
+  /** What the video shows of a subtitle: its masked text, and its translation where that can't give a masked word away. */
+  const shown = (c: Cue) => shownText(c, masked(c), subStyle.show, subStyle.maskBleeped !== false)
+  /** The subtitles whose text was edited so that a bleeped word of theirs may show (see [maskWarning]). */
+  const maskWarned = useMemo(() => (subStyle.maskBleeped === false ? [] : cues.filter((c) => maskWarning(c, words, bleeped))), [cues, words, bleeped, subStyle.maskBleeped])
 
   const subList = subsOf(tab, { hasCues: cues.length > 0, hasWords: words.length > 0, hasFaces: analyzed || tracks.length > 0 })
   const part = (subTab[tab] && subList.some(([id]) => id === subTab[tab]) ? subTab[tab] : subList[0]?.[0]) ?? ''
@@ -1453,12 +1459,13 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           times={times}
           tracks={tracks}
           off={off}
-          cues={cues.map((c) => ({ ...c, text: shownText(c, masked(c), subStyle.show) }))}
+          cues={cues.map((c) => ({ ...c, text: shown(c) }))}
           sfx={sfx}
           sfxLength={sfxLength}
           selectedSfx={selectedSfx}
           selectedCue={selCue ? selCue.id : null}
           onSelectCue={selectCue}
+          maskWarn={new Set(maskWarned.map((c) => c.id))}
           onTrimCueStart={() => record(false)}
           onTrimCue={(id, start, at) => {
             setCues((cs) => {
@@ -1497,6 +1504,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             onOpen={setCueOpen}
             sheet={phone}
             speakers={cueSpeakers > 1 ? cueSpeakers : 0}
+            warn={maskWarned.some((c) => c.id === selCue.id)}
+            trHidden={subStyle.maskBleeped !== false && !!selCue.tr && !trVisible(selCue, maskCue(selCue, words, bleeped))}
             color={subStyle.color}
             chosen={subStyle.speakerColors}
             onStart={() => cueEdgeHere(true)}
@@ -1575,6 +1584,12 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             <div class="row"><button class="btn ghost small-btn" onClick={() => setLost(null)}>{t('הבנתי')}</button></div>
           </div>
         )}
+        {maskWarned.length > 0 && (
+          <div class="mask-warn card confirm" role="alert">
+            <p class="small" style="margin:0">{maskWarned.length === 1 ? t('בכתובית אחת מילה מצופצפת לא נמצאת בטקסט, ולכן הכתובית עלולה להציג אותה. תקן את הטקסט כדי שיופיע בו, או צפצף את המילה שוב.') : t('ב-%d כתוביות מילה מצופצפת לא נמצאת בטקסט, ולכן הן עלולות להציג אותה. תקן את הטקסט, או צפצף את המילה שוב.', maskWarned.length)}</p>
+            <div class="row"><button class="btn tonal small-btn mask-warn-go" onClick={() => { const c = [...maskWarned].sort((a, b) => a.start - b.start)[0]; selectCue(c.id); seek(c.start + 0.01) }}>{t('עבור לכתובית')}</button></div>
+          </div>
+        )}
         {soundFail && (
           <div class="sound-error card" role="alert" data-hard={soundFail.hard ? '1' : '0'}>
             <p class="small" style="margin:0">{soundFail.hard ? t('שינוי הקול נכשל, ולכן אי אפשר לייצא (כדי שהקול המקורי לא יישמר בטעות)') : t('עיבוד הסאונד נכשל. הסרטון ייוצא עם הסאונד המקורי')}</p>
@@ -1612,6 +1627,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         sourceHevc={srcInfo?.codec === 'hevc'}
         hasCues={cues.length > 0}
         lostBleeps={lostBleeps}
+        maskWarn={maskWarned.length}
         options={exportOpts}
         onChange={setExportOpts}
         onClose={() => setExportOpen(false)}
@@ -1620,7 +1636,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           if (tplBusy || soundBlocked) { setExportOpen(false); return }
           setExportOpen(false)
           saveExportOptions(exportOpts)
-          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: shownText(c, masked(c), subStyle.show) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, anonymize: voice !== 'none' || bleeped.size > 0, cuts, words, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
+          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: shown(c) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, anonymize: voice !== 'none' || bleeped.size > 0, cuts, words, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
         }}
       />
     )}

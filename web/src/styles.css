@@ -1035,3 +1035,6 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 /* A phone's panel keeps a thin scrubber over it (as the app's), so the video can be moved through with the panel open. */
 .mini-scrubber { flex: none; width: calc(100% - 16px); height: 24px; margin: 0 8px; accent-color: var(--primary); touch-action: none; }
 @media (max-height: 599px) { .mini-scrubber { display: none; } }
+
+/* A subtitle that may show a bleeped word (its text was edited): marked on the timeline. */
+.tl-cue.warn { outline: 2px solid var(--primary); outline-offset: -2px; }

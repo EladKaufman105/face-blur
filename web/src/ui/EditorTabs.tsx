@@ -8,7 +8,7 @@ import { fontFamily, SUB_COLORS, SUB_FONTS } from '../lib/substyle'
 import { FontAxes } from './FontAxes'
 import { AddIcon, CloseIcon, CutIcon, DeleteIcon, MergeIcon, PlayIcon } from './icons'
 import { deleteSound, listSounds, saveSound } from '../lib/projects'
-import { LANGUAGES, holds, isNoise, mergeCues, newCueId, parseSrt, splitCue, toSrt, wordsToCues, type Cue, type SubShow, type SubStyle, type Word } from '../lib/subtitles'
+import { LANGUAGES, cueWi, isNoise, maskCue, maskWarning, mergeCues, newCueId, parseSrt, splitCue, toSrt, trVisible, wordsToCues, type Cue, type SubShow, type SubStyle, type Word } from '../lib/subtitles'
 import { SubStyleCard } from './SubStyleCard'
 import { canTranslate, guessLang, LANG_NAMES, translateAll } from '../lib/translate'
 import { MAX_SPEAKERS } from '../lib/speakers'
@@ -178,7 +178,7 @@ export function SoundTab({ clips, time, onChange, onSeek, voice, onVoice, voiceB
  * Translating the subtitles on the device (the browser's own translator), and what the video
  * shows: the text, the translation or both.
  */
-function TranslateCard({ cues, onCues, show, onShow, onBusy, onAttention }: { cues: Cue[]; onCues: (c: Cue[], step?: boolean) => void; show: SubShow; onShow: (s: SubShow) => void; onBusy?: (b: boolean) => void; onAttention?: () => void }) {
+function TranslateCard({ cues, words, bleeped, maskOn, onCues, show, onShow, onBusy, onAttention }: { cues: Cue[]; words: Word[]; bleeped: Set<number>; maskOn: boolean; onCues: (c: Cue[], step?: boolean) => void; show: SubShow; onShow: (s: SubShow) => void; onBusy?: (b: boolean) => void; onAttention?: () => void }) {
   const latest = useRef(cues)
   latest.current = cues
   const from = guessLang(cues.map((c) => c.text).join(' '))
@@ -197,10 +197,12 @@ function TranslateCard({ cues, onCues, show, onShow, onBusy, onAttention }: { cu
     setRun({ stage: 'translate', p: 0 })
     try {
       const ordered = [...cues].sort((a, b) => a.start - b.start)
-      const out = await translateAll(ordered.map((c) => c.text), from, to, (stage, p) => setRun({ stage, p }))
+      // What is translated is what the video shows (the bleeped words masked), so the translation can't give one away.
+      const sent = ordered.map((c) => (maskOn ? maskCue(c, words, bleeped) : c.text))
+      const out = await translateAll(sent, from, to, (stage, p) => setRun({ stage, p }))
       if (!alive.current) return
-      const byId = new Map(ordered.map((c, k) => [c.id, out[k]]))
-      onCues(latest.current.map((c) => ({ ...c, tr: byId.get(c.id) ?? c.tr })), true)
+      const byId = new Map(ordered.map((c, k) => [c.id, [out[k], sent[k]] as [string, string]]))
+      onCues(latest.current.map((c) => { const r = byId.get(c.id); return r ? { ...c, tr: r[0], trm: r[1] } : c }), true)
       if (shown.current === 'src') onShow('both')
     } catch (e) {
       onAttention?.()
@@ -244,7 +246,7 @@ function TranslateCard({ cues, onCues, show, onShow, onBusy, onAttention }: { cu
               <button class={show === v ? 'on' : ''} role="radio" aria-checked={show === v} onClick={() => onShow(v)}>{t(label)}</button>
             ))}
           </div>
-          <button class="btn ghost small-btn" onClick={() => { onCues(cues.map(({ tr, ...c }) => c), true); onShow('src') }}>{t('מחק את התרגום')}</button>
+          <button class="btn ghost small-btn" onClick={() => { onCues(cues.map(({ tr, trm, ...c }) => c), true); onShow('src') }}>{t('מחק את התרגום')}</button>
         </>
       )}
     </section>
@@ -415,6 +417,8 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
   // Where the cursor is in each subtitle's text (for splitting there).
   const caret = useRef(new Map<number, number>())
   const sorted = [...cues].sort((a, b) => a.start - b.start)
+  // Bleeped words that no subtitle has any more (its subtitle was deleted): they stay bleeped in the sound until removed.
+  const orphans = [...bleeped].filter((k) => !cues.some((c) => cueWi(c).includes(k)))
   const speakers = cues.reduce((m, c) => Math.max(m, c.speaker ?? 0), 0)
   const replaceAll = () => {
     let n = 0
@@ -435,7 +439,7 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
     const end = Math.min(time + 2, next ? next.start : time + 2)
     if (end - time < 0.3) { setListNote(t('אין כאן מקום לכתובית חדשה. אפשר לפצל כתובית קיימת.')); return }
     setListNote(null)
-    onCues([...cues, { id: newCueId(), start: time, end, text: '' }].sort((a, b) => a.start - b.start), true)
+    onCues([...cues, { id: newCueId(), start: time, end, text: '', wi: [] }].sort((a, b) => a.start - b.start), true)
   }
   const splitAt = (c: Cue) => {
     const parts = splitCue(c, caret.current.get(c.id) ?? Math.floor(c.text.length / 2), words, bleeped)
@@ -447,10 +451,7 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
     const k = sorted.findIndex((x) => x.id === c.id)
     const n = sorted[k + 1]
     if (!n) return
-    const m = mergeCues(c, n, words, bleeped)
-    if (!m) { setListNote(t('אי אפשר למזג: מילה מוסתרת הייתה מופיעה')); return }
-    setListNote(null)
-    onCues(cues.filter((x) => x.id !== n.id).map((x) => (x.id === c.id ? m : x)), true)
+    onCues(cues.filter((x) => x.id !== n.id).map((x) => (x.id === c.id ? mergeCues(x, n) : x)), true)
   }
   // How the subtitles are cut (as the app's): by spoken words or by characters, up to whole sentences.
   const [byChars, setByChars] = useState(false)
@@ -588,7 +589,7 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
     <>
       <div class="row wrap">
         <button class={'btn small-btn ' + (findOpen ? 'primary' : 'tonal')} onClick={() => { setFindOpen(!findOpen); setFindResult(null) }}>{t('חפש והחלף')}</button>
-        <button class="btn tonal small-btn" onClick={srt}>{t('הורד SRT')}</button>
+        <button class="btn tonal small-btn" onClick={srt} title={t('הקובץ כולל את כל המילים, בלי הסתרה: לעריכה')}>{t('הורד SRT')} <span class="small muted">{t('(בלי הסתרה, לעריכה)')}</span></button>
         {!part && importSrt}
       </div>
       {findOpen && (
@@ -630,7 +631,7 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
   )) : (
     <>
       {part && importSrt}
-      <TranslateCard cues={cues} onCues={onCues} show={style.show ?? 'src'} onShow={(v) => set({ show: v })} onBusy={(b) => setKid('tr', b)} onAttention={attention} />
+      <TranslateCard cues={cues} words={words} bleeped={bleeped} maskOn={style.maskBleeped !== false} onCues={onCues} show={style.show ?? 'src'} onShow={(v) => set({ show: v })} onBusy={(b) => setKid('tr', b)} onAttention={attention} />
       <SpeakersCard file={file} cues={cues} onCues={onCues} color={style.color} chosen={style.speakerColors} onBusy={(b) => setKid('spk', b)} onAttention={attention} />
       <button class="btn ghost" onClick={() => { onReplace([], words, bleeped); setOpenId(null); setBleepMode(false); setPendingImport(null) }}>{t('מחק כתוביות')}</button>
     </>
@@ -693,6 +694,12 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
                     <button class={'btn ' + (bleepMode ? 'primary' : 'tonal')} onClick={() => setBleepMode(!bleepMode)}>{bleepMode ? t('סיום') : t('בחר מילים')}</button>
                     {bleeped.size > 0 && <button class="btn ghost" onClick={() => onBleeped(new Set())}>{t('נקה')}</button>}
                   </div>
+                  {orphans.length > 0 && (
+                    <p class="small orphan-bleeps" style="margin:8px 0 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                      {orphans.length === 1 ? t('מילה מצופצפת אחת היא בלי כתובית, והיא נשארת מצופצפת בסאונד.') : t('%d מילים מצופצפות הן בלי כתובית, והן נשארות מצופצפות בסאונד.', orphans.length)}
+                      <button class="btn ghost small-btn orphan-clear" onClick={() => onBleeped(new Set([...bleeped].filter((k) => !orphans.includes(k))))}>{t('הסר את הצפצופים האלה')}</button>
+                    </p>
+                  )}
                   <h4 class="caption">{t('במקום המילה')}</h4>
                   <div class="seg" style="grid-template-columns:1fr 1fr">
                     <button class={tone ? 'on' : ''} onClick={() => onTone(true)}>{t('צפצוף')}</button>
@@ -709,6 +716,9 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
           <div class="clips">
             {sorted.map((c) => {
               const isOpen = openId === c.id
+              const maskOn = style.maskBleeped !== false
+              const warn = maskOn && maskWarning(c, words, bleeped)
+              const trHidden = maskOn && !!c.tr && !trVisible(c, maskCue(c, words, bleeped))
               return (
               <div class={'clip' + (time >= c.start && time < c.end ? ' now' : '') + (isOpen ? ' open' : '')}>
                 <div class="row">
@@ -718,13 +728,13 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
                   </div>
                   {bleeping && words.length > 0 ? (
                     <div class="word-chips" dir="auto">
-                      {words.map((w, k) => (holds(c, w.start) ? (
+                      {cueWi(c).map((k) => (words[k] ? (
                         <button class={'word' + (bleeped.has(k) ? ' on' : '')} onClick={() => {
                           const n = new Set(bleeped)
                           if (n.has(k)) n.delete(k)
                           else n.add(k)
                           onBleeped(n)
-                        }}>{w.text.trim()}</button>
+                        }}>{words[k].text.trim()}</button>
                       ) : null))}
                     </div>
                   ) : (
@@ -752,6 +762,8 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
                     </div>
                   )}
                 </div>
+                {warn && <p class="small cue-mask-warn" role="alert" style="margin:4px 0 0;color:var(--primary)">{t('מילה מצופצפת לא נמצאת בטקסט, ולכן הכתובית עלולה להציג אותה. תקן את הטקסט כדי שיופיע בו, או צפצף את המילה שוב.')}</p>}
+                {trHidden && <p class="small muted cue-tr-hidden" style="margin:4px 0 0">{t('התרגום לא מוצג בסרטון: הוא עלול להציג מילה מצופצפת. תרגם שוב כדי לקבל תרגום מהטקסט המוסתר.')}</p>}
                 {isOpen && !bleeping && (
                   <div class="cue-acts">
                     <button class="btn tonal small-btn cue-split" onClick={() => splitAt(c)}><CutIcon size={18} /> {t('פצל כאן')}</button>

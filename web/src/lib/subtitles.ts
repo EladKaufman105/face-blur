@@ -12,30 +12,28 @@ export interface Cue {
   /** Who says it (1..; none: like speaker 1). */
   speaker?: number
   /**
-   * The stretch of the video whose words this subtitle holds, once its edges were moved by hand (until then it is
-   * start..end). The words (and the bleeps on them) stay where they were said: moving an edge changes when the text
-   * shows, never which words it holds.
+   * The words this subtitle holds: their indices in the recording's word list, in the order of the text (as the app, where a
+   * subtitle's words are its text's words). Split shares them out, merge joins them, moving an edge keeps them, a subtitle
+   * imported from a file has none. Which words are bleeped, and so masked in the text, goes by these - never by time.
    */
-  ws?: number
-  we?: number
+  wi?: number[]
+  /**
+   * The text its translation was made from (the masked text, as the video shows it). The translation shows only while that is
+   * what the subtitle shows now (see [trVisible]); with no bleeped words that is the text itself.
+   */
+  trm?: string
 }
 
-/** Where the words of [c] start (see [Cue.ws]). */
-export const winStart = (c: Cue) => c.ws ?? c.start
-/** Where the words of [c] end. */
-export const winEnd = (c: Cue) => c.we ?? c.end
-/** Whether the word starting at [at] is one of [c]'s. */
-// (Shifted by 10 ms as a whole, so the edges that two halves of a split share belong to exactly one of them.)
-export const holds = (c: Cue, at: number) => at >= winStart(c) - 0.01 && at < winEnd(c) - 0.01
+/** The words of [c] (indices into the word list). */
+export const cueWi = (c: Cue): number[] => c.wi ?? []
 
 /** The shortest a subtitle can be made by hand (as the app: 100 ms). */
 export const MIN_CUE = 0.1
 
-/** [c] with its edge moved to [at] (clamped to the video and the neighbours [lo], [hi]), its words kept. */
+/** [c] with its edge moved to [at] (clamped to the video and the neighbours [lo], [hi]); its words are kept. */
 export function retimeCue(c: Cue, start: boolean, at: number, lo: number, hi: number): Cue {
-  const ws = winStart(c), we = winEnd(c)
-  if (start) return { ...c, ws, we, start: Math.max(lo, Math.min(c.end - MIN_CUE, at)) }
-  return { ...c, ws, we, end: Math.min(hi, Math.max(c.start + MIN_CUE, at)) }
+  if (start) return { ...c, start: Math.max(lo, Math.min(c.end - MIN_CUE, at)) }
+  return { ...c, end: Math.min(hi, Math.max(c.start + MIN_CUE, at)) }
 }
 
 /** The room [c] has to move its edges in: the end of the one before it and the start of the one after (or the video's ends). */
@@ -50,18 +48,14 @@ export function cueRoom(cues: Cue[], c: Cue, duration: number): [number, number]
 }
 
 /**
- * [a] and the cue after it as one (the text and translation joined, the words of both). Null when a word hidden in one of
- * them would show in the merged cue (given [words] and [bleeped]).
+ * [a] and the cue after it as one: the text and the words of both. The translation is joined with the texts it was made
+ * from, so it shows only if the masked text of the result is what they make together (see [trVisible]).
  */
-export function mergeCues(a: Cue, b: Cue, words?: Word[], bleeped?: Set<number>): Cue | null {
+export function mergeCues(a: Cue, b: Cue): Cue {
   const tr = a.tr || b.tr ? [a.tr ?? '', b.tr ?? ''].join(' ').trim() : undefined
-  const merged: Cue = { ...a, end: b.end, text: (a.text + ' ' + b.text).trim(), tr }
-  const ws = Math.min(winStart(a), winStart(b)), we = Math.max(winEnd(a), winEnd(b))
-  if (ws !== merged.start) merged.ws = ws
-  else delete merged.ws
-  if (we !== merged.end) merged.we = we
-  else delete merged.we
-  if (words && bleeped && bleeped.size > 0 && leaks(merged, words, bleeped, new Set([...hidden(a, words, bleeped), ...hidden(b, words, bleeped)]))) return null
+  const merged: Cue = { ...a, end: b.end, text: (a.text + ' ' + b.text).trim(), tr, wi: [...cueWi(a), ...cueWi(b)] }
+  if (tr !== undefined) merged.trm = [a.trm ?? a.text, b.trm ?? b.text].join(' ').trim()
+  else delete merged.trm
   return merged
 }
 
@@ -86,16 +80,17 @@ export function isNoise(t: string) {
  * on screen, no overlaps.
  */
 export function wordsToCues(words: Word[], maxWords = 0, maxChars = 0): Cue[] {
-  const sorted = words.filter((w) => !isNoise(w.text)).sort((a, b) => a.start - b.start)
-  const groups: Word[][] = []
-  let cur: Word[] = []
+  // Each word with its place in [words]: a subtitle keeps these.
+  const sorted = words.map((w, i) => ({ w, i })).filter((x) => !isNoise(x.w.text)).sort((a, b) => a.w.start - b.w.start)
+  const groups: { w: Word; i: number }[][] = []
+  let cur: { w: Word; i: number }[] = []
   let chars = 0
-  sorted.forEach((w, i) => {
-    cur.push(w)
-    chars += w.text.trim().length + 1
-    const next = sorted[i + 1]
-    const end = /[.?!…]$/.test(w.text.trim())
-    const pause = next !== undefined && next.start - w.end > PAUSE
+  sorted.forEach((x, i) => {
+    cur.push(x)
+    chars += x.w.text.trim().length + 1
+    const next = sorted[i + 1]?.w
+    const end = /[.?!…]$/.test(x.w.text.trim())
+    const pause = next !== undefined && next.start - x.w.end > PAUSE
     const full = next !== undefined && chars + next.text.trim().length > MAX_CHARS
     if (!next || end || pause || full) {
       groups.push(cur)
@@ -105,7 +100,7 @@ export function wordsToCues(words: Word[], maxWords = 0, maxChars = 0): Cue[] {
   })
   if (maxWords > 0) {
     // Each sentence in nearly equal parts of at most [maxWords].
-    const split: Word[][] = []
+    const split: typeof groups = []
     for (const g of groups) {
       const parts = Math.ceil(g.length / maxWords)
       const size = Math.ceil(g.length / parts)
@@ -114,25 +109,39 @@ export function wordsToCues(words: Word[], maxWords = 0, maxChars = 0): Cue[] {
     groups.splice(0, groups.length, ...split)
   } else if (maxChars > 0) {
     // Each sentence cut before the word that would pass [maxChars] (as the app's split by characters).
-    const split: Word[][] = []
+    const split: typeof groups = []
     for (const g of groups) {
-      let part: Word[] = []
+      let part: typeof g = []
       let len = 0
-      for (const w of g) {
-        const n = w.text.trim().length
+      for (const x of g) {
+        const n = x.w.text.trim().length
         const add = len === 0 ? n : len + 1 + n
-        if (len > 0 && add > maxChars) { split.push(part); part = [w]; len = n }
-        else { part.push(w); len = add }
+        if (len > 0 && add > maxChars) { split.push(part); part = [x]; len = n }
+        else { part.push(x); len = add }
       }
       if (part.length) split.push(part)
     }
     groups.splice(0, groups.length, ...split)
   }
   return groups.map((g, i) => {
-    const a = g[0].start
-    const nextStart = groups[i + 1]?.[0].start ?? Infinity
-    const b = Math.min(Math.max(g[g.length - 1].end, a + 0.8), nextStart)
-    return { id: nextCue++, start: a, end: Math.max(b, a + 0.2), text: g.map((w) => w.text.trim()).join(' ') }
+    const a = g[0].w.start
+    const nextStart = groups[i + 1]?.[0].w.start ?? Infinity
+    const b = Math.min(Math.max(g[g.length - 1].w.end, a + 0.8), nextStart)
+    return { id: nextCue++, start: a, end: Math.max(b, a + 0.2), text: g.map((x) => x.w.text.trim()).join(' '), wi: g.map((x) => x.i) }
+  })
+}
+
+/**
+ * Subtitles saved before they carried their words (or made by hand): each gets the words that were inside its time stretch
+ * (as it was then), once. Those that already have words are as they are.
+ */
+export function migrateCues(cues: Cue[], words: Word[]): Cue[] {
+  if (cues.every((c) => c.wi !== undefined)) return cues
+  return cues.map((c) => {
+    if (c.wi !== undefined) return c
+    const { ws, we, ...rest } = c as Cue & { ws?: number; we?: number }
+    const a = (ws ?? c.start) - 0.01, b = we ?? c.end
+    return { ...rest, wi: words.map((w, k) => (w.start >= a && w.start < b && !isNoise(w.text) ? k : -1)).filter((k) => k >= 0) }
   })
 }
 
@@ -193,121 +202,155 @@ export function toSrt(cues: Cue[]): string {
   return cues.map((c, i) => `${i + 1}\n${srtTime(c.start)} --> ${srtTime(c.end)}\n${c.text}\n`).join('\n')
 }
 
-/** What the video shows of [c] ([text]: its text with the bleeped words masked). */
-export function shownText(c: Cue, text: string, show: SubShow | undefined): string {
+/**
+ * What the video shows of [c] ([text]: its text with the bleeped words masked): the text, the translation or both. The
+ * translation shows only where it can't give a masked word away (see [trVisible]; [maskOn] false: the words show as said).
+ */
+export function shownText(c: Cue, text: string, show: SubShow | undefined, maskOn = true): string {
   const tr = c.tr?.trim()
   if (!tr || !show || show === 'src') return text
+  if (maskOn && !trVisible(c, text)) return text
   return show === 'tr' ? tr : text + '\n' + tr
 }
 
-/** A word as compared: lower case, the punctuation around it gone (letters of any script kept). */
-export const normWord = (w: string) => w.replace(/^[^\p{L}\p{N}\p{M}]+|[^\p{L}\p{N}\p{M}]+$/gu, '').toLowerCase()
+/** Whether [c]'s translation may show next to [masked] (what the subtitle shows now): it was made from exactly that text. */
+export const trVisible = (c: Cue, masked: string) => !c.tr || (c.trm ?? c.text) === masked
+
+/** A word as compared: NFC, no zero-width marks, no Hebrew points or Arabic diacritics, the punctuation around it gone, lower case. */
+export const normWord = (w: string) =>
+  w.normalize('NFC')
+    .replace(/[­​-‏‪-‮⁠-⁤﻿]/g, '')
+    .replace(/[֑-ׇֽֿׁׂًׅׄ-ٰٟـ]/g, '')
+    .replace(/^[^\p{L}\p{N}\p{M}]+|[^\p{L}\p{N}\p{M}]+$/gu, '')
+    .toLowerCase()
 
 const HEBREW_PREFIX = 'ובכלמשה'
 /** The forms of a token that count as a bleeped word: itself, and without one or two Hebrew prefix letters (ו, ה, ב, כ, ל, מ, ש). */
 function forms(norm: string): string[] {
   const out = [norm]
-  if (/^[\u0590-\u05ff]/.test(norm)) {
+  if (/^[֐-׿]/.test(norm)) {
     if (norm.length > 2 && HEBREW_PREFIX.includes(norm[0])) out.push(norm.slice(1))
     if (norm.length > 3 && HEBREW_PREFIX.includes(norm[0]) && HEBREW_PREFIX.includes(norm[1])) out.push(norm.slice(2))
   }
   return out
 }
 
-/** The outer edges of the words a cue masks: a little wider than [holds], so a word at an edge is never missed. */
-const maskHolds = (c: Cue, at: number) => at >= winStart(c) - 0.01 && at < winEnd(c) + 0.01
+/** What a token must match to count as a bleeped word of [text]: its normalized text (a word with no letters: itself). */
+const keyOf = (text: string) => normWord(text) || 'raw:' + text.trim()
 
-/** The normalized text of the bleeped words that start inside [cue]'s stretch. */
-function hidden(cue: Cue, words: Word[], bleeped: Set<number>): Set<string> {
-  const out = new Set<string>()
-  for (const k of bleeped) {
-    const w = words[k]
-    if (!w || !maskHolds(cue, w.start)) continue
-    const n = normWord(w.text)
-    if (n) out.add(n)
-  }
-  return out
+/**
+ * Whether [token] is a bleeped word with the [keys] (the keys of their texts). A token joined with a hyphen or a maqaf,
+ * "ו-כלב", counts by each of its parts too.
+ */
+function hit(token: string, keys: Set<string>): boolean {
+  const n = normWord(token)
+  if (n === '') return keys.has('raw:' + token.trim())
+  return [n, ...n.split(/[-־]+/).map(normWord).filter(Boolean)].some((p) => forms(p).some((f) => keys.has(f)))
 }
 
-// (A token joined with a hyphen or a maqaf, "ו-כלב", counts by each of its parts too: the whole token is hidden.)
-const isHit = (token: string, hide: Set<string>) => {
-  const n = normWord(token)
-  return n !== '' && [n, ...n.split(/[-\u05be]+/).map(normWord).filter(Boolean)].some((p) => forms(p).some((f) => hide.has(f)))
+const tokensOf = (text: string) => [...text.matchAll(/\S+/g)].map((m) => ({ t: m[0], i: m.index! }))
+
+/** Which tokens of [cue] are masked (by position, or by text once the text was edited), and whether a bleeped word may show. */
+function analyse(cue: Cue, words: Word[], bleeped: Set<number>) {
+  const tokens = tokensOf(cue.text)
+  const masked = new Set<number>()
+  const wi = cueWi(cue)
+  const mine = wi.filter((k) => bleeped.has(k) && words[k])
+  if (mine.length === 0) return { tokens, masked, warn: false }
+  const same = tokens.length === wi.length
+  // The text as the words were said (one token for each word): it is masked by place, as the app does.
+  if (same && wi.every((k, p) => words[k] && keyOf(tokens[p].t) === keyOf(words[k].text))) {
+    wi.forEach((k, p) => { if (bleeped.has(k)) masked.add(p) })
+    return { tokens, masked, warn: false }
+  }
+  // Edited: every token that says what a bleeped word of the subtitle said is masked, and, when the words still fit the tokens one to one, the tokens at their places.
+  const keys = new Set(mine.map((k) => keyOf(words[k].text)))
+  tokens.forEach((x, p) => { if (hit(x.t, keys)) masked.add(p) })
+  if (same) wi.forEach((k, p) => { if (bleeped.has(k)) masked.add(p) })
+  // A bleeped word that is in no token, and no way to tell which token is it: the subtitle may show it.
+  const warn = !same && mine.some((k) => !tokens.some((x) => hit(x.t, new Set([keyOf(words[k].text)]))))
+  return { tokens, masked, warn }
 }
 
 /**
- * The cue's text with its bleeped words as ****: every token whose text equals that of a bleeped word that starts inside the
- * cue's stretch, wherever it stands in the text (a word hidden twice is better than one shown). Whole tokens only, the
- * punctuation around them kept (always 4 stars, as the app, so the length doesn't hint at the word).
+ * The cue's text with its bleeped words as ****, the punctuation around them kept (always 4 stars, as the app, so the
+ * length doesn't hint at the word). By the subtitle's own words (see [Cue.wi]); once its text was edited, also every token
+ * that says what one of them said, and its words by place when they still fit the text one to one.
  */
 export function maskCue(cue: Cue, words: Word[], bleeped: Set<number>): string {
   if (bleeped.size === 0) return cue.text
-  const hide = hidden(cue, words, bleeped)
-  if (hide.size === 0) return cue.text
+  const { masked } = analyse(cue, words, bleeped)
+  if (masked.size === 0) return cue.text
+  let p = -1
   return cue.text.replace(/\S+/g, (tok) => {
-    if (!isHit(tok, hide)) return tok
+    if (!masked.has(++p)) return tok
     const m = /^([^\p{L}\p{N}\p{M}]*)[\s\S]*?([^\p{L}\p{N}\p{M}]*)$/u.exec(tok)
-    return (m?.[1] ?? '') + '****' + (m?.[2] ?? '')
+    // (A token with no letters is hidden whole.)
+    return /[\p{L}\p{N}]/u.test(tok) ? (m?.[1] ?? '') + '****' + (m?.[2] ?? '') : '****'
   })
 }
 
-/** Whether [cue] shows a token equal to one of [hide] (the texts of words that were hidden) unmasked. */
-function leaks(cue: Cue, words: Word[], bleeped: Set<number>, hide: Set<string>): boolean {
-  const shown = maskCue(cue, words, bleeped).match(/\S+/g) ?? []
-  return shown.some((tok) => isHit(tok, hide))
-}
+/** Whether a bleeped word of [cue] is in none of its tokens and the text no longer fits its words: the subtitle may show it. */
+export const maskWarning = (cue: Cue, words: Word[], bleeped: Set<number>) => bleeped.size > 0 && analyse(cue, words, bleeped).warn
+
+/** Whether [cue] holds a bleeped word. */
+export const hasBleeped = (cue: Cue, bleeped: Set<number>) => bleeped.size > 0 && cueWi(cue).some((k) => bleeped.has(k))
 
 /**
- * [cue] in two at character [at] of its text: the text and the words split at the same place (the first word whose token is
- * at or after [at] starts the second half), the time where that word starts, else by length.
- * Null when it can't be split, or when a hidden word would show in either half (given [bleeped]).
+ * [cue] in two at character [at] of its text (moved to the nearest gap between words): the words go to the half that has
+ * their text (the first [n] words, while the text is the words said). Null when it can't be split (a cue under 0.4 s, one
+ * word), or when what a half masks is less than the whole did (given [bleeped]).
  */
 export function splitCue(cue: Cue, at: number, words: Word[], bleeped?: Set<number>): [Cue, Cue] | null {
-  const a = cue.text.slice(0, at).trim(), b = cue.text.slice(at).trim()
-  if (!a || !b) return null
+  const tokens = tokensOf(cue.text)
+  if (tokens.length < 2) return null
   // A cue too short to hold two (0.2 s each) is not split.
   if (cue.end - cue.start < 0.4 - 1e-6) return null
-  // The words of the stretch, each matched to the next token of the text with the same text.
-  const tokens = [...cue.text.matchAll(/\S+/g)]
-  let cursor = 0
-  let boundary: number | null = null
-  for (const w of words) {
-    if (!holds(cue, w.start)) continue
-    const n = normWord(w.text)
-    let i = cursor
-    while (i < tokens.length && normWord(tokens[i][0]) !== n) i++
-    if (i >= tokens.length) continue
-    cursor = i + 1
-    if (boundary === null && tokens[i].index! >= at) boundary = w.start
+  let n1 = tokens.filter((x) => x.i < at).length
+  const last = tokens[n1 - 1]
+  if (last && at < last.i + last.t.length && at - last.i <= last.t.length / 2) n1--
+  if (n1 <= 0 || n1 >= tokens.length) return null
+  const textA = cue.text.slice(0, tokens[n1].i).trim(), textB = cue.text.slice(tokens[n1].i).trim()
+  const wi = cueWi(cue)
+  const w1: number[] = [], w2: number[] = []
+  if (tokens.length === wi.length) { w1.push(...wi.slice(0, n1)); w2.push(...wi.slice(n1)) }
+  else {
+    // The text was edited: each word goes where the next token with its text is (a word with none stays with the one before).
+    let cursor = 0, side = 0
+    for (const k of wi) {
+      const key = words[k] ? keyOf(words[k].text) : null
+      let i = cursor
+      while (key !== null && i < tokens.length && keyOf(tokens[i].t) !== key) i++
+      if (key !== null && i < tokens.length) { cursor = i + 1; side = i >= n1 ? 1 : 0 }
+      ;(side ? w2 : w1).push(k)
+    }
   }
   const len = cue.end - cue.start
-  let t = boundary ?? cue.start + len * (a.length / (a.length + b.length))
+  const next = w2.map((k) => words[k]?.start).find((x) => x !== undefined && x > cue.start && x < cue.end)
+  let t = next ?? cue.start + len * (textA.length / (textA.length + textB.length))
   t = Math.min(cue.end - 0.2, Math.max(cue.start + 0.2, t))
-  const first: Cue = { ...cue, end: t, text: a, tr: undefined }
-  const second: Cue = { ...cue, id: newCueId(), start: t, text: b, tr: undefined, speaker: cue.speaker }
-  // The words' stretch is shared out exactly at the word where the text splits (even when [t] was held back from an edge).
-  // The halves' stretches meet, they don't overlap.
-  const w = boundary ?? t
-  first.ws = winStart(cue); first.we = w; second.ws = w; second.we = winEnd(cue)
-  for (const c of [first, second]) { if (c.ws === c.start) delete c.ws; if (c.we === c.end) delete c.we }
+  const first: Cue = { ...cue, end: t, text: textA, tr: undefined, trm: undefined, wi: w1 }
+  const second: Cue = { ...cue, id: newCueId(), start: t, text: textB, tr: undefined, trm: undefined, wi: w2, speaker: cue.speaker }
   if (bleeped && bleeped.size > 0) {
-    const hide = hidden(cue, words, bleeped)
-    if (hide.size > 0 && (leaks(first, words, bleeped, hide) || leaks(second, words, bleeped, hide))) return null
+    const was = analyse(cue, words, bleeped)
+    const a = analyse(first, words, bleeped), b = analyse(second, words, bleeped)
+    if (!was.warn && (a.warn || b.warn)) return null
+    for (const p of was.masked) if (!(p < n1 ? a.masked.has(p) : b.masked.has(p - n1))) return null
   }
   return [first, second]
 }
 
 /** [cue] split at the playhead [time]: before the first word that starts at or after it (as the app's split at the word nearest to the playhead). */
 export function splitCueAtTime(cue: Cue, time: number, words: Word[], bleeped?: Set<number>): [Cue, Cue] | null {
-  const tokens = [...cue.text.matchAll(/\S+/g)]
-  const inCue = words.filter((w) => holds(cue, w.start))
-  let k = inCue.filter((w) => w.start < time - 0.02).length
+  const tokens = tokensOf(cue.text)
   if (tokens.length < 2) return null
-  // With no timed words (or words that do not match the text): by the playhead's place in the time.
-  if (inCue.length !== tokens.length) k = Math.round(tokens.length * Math.min(1, Math.max(0, (time - cue.start) / Math.max(0.001, cue.end - cue.start))))
+  const wi = cueWi(cue)
+  let k: number
+  // With the text not the words said: by the playhead's place in the time.
+  if (wi.length === tokens.length && wi.every((j) => words[j])) k = wi.filter((j) => words[j].start < time - 0.02).length
+  else k = Math.round(tokens.length * Math.min(1, Math.max(0, (time - cue.start) / Math.max(0.001, cue.end - cue.start))))
   k = Math.min(tokens.length - 1, Math.max(1, k))
-  const at = tokens[k].index!
-  return splitCue(cue, at, words, bleeped)
+  return splitCue(cue, tokens[k].i, words, bleeped)
 }
 
 /** The time stretches of the bleeped words. */

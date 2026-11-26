@@ -28,6 +28,8 @@ type Props = {
   /** The selected subtitle (its edges have handles), and the way to select one and to move its edges (one undo step per drag). */
   selectedCue?: number | null
   onSelectCue?: (id: number) => void
+  /** The subtitles that may show a bleeped word. */
+  maskWarn?: Set<number>
   onTrimCueStart?: () => void
   onTrimCue?: (id: number, start: boolean, at: number) => void
   /** The bleeped stretches of the sound (a mark above the subtitles, as the app's). */
@@ -216,6 +218,7 @@ export function Timeline(p: Props) {
               ))}
               {p.cues.map((c) => (
                 <CueBlock
+                  warn={p.maskWarn?.has(c.id) ?? false}
                   cue={c}
                   left={x(c.start)}
                   width={Math.max(6, (c.end - c.start) * pps)}
@@ -323,7 +326,7 @@ function FaceBlock(p: { track: Track; left: number; width: number; a: number; b:
  * A subtitle on the timeline, as in the app: tap to select it (and go to it); the selected one has
  * handles at its ends, dragged to set when it shows and when it goes. Its text and its words stay.
  */
-function CueBlock(p: { cue: Cue; left: number; width: number; pps: number; selected: boolean; bar: string | null; onSelect: () => void; onTrimStart: () => void; onTrim: (start: boolean, at: number) => void }) {
+function CueBlock(p: { warn: boolean; cue: Cue; left: number; width: number; pps: number; selected: boolean; bar: string | null; onSelect: () => void; onTrimStart: () => void; onTrim: (start: boolean, at: number) => void }) {
   const drag = useRef<{ x: number; at: number; start: boolean; moved: boolean } | null>(null)
   // A drag of a handle ends with a click on the clip: it is no tap.
   const swallow = useRef(false)
@@ -345,7 +348,7 @@ function CueBlock(p: { cue: Cue; left: number; width: number; pps: number; selec
   })
   return (
     <div
-      class={'tl-cue' + (p.selected ? ' on' : '')}
+      class={'tl-cue' + (p.selected ? ' on' : '') + (p.warn ? ' warn' : '')}
       role="button"
       tabIndex={0}
       aria-pressed={p.selected}
