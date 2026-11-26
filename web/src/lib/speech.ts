@@ -485,9 +485,12 @@ export function transcribeFile(
         if (code !== 'stalled' && isMemoryError(message)) code = 'memory'
         // Threads that don't start (a phone that refuses the shared memory): once more with one, in a new worker.
         // (Only the worker's own 'threads' says so: a stalled or failed download is not the threads.)
-        if (plan.device === 'wasm' && plan.threads > 1 && !usedOneThread && code === 'threads') {
+        // A lack of memory while the model loads with threads gets the same second try: each thread reserves
+        // memory of its own, so one thread may fit where several don't.
+        const loadingPhase = phase === 'load' || phase === 'download'
+        if (plan.device === 'wasm' && plan.threads > 1 && !usedOneThread && (code === 'threads' || (code === 'memory' && loadingPhase))) {
           usedOneThread = true
-          threadsFailed = true // (only a 'threads' failure sets this: not a lack of memory)
+          if (code === 'threads') threadsFailed = true // (only a 'threads' failure sets this for later jobs: not a lack of memory)
           stop()
           attempt({ ...plan, threads: 1 })
           return
@@ -498,7 +501,7 @@ export function transcribeFile(
         }
         // The Hebrew model's repo answers that a file isn't there (or isn't open to us): it was removed or closed
         // (it is one uploader's repo, see docs/parity.md). Say so, and what still works (not the graphics processor's fault).
-        if (plan.model === 'ivrit' && /could not locate file|unauthorized access to file/i.test(message)) {
+        if (plan.model === 'ivrit' && /could not locate file|unauthorized access to file|forbidden access to file/i.test(message)) {
           end(() => reject(new SpeechError(t('לא ניתן להוריד את מודל העברית (ivrit.ai) מ-Hugging Face. אפשר לבחור "מהיר" (מודל רב-לשוני).'), 'missing')))
           return
         }
@@ -542,7 +545,8 @@ export function transcribeFile(
         switch (m.type) {
           case 'tick': return
           case 'audio': phase = 'audio'; return onStatus({ stage: 'audio' })
-          case 'load': phase = 'load'; return onStatus({ stage: 'load' })
+          // (A late "loading" after the recognition started is ignored: the recognition's longer limit stays.)
+          case 'load': if (phase === 'recognize') return; phase = 'load'; return onStatus({ stage: 'load' })
           case 'download':
             // Everything known so far is here: the loading starts (its limit), until another file starts.
             phase = m.total > 0 && m.loaded >= m.total ? 'load' : 'download'

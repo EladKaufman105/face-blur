@@ -18,20 +18,11 @@ const PIN = 'c71eadaca74c0923a06632bdaeb7413ff9cff4cf'
   // in memory) refuses to cache a file of about 300 MB or more, so the 425 MB encoder and 334 MB decoder would
   // never be cached there and the offline run could not pass. It is removed at the end.
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'onit-subshe-'))
-  const ctx = await chromium.launchPersistentContext(profile, {
-    ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}),
-    viewport: { width: 1366, height: 860 }, locale: 'he-IL',
-  })
+  let ctx = null
   const logs = []
   const hub = []
   let offline = false
   let blocked = 0
-  await ctx.route(/huggingface\.co|\.hf\.co/, (r) => {
-    const u = r.request().url()
-    hub.push(`${offline ? 'BLOCKED ' : ''}${u}`)
-    if (offline) { blocked++; return r.abort() }
-    return r.continue()
-  })
   const fail = (m) => { throw new Error(m) }
 
   // One run: the video in, Hebrew, "better quality" (ivrit.ai), create the subtitles, check them.
@@ -98,6 +89,17 @@ const PIN = 'c71eadaca74c0923a06632bdaeb7413ff9cff4cf'
   }
 
   try {
+    // (Inside the try: the profile is removed even if the browser fails to start.)
+    ctx = await chromium.launchPersistentContext(profile, {
+      ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}),
+      viewport: { width: 1366, height: 860 }, locale: 'he-IL',
+    })
+    await ctx.route(/huggingface\.co|\.hf\.co/, (r) => {
+      const u = r.request().url()
+      hub.push(`${offline ? 'BLOCKED ' : ''}${u}`)
+      if (offline) { blocked++; return r.abort() }
+      return r.continue()
+    })
     await run('first')
     const firstMain = hub.filter((u) => u.includes('/resolve/main/'))
     console.log('Hub requests in the first run:', hub.length, '(to resolve/main:', firstMain.length + ')')
@@ -106,6 +108,9 @@ const PIN = 'c71eadaca74c0923a06632bdaeb7413ff9cff4cf'
     // All of the model's requests go to the pinned commit (the other models are not used here).
     const loose = model.filter((u) => !u.includes(`/resolve/${PIN}/`))
     if (loose.length) fail('requests that are not pinned: ' + loose.slice(0, 3).join(' '))
+    // Only the files it loads (q4): not a file of another kind the library's download listing asks for (it can't be cached).
+    const other = model.filter((u) => /\/onnx\//.test(u) && !/_q4\.onnx/.test(u))
+    if (other.length) fail('requests for model files that are not loaded: ' + other.slice(0, 3).join(' '))
     // The model is in the browser now: block the Hub, and do it all again.
     offline = true
     hub.length = 0
@@ -117,7 +122,7 @@ const PIN = 'c71eadaca74c0923a06632bdaeb7413ff9cff4cf'
   } finally {
     fs.writeFileSync(`${out}/console.txt`, logs.join('\n'))
     fs.writeFileSync(`${out}/hub.txt`, hub.join('\n'))
-    await ctx.close()
+    await ctx?.close().catch(() => {})
     fs.rmSync(profile, { recursive: true, force: true })
   }
 })().catch((e) => {

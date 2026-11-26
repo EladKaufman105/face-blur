@@ -76,6 +76,7 @@ async function scenario(b, weak, logs) {
     n = await settled(ivrit)
     if (!ivrit(n) || !mb(n)) throw new Error('weak: the Hebrew choice is not ivrit.ai: ' + n)
     if (!(await p.$('.speech-memory'))) throw new Error('weak: no memory warning on the Hebrew model')
+    if (!(await slowShown(true))) throw new Error('weak: no "slow on this device" hint on the Hebrew model')
     // "Hebrew model" is kept when the language changes: any other language is "better quality" (the small multilingual model here), shown as chosen.
     for (const label of ['ערבית', 'אנגלית', 'פרסית']) {
       await click(`.lang-chips .chip >> text=${label}`)

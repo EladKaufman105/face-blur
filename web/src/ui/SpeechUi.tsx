@@ -32,8 +32,9 @@ export function QualityChoice({ cls, language = null }: { cls?: string; language
   if (hebrewChoice) options.push(['hebrew', 'מודל עברית'])
   const sizes = options.map(([q]) => planFor(q, d, gpuFailed.value, spokenLanguage(language)))
   const [have, setHave] = useState<boolean[]>([false, false, false])
-  // The Hebrew model (large-v3-turbo) on the CPU with one thread (a page without threads, no big graphics processor): minutes for each 30 s of speech.
-  const slow = d.probed && plan.model === 'ivrit' && plan.device === 'wasm' && plan.threads <= 1
+  // The Hebrew model (large-v3-turbo) on a phone or another weak device, or on the CPU with one thread (a page
+  // without threads, no big graphics processor): minutes for each 30 s of speech.
+  const slow = d.probed && plan.model === 'ivrit' && (d.weak || (plan.device === 'wasm' && plan.threads <= 1))
   useEffect(() => {
     let live = true
     Promise.all(sizes.map(planCached)).then((h) => { if (live) setHave(h) })
@@ -47,7 +48,7 @@ export function QualityChoice({ cls, language = null }: { cls?: string; language
         </button>
       ))}
       {hebrewChoice && plan.quality === 'hebrew' && <p class="small speech-memory" style="flex-basis:100%;margin:6px 0 0;color:var(--primary)">{t('מודל העברית (ivrit.ai) גדול וצריך הרבה זיכרון. אם הדף נסגר או נתקע, בחרו "מהיר".')}</p>}
-      {slow && <p class="small speech-slow" style="flex-basis:100%;margin:6px 0 0;color:var(--primary)">{t('במכשיר הזה מודל העברית רץ על המעבד בלי עיבוד מקבילי, ולכן הוא איטי: כמה דקות לכל חצי דקה של דיבור. "מהיר" מסיים הרבה יותר מהר.')}</p>}
+      {slow && <p class="small speech-slow" style="flex-basis:100%;margin:6px 0 0;color:var(--primary)">{t('במכשיר הזה מודל העברית איטי: כמה דקות לכל חצי דקה של דיבור. "מהיר" מסיים הרבה יותר מהר.')}</p>}
     </div>
   )
 }

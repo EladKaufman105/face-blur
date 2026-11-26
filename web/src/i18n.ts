@@ -125,7 +125,7 @@ const EN: Record<string, string> = {
   'המעבד הגרפי לא הגיב. ממשיך על המעבד עם אותו מודל…': 'The graphics processor did not respond. Continuing on the processor with the same model…',
   'מודל העברית של ivrit.ai, כמו באפליקציה.': "ivrit.ai's Hebrew model, as in the app.",
   'לא ניתן להוריד את מודל העברית (ivrit.ai) מ-Hugging Face. אפשר לבחור "מהיר" (מודל רב-לשוני).': 'The Hebrew model (ivrit.ai) can\'t be downloaded from Hugging Face. You can choose "Faster" (a multilingual model).',
-  'במכשיר הזה מודל העברית רץ על המעבד בלי עיבוד מקבילי, ולכן הוא איטי: כמה דקות לכל חצי דקה של דיבור. "מהיר" מסיים הרבה יותר מהר.': 'On this device the Hebrew model runs on the processor without parallel processing, so it is slow: several minutes for every half minute of speech. "Faster" finishes much sooner.',
+  'במכשיר הזה מודל העברית איטי: כמה דקות לכל חצי דקה של דיבור. "מהיר" מסיים הרבה יותר מהר.': 'On this device the Hebrew model is slow: several minutes for every half minute of speech. "Faster" finishes much sooner.',
   'הזיהוי רץ על המכשיר עם Whisper, והקול לא עוזב אותו.': 'Recognition runs on the device with Whisper, and the sound never leaves it.',
   'המודל כבר במכשיר.': 'The model is already on this device.',
   'בפעם הראשונה יורד מודל של כ-%d MB (נשמר בדפדפן לפעמים הבאות).': 'The first time, a model of about %d MB is downloaded (kept by the browser for next times).',

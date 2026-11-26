@@ -149,11 +149,17 @@ async function run({ file, language, repo, revision, device, encDtype, dtype, th
   let loading = true
   let news = 0
   let lastPost = 0
+  let loadTimer = 0
   let asr: any = loaded?.key === key ? loaded.asr : null
   if (!asr && loaded) { const old = loaded.asr; loaded = null; await Promise.race([old.dispose?.(), sleep(1000)]).catch(() => {}) }
   if (!asr) try { asr = await pipeline('automatic-speech-recognition', repo, {
     device,
-    dtype: { encoder_model: encDtype, decoder_model_merged: dtype },
+    // `model` too: Transformers.js 4.3.2's file listing for the download total (get_model_files -> selectDtype)
+    // looks the encoder's dtype up by its session key `model`, not `encoder_model` (a bug of the library), and
+    // without it falls back to the device's default (wasm: q8, encoder_model_quantized.onnx). That file is
+    // never loaded and may not exist (ivrit.ai's repo has only q4): one uncacheable request to the Hub per load.
+    // The sessions themselves read `encoder_model` and ignore `model`.
+    dtype: { model: encDtype, encoder_model: encDtype, decoder_model_merged: dtype },
     progress_callback: (p: any) => {
       const now = Date.now()
       if (p.status === 'progress_total') {
@@ -161,7 +167,8 @@ async function run({ file, language, repo, revision, device, encDtype, dtype, th
         if (p.total > 0 && p.loaded >= p.total) {
           // All of what is known so far is here: if no other file starts soon, it is the loading.
           // (The page itself moves to its loading phase at once, from loaded >= total.)
-          setTimeout(() => { if (n === news && !loading) { loading = true; post({ type: 'load' }) } }, 1500)
+          clearTimeout(loadTimer)
+          loadTimer = setTimeout(() => { if (n === news && !loading) { loading = true; post({ type: 'load' }) } }, 1500) as unknown as number
         }
         loading = false
         // One message per update: it is also the sign of life, so no extra tick goes with it.
@@ -173,6 +180,7 @@ async function run({ file, language, repo, revision, device, encDtype, dtype, th
       }
     },
   }) } catch (e) {
+    clearTimeout(loadTimer)
     // Threads that would not start (not a download that failed): the page tries once more with one.
     const message = String((e as Error)?.message ?? e)
     if (isMemoryError(e)) return post({ type: 'error', code: 'memory', message })
@@ -181,6 +189,9 @@ async function run({ file, language, repo, revision, device, encDtype, dtype, th
     }
     throw e
   }
+  // Loaded: a "loading" still pending from the last download message must not come after the recognition starts.
+  clearTimeout(loadTimer)
+  loading = true
 
   try {
     const words: Word[] = []

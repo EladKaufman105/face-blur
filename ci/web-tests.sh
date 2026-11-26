@@ -113,12 +113,12 @@ case "${1:?shard}" in
       HE=/tmp/he/speech_he.mp4
       # (Inside the if, a failed install takes the skip below instead of failing the shard under set -e.)
       if python3 -m venv /tmp/he/venv && /tmp/he/venv/bin/pip install --quiet edge-tts==7.3.1; then
-        for i in 1 2 3; do /tmp/he/venv/bin/edge-tts --voice he-IL-AvriNeural --text "$TEXT" --write-media /tmp/he/he.mp3 && break || sleep 5; done
+        # (A try that fails can leave part of a file: each try starts without one.)
+        for i in 1 2 3; do rm -f /tmp/he/he.mp3; /tmp/he/venv/bin/edge-tts --voice he-IL-AvriNeural --text "$TEXT" --write-media /tmp/he/he.mp3 && break || { rm -f /tmp/he/he.mp3; sleep 5; }; done
       fi
-      if [ -s /tmp/he/he.mp3 ]; then
-        ffmpeg -v error -y -stream_loop -1 -i $S/walk.mp4 -i /tmp/he/he.mp3 -map 0:v -map 1:a -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 $HE
-      else
-        echo "::warning::edge-tts could not be installed or reached: the Hebrew subtitles test (tests/subshe.cjs) was skipped"
+      # A voice file that ffmpeg can't read (cut off) is the voice service's failure too: skipped.
+      if ! { [ -s /tmp/he/he.mp3 ] && ffmpeg -v error -y -stream_loop -1 -i $S/walk.mp4 -i /tmp/he/he.mp3 -map 0:v -map 1:a -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 $HE; }; then
+        echo "::warning::edge-tts could not be installed or reached, or its voice file was unreadable: the Hebrew subtitles test (tests/subshe.cjs) was skipped"
         HE=
       fi
     fi
