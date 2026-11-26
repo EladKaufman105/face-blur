@@ -58,8 +58,10 @@ const [, , url, video, out] = process.argv
       await p.waitForSelector('.stat[data-cell=backend]', { state: 'visible', timeout: 3000 })
       await p.waitForTimeout(500)
       const detail = {}
-      for (const c of ['backend', 'workers', 'fine', 'coarse', 'gpu', 'check', 'crops', 'decode', 'cuts', 'merge']) detail[c] = await value(c)
+      for (const c of ['backend', 'measured', 'gap', 'strength', 'workers', 'fine', 'coarse', 'gpu', 'check', 'crops', 'decode', 'cuts', 'merge']) detail[c] = await value(c)
       if (!/CPU|GPU/.test(detail.backend)) throw new Error(`${name}: backend "${detail.backend}"`)
+      // What detection really covered: D (a second, the fewest in 2 s), G (frames, seconds), S (px, YuNet).
+      if (!/^[\d.]+ \/s · \S+ [\d.—]+$/.test(detail.measured) || !/^\d+ \S+ · [\d.]+ \S+$/.test(detail.gap) || !/^\d+ px · (YuNet|\S+ YuNet)$/.test(detail.strength)) throw new Error(`${name}: measured ${JSON.stringify([detail.measured, detail.gap, detail.strength])}`)
       await p.screenshot({ path: `${out}/${name}_3_details.png` })
       await p.screenshot({ path: `${out}/${name}_3_details_full.png`, fullPage: true })
 
@@ -68,7 +70,7 @@ const [, , url, video, out] = process.argv
       await p.waitForFunction(() => document.querySelector('.stats-copy')?.textContent.trim().length > 0 && document.querySelector('.stats-copy svg path')?.getAttribute('d')?.startsWith('M9 16.17'), null, { timeout: 8000 })
       const text = await p.evaluate(() => navigator.clipboard.readText())
       fs.writeFileSync(`${out}/${name}_report.txt`, text)
-      for (const k of ['# ONIT face detection stats', 'app: ONIT Web', 'browser: ', 'device: ', 'webgpu_adapter: ', 'elapsed: ', 'backend: ', 'sampling_detections_per_s: now', 'resolution_px: ', 'detect_ms: now ', 'wait_ms_per_frame: now', 'frame_ms: now', 'workers: ', 'per_detection_ms: fine', 'per_frame_ms: decode_wait'])
+      for (const k of ['# ONIT face detection stats', 'app: ONIT Web', 'browser: ', 'device: ', 'webgpu_adapter: ', 'elapsed: ', 'backend: ', 'sampling_detections_per_s: now', 'resolution_px: ', 'detect_ms: now ', 'wait_ms_per_frame: now', 'frame_ms: now', 'workers: ', 'measured_detections_per_s: ', 'measured_max_gap: ', 'measured_strength: ', 'per_detection_ms: fine', 'per_frame_ms: decode_wait'])
         if (!text.includes(k)) throw new Error(`${name}: the report lacks "${k}":\n${text}`)
       if (!/\nvideo: \d+x\d+, [\d.]+ fps, \d+:\d\d\n/.test(text)) throw new Error(`${name}: video line:\n${text}`)
       if (!/detect_ms: now [\d.]+, avg [\d.]+, min [\d.]+, max [\d.]+/.test(text)) throw new Error(`${name}: detect_ms line:\n${text}`)

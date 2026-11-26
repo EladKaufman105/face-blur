@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# The web app's tests. Usage: ci/web-tests.sh <unit|1-6|subs>.
+# The web app's tests. Usage: ci/web-tests.sh <unit|1-7|subs>.
 #   unit  the pure tests (no browser, no server, no media; a few seconds): run them first, so a failure shows fast.
-#   1-6   the Chromium tests, in shards that take about the same time each (seconds measured on CI, in brackets;
+#   1-7   the Chromium tests, in shards that take about the same time each (seconds measured on CI, in brackets;
 #         [~n] estimated from a local run). They need the built web/dist served at http://localhost:4173
 #         (vite preview) and the test-media clips in /tmp/samples.
 #   subs  the subtitles (Whisper and ivrit.ai's models, downloaded): its own job.
@@ -27,7 +27,7 @@ case "${1:?shard}" in
   unit) # 3 s
     # Bleeped words never show in the subtitles: 5000 random sequences of split, merge, retime, delete, bleep, edit, translate and undo (pure, no browser).
     node tests/splitmask.cjs   # 2
-    # Face detection's pure parts: YuNet's decoding, the fusion with RetinaFace (the app's rules), the pace (1280 / 960 / 640 px, 15 to 4 a second), the low-confidence flag (pure, no browser).
+    # Face detection's pure parts: YuNet's decoding, the fusion with RetinaFace (the app's rules), the pace (1280 / 960 / 640 px, the full rate down to 8 a second), which frames get a detection and what that really covered (any frame rate, timestamps, VFR, cuts; never weaker in frames than before), the low-confidence flag (pure, no browser).
     node tests/fusion.cjs   # 1
     ;;
   1) # about 187 s
@@ -130,6 +130,10 @@ case "${1:?shard}" in
     t cues.cjs "$U" $S/speech_two.mp4 $R/cuesp phone   # 13
     # A template's translation (no model, a stubbed translator): the editor's switch and the video's four choices, the switch on the ready screen, translated in "save straight away" and in the editor it opens; a browser with none: a note, the subtitles kept.
     t tpltranslate.cjs "$U" $S/speech_two.mp4 $R/tpltranslate   # 22
+    ;;
+  7) # about 70 s
+    # Which frames get a detection, measured in the browser: a clip re-timed to 20, 24, 25 (WebM), 30 and 31 fps at the full rate (15 a second or the app's cadence), no notice; a tune under the need measured short.
+    t gate.cjs "$U" $S/walk.mp4 $R/gate   # ~70 (110 measured locally)
     ;;
   subs) # Whisper's model downloads from Hugging Face: its own job, only when subtitle code changes. The small one (whisper-base, 77 MB on the CPU) is forced: the phone path, and quick. The page is isolated here (threads), as on the site.
     t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base" $S/speech_en.mp4 $R/subs   # 60
