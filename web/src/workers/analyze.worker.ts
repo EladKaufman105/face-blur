@@ -2,7 +2,7 @@
 // on a regular subset of frames, then builds the face tracks and a thumbnail of each face.
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny'
 import { CPU_SIDE, FaceDetector, GPU_SIDE } from '../lib/detector'
-import { GATE_SLACK_S, Pacer, pace, runSide, type Timing } from '../lib/pace'
+import { Pacer, pace, runSide, type Timing } from '../lib/pace'
 import { YunetWorker } from '../lib/yunet-worker'
 import { StatsHistory, summary, type AnalysisStats, type StatsSnapshot } from '../lib/analysis-stats'
 import { DetectorPool } from '../lib/detector-pool'
@@ -191,7 +191,7 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
     const cut = cuts.isCut(canvas)
     cutMs += performance.now() - tc
     if (cut) cutList.push(i)
-    if (cut || wc.timestamp - lastDetect >= 1 / rate - GATE_SLACK_S) {
+    if (cut || wc.timestamp - lastDetect >= 1 / rate - 1e-3) {
       lastDetect = wc.timestamp
       if (pool) {
         // Wait for a free detector (the decoder keeps going meanwhile), then pass the frame on.

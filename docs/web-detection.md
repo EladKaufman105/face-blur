@@ -19,12 +19,8 @@ what is slow (1280 -> 960 px over 80 ms, the app's threshold; 960 -> 640 px over
 old rule), else fewer detections. The frame steps back up when timings recover. The timings are
 taken in windows of 4 detections after the first few; the GPU's check against the CPU (which runs
 until 3 frames with faces were seen, so on a video with none all along) is taken out of a
-detection's time. A rate is judged by the frames it really detects on: the analysis takes the
-first frame at least 1 / rate after the last detection, so on a 12 fps clip 11 a second is every
-second frame (6 a second), and on a 30 fps clip 13 a second is every third (10). Detection counts as
-reduced when it covers fewer than 80% of the frames wanted (15 a second, every frame in wide
-detection, never more than the clip has); a clip with fewer than 15 frames a second needs only
-those, so the frame isn't shrunk to reach 15.
+detection's time. A clip with fewer frames a second than 15 needs no more than that: a rate that
+still detects on 80% of its frames isn't reduced, and the frame isn't shrunk to reach 15.
 
 It is never weaker than the web's detection before YuNet (RetinaFace alone at 960 px on the GPU,
 640 px on the CPU, 600 ms of detection per second of video): the frame never goes below that

@@ -63,9 +63,10 @@ export class YunetWorker {
       try {
         this.w.postMessage({ type: 'frame', id, frame, threshold } satisfies YunetRequest, [frame])
       } catch {
-        // Not sent (a closed bitmap, a worker gone): this run gives null, the caller runs YuNet itself.
+        // Not sent (a closed bitmap, a worker gone): the worker counts as failed (this run and any
+        // waiting give null and it's ended), so the caller runs YuNet itself and only one runtime stays.
         frame.close()
-        this.settle(id, null)
+        this.fail('post failed')
       }
     })
   }

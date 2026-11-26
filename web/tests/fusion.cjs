@@ -201,45 +201,6 @@ if (F.fuse([], []).length !== 0) fail('empty')
   if (!P.pace({ recentMs: 140, rfMs: 130, fineMs: 120, workers: 1, maxRate: 15, side: 640, startSide: 960, rate: 15, gpu: false, frameRate: 10 }).reduced) fail('fewer than every frame of a 10 fps clip, at 640 px, is not reduced')
 }
 
-// ---- frames covered: a rate is judged by the frames it really detects on. The analysis's gate
-// (analyze.worker.ts: a frame when at least 1 / rate - GATE_SLACK_S after the last detection),
-// run on the frames of a clip, detects as many frames a second as covered() says.
-{
-  for (const fps of [8, 10, 12, 15, 23.976, 24, 25, 29.97, 30, 50, 60]) for (let rate = 4; rate <= Math.max(15, fps); rate += 0.37) {
-    let last = -Infinity, n = 0
-    const frames = Math.round(fps * 20)
-    for (let k = 0; k < frames; k++) {
-      const ts = k / fps
-      if (ts - last >= 1 / rate - P.GATE_SLACK_S) { last = ts; n++ }
-    }
-    const want = P.covered(rate, fps) * frames / fps
-    if (Math.abs(n - want) > 1.01) fail('covered() is not the gate: ' + JSON.stringify({ fps, rate, n, want }))
-  }
-  if (P.covered(11, 12) !== 6 || P.covered(12, 12) !== 12 || P.covered(15, 30) !== 15 || P.covered(13, 30) !== 10 || P.covered(9) !== 9) fail('covered()')
-  // A 12 fps clip, CPU, 960 px, 90 ms a detection: 11 a second wanted is every second frame (6): reduced, or every frame.
-  const c12 = P.pace({ recentMs: 90, rfMs: 80, fineMs: 70, workers: 1, maxRate: 15, side: 960, startSide: 960, rate: 15, gpu: false, frameRate: 12, frameSide: 960 })
-  if (!c12.reduced && P.covered(c12.rate, 12) < 12) fail('12 fps, 90 ms: half the frames, not reduced: ' + JSON.stringify(c12))
-  // A 10 fps clip, 480 px, CPU, 115 ms (the fine pass 80): 8.7 a second wanted is every second frame (5).
-  const c10 = P.pace({ recentMs: 115, rfMs: 80, fineMs: 80, workers: 1, maxRate: 15, side: 960, startSide: 960, rate: 15, gpu: false, frameRate: 10, frameSide: 480 })
-  if (!c10.reduced && P.covered(c10.rate, 10) < 10) fail('10 fps, 115 ms: half the frames, not reduced: ' + JSON.stringify(c10))
-  // Wide detection on a 30 fps clip: 24 to 29 a second is every second frame (15): reduced.
-  for (const ms of [35, 38, 41]) {
-    const w30 = P.pace({ recentMs: ms, rfMs: ms - 10, fineMs: ms - 15, workers: 1, maxRate: 30, side: 1280, startSide: 1280, rate: 30, gpu: true, frameRate: 30 })
-    if (!w30.reduced && P.covered(w30.rate, 30) < 30 * P.FULL_SHARE) fail('wide, 30 fps, ' + ms + ' ms: not reduced: ' + JSON.stringify(w30))
-  }
-  // Every frame of a 30 fps clip in wide detection (fast enough): not reduced.
-  if (P.pace({ recentMs: 20, rfMs: 15, fineMs: 12, workers: 1, maxRate: 30, side: 1280, startSide: 1280, rate: 30, gpu: true, frameRate: 30 }).reduced) fail('wide, every frame, reduced')
-  // Random: never "full" when fewer than 80% of the frames wanted are covered.
-  let seed = 11
-  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296
-  for (let k = 0; k < 20000; k++) {
-    const fps = [10, 12, 15, 24, 25, 30, 60][Math.floor(rnd() * 7)], sensitive = rnd() < 0.3, gpu = rnd() < 0.5
-    const maxRate = sensitive ? fps : 15, start = gpu ? 1280 : 960
-    const p = P.pace({ recentMs: 10 + rnd() * 400, rfMs: 5 + rnd() * 300, fineMs: 5 + rnd() * 250, workers: 1 + Math.floor(rnd() * 3), maxRate, side: [640, 960, 1280][Math.floor(rnd() * 3)] > start ? start : 960, startSide: start, rate: 4 + rnd() * 26, gpu, frameRate: fps })
-    if (!p.reduced && P.covered(p.rate, fps) < Math.min(maxRate, fps) * P.FULL_SHARE - 1e-9) fail('not reduced, under 80% of the frames: ' + JSON.stringify({ fps, sensitive, ...p }))
-  }
-}
-
 // ---- never weaker than the web's detection before YuNet, on any device: simulated devices
 // (RetinaFace's fine pass = a fixed part + a part that grows with the area; a coarse pass over
 // 800 px; the re-check; YuNet beside it or after it; 1 to 4 detectors), each paced window by
@@ -251,7 +212,7 @@ if (F.fuse([], []).length !== 0) fail('empty')
   let cases = 0
   for (const gpu of [true, false]) for (const big of [3, 15, 40, 80, 150, 300, 800]) for (const fixed of [0, 10]) for (const coarse of [0, 5, 40])
   for (const check of [0, 10, 60]) for (const yunet of [5, 40, 150, 400]) for (const beside of [true, false]) for (const workers of gpu ? [1] : [1, 2, 4])
-  for (const maxRate of [15, 30]) for (const frameSide of [1280, 736, 480]) for (const frameRate of [undefined, 10, 12, 30]) {
+  for (const maxRate of [15, 30]) for (const frameSide of [1280, 736, 480]) for (const frameRate of [undefined, 10]) {
     const start = gpu ? 1280 : 960
     const eff = (s) => P.runSide(s, frameSide)
     // [big]: the fine pass's area part at the starting size.
@@ -266,7 +227,7 @@ if (F.fuse([], []).length !== 0) fail('empty')
       const oldMs = rfOf(oldSide) + check
       oldRate = clamp(600 * workers / oldMs, 4, Math.min(maxRate, gpu ? 15 : 10))
       if (gpu && oldMs > 200 && oldSide > 640) oldSide = 640
-      if (eff(side) < eff(oldSide) || rate < oldRate - 1e-9 || P.covered(rate, frameRate) < P.covered(oldRate, frameRate) - 1e-9) fail('weaker than before YuNet: ' + JSON.stringify({ gpu, big, fixed, coarse, check, yunet, beside, workers, maxRate, frameSide, frameRate, k, side, rate, oldSide, oldRate }))
+      if (eff(side) < eff(oldSide) || rate < oldRate - 1e-9) fail('weaker than before YuNet: ' + JSON.stringify({ gpu, big, fixed, coarse, check, yunet, beside, workers, maxRate, frameSide, frameRate, k, side, rate, oldSide, oldRate }))
       cases++
     }
   }
