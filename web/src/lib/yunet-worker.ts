@@ -60,7 +60,13 @@ export class YunetWorker {
       // A worker that doesn't answer (hung) counts as failed: detection goes on with YuNet in the caller's thread.
       const timer = setTimeout(() => this.fail(`no answer in ${YunetWorker.TIMEOUT_MS} ms`), YunetWorker.TIMEOUT_MS)
       this.waiting.set(id, (d) => { clearTimeout(timer); done(d) })
-      this.w.postMessage({ type: 'frame', id, frame, threshold } satisfies YunetRequest, [frame])
+      try {
+        this.w.postMessage({ type: 'frame', id, frame, threshold } satisfies YunetRequest, [frame])
+      } catch {
+        // Not sent (a closed bitmap, a worker gone): this run gives null, the caller runs YuNet itself.
+        frame.close()
+        this.settle(id, null)
+      }
     })
   }
 

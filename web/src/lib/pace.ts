@@ -69,6 +69,19 @@ export interface Pace {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
+/** The analysis detects on a frame when this long after the last detection: 1 / rate, less this slack (s). */
+export const GATE_SLACK_S = 1e-3
+
+/**
+ * The frames per second a [rate] really detects on, in a video of [frameRate] frames a second: the
+ * analysis takes the first frame at least 1 / rate after the last detection (less the slack), so
+ * on a 12 fps clip 11 a second is every second frame, 6 a second. Without a frame rate, the rate.
+ */
+export function covered(rate: number, frameRate?: number): number {
+  if (!frameRate) return rate
+  return frameRate / Math.max(1, Math.ceil(frameRate * (1 / rate - GATE_SLACK_S) - 1e-9))
+}
+
 /** The long side the fine pass really runs at when set to [side] (as FaceDetector.detect: it resizes only a frame over 5% bigger). */
 export const runSide = (side: number, frameSide?: number) => (frameSide !== undefined && frameSide <= side * 1.05 ? frameSide : side)
 
@@ -85,24 +98,26 @@ export function oldRate(i: PaceIn): number {
  */
 export function pace(i: PaceIn): Pace {
   const eff = (s: number) => runSide(s, i.frameSide)
-  // The rate the frame's size is judged against: no more than the video has frames (a 10 fps clip needs 10 a second, not 15).
+  // Rates are judged by the frames they really detect on (see covered()), against no more than
+  // the video has frames (a 10 fps clip needs 10 a second, not 15); the frame's size against 15.
+  const cov = (r: number) => covered(r, i.frameRate) + 1e-9
   const target = Math.min(i.maxRate, SIZE_RATE, i.frameRate ?? Infinity)
   const wanted = (BUDGET_MS * i.workers) / Math.max(1, i.recentMs)
   const floor = oldRate(i)
   const out = (rate: number, side = i.side): Pace => {
     const r = Math.min(i.maxRate, Math.max(rate, floor))
-    return { rate: r, side, reduced: eff(side) < eff(i.startSide) || r < Math.min(i.maxRate, i.frameRate ?? Infinity) * FULL_SHARE }
+    return { rate: r, side, reduced: eff(side) < eff(i.startSide) || cov(r) < Math.min(i.maxRate, i.frameRate ?? Infinity) * FULL_SHARE }
   }
   /** On the GPU, how long RetinaFace's own passes may take at a size before the frame leaves it. */
   const gpuLimit = (side: number) => (side > MID_SIDE ? GPU_SLOW_MS : OLD.gpuSlowMs)
-  if (wanted >= target * FULL_SHARE) {
+  if (cov(Math.min(i.maxRate, wanted)) >= target * FULL_SHARE) {
     // Keeps up. If the frame was shrunk: back up a step when the bigger one would keep up too (RetinaFace's time grows about with the area, YuNet's doesn't).
     if (i.side < i.startSide) {
       const up = Math.min(i.startSide, i.side < MID_SIDE ? MID_SIDE : i.startSide)
       const rfUp = i.rfMs * (eff(up) / eff(i.side)) ** 2
       const wantedUp = (BUDGET_MS * i.workers) / Math.max(1, i.recentMs - i.rfMs + rfUp)
       // On the GPU not back over the bigger size's own limit (no back and forth).
-      if ((!i.gpu || rfUp <= gpuLimit(up)) && wantedUp >= target * FULL_SHARE * 1.25) return out(Math.min(i.maxRate, wantedUp), up)
+      if ((!i.gpu || rfUp <= gpuLimit(up)) && cov(Math.min(i.maxRate, wantedUp)) >= target * FULL_SHARE * 1.25) return out(Math.min(i.maxRate, wantedUp), up)
     }
     return out(Math.min(i.maxRate, wanted))
   }
