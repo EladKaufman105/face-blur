@@ -5,7 +5,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 ## Branches
 
 - `main`: releases only. A merge publishes a public GitHub release (APK) once the emulator e2e passes. The web app from `main` is at https://eladkaufman105.github.io/face-blur/.
-- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Beta" (separate app id, installs beside ONIT) once the emulator e2e passes. Merges that change only `web/` make no beta. The web app from `develop` is the beta web app, at https://eladkaufman105.github.io/face-blur/beta/.
+- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Beta" (separate app id, installs beside ONIT) once the emulator e2e passes. Merges that change only `web/`, `docs/`, `.claude/`, the PR template or `parity-hint.yml` make no beta. The web app from `develop` is the beta web app, at https://eladkaufman105.github.io/face-blur/beta/.
 - Never push, force-push, rebase or delete `main` or `develop`. Repository rulesets enforce this. Do not try to work around them.
 - `labs` is retired. Do not push to it. It is kept as history.
 - `hotfix/<name>`: branch from `main`, PR into `main`, then a PR `main` -> `develop` (merge commit) to bring the fix back.
@@ -47,13 +47,21 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
    - Tell the user.
 8. If checks are green and no blocking findings remain, you may merge into `develop` yourself. Use squash merge, except a PR from `main` (hotfix merge-back): merge commit.
 
+## Parity
+
+- The app (`app/`) and the web app (`web/`) offer the same features. `docs/parity.md` tracks the differences and the accepted exceptions.
+- Every PR that changes user-facing behaviour on one platform either includes the same change on the other, or links a follow-up parity PR or issue and updates `docs/parity.md` (status `gap-web` or `gap-app`). Exceptions: a difference listed under "Accepted exceptions" in `docs/parity.md`, or a PR that ticks `platform-only` in the template.
+- Use the `parity` agent (`.claude/agents/parity.md`) to port. Its PRs start with `Parity:`. The agent stops when the PR is open and its checks are green: the calling session runs the review loop and merges.
+- Privacy behaviour must be identical or stricter on both platforms. Never weaken a gate to match the other one.
+- Releases (develop -> main) list the open `gap-*` rows in the release notes.
+
 ## Release (develop -> main)
 
 - Open a PR from `develop` into `main`. Skip the code-review loop. Each change was reviewed on its way into `develop`, and the user tests the beta on a device.
 - Check that PR checks are green.
-- Check that the release is the beta the user tested: nothing outside `web/` changed on `develop` since the newest beta tag. `git diff --name-only <newest vX.Y.Z-beta.N> origin/develop -- . ':!web' ':!.github/workflows/web.yml' ':!.github/workflows/web-tests.yml' ':!.github/actions' ':!ci/web-tests.sh' ':!ci/publish-pages.sh' ':!ci/pages-build.sh' ':!.github/workflows/models.yml'` must print nothing.
+- Check that the release is the beta the user tested: nothing outside `web/` changed on `develop` since the newest beta tag. `git diff --name-only <newest vX.Y.Z-beta.N> origin/develop -- . ':!web' ':!.github/workflows/web.yml' ':!.github/workflows/web-tests.yml' ':!.github/actions' ':!ci/web-tests.sh' ':!ci/publish-pages.sh' ':!ci/pages-build.sh' ':!.github/workflows/models.yml' ':!docs' ':!.claude' ':!.github/pull_request_template.md' ':!.github/workflows/parity-hint.yml'` must print nothing.
 - If it prints files, warn the user. Let them choose: wait for the next beta and test it, or release anyway. If that next beta never came because its e2e failed, fix that first with a normal PR into `develop`.
-- Write release notes in the PR body: the PRs merged into `develop` since the last release.
+- Write release notes in the PR body: the PRs merged into `develop` since the last release, and the open `gap-*` rows of `docs/parity.md`.
 - Ask the user "Release X.Y.Z?". Merge only after a clear yes. Same for hotfix PRs into `main`.
 - Merge PRs into `main` with a merge commit. Never squash or rebase. Versioning reads the beta tags from the history of `main`.
 

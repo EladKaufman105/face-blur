@@ -13,6 +13,16 @@ object Mp4Privacy {
     private val HIDE = setOf("©xyz", "loci")
     private val DESCEND = setOf("moov", "trak", "udta")
 
+    /**
+     * [scrub], failing closed: if the details can't be taken out, this throws [ScrubFailedException]
+     * and the caller must not save or share the file.
+     */
+    fun scrubOrFail(file: File): Int = try {
+        scrub(file)
+    } catch (e: Exception) {
+        throw ScrubFailedException(e)
+    }
+
     /** @return how many boxes were hidden. */
     fun scrub(file: File): Int = RandomAccessFile(file, "rw").use { f -> walk(f, 0L, f.length(), "", 0) }
 
@@ -46,3 +56,6 @@ object Mp4Privacy {
         return hidden
     }
 }
+
+/** Location and phone details could not be taken out of a video, so it must not be saved. */
+class ScrubFailedException(cause: Throwable) : RuntimeException("metadata scrub failed", cause)

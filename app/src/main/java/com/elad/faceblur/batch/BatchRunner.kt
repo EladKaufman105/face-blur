@@ -144,6 +144,7 @@ object BatchRunner {
             item.begin(ItemStatus.EXPORTING)
             item.progress = analysisShare + PROCESSING_SHARE
             onChange()
+            if (com.elad.faceblur.edit.MaskPolicy.exportBlocked(c.background, c.peopleMasksOk)) throw com.elad.faceblur.pipeline.MissingMasksException()
             val saved = FaceBlurProcessor(ctx).render(
                 info, sess.settings, analysis, sess.model, analysisMs, export, s.subStyle, c.audio, c.background, sess.masks,
                 stabilizer = c.stabilizer,

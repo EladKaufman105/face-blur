@@ -106,21 +106,33 @@ class MaskStore private constructor(
         fun create(file: File, frames: Int): MaskStore {
             file.parentFile?.mkdirs()
             file.delete()
+            // The old index would make open() accept a half-written file after an interrupted run.
+            File(file.path + ".idx").delete()
             return MaskStore(file, RandomAccessFile(file, "rw"), LongArray(frames), IntArray(frames))
         }
 
         /** Reopens saved masks, or null if there are none. */
         fun open(file: File, index: File): MaskStore? {
             if (!file.exists() || !index.exists()) return null
+            val size = file.length()
             return runCatching {
                 DataInputStream(index.inputStream().buffered()).use { i ->
                     val n = i.readInt()
                     val offsets = LongArray(n)
                     val lengths = IntArray(n)
                     for (k in 0 until n) { offsets[k] = i.readLong(); lengths[k] = i.readInt() }
-                    MaskStore(file, RandomAccessFile(file, "r"), offsets, lengths)
+                    if (!indexFits(offsets, lengths, size)) null else MaskStore(file, RandomAccessFile(file, "r"), offsets, lengths)
                 }
             }.getOrNull()
+        }
+
+        /** Every frame that has a mask lies inside a bin file of [size] bytes (else the file is partial or not this index's). */
+        fun indexFits(offsets: LongArray, lengths: IntArray, size: Long): Boolean {
+            for (k in offsets.indices) {
+                if (lengths[k] < 0 || offsets[k] < 0) return false
+                if (lengths[k] > 0 && offsets[k] + lengths[k] > size) return false
+            }
+            return true
         }
     }
 }

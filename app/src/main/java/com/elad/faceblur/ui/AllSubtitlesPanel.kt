@@ -160,6 +160,7 @@ fun AllSubtitlesPanel(ctrl: EditorController, modifier: Modifier = Modifier, sty
                 Box(Modifier.padding(horizontal = 16.dp)) { SplitControls(ctrl) }
             }
             if (findOpen) FindReplace(ctrl)
+            if (!ctrl.subsBusy) Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { SrtImportButton(ctrl) }
             HorizontalDivider(Modifier.padding(top = 6.dp))
             LazyColumn(Modifier.fillMaxWidth().weight(1f), state = list) {
                 items(cues, key = { it.id }) { c ->

@@ -47,12 +47,30 @@ fun AnalysisResult.toEditModel() = EditModel(times, cuts, motion, aspect, dets, 
 class EditSession(
     val info: VideoInfo,
     initialSettings: Settings,
-    val analysis: AnalysisResult,
+    analysis: AnalysisResult,
     val analysisMs: Long,
-    /** Opened for subtitles only: no face detection was run. */
-    val subtitlesOnly: Boolean = false,
+    /** Opened for subtitles only: no face detection was run (until "Find faces" does). */
+    subtitlesOnly: Boolean = false,
 ) : Closeable {
-    val model = analysis.toEditModel()
+    var analysis: AnalysisResult = analysis
+        private set
+    var subtitlesOnly: Boolean = subtitlesOnly
+        private set
+    var model = analysis.toEditModel()
+        private set
+
+    /**
+     * Face detection was run on a subtitles-only session: its blurs and frames come in, and
+     * everything else edited so far (subtitles, bleeps, sounds, cuts, which are all kept in
+     * milliseconds) stays. The undo history starts again.
+     */
+    fun adoptDetection(found: AnalysisResult) {
+        val old = analysis
+        model = EditModel.withDetection(model, found.toEditModel())
+        analysis = found
+        subtitlesOnly = false
+        old.close()
+    }
 
     /** The blur's look (style, strength, area): chosen before detection, changeable in the editor. */
     var settings by androidx.compose.runtime.mutableStateOf(initialSettings)
@@ -643,7 +661,7 @@ class EditorController(
      * Anything running in the background: subtitles, speakers, loudness, cuts, finding the
      * people, measuring the camera's motion.
      */
-    val busy get() = subsBusy || loudnessBusy || cutBusy || segmentProgress != null || stabilizeProgress != null
+    val busy get() = findFacesProgress != null || subsBusy || loudnessBusy || cutBusy || segmentProgress != null || stabilizeProgress != null
 
     /** Suspends until the background work ([busy]) is done: for a template applied with no editor on screen. */
     suspend fun awaitIdle(timeoutMs: Long = IDLE_TIMEOUT_MS) {
@@ -1036,6 +1054,91 @@ class EditorController(
     /** Cancels the motion pass if the editor goes away. */
     fun cancelMotion() {
         motionJob?.cancel()
+        findJob?.cancel()
+    }
+
+    // ------------------------------------------------------------------ faces
+
+    /** Face detection run from the editor (a session opened without it): 0..1 while it runs. */
+    var findFacesProgress by mutableStateOf<Float?>(null)
+        private set
+
+    /** Bumped when the player must be made again (its blur effect only exists once there are faces). */
+    var playerEpoch by mutableIntStateOf(0)
+        private set
+
+    /** Called once detection found faces and they were taken in (the project is saved again). */
+    var onFacesFound: (() -> Unit)? = null
+    private var findJob: Job? = null
+
+    /**
+     * "Find faces" for a session opened without detection (subtitles, sound...): detection runs on
+     * the video, the blurs come in next to what was edited, and the faces list shows them.
+     */
+    fun findFaces() {
+        val ctx = appContext ?: return
+        if (!session.subtitlesOnly || findJob?.isActive == true) return
+        if (segmentProgress != null || segmentJob?.isActive == true) {
+            notice = t("אי אפשר לזהות פנים בזמן שהאנשים מזוהים. חכה שהזיהוי יסתיים או בטל אותו.")
+            return
+        }
+        pauser()
+        addMode = false
+        findFacesProgress = 0f
+        // ATOMIC: the body (and its finally) runs even if cancelled before it starts, so the progress is always cleared.
+        findJob = scope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
+            try {
+                val found = FaceBlurProcessor(ctx).analyze(session.info, session.settings) { p -> main.post { if (findFacesProgress != null) findFacesProgress = p } }
+                val keep = session.masks != null && MaskPolicy.keepMasks(session.analysis.times, found.times)
+                session.adoptDetection(found)
+                if (!keep) {
+                    // What was made from the old frames goes: the people's masks, and the background's frame times.
+                    val old = session.masks
+                    session.masks = null
+                    bgState.masks = null
+                    old?.close()
+                    session.projectDir?.let { d -> java.io.File(d, "masks.bin").delete(); java.io.File(d, "masks.bin.idx").delete() }
+                    masksReady = false
+                }
+                bgState = BackgroundState(background, session.masks, session.analysis.times)
+                previewAvailable = true
+                frame = 0
+                selectedId = null
+                sync()
+                rebuildPreview()
+                playerEpoch++
+                onFacesFound?.invoke()
+                notice = if (model.tracks.isEmpty()) t("לא זוהו פנים. אפשר לסמן ידנית עם \"הוסף טשטוש\".") else null
+                if (MaskPolicy.rerunPeople(background, keep)) {
+                    // The people background can't be drawn without masks for these frames: find them again.
+                    findPeople()
+                    notice = t("הפריימים השתנו, אז האנשים מזוהים מחדש בשביל הרקע")
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("ONIT", "finding faces failed", e)
+                notice = t("זיהוי הפנים נכשל")
+            } finally {
+                findFacesProgress = null
+            }
+        }
+    }
+
+    fun cancelFindFaces() {
+        findJob?.cancel()
+    }
+
+    /** Turns a face's blur off or back on (one undo step). */
+    fun toggleBlurOff(id: Int) {
+        model.toggleOff(id)
+        sync()
+    }
+
+    /** Turns every face's blur on or off (one undo step). */
+    fun setAllBlursOff(off: Boolean) {
+        model.setAllOff(off)
+        sync()
     }
 
     // ------------------------------------------------------------------ sound effects
@@ -1115,6 +1218,15 @@ class EditorController(
         sync()
     }
 
+    /** Subtitles from an SRT file in place of the present ones (and their bleeps): one undoable step. */
+    fun importSubtitles(list: List<NewCue>) {
+        if (list.isEmpty()) return
+        model.importCues(list)
+        selectCue(null)
+        sync()
+        list.minOfOrNull { it.startMs }?.let { first -> seek(frameAt(cueRelUs(first + 10))) }
+    }
+
     /** Words bleeped in all subtitles. */
     val bleepedCount get() = model.cues.sumOf { model.bleepedWords(it).size }
 
@@ -1134,7 +1246,8 @@ class EditorController(
     var masksReady by mutableStateOf(session.masks != null)
         private set
     /** What the player's background effect draws (changed live). */
-    val bgState = BackgroundState(Background(), session.masks, session.analysis.times)
+    var bgState = BackgroundState(Background(), session.masks, session.analysis.times)
+        private set
     private var segmentJob: Job? = null
 
     fun changeBackground(b: Background) {
@@ -1155,7 +1268,13 @@ class EditorController(
     fun findPeople() {
         val ctx = appContext ?: return
         if (segmentJob?.isActive == true) return
+        if (findFacesProgress != null) {
+            notice = t("אי אפשר לזהות אנשים בזמן שהפנים מזוהות. חכה שהזיהוי יסתיים או בטל אותו.")
+            return
+        }
         pauser()
+        // The old index must not outlive the masks it described.
+        session.projectDir?.let { d -> java.io.File(d, "masks.bin.idx").delete() }
         // Set before the launch: awaitIdle() must see the work as started.
         segmentProgress = 0f
         // ATOMIC: the body (and its finally) runs even if cancelled before it starts, so the progress is always cleared.
@@ -1165,6 +1284,7 @@ class EditorController(
                 val old = session.masks
                 session.masks = null
                 bgState.masks = null
+                masksReady = false
                 old?.close()
                 val store = FaceBlurProcessor(ctx).segment(session.info, session.analysis, java.io.File(dir, "masks.bin")) { p ->
                     main.post { if (segmentProgress != null) segmentProgress = p }
@@ -1179,9 +1299,13 @@ class EditorController(
                 notice = t("זיהוי האנשים נכשל: %s").format(e.message ?: e.javaClass.simpleName)
             } finally {
                 segmentProgress = null
+                masksReady = session.masks != null
             }
         }
     }
+
+    /** Whether a people background could be drawn right now (the masks are there and not being redone). */
+    val peopleMasksOk get() = session.masks != null && masksReady && segmentProgress == null
 
     fun cancelFindPeople() {
         segmentJob?.cancel()

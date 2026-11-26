@@ -12,7 +12,7 @@ on:
   push:
     branches: [main, develop]
     # The web app has its own workflow.
-    paths-ignore: ['.github/workflows/models.yml', '.github/workflows/web.yml', '.github/workflows/web-tests.yml', '.github/actions/**', 'ci/web-tests.sh', 'ci/publish-pages.sh', 'ci/pages-build.sh', 'web/**']
+    paths-ignore: ['.github/workflows/models.yml', '.github/workflows/web.yml', '.github/workflows/web-tests.yml', '.github/actions/**', 'ci/web-tests.sh', 'ci/publish-pages.sh', 'ci/pages-build.sh', 'web/**', 'docs/**', '.claude/**', '.github/pull_request_template.md', '.github/workflows/parity-hint.yml']
   workflow_dispatch:
 
 permissions:

@@ -169,6 +169,8 @@ fun MainScreen(vm: MainViewModel) {
                 subStyle = vm.subtitleStyle,
                 onSubStyleChange = vm::changeSubStyle,
                 onSaveTemplate = { saveTemplate = true },
+                audioOnly = vm.exportAudioOnly,
+                onAudioOnly = { vm.exportAudioOnly = it },
             )
             if (saveTemplate) {
                 val inUse = remember(state.editor) { vm.categoriesInUse(state.editor) }
@@ -293,7 +295,7 @@ fun MainScreen(vm: MainViewModel) {
                                     }
                                     context.startActivity(Intent.createChooser(send, null))
                                 },
-                                secondary = t("סיום") to vm::reset,
+                                secondary = if (s.canEdit) t("חזרה לעריכה") to vm::edit else t("סיום") to vm::reset,
                                 icon = AppIcons.Music,
                                 color = Feature.SOUND.tint,
                             )
@@ -305,10 +307,12 @@ fun MainScreen(vm: MainViewModel) {
                                 body = s.message,
                                 // An export that failed: the edits are all there; go back, or try again.
                                 primary = when {
+                                    s.canEdit && !s.retry -> t("חזרה לעריכה") to vm::edit
                                     s.canEdit -> t("נסה שוב") to vm::export
                                     else -> t("בחר סרטון אחר") to { vm.reset(); pick() }
                                 },
                                 secondary = when {
+                                    s.canEdit && !s.retry -> null
                                     s.canEdit -> t("חזרה לעריכה") to vm::edit
                                     s.info != null -> t("חזרה להגדרות") to vm::backToSettings
                                     else -> null

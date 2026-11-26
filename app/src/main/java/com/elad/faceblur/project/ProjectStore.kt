@@ -79,7 +79,7 @@ class LoadedProject(val meta: ProjectMeta, val json: JSONObject, val analysis: A
  */
 object ProjectStore {
     private const val ANALYSIS_VERSION = 1
-    private const val EDITS_VERSION = 3
+    private const val EDITS_VERSION = 4
 
     fun root(context: Context) = File(context.filesDir, "projects")
 
@@ -222,6 +222,22 @@ object ProjectStore {
         val analysis = readAnalysis(File(d, "analysis.bin"), File(d, "frames.bin"))
         val edits = File(d, "edits.bin").takeIf { it.exists() }?.let { runCatching { readEdits(it) }.getOrNull() }
         return LoadedProject(meta(id, json, d, edits), json, analysis, edits)
+    }
+
+    /**
+     * The project's face detection was run after it was made (a subtitles-only project, "Find
+     * faces"): the analysis is written again, and the project is no longer subtitles-only.
+     */
+    fun replaceAnalysis(context: Context, id: String, analysis: AnalysisResult) {
+        val d = dir(context, id)
+        if (!d.exists()) return
+        val framesOk = analysis.frames?.moveTo(File(d, "frames.bin")) == true
+        atomic(File(d, "analysis.bin")) { writeAnalysis(it, analysis, framesOk) }
+        synchronized(jsonLock) {
+            val json = runCatching { readJson(d) }.getOrElse { JSONObject() }
+            json.put("subtitlesOnly", false)
+            atomic(File(d, "project.json")) { it.writeText(json.toString()) }
+        }
     }
 
     /** Points the project at another copy of its video (the old one can't be read any more). */
@@ -418,6 +434,10 @@ object ProjectStore {
         for (c in e.sfx) { o.writeInt(c.id); o.str(c.sound); o.writeLong(c.startMs); o.writeLong(c.durMs); o.writeFloat(c.gain) }
         o.writeInt(e.removed.size)
         for (r in e.removed) { o.writeLong(r[0]); o.writeLong(r[1]) }
+        // Blurs the user turned off (by id).
+        val off = e.tracks.filter { it.off }
+        o.writeInt(off.size)
+        for (t in off) o.writeInt(t.id)
     }
 
     fun readEdits(f: File): EditState = input(f).use { i ->
@@ -445,6 +465,11 @@ object ProjectStore {
         val bleeps = List(i.readInt()) { longArrayOf(i.readLong(), i.readLong()) }
         val sfx = if (version >= 2) List(i.readInt()) { SfxClip(i.readInt(), i.str(), i.readLong(), i.readLong(), i.readFloat()) } else emptyList()
         val removed = if (version >= 3) List(i.readInt()) { longArrayOf(i.readLong(), i.readLong()) } else emptyList()
+        if (version >= 4) {
+            val off = HashSet<Int>()
+            repeat(i.readInt()) { off += i.readInt() }
+            for (t in tracks) t.off = t.id in off
+        }
         EditState(tracks, cues, bleeps, nextId, nextCueId, sfx, removed)
     }
 }

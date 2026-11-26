@@ -138,6 +138,8 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
             ctrl.notice?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 20.dp))
             }
+            // Or subtitles from a file.
+            if (!busy) Box(Modifier.padding(horizontal = 20.dp)) { SrtImportButton(ctrl) }
 
             if (count > 0) {
                 SubsectionTitle(t("עריכה"))
