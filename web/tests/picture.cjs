@@ -1,10 +1,13 @@
 // The picture tools, as in the app: a green screen replaced by a color; a 9:16 frame; a shaky
 // video steadied; the people found and the background behind them replaced.
-// Run: node tests/picture.cjs <url> <green screen> <1080p video> <shaky video> <video with people> <out dir>
+// The people are found on the first 6 s of their video (finding them takes most of the time); FULL=1 (the weekly and
+// manual runs) on the whole video.
+// Run: [FULL=1] node tests/picture.cjs <url> <green screen> <1080p video> <shaky video> <video with people> <out dir>
 const { chromium } = require('playwright')
 const fs = require('fs')
 const { execFileSync } = require('child_process')
-const [, , url, green, wide, shaky, people, out] = process.argv
+const [, , url, green, wide, shaky, peopleVideo, out] = process.argv
+const FULL = process.env.FULL === '1'
 
 const probe = (f, args) => execFileSync('ffprobe', ['-v', 'error', ...args, '-of', 'csv=p=0', f]).toString().trim()
 const frames = (f) => Number(probe(f, ['-count_frames', '-select_streams', 'v:0', '-show_entries', 'stream=nb_read_frames']))
@@ -14,6 +17,8 @@ const near = (a, b, tol) => a.every((v, i) => Math.abs(v - b[i]) <= tol)
 
 ;(async () => {
   fs.mkdirSync(out, { recursive: true })
+  const people = FULL ? peopleVideo : `${out}/people6s.mp4`
+  if (!FULL) execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', peopleVideo, '-t', '6', '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', people])
   const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] })
   const p = await (await b.newContext({ viewport: { width: 1366, height: 860 }, locale: 'he-IL' })).newPage()
   const logs = []

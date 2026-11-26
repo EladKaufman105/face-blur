@@ -5,6 +5,9 @@ name: PR checks
 # them as they are, and keep them always running. They report on every PR, and pass when their
 # work was skipped because nothing it covers changed. The source-branch check is in pr-guard.yml
 # (it also re-runs when a PR's base changes).
+# A release PR (into main) skips work already done on develop: the Android build when the merged
+# tree is a tested beta's (ci/promote-check.sh), the web tests when web.yml tested the same web
+# files on develop (ci/promote-check.sh web-tested).
 on:
   pull_request:
     branches: [develop, main]
@@ -13,21 +16,33 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  # ci/promote-check.sh web-tested reads develop's web.yml runs.
+  actions: read
 
 concurrency:
   group: pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  # What the PR touches. Workflow files count for both parts.
+  # What the PR touches. Workflow files count for both parts. Into main, less: see the top.
   changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
-      android: ${{ steps.f.outputs.android }}
-      web: ${{ steps.f.outputs.web }}
+      android: ${{ steps.f.outputs.android == 'true' && steps.done.outputs.android != 'true' }}
+      web: ${{ steps.f.outputs.web == 'true' && steps.done.outputs.web != 'true' }}
       subtitles: ${{ steps.f.outputs.subtitles }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          # History and tags for ci/promote-check.sh; blob:none skips the big data branches' files.
+          fetch-depth: 0
+          filter: blob:none
+
+      # A release may differ from its beta only in build.yml's paths-ignore: one list, in two places.
+      - name: build.yml's paths-ignore is EXCLUDES in ci/promote-check.sh
+        run: bash ci/promote-check.sh lint
+
       - uses: dorny/paths-filter@v3
         id: f
         with:
@@ -74,6 +89,24 @@ jobs:
               - '.github/workflows/web-tests.yml'
               - '.github/actions/**'
 
+      # Into main: done already on develop? Any doubt (an error, no match) runs the work.
+      - name: Already built and tested on develop
+        id: done
+        if: github.base_ref == 'main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --tags --force -q
+          if [ "${{ steps.f.outputs.android }}" = true ] && bash ci/promote-check.sh HEAD; then
+            echo "::notice::Android: this is a tested beta's tree. On merge, build.yml promotes its release candidate (or runs the full path if a check fails)."
+            echo "android=true" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ steps.f.outputs.web }}" = true ] && bash ci/promote-check.sh web-tested HEAD; then
+            echo "::notice::Web: web.yml tested these web files on develop."
+            echo "web=true" >> "$GITHUB_OUTPUT"
+          fi
+
   android:
     needs: changes
     if: needs.changes.outputs.android == 'true'
@@ -87,25 +120,50 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # PRs read the Gradle cache that develop and main write.
+      # PRs read the Gradle cache and ccache that develop writes (build.yml).
       - uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: true
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
       - name: Every string has its English
         run: python3 ci/i18n_check.py
 
-      - name: Build debug APK
+      - name: ccache
+        id: ccache
+        run: bash ci/ccache.sh setup
+      - name: Restore the ccache
+        if: steps.ccache.outputs.ok == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-debug-arm64-${{ hashFiles('ci/fetch-whisper.sh', 'app/build.gradle.kts', 'app/src/main/cpp/*.*', 'app/src/main/cpp/lame/**') }}-${{ steps.ccache.outputs.week }}
+          restore-keys: |
+            ccache-debug-arm64-${{ hashFiles('ci/fetch-whisper.sh', 'app/build.gradle.kts', 'app/src/main/cpp/*.*', 'app/src/main/cpp/lame/**') }}-
+            ccache-debug-arm64-
+
+      # One Gradle run: the debug APK, the instrumented tests compile (they run after the merge),
+      # the JVM unit tests.
+      - name: Debug build and unit tests
         shell: bash
         run: |
           bash ci/fetch-whisper.sh
           bash ci/fetch-opencv.sh
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --configuration-cache --stacktrace
+          ./gradlew assembleDebug compileDebugAndroidTestKotlin testDebugUnitTest --configuration-cache --stacktrace
 
-      - name: Unit tests
-        shell: bash
-        run: ./gradlew testDebugUnitTest --no-daemon --configuration-cache --stacktrace
+      - name: ccache stats
+        if: always()
+        run: bash ci/ccache.sh stats
+
+      - name: Upload the unit test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: app/build/reports/tests
+          retention-days: 14
+          if-no-files-found: ignore
 
   web:
     needs: changes

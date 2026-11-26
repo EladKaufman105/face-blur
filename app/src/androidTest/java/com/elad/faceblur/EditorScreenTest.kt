@@ -344,7 +344,9 @@ class EditorScreenTest {
         rule.runOnIdle { ctrl.subsSheet = false }
     }
 
+    /** The home, ready and settings screens (he / en, light / dark, phone / tablet): screenshots, weekly. */
     @Test
+    @Weekly
     fun mainScreen() {
         val inst = InstrumentationRegistry.getInstrumentation()
         val ctx = inst.targetContext
