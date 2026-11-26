@@ -108,7 +108,7 @@ case "${1:?shard}" in
     # copy, the report of an error nothing caught.
     t parity3.cjs "$U" $S/speech_two.mp4 $R/parity3   # 25
     ;;
-  6) # about 188 s
+  6) # about 210 s
     # The sound's cleanup, MP3 (from the editor and the home screen), a lower size and frame rate.
     t sound.cjs "$U" $S/speech_two.mp4 $S/speech_en.mp4 $S/classroom60.mp4 $R/sound   # 28
     # No faces found: wider detection offered, a blur by hand in the editor.
@@ -128,6 +128,8 @@ case "${1:?shard}" in
     # Subtitles on the timeline, as the app's: a tap selects, the bar's Start / End here, split, merge, delete and text, the edges dragged, all undone; bleeps follow their words. Desktop and a phone.
     t cues.cjs "$U" $S/speech_two.mp4 $R/cues   # 13
     t cues.cjs "$U" $S/speech_two.mp4 $R/cuesp phone   # 13
+    # A template's translation (no model, a stubbed translator): the editor's switch and the video's four choices, the switch on the ready screen, translated in "save straight away" and in the editor it opens; a browser with none: a note, the subtitles kept.
+    t tpltranslate.cjs "$U" $S/speech_two.mp4 $R/tpltranslate   # 22
     ;;
   subs) # Whisper's model downloads from Hugging Face: its own job, only when subtitle code changes. The small one (whisper-base, 77 MB on the CPU) is forced: the phone path, and quick. The page is isolated here (threads), as on the site.
     t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base" $S/speech_en.mp4 $R/subs   # 60

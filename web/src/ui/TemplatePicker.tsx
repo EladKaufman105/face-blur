@@ -1,5 +1,6 @@
 import { t } from '../i18n'
 import { LANGUAGES } from '../lib/subtitles'
+import { canTranslate } from '../lib/translate'
 import { useState } from 'preact/hooks'
 import { allTemplates, findTemplate, isEdited, renameTemplate, storeFailed, templatesLoaded } from '../lib/templatestore'
 import { applyTemplate, type Template, type TemplateSettings } from '../lib/template'
@@ -100,6 +101,10 @@ export function TemplatePicker({ frame, base, current, onPick, settings, onSetti
                   <button class={'chip' + (settings.language === code ? ' on' : '')} onClick={() => setLang(code)}>{t(label)}</button>
                 ))}
               </div>
+              {own?.subs?.translate && (
+                // The template translates them (as the app's): said here, and it can be left out this time.
+                <SwitchRow cls="tpl-translate-run" title={t('הוסף תרגום')} text={canTranslate() ? t('אוטומטי: לאנגלית, ודיבור באנגלית לעברית.') : t('הדפדפן הזה לא מתרגם על המכשיר (כרום ואדג׳ במחשב כן): הכתוביות יישארו בשפת הדיבור.')} on={settings.translate} onChange={(on) => onSettings({ ...settings, translate: on })} />
+              )}
             </>
           )}
         </>

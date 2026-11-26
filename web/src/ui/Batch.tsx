@@ -169,7 +169,7 @@ export function BatchSetup({ onBack, onStarted, initial }: { onBack: () => void;
   )
 }
 
-const PHASES: Record<string, string> = { read: 'קורא את הסרטון', faces: 'מזהה פנים', subtitles: 'יוצר כתוביות', download: 'מוריד את מודל הדיבור…', sound: 'מעבד סאונד', picture: 'מעבד תמונה', export: 'מייצא' }
+const PHASES: Record<string, string> = { read: 'קורא את הסרטון', faces: 'מזהה פנים', subtitles: 'יוצר כתוביות', download: 'מוריד את מודל הדיבור…', translate: 'מתרגם את הכתוביות', sound: 'מעבד סאונד', picture: 'מעבד תמונה', export: 'מייצא' }
 
 function statusText(i: BatchItem): string {
   switch (i.status) {
