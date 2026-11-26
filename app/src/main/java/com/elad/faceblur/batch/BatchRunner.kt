@@ -72,7 +72,7 @@ object BatchRunner {
             item.progress = 0f
             onChange()
             val info = withContext(Dispatchers.IO) { VideoInfo.probe(ctx, item.uri) }
-            val settings = Settings(s.mode, s.strength, s.padding, s.sensitive)
+            val settings = Settings(s.mode, s.strength, s.padding, s.sensitive, s.fast, s.sensitivity)
 
             // Analysis: faces (and the camera's motion). With no face blur, only the frames' times.
             val t0 = SystemClock.elapsedRealtime()
@@ -98,7 +98,8 @@ object BatchRunner {
             val c = EditorController(sess, scope, ctx, models, null)
             ctrl = c
             if (s.blurOff) c.previewAvailable = false
-            item.lowConfidence = !s.blurOff && BatchMath.lowConfidenceTracks(analysis.tracks, analysis.dets) > 0
+            // Fast detection may briefly miss a face: flagged for a look too, as the web app does.
+            item.lowConfidence = !s.blurOff && (settings.fast || BatchMath.lowConfidenceTracks(analysis.tracks, analysis.dets) > 0)
 
             // The project exists from here on, so a failure later can still be opened in the editor.
             val id = ProjectStore.newId()

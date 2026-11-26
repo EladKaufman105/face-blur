@@ -86,7 +86,7 @@ sealed interface UiState {
      */
     data class Working(val info: VideoInfo, val stage: Int, val progress: Float, val subsOnly: Boolean = false, val auto: Boolean = false) : UiState
     data class Editing(val info: VideoInfo, val editor: EditorController) : UiState
-    data class Done(val info: VideoInfo, val result: Outcome.Saved, val canEdit: Boolean, val subsOnly: Boolean = false) : UiState
+    data class Done(val info: VideoInfo, val result: Outcome.Saved, val canEdit: Boolean, val subsOnly: Boolean = false, /** The faces were found with fast detection: its warning stays on the result. */ val fast: Boolean = false) : UiState
     /** [note]: what the template's processing could not do (shown beside the message). */
     data class NoFaces(val info: VideoInfo, val canEdit: Boolean, val note: String? = null) : UiState
     /** A saved project whose video can't be read any more: pick it again. [wrong]: the last pick was another video. */
@@ -119,6 +119,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var strength by mutableStateOf(0.6f)
     var padding by mutableStateOf(1.6f)
     var sensitive by mutableStateOf(false)
+    /** Fast detection (5 a second); off whenever [sensitive] is on (see [detectMode]). */
+    var fast by mutableStateOf(false)
+    /** 0..1: more faces blurred, never fewer (see [com.elad.faceblur.analysis.DetectTuning]). */
+    var sensitivity by mutableStateOf(0f)
+
+    /** Normal, extended or fast: one of three, set together. */
+    var detectMode: com.elad.faceblur.analysis.DetectMode
+        get() = com.elad.faceblur.analysis.DetectMode.of(sensitive, fast)
+        set(v) {
+            sensitive = v == com.elad.faceblur.analysis.DetectMode.EXTENDED
+            fast = v == com.elad.faceblur.analysis.DetectMode.FAST
+        }
     /** Open the editor between analysis and export. */
     var review by mutableStateOf(true)
 
@@ -195,7 +207,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Forgets the template chosen for the last video: its blur look comes back, its export and subtitle look go. */
     private fun resetTemplate() {
-        templateBase?.let { b -> mode = b.mode; strength = b.strength; padding = b.padding; sensitive = b.sensitive }
+        templateBase?.let { b -> mode = b.mode; strength = b.strength; padding = b.padding; sensitive = b.sensitive; fast = b.fast; sensitivity = b.sensitivity }
         templateBase = null
         templateChoice = TemplateChoice()
         templateSettings = null
@@ -483,7 +495,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The settings as they stand now (the Ready screen's), for a template to lay over. */
     private fun currentSettings() = TemplateSettings(
-        mode = mode, strength = strength, padding = padding, sensitive = sensitive,
+        mode = mode, strength = strength, padding = padding, sensitive = sensitive, fast = fast, sensitivity = sensitivity,
         translate = prefs.subsTranslate, subStyle = prefs.subStyle, export = prefs.export,
     )
 
@@ -515,6 +527,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         strength = s.strength
         padding = s.padding
         sensitive = s.sensitive
+        fast = s.fast && !s.sensitive
+        sensitivity = s.sensitivity
         // Only for this video: the user's own export options and subtitle look stay as they are.
         sessionExport = s.export
         sessionSubStyle = s.subStyle
@@ -526,7 +540,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val model = if (models.isReady(SpeechModel.HEBREW) || !models.isReady(SpeechModel.MULTILINGUAL)) SpeechModel.HEBREW else SpeechModel.MULTILINGUAL
         return TemplateSettings(
             blurOff = ctrl.session.subtitlesOnly,
-            mode = st.mode, strength = st.strength, padding = st.padding, sensitive = st.sensitive,
+            mode = st.mode, strength = st.strength, padding = st.padding, sensitive = st.sensitive, fast = st.fast, sensitivity = st.sensitivity,
             createSubs = ctrl.model.cues.isNotEmpty(),
             speechModel = model, language = model.language,
             translate = ctrl.translateOnCreate,
@@ -696,6 +710,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 sj.optDouble("strength", 0.6).toFloat(),
                 sj.optDouble("padding", 1.6).toFloat(),
                 sj.optBoolean("sensitive"),
+                sj.optBoolean("fast"),
+                sj.optDouble("sensitivity", 0.0).toFloat(),
             )
             val session = EditSession(info, settings, loaded.analysis, j.optLong("analysisMs"), j.optBoolean("subtitlesOnly"))
             loaded.edits?.let { session.model.restore(it) }
@@ -863,7 +879,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         closeSession()
-        val settings = Settings(mode, strength, padding, sensitive)
+        val settings = Settings(mode, strength, padding, sensitive, fast, sensitivity)
         val auto = !review
         livePreview = null
         state = UiState.Working(info, 1, 0f, auto = auto)
@@ -920,7 +936,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         job = viewModelScope.launch {
             guard(info, onCancel = { closeSession(); UiState.Ready(info) }) {
                 val analysis = withContext(Dispatchers.IO) { FaceBlurProcessor.framesOnly(getApplication(), info) }
-                val session = EditSession(info, Settings(mode, strength, padding, sensitive), analysis, 0, subtitlesOnly = true)
+                val session = EditSession(info, Settings(mode, strength, padding, sensitive, fast, sensitivity), analysis, 0, subtitlesOnly = true)
                 val ctrl = EditorController(session, editorScope, getApplication(), models, prefs)
                 ctrl.previewAvailable = false
                 when (tool) {
@@ -1033,7 +1049,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             onPreview = { frame -> showLive(frame, emptyList()) },
         ) { p -> state = UiState.Working(s.info, 2, p, subsOnly, auto) }
         if (s.analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / s.analysisMs
-        state = UiState.Done(s.info, saved, canEdit = true, subsOnly = subsOnly)
+        state = UiState.Done(s.info, saved, canEdit = true, subsOnly = subsOnly, fast = !subsOnly && s.settings.fast)
     }
 
     private suspend fun guard(info: VideoInfo, onCancel: () -> UiState, block: suspend () -> Unit) {
@@ -1061,7 +1077,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun retrySensitive() {
         backToSettings()
-        sensitive = true
+        detectMode = com.elad.faceblur.analysis.DetectMode.EXTENDED
     }
 
     fun reset() {

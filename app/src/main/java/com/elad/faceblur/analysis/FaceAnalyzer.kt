@@ -59,8 +59,11 @@ object OpenCv {
  */
 class FaceAnalyzer private constructor(
     context: Context,
-    private val sensitive: Boolean,
+    /** Normal, extended (every frame, weaker evidence) or fast (5 a second): see [DetectMode]. */
+    private val mode: DetectMode,
     private val fps: Float,
+    /** 0..1: above 0, lower thresholds add faces, never take any away (see [DetectTuning]). */
+    private val sensitivity: Float,
     // The whole face pack, each file checked (size and SHA-256) right before (see invoke()): face
     // blur never runs on part of it, and never on a weaker detector instead. Held (it can't be
     // deleted or switched) until close().
@@ -134,6 +137,9 @@ class FaceAnalyzer private constructor(
 
     private val times = ArrayList<Long>()
     private val dets = ConcurrentHashMap<Int, List<Det>>()
+    // A sensitivity above 0: the faces only the lower thresholds find, per frame (see [DetectTuning]).
+    private val extraDets = ConcurrentHashMap<Int, List<Det>>()
+    private val sensitive = mode == DetectMode.EXTENDED
     private var motion = FloatArray(1024)
     private val cuts = ArrayList<Int>()
     private var uprightW = 0
@@ -156,12 +162,14 @@ class FaceAnalyzer private constructor(
     private var frameMsTotal = 0L
     private var waitMsTotal = 0L
 
-    // Detection ~15 times per second of video (every frame in sensitive mode); camera motion
-    // and cut detection run on every frame. On a slow phone or tablet (where the frames wait
-    // for the detectors) fewer, down to ~8 per second, and the crop check only for uncertain
-    // faces: the tracker fills the frames between.
-    private val baseEvery = if (sensitive) 1 else max(1, (fps / RATE).roundToInt())
-    private val maxEvery = if (sensitive) 1 else max(baseEvery, (fps / MIN_RATE).toInt())
+    // Detection ~15 times per second of video (every frame in sensitive mode, 5 a second in fast
+    // mode); camera motion and cut detection run on every frame. On a slow phone or tablet (where
+    // the frames wait for the detectors) fewer, down to ~8 per second (fast mode stays at 5), and
+    // the crop check only for uncertain faces: the tracker fills the frames between.
+    private val baseEvery = DetectTuning.cadence(mode, fps).first
+    private val maxEvery = DetectTuning.cadence(mode, fps).second
+    /** Where the CPU's fine pass starts: fast mode at 640 px (on a trusted GPU it's at the frame's size anyway). */
+    private val startCpuSide = if (mode == DetectMode.FAST) LOW_SIDE else RetinaFaceDetector.CPU_FINE_SIDE
 
     // Clear faces found in several detections in a row (see [FaceDetector]): not re-checked on
     // a crop. Updated as detections finish (workers finish out of order; close enough).
@@ -173,7 +181,7 @@ class FaceAnalyzer private constructor(
     // runs on every detection (see [RetinaFaceDetector.detect]).
     @Volatile private var bigFace = false
     // The fine pass's long side on the CPU: lowered on a device too slow for it.
-    @Volatile private var cpuSide = RetinaFaceDetector.CPU_FINE_SIDE
+    @Volatile private var cpuSide = startCpuSide
     private var windowStart = 0L
     private var blockedMs = 0L
 
@@ -238,11 +246,12 @@ class FaceAnalyzer private constructor(
         frames?.reset()
         times.clear()
         dets.clear()
+        extraDets.clear()
         cuts.clear()
         detectEvery = baseEvery
         lite = false
         bigFace = false
-        cpuSide = RetinaFaceDetector.CPU_FINE_SIDE
+        cpuSide = startCpuSide
         windowStart = 0L
         blockedMs = 0L
         detectMsTotal.set(0)
@@ -343,7 +352,7 @@ class FaceAnalyzer private constructor(
                     if (gen == generation) {
                         val d0 = SystemClock.elapsedRealtime()
                         val det = detector()
-                        val found = det.detect(frame, lite, known, cpuSide, maySkipCoarse)
+                        val found = det.detect(frame, lite, known, cpuSide, maySkipCoarse, sensitivity)
                         detectMsTotal.addAndGet(SystemClock.elapsedRealtime() - d0)
                         detections.incrementAndGet()
                         fineUsTotal.addAndGet(det.lastFineUs)
@@ -353,6 +362,7 @@ class FaceAnalyzer private constructor(
                         cropUsTotal.addAndGet(det.lastCropUs)
                         cropsTotal.addAndGet(det.lastCrops)
                         if (gen == generation) {
+                            if (det.lastExtras.isNotEmpty()) extraDets[idx] = det.lastExtras
                             dets[idx] = found
                             lastDets = found
                             bigFace = found.any { RetinaFaceDetector.isBig(it.box, frame.cols(), frame.rows()) }
@@ -408,7 +418,8 @@ class FaceAnalyzer private constructor(
     /**
      * Every 1.5 s or so: if the frames spent over a third of the time waiting for a free
      * detector, detection is what holds the analysis back, so it gets lighter: on the CPU, the
-     * fine pass at 640 px first (about half the work); then less often (down to [MIN_RATE]).
+     * fine pass at 640 px first (about half the work); then less often (down to [DetectTuning.MIN_RATE];
+     * fast mode stays at its 5 a second and only gets lighter).
      * Lighter also means crops only for uncertain faces and no YuNet.
      */
     private fun adapt(idx: Int) {
@@ -437,6 +448,10 @@ class FaceAnalyzer private constructor(
                 detectEvery++
                 lite = true
                 android.util.Log.i("ONIT", "face detection slower than the video: every $detectEvery frames, lite")
+            } else if (mode == DetectMode.FAST && !lite) {
+                // Fast mode never goes under 5 a second: lighter checks only.
+                lite = true
+                android.util.Log.i("ONIT", "fast face detection slower than the video: lite")
             }
         } else if (blockedMs < span / 10 && detectEvery > baseEvery) {
             // Detection keeps up easily now (the GPU's check is over, say): back toward the
@@ -473,7 +488,15 @@ class FaceAnalyzer private constructor(
         val measuredFps = (if (diffs.isEmpty()) fps else 1_000_000f / diffs[diffs.size / 2]).coerceIn(5f, 240f)
         val aspect = if (uprightW > 0) uprightH.toFloat() / uprightW else 1f
         val cutList = cuts.filter { it in 1 until n }
-        val tracks = OfflineTracker(measuredFps, aspect, sensitive).run(n, dets, motion, cutList)
+        var tracks = OfflineTracker(measuredFps, aspect, sensitive).run(n, dets, motion, cutList)
+        if (sensitivity > 0f && extraDets.isNotEmpty()) {
+            // A sensitivity above 0: the default tracks as they are, and the faces the lower
+            // thresholds add (see [DetectTuning.combine]).
+            val all = HashMap<Int, List<Det>>(dets)
+            for ((i, extra) in extraDets) all[i] = (all[i] ?: emptyList()) + extra
+            val more = OfflineTracker(measuredFps, aspect, sensitive, DetectTuning.thresholds(sensitivity)).run(n, all, motion, cutList)
+            tracks = DetectTuning.combine(tracks, more)
+        }
         val store = frames
         frames = null
         return AnalysisResult(
@@ -517,11 +540,15 @@ class FaceAnalyzer private constructor(
          * An analyzer on the whole face pack, checked now (or [com.elad.faceblur.models.ModelMissing]).
          * The pack stays in use until close(); if making the analyzer fails, it is let go.
          */
-        operator fun invoke(context: Context, sensitive: Boolean, fps: Float): FaceAnalyzer {
+        operator fun invoke(context: Context, sensitive: Boolean, fps: Float): FaceAnalyzer =
+            invoke(context, if (sensitive) DetectMode.EXTENDED else DetectMode.NORMAL, fps, 0f)
+
+        /** As above, in [mode], at [sensitivity] (0..1, see [DetectTuning]). */
+        operator fun invoke(context: Context, mode: DetectMode, fps: Float, sensitivity: Float): FaceAnalyzer {
             val store = com.elad.faceblur.models.ModelStore.get(context)
             val files = store.acquire(com.elad.faceblur.models.PackId.FACES)
             try {
-                return FaceAnalyzer(context, sensitive, fps, files)
+                return FaceAnalyzer(context, mode, fps, DetectTuning.clamp(sensitivity), files)
             } catch (t: Throwable) {
                 store.release(com.elad.faceblur.models.PackId.FACES)
                 throw t
@@ -532,9 +559,7 @@ class FaceAnalyzer private constructor(
         private const val PREVIEW_SIDE = 480
         private const val PREVIEW_MS = 200L
 
-        /** Detections per second of video, and the fewest a slow device goes down to. */
-        private const val RATE = 15f
-        private const val MIN_RATE = 8f
+        // Detections per second of video, and the fewest a slow device goes down to: DetectTuning.cadence.
         /** The fine pass's long side on the CPU when the device can't keep up. */
         private const val LOW_SIDE = 640
         /** A GPU slower than this per frame, when detection holds the pass back, gives way to the CPU. */

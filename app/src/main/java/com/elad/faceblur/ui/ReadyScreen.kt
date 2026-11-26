@@ -27,7 +27,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -164,7 +163,7 @@ private fun BlurSettings(vm: MainViewModel) {
         BlurMode.PIXELATE -> t("פיקסלים")
         BlurMode.SOLID -> t("כיסוי")
     }
-    val summary = look + " · " + if (vm.sensitive) t("זיהוי מורחב") else t("זיהוי רגיל")
+    val summary = look + " · " + detectionSummary(vm.detectMode, vm.sensitivity)
     ClipCard(contentPadding = 0.dp) {
         Column {
             Row(
@@ -207,18 +206,11 @@ private fun BlurSettings(vm: MainViewModel) {
                             onStrength = { vm.strength = it },
                             onPadding = { vm.padding = it },
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(t("זיהוי מורחב"), style = MaterialTheme.typography.titleSmall)
-                                Text(
-                                    t("בודק כל פריים ומטשטש גם פנים שהמערכת פחות בטוחה בהן. מפספס פחות, אבל עלול לטשטש גם דברים מיותרים, ואיטי יותר."),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Spacer(Modifier.width(Space.M))
-                            Switch(checked = vm.sensitive, onCheckedChange = { vm.sensitive = it })
-                        }
+                        DetectionControls(
+                            vm.detectMode, vm.sensitivity,
+                            onDetect = { vm.detectMode = it },
+                            onSensitivity = { vm.sensitivity = it },
+                        )
                     }
                 }
             }

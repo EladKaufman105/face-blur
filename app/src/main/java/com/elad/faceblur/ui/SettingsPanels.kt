@@ -488,3 +488,84 @@ internal fun BlurLookControls(
         SliderRow(t("גודל האזור סביב הפנים"), t("צמוד"), t("רחב"), padding, 1.2f..2.0f, onDone, onPadding)
     }
 }
+
+/**
+ * How faces are looked for: fast, normal (the default) or extended, with what the choice means
+ * (fast's warning stands out), and the sensitivity, which only ever blurs more than the default.
+ */
+@Composable
+internal fun DetectionControls(
+    detect: com.elad.faceblur.analysis.DetectMode,
+    sensitivity: Float,
+    onDetect: (com.elad.faceblur.analysis.DetectMode) -> Unit,
+    onSensitivity: (Float) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Space.L)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
+            Text(t("סוג הזיהוי"), style = MaterialTheme.typography.titleSmall)
+            Box(Modifier.testTag(Tags.DETECT_MODE)) {
+                Segments(
+                    listOf(
+                        com.elad.faceblur.analysis.DetectMode.FAST to t("מהיר"),
+                        com.elad.faceblur.analysis.DetectMode.NORMAL to t("רגיל"),
+                        com.elad.faceblur.analysis.DetectMode.EXTENDED to t("מורחב"),
+                    ),
+                    detect,
+                    onDetect,
+                )
+            }
+            when (detect) {
+                com.elad.faceblur.analysis.DetectMode.FAST -> FastDetectionWarning()
+                com.elad.faceblur.analysis.DetectMode.NORMAL -> Text(
+                    t("בודק כ-15 פריימים בכל שנייה של וידאו. מתאים לרוב הסרטונים."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                com.elad.faceblur.analysis.DetectMode.EXTENDED -> Text(
+                    t("בודק כל פריים ומטשטש גם פנים שהמערכת פחות בטוחה בהן. מפספס פחות, אבל עלול לטשטש גם דברים מיותרים, ואיטי יותר."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Column(Modifier.testTag(Tags.SENSITIVITY), verticalArrangement = Arrangement.spacedBy(Space.XS)) {
+            // Steps of 5%: the same values come back from a template.
+            SliderRow(t("רגישות"), t("רגילה"), t("הכי רגישה"), sensitivity, 0f..1f) {
+                onSensitivity(kotlin.math.round(it * 20f) / 20f)
+            }
+            Text(
+                t("רגישות גבוהה יותר מטשטשת גם פנים שהמערכת פחות בטוחה בהן, ולכן עלולה לטשטש גם דברים שאינם פנים. היא אף פעם לא מטשטשת פחות מהרגיל."),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** What fast detection may miss: shown where it is chosen, after the analysis and in the editor. */
+@Composable
+internal fun FastDetectionWarning(modifier: Modifier = Modifier) {
+    Text(
+        t("זיהוי מהיר בודק פחות פריימים, ולכן מהיר יותר. הוא עלול לפספס לרגע פנים קטנות, רחוקות או בקצה המסך. כדאי לצפות בתוצאה לפני שמשתפים."),
+        style = MaterialTheme.typography.bodySmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onTertiaryContainer,
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.tertiaryContainer)
+            .padding(horizontal = Space.M, vertical = Space.S)
+            .testTag(Tags.FAST_WARNING),
+    )
+}
+
+/** The detection's name for a summary line: "Normal detection", "Fast detection · Sensitivity 40%"... */
+internal fun detectionSummary(detect: com.elad.faceblur.analysis.DetectMode, sensitivity: Float): String {
+    val name = when (detect) {
+        com.elad.faceblur.analysis.DetectMode.FAST -> t("זיהוי מהיר")
+        com.elad.faceblur.analysis.DetectMode.NORMAL -> t("זיהוי רגיל")
+        com.elad.faceblur.analysis.DetectMode.EXTENDED -> t("זיהוי מורחב")
+    }
+    val pct = kotlin.math.round(sensitivity * 100f).toInt()
+    return if (pct > 0) name + " · " + t("רגישות %d%%").format(pct) else name
+}

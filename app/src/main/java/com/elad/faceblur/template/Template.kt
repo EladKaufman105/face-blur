@@ -29,7 +29,15 @@ data class BlurPart(
     val padding: Float? = null,
     /** Extended (sensitive) detection. */
     val sensitive: Boolean? = null,
-)
+    /** Fast detection (5 a second); [sensitive] wins if both are true. */
+    val fast: Boolean? = null,
+    /** 0..1: more faces blurred, never fewer (see [com.elad.faceblur.analysis.DetectTuning]). */
+    val sensitivity: Float? = null,
+) {
+    /** The detection mode this part sets, or null when it leaves it (neither [sensitive] nor [fast] given). */
+    val detect: com.elad.faceblur.analysis.DetectMode?
+        get() = if (sensitive == null && fast == null) null else com.elad.faceblur.analysis.DetectMode.of(sensitive == true, fast == true)
+}
 
 /** Subtitles. A null field is left as it is. */
 data class SubsPart(
@@ -113,6 +121,9 @@ data class Template(
                 b.strength?.let { put("strength", it.toDouble()) }
                 b.padding?.let { put("padding", it.toDouble()) }
                 b.sensitive?.let { put("sensitive", it) }
+                // Older versions read only "sensitive": a fast template is normal detection there (never weaker).
+                b.fast?.let { put("fast", it) }
+                b.sensitivity?.let { put("sensitivity", it.toDouble()) }
             })
         }
         subs?.let { s ->
@@ -162,7 +173,10 @@ data class Template(
                 name = o.optString("name"),
                 group = o.enumOrNull<TemplateGroup>("group") ?: TemplateGroup.USER,
                 blur = o.optJSONObject("blur")?.let { b ->
-                    BlurPart(b.boolOrNull("none"), b.enumOrNull<BlurMode>("mode"), b.floatOrNull("strength"), b.floatOrNull("padding"), b.boolOrNull("sensitive"))
+                    BlurPart(
+                        b.boolOrNull("none"), b.enumOrNull<BlurMode>("mode"), b.floatOrNull("strength"), b.floatOrNull("padding"), b.boolOrNull("sensitive"),
+                        b.boolOrNull("fast"), b.floatOrNull("sensitivity")?.takeIf { !it.isNaN() }?.coerceIn(0f, 1f),
+                    )
                 },
                 subs = o.optJSONObject("subs")?.let { s ->
                     SubsPart(
@@ -203,6 +217,10 @@ data class TemplateSettings(
     val strength: Float = 0.6f,
     val padding: Float = 1.6f,
     val sensitive: Boolean = false,
+    /** Fast detection; [sensitive] wins if both are true. */
+    val fast: Boolean = false,
+    /** 0..1 (see [com.elad.faceblur.analysis.DetectTuning]). */
+    val sensitivity: Float = 0f,
     val createSubs: Boolean = false,
     val speechModel: SpeechModel = SpeechModel.HEBREW,
     val language: String = SpeechModel.HEBREW.language,
@@ -259,8 +277,11 @@ fun Template.applyTo(base: TemplateSettings): TemplateSettings {
             mode = b.mode ?: s.mode,
             strength = b.strength ?: s.strength,
             padding = b.padding ?: s.padding,
-            sensitive = b.sensitive ?: s.sensitive,
         )
+        b.detect?.let { d ->
+            s = s.copy(sensitive = d == com.elad.faceblur.analysis.DetectMode.EXTENDED, fast = d == com.elad.faceblur.analysis.DetectMode.FAST)
+        }
+        b.sensitivity?.let { s = s.copy(sensitivity = it.coerceIn(0f, 1f)) }
     }
     subs?.let { p ->
         val model = p.model ?: s.speechModel
@@ -304,7 +325,7 @@ fun TemplateSettings.toTemplate(id: String, name: String, keep: Set<TemplateCate
     id = id,
     name = name,
     group = TemplateGroup.USER,
-    blur = BlurPart(blurOff, mode, strength, padding, sensitive),
+    blur = BlurPart(blurOff, mode, strength, padding, sensitive, fast && !sensitive, sensitivity),
     subs = SubsPart(createSubs, speechModel, language, translate, subStyle, split.words, split.chars, export.subs, export.saveSrt),
     voice = VoicePart(audio.copy(gainDb = 0f)),
     cuts = CutsPart(cutSilences, minPauseMs, cutFillers),
