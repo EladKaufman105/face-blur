@@ -6,10 +6,7 @@ import com.elad.faceblur.models.ModelDownloads
 import com.elad.faceblur.models.ModelStore
 import com.elad.faceblur.models.NetDecision
 import com.elad.faceblur.models.PackId
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import java.io.File
-import java.io.IOException
 
 /**
  * A speech-recognition model the app can download (once) and then run fully on the device. Its
@@ -63,24 +60,6 @@ class ModelManager(context: Context) {
 
     fun delete(m: SpeechModel) {
         store.delete(m.pack)
-    }
-
-    /**
-     * Asks for [m] (by the user's network rule: it may ask first or wait for Wi-Fi) and waits
-     * until it is installed. Throws if it fails or is cancelled.
-     */
-    suspend fun download(m: SpeechModel) {
-        if (isReady(m)) return
-        downloads.request(listOf(m.pack))
-        while (true) {
-            delay(300)
-            val s = store.status(m.pack)
-            if (s.usable && s.job == null) return
-            val j = s.job
-            if (j is Job.Failed) throw IOException("download failed: ${j.reason}")
-            // Neither queued nor asked about any more (cancelled, or the question was answered "later").
-            if (j == null && downloads.question?.packs?.contains(m.pack) != true) throw CancellationException("download cancelled")
-        }
     }
 
     /** The voice model that tells speakers apart (WeSpeaker, ~13 MB). */

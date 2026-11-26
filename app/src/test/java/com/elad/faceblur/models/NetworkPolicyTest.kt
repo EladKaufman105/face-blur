@@ -52,6 +52,16 @@ class NetworkPolicyTest {
         assertEquals(NetDecision.START, d(NetworkRule(askOverMb = 50), Net.METERED, 100 * mb, mobileOk = true, asking = false))
     }
 
+    /** "Wait for Wi-Fi" holds a download on mobile data even when it is under the limit, until Wi-Fi or "Download now". */
+    @Test
+    fun waitForWifiHoldsSmallDownloads() {
+        val rule = NetworkRule(askOverMb = 50)
+        assertEquals(NetDecision.WAIT_WIFI, NetworkPolicy.decide(rule, Net.METERED, 13 * mb, mobileOk = false, asking = false, wifiWait = true))
+        assertEquals(NetDecision.START, NetworkPolicy.decide(rule, Net.UNMETERED, 13 * mb, mobileOk = false, asking = false, wifiWait = true))
+        assertEquals(NetDecision.START, NetworkPolicy.decide(rule, Net.METERED, 13 * mb, mobileOk = true, asking = false, wifiWait = true))
+        assertEquals(NetDecision.WAIT_NETWORK, NetworkPolicy.decide(rule, Net.NONE, 13 * mb, mobileOk = false, asking = false, wifiWait = true))
+    }
+
     @Test
     fun choices() {
         assertEquals(listOf(0, 25, 50, 100, 250), NetworkRule.CHOICES_MB)

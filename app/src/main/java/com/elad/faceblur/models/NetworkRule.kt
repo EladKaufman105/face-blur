@@ -35,11 +35,14 @@ object NetworkPolicy {
      * @param mobileOk the user already said yes to mobile data for this download ("Download now").
      * @param asking the user is there to be asked (a tap on a download button); a download that
      *   was waiting and isn't allowed now waits for Wi-Fi instead of popping a question.
+     * @param wifiWait the user answered "Wait for Wi-Fi" for this download: it waits on mobile
+     *   data whatever its size, until Wi-Fi comes or the user taps "Download now" ([mobileOk]).
      */
-    fun decide(rule: NetworkRule, net: Net, bytes: Long, mobileOk: Boolean, asking: Boolean): NetDecision = when {
+    fun decide(rule: NetworkRule, net: Net, bytes: Long, mobileOk: Boolean, asking: Boolean, wifiWait: Boolean = false): NetDecision = when {
         net == Net.NONE -> NetDecision.WAIT_NETWORK
         net == Net.UNMETERED -> NetDecision.START
         mobileOk -> NetDecision.START
+        wifiWait -> NetDecision.WAIT_WIFI
         rule.wifiOnly -> NetDecision.WAIT_WIFI
         bytes <= rule.askOverBytes && rule.askOverMb > 0 -> NetDecision.START
         asking -> NetDecision.ASK

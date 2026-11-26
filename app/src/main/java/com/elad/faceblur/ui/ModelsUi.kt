@@ -1,6 +1,8 @@
 package com.elad.faceblur.ui
 
 import android.os.StatFs
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -152,17 +154,14 @@ private fun rememberDownloads(): ModelDownloads {
     return remember { ModelDownloads.get(ctx) }
 }
 
-/** Asks for packs from a tap; tells the user when it waits for a connection. */
-private fun requestPacks(ctx: android.content.Context, d: ModelDownloads, ids: List<PackId>) {
-    if (d.request(ids) == NetDecision.WAIT_NETWORK) {
+/**
+ * Asks for packs (and translation's, with [translation]) from a tap, by the user's network rule
+ * (it may ask first); tells the user when it waits for a connection.
+ */
+private fun requestPacks(ctx: android.content.Context, d: ModelDownloads, ids: List<PackId>, translation: Boolean = false) {
+    if (d.request(ids, translation) == NetDecision.WAIT_NETWORK) {
         Toast.makeText(ctx, t("אין חיבור. ההורדה תתחיל כשתהיה רשת."), Toast.LENGTH_LONG).show()
     }
-}
-
-/** Translation's pack waits for Wi-Fi by the user's rule (ML Kit does the waiting). */
-private fun translationNeedsWifi(d: ModelDownloads): Boolean {
-    val rule = d.prefs.rule
-    return rule.wifiOnly || (d.net == Net.METERED && TranslationPacks.APPROX_BYTES > rule.askOverBytes)
 }
 
 // ---------------------------------------------------------------------- status chip
@@ -338,6 +337,16 @@ internal fun ModelQuestionHost() {
             dismissButton = { TextButton(onClick = { d.answer(false) }) { Text(t("חכה ל-Wi-Fi")) } },
         )
     }
+    // The first download on Android 13+: ask once to show its progress (the download goes on either way).
+    val notify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val ask = d.askNotifications
+    LaunchedEffect(ask) {
+        if (ask && android.os.Build.VERSION.SDK_INT >= 33) {
+            d.askNotifications = false
+            d.prefs.markNotificationsAsked()
+            runCatching { notify.launch(android.Manifest.permission.POST_NOTIFICATIONS) }
+        }
+    }
     val ready = d.justReady
     LaunchedEffect(ready) {
         if (ready != null) {
@@ -399,8 +408,8 @@ internal fun ModelsIntroSheet(onDismiss: () -> Unit) {
     }
     fun start(keys: Set<String>) {
         val ids = available.filter { it.key in keys && !ready(it) }
-        if (TRANSLATE in keys && !translateReady) TranslationPacks.download(translationNeedsWifi(d))
-        requestPacks(ctx, d, ids)
+        // Translation goes with the packs, by the same question and answer (nothing starts before it).
+        requestPacks(ctx, d, ids, translation = TRANSLATE in keys && !translateReady)
         d.prefs.markIntroSeen()
         view = SheetView.PROGRESS
     }
@@ -724,6 +733,7 @@ private fun PackRow(s: PackStatus, offline: Boolean, onDownload: () -> Unit, onC
 /** Translation's pack, kept by ML Kit: listed with the models. */
 @Composable
 private fun TranslationRow(d: ModelDownloads, onDelete: () -> Unit) {
+    val ctx = LocalContext.current
     val st = TranslationPacks.state
     Row(verticalAlignment = Alignment.Top) {
         FeatureTile(AppIcons.Translate, MaterialTheme.colorScheme.primary, 40.dp)
@@ -740,7 +750,7 @@ private fun TranslationRow(d: ModelDownloads, onDelete: () -> Unit) {
                     Text(t("מחק"))
                 }
                 TranslationPacks.State.MISSING, TranslationPacks.State.FAILED, TranslationPacks.State.UNKNOWN ->
-                    FilledTonalButton(onClick = { TranslationPacks.download(translationNeedsWifi(d)) }, enabled = d.net != Net.NONE) {
+                    FilledTonalButton(onClick = { requestPacks(ctx, d, emptyList(), translation = true) }, enabled = d.net != Net.NONE) {
                         Icon(AppIcons.Download, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(Space.XS))
                         Text(t("הורד"))

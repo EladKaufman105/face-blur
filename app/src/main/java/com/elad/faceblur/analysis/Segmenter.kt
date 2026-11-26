@@ -15,6 +15,7 @@ import org.opencv.dnn.Dnn
 import org.opencv.dnn.Net
 import org.opencv.imgproc.Imgproc
 import java.io.Closeable
+import java.io.File
 import java.nio.ByteBuffer
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -38,7 +39,14 @@ import kotlin.math.roundToInt
  * @param times analysis frame times (µs), to file each mask under its frame.
  * @param cuts first frames of shots (smoothing doesn't cross a cut).
  */
-class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, private val store: MaskStore) : Closeable {
+class Segmenter private constructor(
+    context: Context,
+    private val times: LongArray,
+    cuts: IntArray,
+    private val store: MaskStore,
+    // The people pack (both models), checked right before (see invoke()); held until close().
+    private val pack: Map<String, File>,
+) : Closeable {
     private val net: Net
     private val cutSet = cuts.toHashSet()
     private var rgba = Mat()
@@ -61,9 +69,7 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
     private val tileBig = Mat()
     private var acc = Mat()
     private var wsum = Mat()
-    // The people pack (both models), checked now, or ModelMissing; held until close().
     private val modelStore = ModelStore.get(context)
-    private val pack = modelStore.acquire(PackId.PEOPLE)
     private var packHeld = true
     // The second model, loaded for the first frame's orientation (null: it failed to load).
     private var lr: Net? = null
@@ -371,6 +377,18 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
     }
 
     companion object {
+        /** A segmenter on the people pack, checked now (or [ModelMissing]); let go if making it fails. */
+        operator fun invoke(context: Context, times: LongArray, cuts: IntArray, store: MaskStore): Segmenter {
+            val models = ModelStore.get(context)
+            val files = models.acquire(PackId.PEOPLE)
+            try {
+                return Segmenter(context, times, cuts, store, files)
+            } catch (t: Throwable) {
+                models.release(PackId.PEOPLE)
+                throw t
+            }
+        }
+
         const val MODEL = "human_segmentation_pphumanseg_2023mar.onnx"
         /** LR-ASPP MobileNetV3 (torchvision, BSD-3), one per frame orientation (made by ml/export_seg.py). */
         const val LR_LANDSCAPE = "lraspp_mbv3_512x288_fp16.onnx"

@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.io.IOException
 
-/** The user's model choices that persist: the network rule and whether the first-launch sheet was seen. */
+/** The user's model choices that persist: the network rule, the first-launch sheet seen, notifications asked. */
 class ModelPrefs(context: Context) {
     private val sp = context.applicationContext.getSharedPreferences("models", Context.MODE_PRIVATE)
 
@@ -34,6 +34,9 @@ class ModelPrefs(context: Context) {
     var introSeen by mutableStateOf(sp.getBoolean("intro_seen", false))
         private set
 
+    /** Notifications were asked for once (for the download progress); never asked again. */
+    val notificationsAsked: Boolean get() = sp.getBoolean("notifications_asked", false)
+
     fun updateRule(r: NetworkRule) {
         rule = r
         sp.edit().putBoolean("wifi_only", r.wifiOnly).putInt("ask_over_mb", r.askOverMb).apply()
@@ -43,16 +46,23 @@ class ModelPrefs(context: Context) {
         introSeen = true
         sp.edit().putBoolean("intro_seen", true).apply()
     }
+
+    fun markNotificationsAsked() {
+        sp.edit().putBoolean("notifications_asked", true).apply()
+    }
 }
 
-/** "Download on mobile data?": the packs a tap asked for and their size. */
-data class MeteredQuestion(val packs: List<PackId>, val bytes: Long)
+/**
+ * "Download on mobile data?": the packs a tap asked for, their size, and whether translation's
+ * pack (ML Kit) goes with them.
+ */
+data class MeteredQuestion(val packs: List<PackId>, val bytes: Long, val translation: Boolean = false)
 
 /**
  * The downloads of model packs: one at a time, in the order asked, each started only when the
- * network rule allows ([NetworkPolicy]): waiting ones start when the network changes. Nothing
- * downloads without a tap. While one runs, [ModelDownloadService] keeps the app alive and shows
- * the progress in a notification.
+ * network rule allows ([NetworkPolicy], [DownloadQueue]): waiting ones start when the network
+ * changes. Nothing downloads without a tap. While one runs, [ModelDownloadService] keeps the app
+ * alive and shows the progress in a notification.
  */
 class ModelDownloads private constructor(context: Context) {
     private val app = context.applicationContext
@@ -61,15 +71,8 @@ class ModelDownloads private constructor(context: Context) {
     private val downloader = Downloader()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Any()
-
-    /** Packs asked for and not done, in order (the first one allowed runs). */
-    private val queue = ArrayList<PackId>()
-    /** Packs the user said may use mobile data ("Download now"). */
-    private val mobileOk = HashSet<PackId>()
-    private var active: PackId? = null
+    private val queue = DownloadQueue()
     private var activeJob: kotlinx.coroutines.Job? = null
-    /** Stopped by a network change, not by the user: stays in the queue. */
-    private val paused = HashSet<PackId>()
 
     /** The network now (for the screens: "No internet connection"). */
     var net by mutableStateOf(Net.NONE)
@@ -81,6 +84,12 @@ class ModelDownloads private constructor(context: Context) {
 
     /** The last pack that became ready (the screen says so once), or null. */
     var justReady by mutableStateOf<PackId?>(null)
+
+    /**
+     * Set when the first download starts on Android 13+ without permission to notify: the screen
+     * asks once (the download goes on whatever the answer). The screen sets it back.
+     */
+    var askNotifications by mutableStateOf(false)
 
     init {
         watchNetwork()
@@ -134,32 +143,40 @@ class ModelDownloads private constructor(context: Context) {
     }
 
     /**
-     * A tap on a download button: queues [ids] (those that can be downloaded), or asks first
-     * ([question]) when they are too big for mobile data by the user's rule.
+     * A tap on a download button: queues [ids] (those that can be downloaded), and translation's
+     * pack with them if [translation]; or asks first ([question]) when they are too big for mobile
+     * data by the user's rule. Nothing starts before the answer.
      * @return what happens now ([NetDecision.WAIT_NETWORK]: the screen says it starts when online).
      */
-    fun request(ids: Collection<PackId>): NetDecision {
+    fun request(ids: Collection<PackId>, translation: Boolean = false): NetDecision {
         val want = ids.distinct().filter { id ->
             val s = store.status(id)
             s.installed != Installed.PENDING && s.installed != Installed.READY && !s.busy && !s.waiting
         }
-        if (want.isEmpty()) return NetDecision.START
-        val bytes = want.sumOf { bytesLeft(it) }
+        val withTranslation = translation && TranslationPacks.state != TranslationPacks.State.READY &&
+            TranslationPacks.state != TranslationPacks.State.DOWNLOADING && TranslationPacks.state != TranslationPacks.State.WAITING_WIFI
+        if (want.isEmpty() && !withTranslation) return NetDecision.START
+        val bytes = want.sumOf { bytesLeft(it) } + (if (withTranslation) TranslationPacks.APPROX_BYTES else 0L)
         val d = NetworkPolicy.decide(prefs.rule, net, bytes, mobileOk = false, asking = true)
         if (d == NetDecision.ASK) {
-            question = MeteredQuestion(want, bytes)
+            question = MeteredQuestion(want, bytes, withTranslation)
             return d
         }
-        enqueue(want)
+        // ML Kit waits for Wi-Fi by itself when the rule says so.
+        if (withTranslation) TranslationPacks.download(wifiOnly = prefs.rule.wifiOnly || d == NetDecision.WAIT_WIFI)
+        enqueue(want, waitForWifi = false, mobile = false)
         return d
     }
 
-    /** The answer to [question]: download now on mobile data, or wait for Wi-Fi. */
+    /**
+     * The answer to [question]: download now on mobile data, or wait for Wi-Fi. "Wait" holds every
+     * pack it asked about until Wi-Fi (small ones too), or until "Download now" on one of them.
+     */
     fun answer(downloadNow: Boolean) {
         val q = question ?: return
         question = null
-        if (downloadNow) synchronized(lock) { mobileOk += q.packs }
-        enqueue(q.packs)
+        if (q.translation) TranslationPacks.download(wifiOnly = !downloadNow)
+        enqueue(q.packs, waitForWifi = !downloadNow, mobile = downloadNow)
     }
 
     /** The question closed without an answer: nothing is queued. */
@@ -169,16 +186,15 @@ class ModelDownloads private constructor(context: Context) {
 
     /** "Download now" on a download that waits for Wi-Fi. */
     fun downloadNow(id: PackId) {
-        synchronized(lock) { mobileOk += id }
+        synchronized(lock) { queue.downloadNow(id) }
         pump()
     }
 
-    private fun enqueue(ids: List<PackId>) {
+    private fun enqueue(ids: List<PackId>, waitForWifi: Boolean, mobile: Boolean) {
+        if (ids.isEmpty()) return
         synchronized(lock) {
-            for (id in ids) if (id !in queue) {
-                queue += id
-                store.setJob(id, Job.Queued)
-            }
+            queue.add(ids, waitForWifi = waitForWifi, mobile = mobile)
+            for (id in ids) if (queue.active != id) store.setJob(id, Job.Queued)
         }
         pump()
     }
@@ -187,62 +203,64 @@ class ModelDownloads private constructor(context: Context) {
     fun cancel(id: PackId) {
         val job: kotlinx.coroutines.Job?
         synchronized(lock) {
-            queue.remove(id)
-            mobileOk.remove(id)
-            job = if (active == id) activeJob else null
+            job = if (queue.cancel(id)) activeJob.also { activeJob = null } else null
+            store.setJob(id, null)
         }
         job?.cancel()
-        store.setJob(id, null)
         pump()
     }
 
     /** True while something is queued, waiting or downloading. */
-    val pending: Boolean get() = synchronized(lock) { queue.isNotEmpty() }
+    val pending: Boolean get() = synchronized(lock) { !queue.isEmpty }
 
     /** A download is running now. */
-    val running: Boolean get() = synchronized(lock) { active != null }
+    val running: Boolean get() = synchronized(lock) { queue.active != null }
 
     /** The pack downloading now, if any. */
-    val current: PackId? get() = synchronized(lock) { active }
-
-    private fun decision(id: PackId) = NetworkPolicy.decide(prefs.rule, net, bytesLeft(id), id in mobileOk, asking = false)
+    val current: PackId? get() = synchronized(lock) { queue.active }
 
     /** Looks at the queue again: marks what waits, pauses what may not go on, starts the next. */
     private fun pump() {
         var toPause: kotlinx.coroutines.Job? = null
-        var toStart: PackId? = null
+        var started = false
         synchronized(lock) {
-            for (id in queue) {
-                if (id == active) continue
+            val plan = queue.plan(prefs.rule, net) { bytesLeft(it) }
+            for ((id, d) in plan.decisions) {
+                if (id == queue.active) continue
                 store.setJob(
                     id,
-                    when (decision(id)) {
+                    when (d) {
                         NetDecision.START -> Job.Queued
                         NetDecision.WAIT_NETWORK -> Job.Waiting(wifi = false)
                         else -> Job.Waiting(wifi = true)
                     },
                 )
             }
-            val a = active
-            if (a != null) {
-                val d = decision(a)
-                if (d != NetDecision.START) {
-                    paused += a
-                    toPause = activeJob
-                    store.setJob(a, Job.Waiting(wifi = d != NetDecision.WAIT_NETWORK))
-                }
-            } else {
-                toStart = queue.firstOrNull { decision(it) == NetDecision.START }
-                toStart?.let { start(it) }
+            val a = queue.active
+            if (plan.pause && a != null) {
+                toPause = activeJob
+                val d = plan.decisions[a]
+                store.setJob(a, Job.Waiting(wifi = d != NetDecision.WAIT_NETWORK))
+            }
+            plan.start?.let {
+                start(it)
+                started = true
             }
         }
         toPause?.cancel()
-        if (toStart != null) ModelDownloadService.start(app)
+        if (started) {
+            ModelDownloadService.start(app)
+            if (android.os.Build.VERSION.SDK_INT >= 33 && !prefs.notificationsAsked &&
+                app.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                askNotifications = true
+            }
+        }
     }
 
     /** Called under [lock]. */
     private fun start(id: PackId) {
-        active = id
+        val token = queue.started(id)
         store.setJob(id, Job.Downloading(0, store.registry[id].bytes))
         activeJob = scope.launch {
             var failed = false
@@ -256,20 +274,14 @@ class ModelDownloads private constructor(context: Context) {
                 failed = true
                 store.setJob(id, Job.Failed(reasonOf(e)))
             } finally {
-                var done = false
                 synchronized(lock) {
-                    if (active == id) {
-                        active = null
-                        activeJob = null
-                    }
-                    if (!paused.remove(id)) {
-                        queue.remove(id)
-                        mobileOk.remove(id)
-                        done = true
-                    }
+                    val left = queue.ended(id, token)
+                    // Done, or cancelled and not asked for again: no progress left showing (a late
+                    // progress report included). A paused one, or one asked for again, gets its
+                    // state from pump().
+                    if (!failed && (left || id !in queue)) store.setJob(id, null)
+                    if (queue.active == null) activeJob = null
                 }
-                // Done, or cancelled: no progress left showing (a late progress report included).
-                if (done && !failed) store.setJob(id, null)
                 pump()
             }
         }
@@ -284,18 +296,32 @@ class ModelDownloads private constructor(context: Context) {
 
     private class NoSpace : IOException("not enough space")
 
+    /**
+     * Downloads every file of [id] that isn't there yet. An installed pack (an update) gets its
+     * new files under other names, switched in when nothing uses the pack ([ModelStore.finishUpdate]):
+     * files in use are never overwritten.
+     */
     private suspend fun download(id: PackId) {
         val p = store.registry[id]
         val total = p.bytes
+        val update = store.status(id).usable
         var before = 0L
         val ctx = kotlin.coroutines.coroutineContext
         for (f in p.files) {
-            val dest = File(store.dir, f.name)
-            if (Hashing.matches(dest, f) { !ctx.isActive }) {
+            val current = File(store.dir, f.name)
+            if (Hashing.matches(current, f) { !ctx.isActive }) {
                 before += f.expectedSize
                 continue
             }
-            val part = File(store.dir, f.name + ".part")
+            val dest = if (update) store.stagedFile(f.name) else current
+            if (update && Hashing.matches(dest, f) { !ctx.isActive }) {
+                before += f.expectedSize
+                continue
+            }
+            // Not in use (the pack isn't installed): an older file that isn't the registry's goes
+            // now (a different Hebrew model of the same name, say), not after the new one is in.
+            if (!update && current.exists()) current.delete()
+            val part = File(store.dir, dest.name + ".part")
             val size = f.expectedSize
             val need = size - part.length().coerceIn(0L, size)
             val free = runCatching { StatFs(store.dir.path).availableBytes }.getOrDefault(Long.MAX_VALUE)
@@ -310,7 +336,8 @@ class ModelDownloads private constructor(context: Context) {
             )
             before += size
         }
-        if (!store.markInstalled(id)) throw IOException("pack ${id.key} incomplete")
+        val ok = if (update) store.finishUpdate(id) else store.markInstalled(id)
+        if (!ok) throw IOException("pack ${id.key} incomplete")
     }
 
     companion object {

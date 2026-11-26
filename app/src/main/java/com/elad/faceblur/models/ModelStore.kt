@@ -91,6 +91,8 @@ class ModelStore private constructor(context: Context) {
     private val installed = HashMap<PackId, Entry>()
     private val jobs = HashMap<PackId, Job>()
     private val inUse = HashMap<PackId, Int>()
+    /** Updates that are downloaded and checked, waiting for the pack to be released. */
+    private val pendingSwitch = HashSet<PackId>()
 
     /** Every pack's status, for the screens (recomposes when anything changes). */
     var statuses by mutableStateOf<Map<PackId, PackStatus>>(emptyMap())
@@ -122,8 +124,8 @@ class ModelStore private constructor(context: Context) {
     }
 
     private fun publish() {
-        val map = synchronized(lock) { registry.packs.associate { it.id to statusOf(it) } }
-        statuses = map
+        // Assigned under the lock: two threads publishing can't leave the older map in place.
+        synchronized(lock) { statuses = registry.packs.associate { it.id to statusOf(it) } }
     }
 
     // ------------------------------------------------------------------ use
@@ -154,16 +156,54 @@ class ModelStore private constructor(context: Context) {
 
     /** [require], and the pack counts as in use (it can't be deleted) until [release]. */
     fun acquire(id: PackId): Map<String, File> {
-        val files = require(id)
+        // Counted before the check: a delete can't slip in between the check and the use.
         synchronized(lock) { inUse[id] = (inUse[id] ?: 0) + 1 }
-        return files
+        try {
+            return require(id)
+        } catch (t: Throwable) {
+            release(id)
+            throw t
+        }
     }
 
     fun release(id: PackId) {
+        var switch = false
         synchronized(lock) {
             val n = (inUse[id] ?: 0) - 1
             if (n <= 0) inUse.remove(id) else inUse[id] = n
+            switch = n <= 0 && id in pendingSwitch
         }
+        // An update that came in while the pack was in use goes in now.
+        if (switch) finishUpdate(id)
+    }
+
+    /** Where an update's new file waits while the pack is in use (see [finishUpdate]). */
+    fun stagedFile(name: String): File = File(dir, "$name.new")
+
+    /**
+     * An update of an installed pack is downloaded (its changed files as [stagedFile]s, checked):
+     * switched in now if nothing uses the pack, else when it is released. Files in use are never
+     * overwritten. True when the update is (or will be) in.
+     */
+    fun finishUpdate(id: PackId): Boolean {
+        val p = registry[id]
+        synchronized(lock) {
+            for (f in p.files) {
+                val cur = File(dir, f.name)
+                val staged = stagedFile(f.name)
+                if (!staged.isFile && !(if (f.pinned) cur.length() == f.size else cur.length() >= f.minSize)) return false
+            }
+            if ((inUse[id] ?: 0) > 0) {
+                pendingSwitch += id
+                return true
+            }
+            pendingSwitch -= id
+            for (f in p.files) {
+                val staged = stagedFile(f.name)
+                if (staged.isFile) Files.move(staged.toPath(), File(dir, f.name).toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            }
+        }
+        return markInstalled(id)
     }
 
     fun inUse(id: PackId): Boolean = synchronized(lock) { (inUse[id] ?: 0) > 0 }
@@ -185,7 +225,10 @@ class ModelStore private constructor(context: Context) {
             for (n in names) {
                 File(dir, n).delete()
                 File(dir, "$n.part").delete()
+                stagedFile(n).delete()
+                File(dir, "$n.new.part").delete()
             }
+            pendingSwitch -= id
             installed.remove(id)
             jobs.remove(id)
             save()

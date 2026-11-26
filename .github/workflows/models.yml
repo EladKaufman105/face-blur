@@ -67,6 +67,19 @@ jobs:
           ls -la out
           sha256sum out/*.bin
 
+      # A published model is pinned by its sha256 in the app's registry: never replace one.
+      - name: Refuse to replace a published model
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          have=$(gh release view "$MODEL_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null || true)
+          for f in out/*.bin; do
+            if printf '%s\n' "$have" | grep -qxF "$(basename "$f")"; then
+              echo "::error::$(basename "$f") is already in $MODEL_TAG: publish a new models-N release instead"; exit 1
+            fi
+          done
+
       - name: Publish model
         uses: softprops/action-gh-release@v2
         with:
@@ -74,4 +87,5 @@ jobs:
           name: Subtitle models
           body: "Whisper models for on-device subtitles. ivrit.ai whisper-large-v3-turbo (Apache-2.0, https://huggingface.co/ivrit-ai/whisper-large-v3-turbo), quantized to q5_0 with whisper.cpp ${{ env.WHISPER_TAG }}."
           files: out/*.bin
+          overwrite_files: false
           make_latest: false

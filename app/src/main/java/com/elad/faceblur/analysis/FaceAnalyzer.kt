@@ -57,7 +57,15 @@ object OpenCv {
  * are in flight while the CPU does the fine pass (more threads would only fight over its big
  * cores); with a trusted GPU doing it, the CPU side of a detection is small and all of them work.
  */
-class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val fps: Float) : Closeable {
+class FaceAnalyzer private constructor(
+    context: Context,
+    private val sensitive: Boolean,
+    private val fps: Float,
+    // The whole face pack, each file checked (size and SHA-256) right before (see invoke()): face
+    // blur never runs on part of it, and never on a weaker detector instead. Held (it can't be
+    // deleted or switched) until close().
+    private val faceFiles: Map<String, File>,
+) : Closeable {
     private val appContext: Context = context.applicationContext
 
     // Must run before any Mat field below is constructed (initializers run in declaration order).
@@ -68,10 +76,6 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     /** Long side of the frames handed to [onFrame]: small/distant faces need the resolution. */
     val maxSide = 1280
 
-    // The whole face pack, each file checked (size and SHA-256) right now, or ModelMissing: face
-    // blur never runs on part of it, and never on a weaker detector instead. Held (it can't be
-    // deleted) until close().
-    private val faceFiles = com.elad.faceblur.models.ModelStore.get(context).acquire(com.elad.faceblur.models.PackId.FACES)
     @Volatile private var packHeld = true
     private val retinaPath = packFile(RetinaFaceDetector.MODEL)
     private val yunetPath = packFile(FaceDetector.YUNET_MODEL)
@@ -509,6 +513,21 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     }
 
     companion object {
+        /**
+         * An analyzer on the whole face pack, checked now (or [com.elad.faceblur.models.ModelMissing]).
+         * The pack stays in use until close(); if making the analyzer fails, it is let go.
+         */
+        operator fun invoke(context: Context, sensitive: Boolean, fps: Float): FaceAnalyzer {
+            val store = com.elad.faceblur.models.ModelStore.get(context)
+            val files = store.acquire(com.elad.faceblur.models.PackId.FACES)
+            try {
+                return FaceAnalyzer(context, sensitive, fps, files)
+            } catch (t: Throwable) {
+                store.release(com.elad.faceblur.models.PackId.FACES)
+                throw t
+            }
+        }
+
         private const val MOTION_SIDE = 640
         private const val PREVIEW_SIDE = 480
         private const val PREVIEW_MS = 200L
