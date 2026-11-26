@@ -18,13 +18,19 @@ import com.elad.faceblur.pipeline.FaceBlurProcessor
 import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
 import com.elad.faceblur.pipeline.Watermark
+import com.elad.faceblur.models.Installed
+import com.elad.faceblur.models.ModelStore
+import com.elad.faceblur.models.PackId
 import com.elad.faceblur.subs.AudioDecoder
+import com.elad.faceblur.subs.ModelManager
 import com.elad.faceblur.subs.SpeakerDetector
 import com.elad.faceblur.subs.SubPresets
 import com.elad.faceblur.subs.WhisperNative
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.TranslatorOptions
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -48,6 +54,20 @@ object SelfTest {
             val video = File(d, videoName)
             require(video.canonicalPath.startsWith(d.canonicalPath) && video.exists()) { "no video" }
             val uri = Uri.fromFile(video)
+            // The models, as CI copied them (selftest/models/<registry name>), installed through the
+            // app's own store: the registry's JSON and every SHA-256 check run in the shipped build.
+            val store = ModelStore.get(context)
+            val pushed = File(d, "models")
+            fun source(name: String): File? =
+                listOf(File(pushed, name), File(d, name), File(d, if (name == ModelManager.SPEAKER_FILE) "speaker.onnx" else name)).firstOrNull { it.isFile }
+            for (id in listOf(PackId.FACES, PackId.PEOPLE, PackId.SPEAKERS)) {
+                val ok = withContext(Dispatchers.IO) { store.install(id, ::source) }
+                line("model pack ${id.key}: ${if (ok) "installed" else "not installed"} (${store.status(id).installed})")
+            }
+            require(store.status(PackId.FACES).installed == Installed.READY) { "face pack not installed" }
+            // Face blur checks the pack before it runs: the files must still pass.
+            val faceFiles = withContext(Dispatchers.IO) { store.require(PackId.FACES) }
+            require(faceFiles.size == store.registry[PackId.FACES].files.size) { "face pack incomplete" }
             val info = VideoInfo.probe(context, uri)
             line("video ${info.width}x${info.height} ${info.durationMs}ms")
             val settings = Settings(BlurMode.BLUR, 0.6f, 1.6f, false)
@@ -67,18 +87,11 @@ object SelfTest {
             line("sound effect: ${ding?.size ?: 0} samples")
             require((ding?.size ?: 0) > 1000) { "sound effect not decoded" }
             m.addSfx("builtin:ding", 1000, 1600)
-            // Background removal's second model, if CI copied it in (the app downloads it).
-            var staged = false
-            for (name in listOf(com.elad.faceblur.subs.ModelManager.SEG_LANDSCAPE, com.elad.faceblur.subs.ModelManager.SEG_PORTRAIT)) {
-                val src = File(d, name)
-                if (src.exists()) {
-                    src.copyTo(File(File(context.filesDir, "models").apply { mkdirs() }, name), overwrite = true)
-                    staged = true
-                }
-            }
+            // Background removal: both models of the people pack (installed above).
+            require(store.status(PackId.PEOPLE).usable) { "people pack not installed" }
             val masks = p.segment(info, analysis, File(context.cacheDir, "selftest_masks.bin")) {}
             line("people: ${masks.filled}/${masks.frameCount} masks (${FaceBlurProcessor.lastSegModels})")
-            require(!staged || "lraspp" in FaceBlurProcessor.lastSegModels) { "LR-ASPP not used" }
+            require("lraspp" in FaceBlurProcessor.lastSegModels) { "LR-ASPP not used" }
             val export = ExportOptions(subs = SubLang.ORIGINAL, saveSrt = false, aspect = ExportAspect.VERTICAL, watermark = Watermark(text = "@selftest"))
             val style = SubPresets.all.first { it.name == "טיקטוק" }.style
             val out = p.render(info, settings, analysis, m, 0, export, style, AudioEdit(VoiceFx.ROBOT), Background(fill = BgFill.BLUR), masks) {}
@@ -103,8 +116,8 @@ object SelfTest {
                 line("whisper: result $r, $n segments, progress $last, \"${text.take(60)}\"")
                 require(r == 0) { "whisper failed" }
             }
-            val speaker = File(d, "speaker.onnx")
-            if (speaker.exists() && pcm != null) {
+            if (store.status(PackId.SPEAKERS).usable && pcm != null) {
+                val speaker = store.require(PackId.SPEAKERS).getValue(ModelManager.SPEAKER_FILE)
                 val labels = SpeakerDetector.detect(context, audioUri, speaker.path, listOf(SpeakerDetector.Span(0, 3000), SpeakerDetector.Span(3000, 6000)), null) {}
                 line("speakers: ${labels.toList()}")
             }

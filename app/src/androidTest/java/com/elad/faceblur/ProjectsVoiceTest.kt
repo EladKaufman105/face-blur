@@ -61,6 +61,10 @@ import kotlin.math.cos
  */
 @RunWith(AndroidJUnit4::class)
 class ProjectsVoiceTest {
+    /** The model packs, from the test assets (ci/fetch-models.sh), installed as the app installs a download. */
+    @org.junit.Before
+    fun seedModels() = com.elad.faceblur.models.ModelSeed.install()
+
 
     @get:Rule
     val rule = createComposeRule()
@@ -96,7 +100,8 @@ class ProjectsVoiceTest {
         val src = sample("speech_two.mp4")
         val uri = Uri.fromFile(src)
         val mm = ModelManager(ctx)
-        inst.context.assets.open("models/speaker.onnx").use { i -> mm.speakerFile.outputStream().use { i.copyTo(it) } }
+        // The speaker pack is installed by seedModels() (checked like a download).
+        org.junit.Assert.assertTrue("speaker model installed", mm.speakerReady)
         // JFK (0-11 s), then the same speech pitched up as a second voice (11-22 s).
         val times = listOf(300L to 4000L, 4000L to 8000L, 8000L to 10800L, 11300L to 15000L, 15000L to 19000L, 19000L to 21800L)
         val spans = times.map { SpeakerDetector.Span(it.first, it.second) }

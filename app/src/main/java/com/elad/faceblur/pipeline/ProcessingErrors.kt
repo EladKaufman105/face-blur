@@ -25,6 +25,12 @@ object ProcessingErrors {
                 else -> t("העיבוד נכשל. נסה שוב; אם זה חוזר, בחר רזולוציה נמוכה יותר בהגדרות הייצוא.")
             }
         }
+        if (e is com.elad.faceblur.models.ModelMissing) {
+            return when (e.pack) {
+                com.elad.faceblur.models.PackId.FACES -> t("מודל זיהוי הפנים לא במכשיר, או שהשתנה, ולכן הסרטון לא טושטש ולא נשמר. הורד אותו בהגדרות › מודלים ונסה שוב.")
+                else -> t("חסר מודל במכשיר. הורד אותו בהגדרות › מודלים ונסה שוב.")
+            }
+        }
         if (e is MissingMasksException) return t("הרקע של האנשים עדיין לא מוכן, ולכן הסרטון לא נשמר. זהה את האנשים או כבה את הרקע ונסה שוב.")
         if (e is MutedSoundException) return t("אין סאונד לשמירה: הסאונד מושתק")
         if (e is ScrubFailedException) return t("לא הצלחתי להסיר מהסרטון את פרטי המיקום והמכשיר, ולכן הוא לא נשמר. נסה שוב.")

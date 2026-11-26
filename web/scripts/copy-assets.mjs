@@ -1,4 +1,4 @@
-// Copies what the web app shares with the Android app (face model, fonts, sound effects) into public/, so there is one source of truth for each.
+// Copies what the web app shares with the Android app (face and people models from the repo's models/ folder, fonts and sound effects from the app's assets) into public/, so there is one source of truth for each.
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 
 const web = join(dirname(fileURLToPath(import.meta.url)), '..')
 const assets = join(web, '..', 'app', 'src', 'main', 'assets')
+// The models the Android app downloads at run time (pinned in its model-registry.json), kept outside the APK.
+const models = join(web, '..', 'models')
 const pub = join(web, 'public')
 const copy = (from, to) => {
   mkdirSync(dirname(to), { recursive: true })
@@ -13,13 +15,13 @@ const copy = (from, to) => {
 }
 // The face model in float32 and float16 (see scripts/model_web.py).
 const model = join(pub, 'models', 'retinaface_fp16.onnx')
-const src = join(assets, 'retinaface_mv2.onnx')
+const src = join(models, 'retinaface_mv2.onnx')
 if (!existsSync(model) || statSync(model).mtimeMs < statSync(src).mtimeMs || !existsSync(join(pub, 'models', 'retinaface_fp32.onnx'))) {
   execFileSync('python3', [join(web, 'scripts', 'model_web.py'), src, join(pub, 'models')], { stdio: 'inherit' })
 }
 // YuNet (OpenCV Zoo, 2023mar; float32, 230 KB), the second detector, as the app's own file (one source of truth, nothing fetched from elsewhere at run time).
 {
-  const yunet = join(assets, 'face_detection_yunet_2023mar.onnx')
+  const yunet = join(models, 'face_detection_yunet_2023mar.onnx')
   const out = join(pub, 'models', 'yunet.onnx')
   if (!existsSync(out) || statSync(out).mtimeMs < statSync(yunet).mtimeMs) copy(yunet, out)
 }
@@ -58,7 +60,7 @@ if (!existsSync(speaker)) {
 }
 // The people model (PP-HumanSeg), for background removal: float32 throughout.
 const people = join(pub, 'models', 'people.onnx')
-const peopleSrc = join(assets, 'human_segmentation_pphumanseg_2023mar.onnx')
+const peopleSrc = join(models, 'human_segmentation_pphumanseg_2023mar.onnx')
 if (!existsSync(people) || statSync(people).mtimeMs < statSync(peopleSrc).mtimeMs) {
   execFileSync('python3', [join(web, 'scripts', 'model_web.py'), peopleSrc, join(pub, 'models'), 'people', '--fp32-only'], { stdio: 'inherit' })
 }

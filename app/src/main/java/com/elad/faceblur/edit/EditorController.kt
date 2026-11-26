@@ -639,32 +639,18 @@ class EditorController(
     }
 
     /**
-     * Downloads [m] if needed, then transcribes the video with it. [lang]: the spoken language the
-     * person picked for the multilingual model ("he", "ar", "en", "fa"; null or "auto": detect it);
-     * the Hebrew model is always Hebrew.
+     * Transcribes the video with [m], once it is downloaded (the panel shows the model's download
+     * card until then). [lang]: the spoken language the person picked for the multilingual model
+     * ("he", "ar", "en", "fa"; null or "auto": detect it); the Hebrew model is always Hebrew.
      */
     fun makeSubtitles(m: SpeechModel, lang: String? = null) {
         val mm = models ?: return
-        if (subsJob?.isActive == true || mm.downloading != null) return
-        if (mm.isReady(m)) {
-            generateSubtitles(m, lang)
-            return
-        }
-        subsJob = scope.launch {
-            try {
-                mm.download(m)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                notice = t("הורדת המודל נכשלה: %s").format(e.message ?: e.javaClass.simpleName)
-                return@launch
-            }
-            generateSubtitles(m, lang)
-        }
+        if (subsJob?.isActive == true) return
+        if (mm.isReady(m)) generateSubtitles(m, lang)
     }
 
-    /** True while a model downloads or subtitles are being made. */
-    val subsBusy get() = subsProgress != null || models?.downloading != null || speakersProgress != null
+    /** True while subtitles or speakers are being made (a model download goes on by itself). */
+    val subsBusy get() = subsProgress != null || speakersProgress != null
 
     /**
      * Anything running in the background: subtitles, speakers, loudness, cuts, finding the
@@ -1091,6 +1077,11 @@ class EditorController(
     fun findFaces() {
         val ctx = appContext ?: return
         if (!session.subtitlesOnly || findJob?.isActive == true) return
+        // Never without the whole face pack (and never a weaker way instead): the panel offers the download.
+        if (!com.elad.faceblur.models.ModelStore.get(ctx).isUsable(com.elad.faceblur.models.PackId.FACES)) {
+            notice = t("כדי לטשטש פנים צריך את מודל זיהוי הפנים")
+            return
+        }
         if (segmentProgress != null || segmentJob?.isActive == true) {
             notice = t("אי אפשר לזהות פנים בזמן שהאנשים מזוהים. חכה שהזיהוי יסתיים או בטל אותו.")
             return
@@ -1129,6 +1120,8 @@ class EditorController(
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
+            } catch (e: com.elad.faceblur.models.ModelMissing) {
+                notice = t("כדי לטשטש פנים צריך את מודל זיהוי הפנים")
             } catch (e: Exception) {
                 android.util.Log.w("ONIT", "finding faces failed", e)
                 notice = t("זיהוי הפנים נכשל")
@@ -1294,6 +1287,11 @@ class EditorController(
             notice = t("אי אפשר לזהות אנשים בזמן שהפנים מזוהות. חכה שהזיהוי יסתיים או בטל אותו.")
             return
         }
+        // Checked before the old masks go: without the people model they stay as they are.
+        if (!com.elad.faceblur.models.ModelStore.get(ctx).isUsable(com.elad.faceblur.models.PackId.PEOPLE)) {
+            notice = t("כדי להסיר רקע צריך את מודל האנשים")
+            return
+        }
         pauser()
         // The old index must not outlive the masks it described.
         session.projectDir?.let { d -> java.io.File(d, "masks.bin.idx").delete() }
@@ -1316,6 +1314,8 @@ class EditorController(
                 notice = t("האנשים בסרטון זוהו")
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
+            } catch (e: com.elad.faceblur.models.ModelMissing) {
+                notice = t("כדי להסיר רקע צריך את מודל האנשים")
             } catch (e: Exception) {
                 android.util.Log.w("ONIT", "segmentation failed", e)
                 notice = t("זיהוי האנשים נכשל: %s").format(e.message ?: e.javaClass.simpleName)
@@ -1477,15 +1477,22 @@ class EditorController(
         val ctx = appContext ?: return
         if (model.cues.isEmpty() || speakersJob?.isActive == true || subsBusy) return
         pauser()
+        // The voice model is downloaded from its card in the panel, never on the way.
+        if (!mm.speakerReady) {
+            notice = t("כדי למצוא דוברים צריך את מודל הקולות")
+            return
+        }
         speakersJob = scope.launch {
             speakersProgress = 0f
             try {
-                val dl = if (mm.speakerReady) 0f else 0.3f
-                if (dl > 0f) mm.downloadSpeakerModel { speakersProgress = it * dl }
+                // Checked (size and SHA-256) before it runs.
+                val speakerModel = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.elad.faceblur.models.ModelStore.get(ctx).require(com.elad.faceblur.models.PackId.SPEAKERS)[ModelManager.SPEAKER_FILE]
+                } ?: throw com.elad.faceblur.models.ModelMissing(com.elad.faceblur.models.PackId.SPEAKERS)
                 val groups = model.cues.sortedBy { it.startMs }.groupBy { it.group }.values.toList()
                 val spans = groups.map { cs -> SpeakerDetector.Span(cs.minOf { it.startMs }, cs.maxOf { it.endMs }) }
-                val labels = SpeakerDetector.detect(ctx, session.info.uri, mm.speakerFile.path, spans, count) { p ->
-                    main.post { if (speakersProgress != null) speakersProgress = dl + (1f - dl) * p }
+                val labels = SpeakerDetector.detect(ctx, session.info.uri, speakerModel.path, spans, count) { p ->
+                    main.post { if (speakersProgress != null) speakersProgress = p }
                 }
                 val map = HashMap<Int, Int>()
                 groups.forEachIndexed { i, cs -> for (c in cs) map[c.id] = labels[i] }
@@ -1497,6 +1504,8 @@ class EditorController(
                 throw e
             } catch (e: SubtitleEngine.NoAudioException) {
                 notice = t("אין קול בסרטון")
+            } catch (e: com.elad.faceblur.models.ModelMissing) {
+                notice = t("כדי למצוא דוברים צריך את מודל הקולות")
             } catch (e: Exception) {
                 android.util.Log.w("ONIT", "speakers failed", e)
                 notice = t("זיהוי הדוברים נכשל: %s").format(e.message ?: e.javaClass.simpleName)

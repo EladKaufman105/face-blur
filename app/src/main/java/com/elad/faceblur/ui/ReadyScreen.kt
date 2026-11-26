@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -67,13 +66,17 @@ internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, on
     var saveSheet by remember { mutableStateOf(false) }
     // A template with no face blur: nothing here blurs faces, and the screen says so (a privacy matter).
     val blurOff = vm.templateSettings?.blurOff == true
+    // Face blur never starts without the whole face pack: its card offers the download.
+    val facesMissing = vm.facesMissing
     val actions: @Composable () -> Unit = {
         Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
+            if (!blurOff) ModelCard(com.elad.faceblur.models.PackId.FACES)
             GradientButton(
                 if (blurOff) t("פתח בעורך") else t("טשטש פנים"),
                 { vm.review = true; vm.start() },
                 Modifier.fillMaxWidth().testTag(Tags.BLUR_FACES),
                 icon = if (blurOff) null else AppIcons.Face,
+                enabled = !facesMissing,
             )
             Text(
                 if (blurOff) t("בלי טשטוש פנים: ייפתח העורך, והתבנית תחול על הסרטון.")
@@ -81,7 +84,7 @@ internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, on
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = { saveSheet = true }, enabled = !vm.templateNeedsModel, modifier = Modifier.fillMaxWidth().testTag(Tags.BLUR_AND_SAVE)) {
+            TextButton(onClick = { saveSheet = true }, enabled = !vm.templateNeedsModel && !facesMissing, modifier = Modifier.fillMaxWidth().testTag(Tags.BLUR_AND_SAVE)) {
                 Text(if (blurOff) t("או: שמור ישר, בלי עורך") else t("או: טשטש ושמור ישר, בלי עורך"))
             }
             if (blurOff) NoBlurWarning(t("הפנים לא יטושטשו בסרטון הזה: בתבנית הזו אין טשטוש פנים."), Modifier.testTag(Tags.NO_BLUR_WARNING))
@@ -138,23 +141,16 @@ internal fun NoBlurWarning(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** The template makes subtitles but the speech model isn't on the phone yet: say so, and download it from here. */
+/**
+ * The template needs a model beside the faces that isn't on the phone yet (subtitles, a people
+ * background): its "download to use" card, from here.
+ */
 @Composable
 private fun SpeechModelRow(vm: MainViewModel) {
-    val settings = vm.templateSettings ?: return
-    if (!settings.needsSpeechModel || vm.models.isReady(settings.speechModel)) return
-    // Only a download of the model this template needs is "downloading" here (another one is not its business).
-    val downloading = vm.models.downloading == settings.speechModel
+    val missing = vm.missingPacks.filter { it != com.elad.faceblur.models.PackId.FACES }
+    if (missing.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
-        Text(
-            if (downloading) t("מוריד… %d%%").format((vm.models.progress * 100).roundToInt())
-            else t("כתוביות צריכות מודל זיהוי דיבור, שמורידים פעם אחת (%d MB).").format(settings.speechModel.approxBytes / 1_000_000L),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (downloading) LinearProgressIndicator(progress = { vm.models.progress }, modifier = Modifier.fillMaxWidth())
-        else if (vm.models.downloading == null) AccentOutlinedButton(t("הורד את המודל עכשיו"), vm::downloadTemplateModel, Modifier.fillMaxWidth(), accent = Feature.SUBTITLES.tint, height = 44.dp)
-        vm.templateDownloadError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        for (id in missing) ModelCard(id)
     }
 }
 

@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "packs": [
+    {
+      "id": "faces",
+      "feature": "face blur, batches and templates with blur",
+      "version": 1,
+      "compat": 1,
+      "recommended": true,
+      "files": [
+        { "name": "retinaface_mv2.onnx", "size": 6288551, "sha256": "f0798d00b32dd3aadf8641a9e5126d1435873425371ea1d911b780d314378dda", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/d220a0844af436c50d65ece712c3254c31c57805/app/src/main/assets/retinaface_mv2.onnx" },
+        { "name": "face_detection_yunet_2023mar.onnx", "size": 232589, "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/d220a0844af436c50d65ece712c3254c31c57805/app/src/main/assets/face_detection_yunet_2023mar.onnx" },
+        { "name": "retinaface-mv2-1280x736.tflite", "size": 6314616, "sha256": "e3d003315300f7297c28db24736d7465fa88e5407dc528942e5aff4693fc9d96", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/1fa4412c520bc4b3ffada79e07f36252fd14afb5/retinaface-mv2-1280x736.tflite" },
+        { "name": "retinaface-mv2-736x1280.tflite", "size": 6314616, "sha256": "cdc93a8e1af969314ffa6d39e704bff6323c136569051f75be4a396acfd7f293", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/1fa4412c520bc4b3ffada79e07f36252fd14afb5/retinaface-mv2-736x1280.tflite" }
+      ]
+    },
+    {
+      "id": "people",
+      "feature": "background removal",
+      "version": 1,
+      "compat": 1,
+      "recommended": true,
+      "files": [
+        { "name": "human_segmentation_pphumanseg_2023mar.onnx", "size": 3102392, "sha256": "3e62d73d0146bb4eae1c9964dacd808f670092b3b4c99e3e3168522b5cbbc58f", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/d220a0844af436c50d65ece712c3254c31c57805/app/src/main/assets/human_segmentation_pphumanseg_2023mar.onnx" },
+        { "name": "lraspp_mbv3_512x288_fp16.onnx", "size": 6481264, "sha256": "9f639c4dd0288bdafe736a2c62ee55d4f7fd26dc55af52ecc86fdbe68e2ae73a", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/187ecd0f0bdb7e082b132a0e844e3a6785fb463b/seg/lraspp_mbv3_512x288_fp16.onnx" },
+        { "name": "lraspp_mbv3_288x512_fp16.onnx", "size": 6481264, "sha256": "b14720feee109c688b4639c73efa7a09063119ceefdc383308f45790af045a3b", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/187ecd0f0bdb7e082b132a0e844e3a6785fb463b/seg/lraspp_mbv3_288x512_fp16.onnx" }
+      ]
+    },
+    {
+      "id": "speakers",
+      "feature": "speaker colors in subtitles",
+      "version": 1,
+      "compat": 1,
+      "recommended": true,
+      "files": [
+        { "name": "speaker-wespeaker-r34lm-fp16.onnx", "size": 13274831, "sha256": "3d70b71bab69dc5896fafc930394df5d0c03f4c3959aec67790fcd0c1cc27097", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/bb8e2afa2a37a3db68956504d149ad0c616689cf/speaker-wespeaker-r34lm-fp16.onnx" }
+      ]
+    },
+    {
+      "id": "speech-he",
+      "feature": "Hebrew subtitles (ivrit.ai Whisper)",
+      "version": 1,
+      "compat": 1,
+      "recommended": false,
+      "files": [
+        { "name": "ggml-ivrit-large-v3-turbo-q5_0.bin", "size": 574041195, "sha256": "c8108b5546e255e385b1edbd45d319f4b4bf91d67d21cc524b6005ed7b749b54", "url": "https://github.com/EladKaufman105/face-blur/releases/download/models-1/ggml-ivrit-large-v3-turbo-q5_0.bin" }
+      ]
+    },
+    {
+      "id": "speech-any",
+      "feature": "subtitles in any language (multilingual Whisper)",
+      "version": 1,
+      "compat": 1,
+      "recommended": false,
+      "unpinned": true,
+      "todo": "Pin it: mirror the file into the models-1 release with .github/workflows/models.yml (model: multilingual, a pinned Hugging Face revision), then set url, size and sha256 from its log and drop unpinned/minSize/approxSize. Until then it downloads from Hugging Face main and is checked by size only, as before the registry.",
+      "files": [
+        { "name": "ggml-large-v3-turbo-q5_0.bin", "size": 0, "sha256": "", "minSize": 10000000, "approxSize": 574000000, "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin" }
+      ]
+    }
+  ]
+}

@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Only to download the speech model and the translation pack, once. -->
+    <!-- Only to download the models (each once, after a tap) and the translation pack; the
+         network's kind (Wi-Fi or mobile data) for the user's download rule. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- A batch of videos goes on with the screen off: a foreground service (media processing from
@@ -42,5 +44,11 @@
             android:name=".batch.BatchService"
             android:exported="false"
             android:foregroundServiceType="mediaProcessing|dataSync" />
+
+        <!-- Model downloads (only after a tap) go on in the background, with their progress. -->
+        <service
+            android:name=".models.ModelDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

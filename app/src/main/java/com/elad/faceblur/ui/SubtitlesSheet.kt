@@ -112,7 +112,6 @@ internal fun HiddenTranslationNote(ctrl: EditorController, c: com.elad.faceblur.
     }
 }
 
-private fun mb(bytes: Long) = ltr("%d MB".format((bytes / 1e6).roundToInt()))
 
 /**
  * Subtitles: pick the speech model (downloaded once), make the subtitles on the device, add one
@@ -160,7 +159,6 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
             }
 
             // Progress and messages stay in view whatever is folded.
-            val dl = models?.downloading
             val prog = ctrl.subsProgress
             val spk = ctrl.speakersProgress
             if (spk != null) {
@@ -168,17 +166,13 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
                     Progress(t("מזהה דוברים… %d%%").format((spk * 100).roundToInt()), "speakers", spk) { ctrl.cancelSpeakers() }
                 }
             }
-            if (models != null && (dl != null || prog != null)) {
+            if (models != null && prog != null) {
                 Box(Modifier.padding(horizontal = 20.dp)) {
-                    if (dl != null) {
-                        Progress(t("מוריד את המודל… %d%%").format((models.progress * 100).roundToInt()), "download", models.progress) { ctrl.cancelSubtitles() }
-                    } else if (prog != null) {
-                        Progress(
-                            subsStageText(prog.first, prog.second),
-                            prog.first,
-                            if (prog.first == SubtitleEngine.Stage.PACK) null else prog.second,
-                        ) { ctrl.cancelSubtitles() }
-                    }
+                    Progress(
+                        subsStageText(prog.first, prog.second),
+                        prog.first,
+                        if (prog.first == SubtitleEngine.Stage.PACK) null else prog.second,
+                    ) { ctrl.cancelSubtitles() }
                 }
             }
             ctrl.notice?.let {
@@ -250,17 +244,19 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
                                 Chips(speechLanguageOptions(), speechPick) { if (!busy) speechPick = it }
                             }
                             val ready = models.isReady(choice)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    if (ready) t("המודל מוכן במכשיר") else t("הורדה חד-פעמית של %s (מומלץ Wi-Fi)").format(mb(choice.approxBytes)),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                if (ready && !busy) {
-                                    TextButton(onClick = { models.delete(choice) }) { Text(t("מחק מודל")) }
+                            if (ready) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        t("המודל מוכן במכשיר"),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    if (!busy) TextButton(onClick = { models.delete(choice) }) { Text(t("מחק מודל")) }
                                 }
                             }
+                            // Not on the phone: its "download to use" card (the download goes on by itself, by the network rule).
+                            ModelCard(choice.pack)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
@@ -274,14 +270,14 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
                             Switch(checked = ctrl.translateOnCreate, onCheckedChange = { ctrl.changeTranslateOnCreate(it) }, enabled = !busy)
                         }
                         if (ctrl.translateOnCreate) TranslateToPicker(ctrl, !busy)
-                        if (dl == null && prog == null) {
-                            Button(onClick = { ctrl.makeSubtitles(choice, speechPick) }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
+                        if (prog == null) {
+                            Button(
+                                onClick = { ctrl.makeSubtitles(choice, speechPick) },
+                                enabled = models.isReady(choice),
+                                modifier = Modifier.fillMaxWidth().height(50.dp),
+                            ) {
                                 Text(
-                                    when {
-                                        !models.isReady(choice) -> t("הורד מודל וצור כתוביות")
-                                        count > 0 -> t("צור כתוביות מחדש")
-                                        else -> t("צור כתוביות")
-                                    },
+                                    if (count > 0) t("צור כתוביות מחדש") else t("צור כתוביות"),
                                     style = MaterialTheme.typography.titleSmall,
                                 )
                             }
@@ -325,9 +321,11 @@ private fun SpeakersRow(ctrl: EditorController, busy: Boolean) {
                     FilterChip(selected = count == n, onClick = { count = n }, label = { Text(ltr("$n")) })
                 }
             }
+            // The voice model first, from its card (never downloaded on the way).
+            ModelCard(com.elad.faceblur.models.PackId.SPEAKERS)
             Button(
                 onClick = { open = false; ctrl.detectSpeakers(count) },
-                enabled = !busy,
+                enabled = !busy && models.speakerReady,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
             ) { Text(t("זהה דוברים")) }
         }

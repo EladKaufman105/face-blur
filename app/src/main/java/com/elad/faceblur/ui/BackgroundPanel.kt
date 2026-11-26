@@ -91,6 +91,11 @@ fun BackgroundPanel(ctrl: EditorController) {
                 ) { ctrl.changeBackground(b.copy(key = it)) }
                 if (b.key == BgKey.PERSON) {
                     val p = ctrl.segmentProgress
+                    // Finding the people needs the people model: its "download to use" card first.
+                    val ctx = LocalContext.current
+                    val peopleStore = remember { com.elad.faceblur.models.ModelStore.get(ctx) }
+                    val peopleReady = peopleStore.statuses[com.elad.faceblur.models.PackId.PEOPLE]?.usable == true
+                    if (p == null) ModelCard(com.elad.faceblur.models.PackId.PEOPLE)
                     when {
                         p != null -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -105,7 +110,7 @@ fun BackgroundPanel(ctrl: EditorController) {
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            FilledTonalButton(onClick = ctrl::findPeople, enabled = ctrl.findFacesProgress == null) {
+                            FilledTonalButton(onClick = ctrl::findPeople, enabled = ctrl.findFacesProgress == null && peopleReady) {
                                 Icon(AppIcons.Person, null, Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text(t("זהה אנשים"))
@@ -113,7 +118,7 @@ fun BackgroundPanel(ctrl: EditorController) {
                         }
                         else -> Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(t("האנשים זוהו בכל הסרטון"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-                            TextButton(onClick = ctrl::findPeople, enabled = ctrl.findFacesProgress == null) { Text(t("זהה שוב")) }
+                            TextButton(onClick = ctrl::findPeople, enabled = ctrl.findFacesProgress == null && peopleReady) { Text(t("זהה שוב")) }
                         }
                     }
                 } else {

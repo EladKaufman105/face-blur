@@ -52,9 +52,7 @@ jobs:
               - 'ci/web-tests.sh'
               - 'web/**'
               # What web/scripts/copy-assets.mjs takes from the Android app.
-              - 'app/src/main/assets/retinaface_mv2.onnx'
-              - 'app/src/main/assets/face_detection_yunet_2023mar.onnx'
-              - 'app/src/main/assets/human_segmentation_pphumanseg_2023mar.onnx'
+              - 'models/**'
               - 'app/src/main/assets/fonts/**'
               - 'app/src/main/assets/sfx/**'
             subtitles:

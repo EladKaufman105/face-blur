@@ -58,6 +58,7 @@ object OpenCv {
  * cores); with a trusted GPU doing it, the CPU side of a detection is small and all of them work.
  */
 class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val fps: Float) : Closeable {
+    private val appContext: Context = context.applicationContext
 
     // Must run before any Mat field below is constructed (initializers run in declaration order).
     init {
@@ -67,10 +68,18 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
     /** Long side of the frames handed to [onFrame]: small/distant faces need the resolution. */
     val maxSide = 1280
 
-    private val retinaPath = asset(context, RetinaFaceDetector.MODEL)
-    private val yunetPath = asset(context, FaceDetector.YUNET_MODEL)
-    // The big detection pass on the GPU, when the phone and the downloaded models allow it.
-    private val gpu = GpuFaceNet.create(context)
+    // The whole face pack, each file checked (size and SHA-256) right now, or ModelMissing: face
+    // blur never runs on part of it, and never on a weaker detector instead. Held (it can't be
+    // deleted) until close().
+    private val faceFiles = com.elad.faceblur.models.ModelStore.get(context).acquire(com.elad.faceblur.models.PackId.FACES)
+    @Volatile private var packHeld = true
+    private val retinaPath = packFile(RetinaFaceDetector.MODEL)
+    private val yunetPath = packFile(FaceDetector.YUNET_MODEL)
+    // The big detection pass on the GPU, when the phone allows it (its models are in the pack).
+    private val gpu = GpuFaceNet.create(faceFiles)
+
+    private fun packFile(name: String): String =
+        faceFiles[name]?.absolutePath ?: throw com.elad.faceblur.models.ModelMissing(com.elad.faceblur.models.PackId.FACES)
     // The rest on the CPU in fp16 once it's shown to agree with fp32 here.
     private val half = HalfPrecision()
 
@@ -488,6 +497,8 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
             detectors.clear()
         }
         gpu?.close()
+        if (packHeld) com.elad.faceblur.models.ModelStore.get(appContext).release(com.elad.faceblur.models.PackId.FACES)
+        packHeld = false
         preview.release()
         frames?.close()
         frames = null
@@ -523,19 +534,5 @@ class FaceAnalyzer(context: Context, private val sensitive: Boolean, private val
          */
         val WORKERS: Int = Runtime.getRuntime().availableProcessors().let { if (it >= 8) 5 else if (it >= 6) 4 else 3 }
 
-        /**
-         * The model file to load: the asset, copied out once. Copied again when the app ships a
-         * different one (sizes differ), or an update would keep using the old model.
-         */
-        fun asset(context: Context, name: String): String {
-            val file = File(context.filesDir, name)
-            val size = runCatching { context.assets.openFd(name).use { it.length } }.getOrDefault(-1L)
-            if (!file.exists() || file.length() == 0L || (size > 0 && file.length() != size)) {
-                val tmp = File(context.filesDir, "$name.tmp")
-                context.assets.open(name).use { input -> tmp.outputStream().use { input.copyTo(it) } }
-                tmp.renameTo(file)
-            }
-            return file.absolutePath
-        }
     }
 }

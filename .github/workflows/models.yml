@@ -2,10 +2,22 @@ name: Subtitle models
 
 # Builds the on-device Hebrew subtitle model and publishes it as a release asset for the app to
 # download: ivrit.ai's Hebrew fine-tune of Whisper large-v3-turbo (Apache-2.0), quantized to q5_0.
-# Manual only. The transcription checks against the stock model (edge-tts speech samples) and the
-# model-check branch were dropped; the asset's sha256 is in the log.
+# With "model: multilingual" it instead mirrors the stock multilingual Whisper large-v3-turbo q5_0
+# (MIT) from Hugging Face at a pinned revision into the same release, so the app downloads every
+# model from this repository. Manual only. The asset's size and sha256 are in the log: they go into
+# app/src/main/assets/model-registry.json (a PR), which the app checks every download against.
 on:
   workflow_dispatch:
+    inputs:
+      model:
+        description: Which model to publish
+        type: choice
+        options: [ivrit, multilingual]
+        default: ivrit
+      revision:
+        description: Hugging Face commit of ggerganov/whisper.cpp to mirror (multilingual only; 40 hex)
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -20,7 +32,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Mirror multilingual Whisper
+        if: inputs.model == 'multilingual'
+        shell: bash
+        env:
+          REVISION: ${{ inputs.revision }}
+        run: |
+          [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::revision must be a 40-hex commit"; exit 1; }
+          mkdir -p out
+          curl -sSfL --retry 3 -o out/ggml-large-v3-turbo-q5_0.bin \
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/$REVISION/ggml-large-v3-turbo-q5_0.bin"
+          ls -la out
+          stat -c '%s' out/ggml-large-v3-turbo-q5_0.bin
+          sha256sum out/*.bin
+
       - name: Build whisper.cpp quantizer
+        if: inputs.model != 'multilingual'
         shell: bash
         run: |
           git clone -q --depth 1 -b "$WHISPER_TAG" https://github.com/ggml-org/whisper.cpp wcpp
@@ -29,6 +56,7 @@ jobs:
           ls -la wcpp/build/bin
 
       - name: Quantize ivrit.ai turbo
+        if: inputs.model != 'multilingual'
         shell: bash
         run: |
           mkdir -p out
@@ -45,5 +73,5 @@ jobs:
           tag_name: ${{ env.MODEL_TAG }}
           name: Subtitle models
           body: "Whisper models for on-device subtitles. ivrit.ai whisper-large-v3-turbo (Apache-2.0, https://huggingface.co/ivrit-ai/whisper-large-v3-turbo), quantized to q5_0 with whisper.cpp ${{ env.WHISPER_TAG }}."
-          files: out/ggml-ivrit-large-v3-turbo-q5_0.bin
+          files: out/*.bin
           make_latest: false

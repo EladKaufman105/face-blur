@@ -392,16 +392,10 @@ internal fun EditorMessages(ctrl: EditorController, modifier: Modifier = Modifie
             ctrl.segmentProgress?.let { p -> ProgressPill(t("מזהה אנשים…"), p, ctrl::cancelFindPeople) }
         }
         if (!ctrl.subsSheet) {
-            val models = ctrl.models
+            // A model download goes on by itself (its card and the notification show it).
             val sp = ctrl.subsProgress
             val eta = rememberEta()
-            if (models?.downloading != null) {
-                val left = etaText(eta.remainingMs("download", models.progress))
-                ProgressPill(
-                    t("מוריד את המודל… %d%%").format((models.progress * 100).roundToInt()) + (left?.let { " · $it" } ?: ""),
-                    models.progress, ctrl::cancelSubtitles,
-                )
-            } else if (sp != null) {
+            if (sp != null) {
                 val determinate = sp.first != SubtitleEngine.Stage.PACK
                 val left = if (determinate) etaText(eta.remainingMs(sp.first, sp.second)) else null
                 ProgressPill(

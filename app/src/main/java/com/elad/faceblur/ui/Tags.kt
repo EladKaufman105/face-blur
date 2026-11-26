@@ -28,6 +28,16 @@ object Tags {
     const val PROPERTIES = "editor.properties"
     const val EXPORT = "editor.export"
     const val EXPORT_GO = "export.go"
+    const val MODELS_SHEET = "models.sheet"
+    const val MODELS_DOWNLOAD_ALL = "models.downloadAll"
+    const val MODELS_CHOOSE = "models.choose"
+    const val MODELS_LATER = "models.later"
+    const val MODELS_SETTINGS = "settings.models"
+    const val MODELS_SCREEN = "models.screen"
+
+    /** A feature's "download to use" card for a model pack, and its download button. */
+    fun modelCard(id: com.elad.faceblur.models.PackId) = "models.card." + id.key
+    fun modelDownload(id: com.elad.faceblur.models.PackId) = "models.download." + id.key
     const val PLAY = "editor.play"
     const val UNDO = "editor.undo"
     const val SAFE_ZONE = "editor.safeZone"

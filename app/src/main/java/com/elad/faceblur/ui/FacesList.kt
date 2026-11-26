@@ -69,7 +69,12 @@ internal fun FacesList(ctrl: EditorController) {
                     TextButton(onClick = ctrl::cancelFindFaces) { Text(t("עצור")) }
                 }
             } else {
-                FilledTonalButton(onClick = ctrl::findFaces, enabled = ctrl.segmentProgress == null, modifier = Modifier.fillMaxWidth().testTag(Tags.FIND_FACES)) { Text(t("זהה פנים")) }
+                // Never without the whole face pack: its "download to use" card first.
+                ModelCard(com.elad.faceblur.models.PackId.FACES)
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val facesReady = androidx.compose.runtime.remember { com.elad.faceblur.models.ModelStore.get(ctx) }
+                    .statuses[com.elad.faceblur.models.PackId.FACES]?.usable == true
+                FilledTonalButton(onClick = ctrl::findFaces, enabled = ctrl.segmentProgress == null && facesReady, modifier = Modifier.fillMaxWidth().testTag(Tags.FIND_FACES)) { Text(t("זהה פנים")) }
             }
         }
         if (tracks.isEmpty()) return
