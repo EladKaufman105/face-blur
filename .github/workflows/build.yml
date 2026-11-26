@@ -34,6 +34,8 @@ on:
       - 'ci/publish-pages.sh'
       - 'ci/pages-build.sh'
       - 'web/**'
+      # The models web/ shares; the app downloads them from pinned commits, never from here.
+      - 'models/**'
       - 'docs/**'
       - '.claude/**'
       - '.github/pull_request_template.md'
@@ -327,7 +329,10 @@ jobs:
         id: models-restore
         uses: actions/cache/restore@v4
         with:
-          path: app/src/androidTest/assets/models
+          # The registry's files only (ggml-tiny.bin is downloaded each run by fetch-test-media.sh).
+          path: |
+            app/src/androidTest/assets/models/*.onnx
+            app/src/androidTest/assets/models/*.tflite
           key: test-models-${{ hashFiles('app/src/main/assets/model-registry.json') }}
 
       # The test clips and models download in the background while the build is set up. OpenCV
@@ -376,7 +381,9 @@ jobs:
         if: steps.models-restore.outputs.cache-hit != 'true' && env.SAVE_CACHES == 'true'
         uses: actions/cache/save@v4
         with:
-          path: app/src/androidTest/assets/models
+          path: |
+            app/src/androidTest/assets/models/*.onnx
+            app/src/androidTest/assets/models/*.tflite
           key: ${{ steps.models-restore.outputs.cache-primary-key }}
 
       - name: Build test APKs (x86_64)

@@ -5,7 +5,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 ## Branches
 
 - `main`: releases only. A merge publishes a public GitHub release (APK): the release candidate of the tested beta when `main`'s tree is that beta's ("promote", a few minutes), else once the emulator e2e passes. The web app from `main` is at https://eladkaufman105.github.io/face-blur/.
-- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Beta" (separate app id, installs beside ONIT) once the emulator e2e passes. Merges that change only paths in `EXCLUDES` of `ci/promote-check.sh` (`web/`, `docs/`, `.claude/`, the PR template, `parity-hint.yml` and the web app's CI files) make no beta. Merges that change web files run the web tests, then deploy the beta web app. The web app from `develop` is the beta web app, at https://eladkaufman105.github.io/face-blur/beta/.
+- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Beta" (separate app id, installs beside ONIT) once the emulator e2e passes. Merges that change only paths in `EXCLUDES` of `ci/promote-check.sh` (`web/`, `models/`, `docs/`, `.claude/`, the PR template, `parity-hint.yml` and the web app's CI files) make no beta. Merges that change web files run the web tests, then deploy the beta web app. The web app from `develop` is the beta web app, at https://eladkaufman105.github.io/face-blur/beta/.
 - Never push, force-push, rebase or delete `main` or `develop`. Repository rulesets enforce this. Do not try to work around them.
 - `labs` is retired. Do not push to it. It is kept as history.
 - `hotfix/<name>`: branch from `main`, PR into `main`, then a PR `main` -> `develop` (merge commit) to bring the fix back.

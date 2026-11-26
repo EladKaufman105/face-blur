@@ -119,9 +119,17 @@ class ModelDownloads private constructor(context: Context) {
         else -> Net.METERED
     }
 
+    /** Translation's pack was asked for with no network: it starts when one comes. */
+    @Volatile private var translationOnNetwork = false
+
     private fun changed(n: Net) {
         if (n == net) return
         net = n
+        if (n != Net.NONE && translationOnNetwork) {
+            translationOnNetwork = false
+            val r = prefs.rule
+            TranslationPacks.download(wifiOnly = r.wifiOnly || (n == Net.METERED && TranslationPacks.APPROX_BYTES > r.askOverBytes))
+        }
         pump()
     }
 
@@ -162,8 +170,12 @@ class ModelDownloads private constructor(context: Context) {
             question = MeteredQuestion(want, bytes, withTranslation)
             return d
         }
-        // ML Kit waits for Wi-Fi by itself when the rule says so.
-        if (withTranslation) TranslationPacks.download(wifiOnly = prefs.rule.wifiOnly || d == NetDecision.WAIT_WIFI)
+        // ML Kit waits for Wi-Fi by itself when the rule says so; with no network at all it would
+        // fail at once, so it starts when a network comes ([changed]).
+        if (withTranslation) {
+            if (d == NetDecision.WAIT_NETWORK) translationOnNetwork = true
+            else TranslationPacks.download(wifiOnly = prefs.rule.wifiOnly || d == NetDecision.WAIT_WIFI)
+        }
         enqueue(want, waitForWifi = false, mobile = false)
         return d
     }
@@ -224,6 +236,11 @@ class ModelDownloads private constructor(context: Context) {
         var toPause: kotlinx.coroutines.Job? = null
         var started = false
         synchronized(lock) {
+            // Installed and current (done while paused, or by another way): nothing to wait for.
+            for (id in queue.ids) if (store.status(id).installed == Installed.READY) {
+                queue.dropReady(id)
+                if (queue.active != id) store.setJob(id, null)
+            }
             val plan = queue.plan(prefs.rule, net) { bytesLeft(it) }
             for ((id, d) in plan.decisions) {
                 if (id == queue.active) continue
@@ -275,7 +292,7 @@ class ModelDownloads private constructor(context: Context) {
                 store.setJob(id, Job.Failed(reasonOf(e)))
             } finally {
                 synchronized(lock) {
-                    val left = queue.ended(id, token)
+                    val left = queue.ended(id, token, ready = store.status(id).installed == Installed.READY)
                     // Done, or cancelled and not asked for again: no progress left showing (a late
                     // progress report included). A paused one, or one asked for again, gets its
                     // state from pump().

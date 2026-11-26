@@ -202,8 +202,9 @@ class ModelStore private constructor(context: Context) {
                 val staged = stagedFile(f.name)
                 if (staged.isFile) Files.move(staged.toPath(), File(dir, f.name).toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
             }
+            // The files and the installed entry change together: no one sees new files with the old entry.
+            return markInstalled(id)
         }
-        return markInstalled(id)
     }
 
     fun inUse(id: PackId): Boolean = synchronized(lock) { (inUse[id] ?: 0) > 0 }
@@ -343,10 +344,45 @@ class ModelStore private constructor(context: Context) {
                 File(app.filesDir, name).delete()
                 File(app.filesDir, "$name.tmp").delete()
             }
+            cleanUp()
         } catch (e: Exception) {
             Log.w(TAG, "model migration failed", e)
         } finally {
             migrated = true
+        }
+    }
+
+    /**
+     * At start (nothing is in use yet): an update that was downloaded but not switched in before
+     * the app stopped goes in if all its files are there and right; then, in the models folder
+     * only, leftover update files and files the registry and the installed packs don't name (with
+     * their partial downloads) are deleted.
+     */
+    private fun cleanUp() {
+        for (p in registry.packs) {
+            if (status(p.id).installed != Installed.UPDATE_AVAILABLE) continue
+            val staged = p.files.filter { stagedFile(it.name).isFile }
+            if (staged.isNotEmpty() && staged.all { Hashing.matches(stagedFile(it.name), it) }) finishUpdate(p.id)
+        }
+        val keep = HashSet<String>()
+        synchronized(lock) {
+            val names = registry.packs.flatMap { p -> p.files.map { it.name } } + installed.values.flatMap { it.files.keys }
+            for (n in names) {
+                keep += n
+                keep += "$n.part"
+                if (pendingSwitch.isNotEmpty()) {
+                    keep += "$n.new"
+                    keep += "$n.new.part"
+                }
+            }
+            keep += manifest.name
+            keep += "installed.json.tmp"
+        }
+        dir.listFiles()?.forEach { f ->
+            if (f.isFile && f.name !in keep) {
+                Log.i(TAG, "removing ${f.name} from the models folder")
+                f.delete()
+            }
         }
     }
 

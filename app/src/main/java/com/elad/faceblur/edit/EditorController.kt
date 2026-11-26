@@ -691,8 +691,17 @@ class EditorController(
         if (playing) pauser()
         subsJob?.cancel()
         subsProgress = SubtitleEngine.Stage.AUDIO to 0f
+        // A downloaded speech model is held while it runs (not deleted or switched under it).
+        val modelStore = com.elad.faceblur.models.ModelStore.get(ctx)
+        val pack = modelStore.registry.packOf(java.io.File(modelPath).name)?.id
+            ?.takeIf { java.io.File(modelPath).parentFile?.canonicalPath == modelStore.dir.canonicalPath }
         subsJob = scope.launch {
+            var held = false
             try {
+                if (pack != null) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { modelStore.acquire(pack) }
+                    held = true
+                }
                 val r = SubtitleEngine.run(
                     ctx, session.info.uri, modelPath, lang, translate = false,
                     speed = models?.speed(modelPath) ?: 0.6f,
@@ -719,9 +728,12 @@ class EditorController(
                 notice = t("אין קול בסרטון")
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
+            } catch (e: com.elad.faceblur.models.ModelMissing) {
+                notice = t("כדי ליצור כתוביות צריך את מודל הדיבור")
             } catch (e: Exception) {
                 notice = t("יצירת הכתוביות נכשלה: %s").format(e.message ?: e.javaClass.simpleName)
             } finally {
+                if (held && pack != null) modelStore.release(pack)
                 subsProgress = null
                 sync()
             }
@@ -1482,12 +1494,14 @@ class EditorController(
             notice = t("כדי למצוא דוברים צריך את מודל הקולות")
             return
         }
+        val speakerStore = com.elad.faceblur.models.ModelStore.get(ctx)
         speakersJob = scope.launch {
             speakersProgress = 0f
+            var held = false
             try {
-                // Checked (size and SHA-256) before it runs.
+                // Checked (size and SHA-256) before it runs, and held while it runs.
                 val speakerModel = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    com.elad.faceblur.models.ModelStore.get(ctx).require(com.elad.faceblur.models.PackId.SPEAKERS)[ModelManager.SPEAKER_FILE]
+                    speakerStore.acquire(com.elad.faceblur.models.PackId.SPEAKERS).also { held = true }[ModelManager.SPEAKER_FILE]
                 } ?: throw com.elad.faceblur.models.ModelMissing(com.elad.faceblur.models.PackId.SPEAKERS)
                 val groups = model.cues.sortedBy { it.startMs }.groupBy { it.group }.values.toList()
                 val spans = groups.map { cs -> SpeakerDetector.Span(cs.minOf { it.startMs }, cs.maxOf { it.endMs }) }
@@ -1510,6 +1524,7 @@ class EditorController(
                 android.util.Log.w("ONIT", "speakers failed", e)
                 notice = t("זיהוי הדוברים נכשל: %s").format(e.message ?: e.javaClass.simpleName)
             } finally {
+                if (held) speakerStore.release(com.elad.faceblur.models.PackId.SPEAKERS)
                 speakersProgress = null
             }
         }

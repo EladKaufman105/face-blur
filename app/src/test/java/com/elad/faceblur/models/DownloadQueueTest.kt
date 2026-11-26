@@ -97,6 +97,31 @@ class DownloadQueueTest {
         assertTrue(q.ended(PackId.FACES, t))
     }
 
+    /** Mobile data came just as the last byte did: the pause lost the race, the pack is installed, it leaves the queue. */
+    @Test
+    fun anInstalledPackDoesNotWaitForWifi() {
+        val q = DownloadQueue()
+        q.add(listOf(PackId.FACES), waitForWifi = true)
+        val t = q.started(plan(q, Net.UNMETERED).start!!)
+        assertTrue("paused", plan(q, Net.METERED).pause)
+        assertTrue("installed: off the queue", q.ended(PackId.FACES, t, ready = true))
+        assertFalse(PackId.FACES in q)
+        assertTrue(plan(q, Net.METERED).decisions.isEmpty())
+    }
+
+    @Test
+    fun anInstalledPackIsDroppedWhileItWaits() {
+        val q = DownloadQueue()
+        q.add(listOf(PackId.FACES, PackId.PEOPLE), waitForWifi = true)
+        q.dropReady(PackId.FACES)
+        assertEquals(listOf(PackId.PEOPLE), q.ids)
+        // Not the running one: that one ends by itself.
+        val t = q.started(PackId.PEOPLE)
+        q.dropReady(PackId.PEOPLE)
+        assertTrue(PackId.PEOPLE in q)
+        assertTrue(q.ended(PackId.PEOPLE, t, ready = true))
+    }
+
     @Test
     fun cancelClearsTheAnswers() {
         val q = DownloadQueue()

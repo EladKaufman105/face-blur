@@ -102,16 +102,35 @@ class DownloadQueue {
     /**
      * The download with [token] of [id] ended (done, failed, cancelled or paused). True when the
      * pack leaves the queue (done or failed); false when it waits (paused) or was cancelled (its
-     * entry, if the user asked again, belongs to the new request).
+     * entry, if the user asked again, belongs to the new request). [ready]: the pack is installed
+     * and current: it leaves the queue whatever happened (a pause that came after the last byte,
+     * say, must not leave it "waiting for Wi-Fi").
      */
-    fun ended(id: PackId, token: Long): Boolean {
+    fun ended(id: PackId, token: Long, ready: Boolean = false): Boolean {
         ending -= id
-        if (active != id || activeToken != token) return false
-        active = null
+        val mine = active == id && activeToken == token
+        if (mine) active = null
+        if (ready) {
+            paused -= id
+            forget(id)
+            return true
+        }
+        if (!mine) return false
         if (paused.remove(id)) return false
+        forget(id)
+        return true
+    }
+
+    /** [id] is installed and current: off the queue (it is not running). */
+    fun dropReady(id: PackId) {
+        if (active == id) return
+        paused -= id
+        forget(id)
+    }
+
+    private fun forget(id: PackId) {
         queue.remove(id)
         mobileOk.remove(id)
         wifiWait.remove(id)
-        return true
     }
 }
