@@ -303,10 +303,13 @@ internal fun SaveTemplateDialog(inUse: Set<TemplateCategory>, onSave: (String, S
 
 // ---------------------------------------------------------------------- the manager (Settings)
 
-/** All templates: the user's own (rename, duplicate, edit, delete) and the built-in ones (duplicate). */
+/**
+ * All templates: the user's own (rename, duplicate, edit, delete) and the built-in ones (duplicate),
+ * and "New template" ([onNew]: the editor on a template from scratch).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TemplateManagerSheet(store: TemplateStore, onEdit: (Template) -> Unit, onRestored: (Template) -> Unit, onDismiss: () -> Unit) {
+internal fun TemplateManagerSheet(store: TemplateStore, onEdit: (Template) -> Unit, onNew: () -> Unit, onRestored: (Template) -> Unit, onDismiss: () -> Unit) {
     var renaming by remember { mutableStateOf<Template?>(null) }
     var deleting by remember { mutableStateOf<Template?>(null) }
     var restoring by remember { mutableStateOf<Template?>(null) }
@@ -320,9 +323,12 @@ internal fun TemplateManagerSheet(store: TemplateStore, onEdit: (Template) -> Un
                 .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(Space.S),
         ) {
-            Text(t("תבניות"), style = AppType.Title)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(t("תבניות"), style = AppType.Title, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = onNew, modifier = Modifier.testTag(Tags.TEMPLATE_NEW)) { Text(t("תבנית חדשה")) }
+            }
             Text(
-                t("תבנית היא עיצוב ועיבוד לסרטון: כתוביות, טשטוש, קול, חיתוכים וייצוא. אפשר לבחור אותה במסך הסרטון ובעיבוד כמה סרטונים. תבנית חדשה נשמרת מהעורך, ואפשר לערוך כל תבנית, גם מובנית."),
+                t("תבנית היא עיצוב ועיבוד לסרטון: כתוביות, טשטוש, קול, חיתוכים וייצוא. אפשר לבחור אותה במסך הסרטון ובעיבוד כמה סרטונים. אפשר ליצור תבנית חדשה כאן או לשמור אותה מהעורך, ולערוך כל תבנית, גם מובנית."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

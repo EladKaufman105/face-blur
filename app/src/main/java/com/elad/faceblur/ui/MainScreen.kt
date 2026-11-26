@@ -139,6 +139,20 @@ fun MainScreen(vm: MainViewModel) {
         if (state is UiState.BatchRun) vm.leaveBatch() else vm.reset()
     }
 
+    // A new template (Settings): the same editor, on a template that is saved only from it.
+    vm.newTemplateDraft?.let { draft ->
+        TemplateEditorScreen(
+            vm.templates, draft,
+            onClose = {
+                vm.closeTemplateEditor()
+                if (backToManager) { backToManager = false; showTemplates = true }
+            },
+            onSaved = vm::templateSaved,
+            isNew = true,
+        )
+        return
+    }
+
     // The template editor takes the whole screen (opened from Settings, the Ready screen or the batch setup).
     vm.editingTemplate?.let { id ->
         val tpl = vm.templates.find(id)
@@ -192,6 +206,7 @@ fun MainScreen(vm: MainViewModel) {
         TemplateManagerSheet(
             vm.templates,
             onEdit = { showTemplates = false; backToManager = true; vm.editTemplate(it.id) },
+            onNew = { showTemplates = false; backToManager = true; vm.startNewTemplate() },
             onRestored = vm::templateSaved,
             onDismiss = { showTemplates = false },
         )
