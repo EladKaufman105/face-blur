@@ -82,4 +82,9 @@ class CutMap(ranges: List<LongArray>) {
         val out = outUs(from)
         return out / 1000 to (out + keptUs(from, e)) / 1000
     }
+
+    /** Copies of [cues] in the result's time (the .srt files); a subtitle cut out entirely is left out. */
+    fun mapCues(cues: List<Cue>): List<Cue> = if (isEmpty) cues else cues.mapNotNull { c ->
+        mapMs(c.startMs, c.endMs)?.let { (s, e) -> c.copy().also { it.startMs = s; it.endMs = e } }
+    }
 }

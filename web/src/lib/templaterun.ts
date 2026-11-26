@@ -97,7 +97,7 @@ export function findFaces(file: File, sensitive: boolean, onProgress: (p: number
           b.close()
           return c.toDataURL('image/jpeg', 0.85)
         })
-        ok({ analysis: { times: m.times, width: m.width, height: m.height, fps: m.fps, tracks: m.tracks, cuts: m.cuts, lowConfidence: m.lowConfidence }, thumbs, ms: m.ms, backend: m.backend })
+        ok({ analysis: { times: m.times, width: m.width, height: m.height, fps: m.fps, tracks: m.tracks, cuts: m.cuts, lowConfidence: m.lowConfidence, reduced: m.reduced }, thumbs, ms: m.ms, backend: m.backend })
       } else if (m.type === 'error') fail(new StepError(m.message, m.code))
     },
     signal,

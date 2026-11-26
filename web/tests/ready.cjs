@@ -19,7 +19,13 @@ const gray = (f, t, w, h) => execFileSync('ffmpeg', ['-v', 'error', '-ss', Strin
   const logs = []
   p.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`))
   p.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`))
+  // Faces to be checked (a lighter detection on a slow machine, or an unsure face) stop "blur and save straight" at a screen of its own: "save anyway" goes on.
+  const pastCheck = async () => {
+    await p.waitForSelector('.result video, .card.error, .check-faces', { timeout: 900000 })
+    if (await p.$('.check-faces')) await p.click('.check-save')
+  }
   const save = async (name) => {
+    await pastCheck()
     await p.waitForSelector('.result video, .card.error', { timeout: 900000 })
     const err = await p.evaluate(() => document.querySelector('.card.error')?.textContent)
     if (err) throw new Error('export: ' + err)
@@ -65,6 +71,7 @@ const gray = (f, t, w, h) => execFileSync('ffmpeg', ['-v', 'error', '-ss', Strin
     // Watched as it goes: step 1 (faces), step 2 (blurring and saving) with the export shown as it's made.
     await p.evaluate(() => { window.__seen = {}; setInterval(() => { const s = window.__seen; if (document.body.textContent.includes('שלב 1 מתוך 2')) s.one = true; if (document.body.textContent.includes('שלב 2 מתוך 2')) s.two = true; if (document.querySelector('.live:not(.empty) canvas')) s.live = true }, 30) })
     await p.click('.export-go')
+    await pastCheck()
     await p.waitForSelector('.result video, .card.error', { timeout: 900000 })
     const seen = await p.evaluate(() => window.__seen)
     console.log('seen on the way:', JSON.stringify(seen))

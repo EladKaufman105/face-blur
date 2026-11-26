@@ -12,6 +12,7 @@ import { lang } from '../i18n'
 import { applyTemplate, currentSettings, exportOptionsOf, withExportOptions, type TemplateSettings } from '../lib/template'
 import { findTemplate, loadTemplates } from '../lib/templatestore'
 import { prepareTranslation } from '../lib/translate'
+import { DetectionNotice } from './DetectionNotice'
 
 type Props = {
   file: File
@@ -211,7 +212,7 @@ export function Ready({ file, sensitive, onSensitive, onBlur, onBlurAndSave, onR
  * No faces were found, as the app's: small, distant or partly hidden faces may need wider
  * detection, or a blur marked by hand (when there's an editor to open).
  */
-export function NoFaces({ file, canEdit, sensitive, onEdit, onRetry, onBack }: { file: File; canEdit: boolean; sensitive: boolean; onEdit: () => void; onRetry: () => void; onBack: () => void }) {
+export function NoFaces({ file, canEdit, sensitive, reduced, onEdit, onRetry, onBack }: { file: File; canEdit: boolean; sensitive: boolean; reduced?: boolean; onEdit: () => void; onRetry: () => void; onBack: () => void }) {
   return (
     <main class="ready no-faces">
       <section class="card video-card">
@@ -223,10 +224,36 @@ export function NoFaces({ file, canEdit, sensitive, onEdit, onRetry, onBack }: {
           <div class="face-icon"><FaceIcon /></div>
           <strong class="grow">{t('לא זוהו פנים בסרטון')}</strong>
         </div>
+        {reduced && <DetectionNotice />}
         <p class="small muted" style="margin:0">{t('אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב, או סמן אותן ידנית.')}</p>
         <div class="actions">
           {canEdit && <button class="btn primary mark-by-hand" onClick={onEdit}>{t('סמן טשטוש ידנית')}</button>}
           {!sensitive && <button class={'btn retry-wide ' + (canEdit ? 'tonal' : 'primary')} onClick={onRetry}>{t('נסה עם זיהוי מורחב')}</button>}
+          <button class="btn ghost" onClick={onBack}>{t('חזרה')}</button>
+        </div>
+      </section>
+    </main>
+  )
+}
+
+/**
+ * "Blur and save straight" found faces that are to be checked (detection ran lighter than the
+ * app's on this device, or some face has no clear detection behind it): nothing is saved until the
+ * user says so. The editor is the primary way on.
+ */
+export function CheckFaces({ reduced, onEdit, onSave, onBack }: { reduced: boolean; onEdit: () => void; onSave: () => void; onBack: () => void }) {
+  return (
+    <main class="ready check-faces">
+      <section class="card message-card">
+        <div class="row">
+          <div class="face-icon"><FaceIcon /></div>
+          <strong class="grow">{t('זיהוי לא בטוח')}</strong>
+        </div>
+        {reduced && <DetectionNotice />}
+        <p class="small muted" style="margin:0">{t('כדאי לבדוק את הפנים בעורך.')}</p>
+        <div class="actions">
+          <button class="btn primary check-edit" onClick={onEdit}>{t('פתח בעורך')}</button>
+          <button class="btn tonal check-save" onClick={onSave}>{t('שמור בכל זאת')}</button>
           <button class="btn ghost" onClick={onBack}>{t('חזרה')}</button>
         </div>
       </section>

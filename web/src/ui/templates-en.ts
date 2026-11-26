@@ -149,6 +149,7 @@ addEnglish({
   'שמור הכל': 'Save all',
   'חזרה לדף הבית': 'Back to home',
   'אם הדפדפן חסם את ההורדות האוטומטיות, אפשר לשמור כל סרטון מהרשימה.': 'If the browser blocked the automatic downloads, you can save each video from the list.',
+  'לא הורד אוטומטית, כי כדאי לבדוק קודם את הפנים: "בדיקה" פותחת אותו בעורך, ו"שמור" שומר אותו כמו שהוא.': 'Not downloaded automatically, as its faces are worth checking first: "Check" opens it in the editor, "Save" saves it as it is.',
   'בדיקה': 'Check',
   'נותרה פחות מדקה': 'Less than a minute left',
   'נותרו כ-%d דקות': 'About %d minutes left',
