@@ -108,3 +108,75 @@ offers the editor (as it does for faces with no clear detection behind them), an
 thresholds drop (RetinaFace 0.25, YuNet 0.3), so that two weak detections that agree can add up, in
 the fusion, to a face the tracker keeps (it keeps faces from 0.4; the re-check of uncertain faces
 looks at those from 0.4 up to the clear 0.8).
+
+## Fast detection
+
+A third mode beside normal and extended, for long videos (`fast` in the analysis request and in
+templates; the app's `DetectMode.FAST`). The same detection (RetinaFace fused with YuNet, the
+re-check of uncertain faces, the standard tracker) at 5 detections a second (`FAST_RATE` in
+`web/src/lib/sensitivity.ts`), never fewer. No MediaPipe: measured on 8 clips it misses most faces
+under 48 px. At 5 a second the tracker's hold of 0.25 s before a face's first detection covers the
+0.2 s between detections; on those clips it missed only a face half out of the frame for 0.27 s
+and a 21 px face for single frames (normal detection misses neither).
+
+- Which frames: DetectGate's schedule at 5 a second, without the old gate beside it (no detection
+  before it ran at 5 a second, so there is nothing to stay above); every cut's frame.
+- The pace: the full rate is 5, so the rate never goes under it (a slow device takes longer); the
+  frame's size is judged against 5 a second (`sizeRate`), so it isn't shrunk to chase 15. On the
+  CPU the fine pass runs at 640 px from the start (the app's LOW_SIDE) on frames decoded at 960 px
+  (the re-check's crops see those); on the GPU at 1280 px, stepping down as normal detection does
+  when RetinaFace is slow (then reduced, with its notice).
+- What was really detected: judged against 5 a second (`needRate(fps, false, 5, true)`: 80% of it,
+  at most of the frames), so a device that keeps up never shows the reduced notice.
+- Never silent: its warning under the choice ("Fast detection checks fewer frames, so it's
+  quicker. It may briefly miss small or distant faces, or faces at the edge of the frame. Watch the
+  result before you share it."), on the check and "no faces" screens and in the editor for as long
+  as the video is open (a pill over the video on a phone); the video is flagged like low confidence
+  (`isLowConfidence`), so a batch flags it and "blur and save straight" stops at the check screen.
+  The stats panel shows the mode.
+
+`web/tests/fusion.cjs` checks on simulated devices (fast and slow GPUs and CPUs) and clips (8 to
+120 fps, exact and millisecond times) that the rate stays at 5, the frames detected are 5 a second
+(every frame of a slower clip), never measured short, with gaps of at most 0.2 s and a frame, and
+that normal detection's pace is unchanged. `web/tests/fast.cjs` measures it in the browser.
+
+## Sensitivity
+
+One number from 0 to 1, in steps of 5% (the slider under the mode; `sensitivity` in templates).
+It only ever blurs more: 0 is the default detection exactly (no extra work), and no threshold goes
+above its default (a privacy floor). Above 0 each of the tracker's thresholds goes down linearly
+(`thresholds()` in `web/src/lib/sensitivity.ts`, the app's `DetectTuning.kt`):
+
+| threshold                                  | 0 (default) | 1 (most) |
+|--------------------------------------------|-------------|----------|
+| detection cut (fused score, DET_THRESHOLD) | 0.40        | 0.25     |
+| tracklet birth                             | 0.45        | 0.30     |
+| strong evidence                            | 0.60        | 0.45     |
+| crop re-check evidence                     | 0.50        | 0.30     |
+| crop re-check, very short tracklet         | 0.90        | 0.70     |
+
+What counts as a clear face (0.8: no re-check needed, no "check the faces" flag) doesn't move.
+
+The detectors' own thresholds don't move with the slider. Above 0, beside the default candidates,
+each detection also takes a fixed lower pool from the same runs of the models: RetinaFace's from
+0.20 (decoded a second time from the same outputs), YuNet's from 0.25 (YuNet runs once, from that
+threshold; its default faces are those from 0.4 up, the same as before, as its NMS keeps the higher
+scores first), and a face YuNet alone finds from 0.45. The pool is fused as the default faces are;
+its faces from the cut up that are not a face the default detection has (IoU over 0.3) are the
+extra detections, re-checked on a crop too (up to 12 a frame, the likeliest first). The default
+detections are made, and re-checked, exactly as without the setting.
+
+The tracks: the default tracker on the default detections, as before, and kept whole. Then for each
+5% step up to the setting, the tracker with that step's thresholds on the default and extra
+detections (from that step's cut up); its tracks are added (`widen`, `combineTracks`): one that is
+mostly a face already there (IoU over 0.3 on at least half the frames they share) only adds its
+frames before and after that track, any other is another face. A step never changes or takes away a
+box, so a higher sensitivity has every box a lower one has, and the extra detections at a higher one
+include those at a lower one. A track the extra faces add has no clear detection behind it, so a
+batch flags the video for a look.
+
+`web/tests/fusion.cjs` checks that 0 is the default exactly (thresholds, the tracker, no tracker run),
+that the thresholds only go down, that YuNet's faces from a threshold up don't depend on the lower
+ones, that the extra detections are nested, and on 150 simulated scenes (weak faces, clutter) that a
+higher sensitivity never covers fewer face-frames than a lower one and never changes a default track
+(and that it does find more). The app's `DetectModesTest` does the same on the JVM.
