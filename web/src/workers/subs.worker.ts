@@ -13,7 +13,7 @@ import ortWasmUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-th
 import ortMjsUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs?url'
 
 export type SubsRequest = {
-  file: File; language: string | null; repo: string; device: 'webgpu' | 'wasm'
+  file: File; language: string | null; repo: string; revision: string | null; device: 'webgpu' | 'wasm'
   /** The file kinds of the encoder and the decoder. */
   encDtype: Dtype; dtype: Dtype
   /** WebAssembly threads (the page asks for more than one only when it is cross-origin isolated). */
@@ -118,7 +118,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 /** The model kept from the last job (the page keeps this worker for a while): the next job with the same model skips loading it. */
 let loaded: { key: string; asr: any } | null = null
 
-async function run({ file, language, repo, device, encDtype, dtype, threads }: SubsRequest) {
+async function run({ file, language, repo, revision, device, encDtype, dtype, threads }: SubsRequest) {
   post({ type: 'audio' })
   const x = await audio16k(file)
   if (!x || x.length < RATE / 2) return post({ type: 'error', code: 'no-audio', message: 'no sound' })
@@ -130,7 +130,7 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
     // Threads are for the CPU's path, and only in an isolated page (else the runtime would say it can't).
     wasm.numThreads = device === 'wasm' && self.crossOriginIsolated ? Math.max(1, threads) : 1
   }
-  const key = `${repo}|${device}|${encDtype}|${dtype}|${wasm?.numThreads}`
+  const key = `${repo}|${revision ?? ''}|${device}|${encDtype}|${dtype}|${wasm?.numThreads}`
   // Phase: loading (or starting to download). The files' bytes come as 'download'; when they are all
   // here the sessions are created, which has no percent: 'load' says so.
   post({ type: 'load' })
@@ -148,6 +148,7 @@ async function run({ file, language, repo, device, encDtype, dtype, threads }: S
   if (!asr && loaded) { const old = loaded.asr; loaded = null; await Promise.race([old.dispose?.(), sleep(1000)]).catch(() => {}) }
   if (!asr) try { asr = await pipeline('automatic-speech-recognition', repo, {
     device,
+    ...(revision ? { revision } : {}),
     dtype: { encoder_model: encDtype, decoder_model_merged: dtype },
     progress_callback: (p: any) => {
       const now = Date.now()

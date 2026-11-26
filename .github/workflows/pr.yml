@@ -66,6 +66,8 @@ jobs:
               - 'web/src/ui/SpeechUi.tsx'
               - 'ci/web-tests.sh'
               - 'web/tests/subs.cjs'
+              - 'web/tests/subshe.cjs'
+              - 'web/tests/subsplan.cjs'
               - 'web/package.json'
               - 'web/package-lock.json'
               - '.github/workflows/web-tests.yml'

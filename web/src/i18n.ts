@@ -118,6 +118,7 @@ const EN: Record<string, string> = {
   'אנגלית': 'English',
   'פרסית': 'Persian',
   'צור כתוביות': 'Create subtitles',
+  'מודל העברית של ivrit.ai, כמו באפליקציה.': "ivrit.ai's Hebrew model, as in the app.",
   'הזיהוי רץ על המכשיר עם Whisper, והקול לא עוזב אותו.': 'Recognition runs on the device with Whisper, and the sound never leaves it.',
   'המודל כבר במכשיר.': 'The model is already on this device.',
   'בפעם הראשונה יורד מודל של כ-%d MB (נשמר בדפדפן לפעמים הבאות).': 'The first time, a model of about %d MB is downloaded (kept by the browser for next times).',

@@ -3,7 +3,7 @@ import { LANGUAGES } from '../lib/subtitles'
 import { useState } from 'preact/hooks'
 import { allTemplates, findTemplate, isEdited, renameTemplate, storeFailed, templatesLoaded } from '../lib/templatestore'
 import { applyTemplate, type Template, type TemplateSettings } from '../lib/template'
-import { storageKey } from '../lib/channel'
+import { setLangChoice } from '../lib/speech'
 import { SwitchRow } from './EditorTabs'
 import { TemplateEditor } from './TemplateEditor'
 import { EditIcon } from './icons'
@@ -53,7 +53,7 @@ export function TemplatePicker({ frame, base, current, onPick, settings, onSetti
   }
   const setLang = (name: string | null) => {
     onSettings({ ...settings, language: name })
-    try { if (name) localStorage.setItem(storageKey('subs.lang'), name); else localStorage.removeItem(storageKey('subs.lang')) } catch {}
+    setLangChoice(name)
   }
   return (
     <section class="card templates">

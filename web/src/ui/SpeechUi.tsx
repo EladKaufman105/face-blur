@@ -2,13 +2,14 @@
 // before anything downloads), the progress of a job, and the question before a template downloads.
 import { useEffect, useState } from 'preact/hooks'
 import { t } from '../i18n'
-import { answerSpeechAsk, device, mbOf, planCached, planFor, probeDevice, qualityChoice, setQuality, speechAsk, defaultQuality, type Quality, type SpeechPlan, type SpeechStatus } from '../lib/speech'
+import { answerSpeechAsk, device, gpuFailed, spokenLanguage, mbOf, planCached, planFor, probeDevice, qualityChoice, setQuality, speechAsk, defaultQuality, type Quality, type SpeechPlan, type SpeechStatus } from '../lib/speech'
 
 /** The plan now (the device's graphics processor is asked once, then the plan may change), and whether its files are already here. */
-export function useSpeechPlan(): { plan: SpeechPlan; cached: boolean | null } {
+export function useSpeechPlan(language: string | null = null): { plan: SpeechPlan; cached: boolean | null } {
   const d = device.value
   const q = qualityChoice.value
-  const plan = planFor(q ?? defaultQuality(d), d)
+  const l = spokenLanguage(language)
+  const plan = planFor(q ?? defaultQuality(d, l), d, gpuFailed.value, l)
   const [cached, setCached] = useState<boolean | null>(null)
   useEffect(() => { probeDevice() }, [])
   useEffect(() => {
@@ -21,11 +22,11 @@ export function useSpeechPlan(): { plan: SpeechPlan; cached: boolean | null } {
 }
 
 /** "Faster" and "Better quality", each with its download size; the choice is kept. */
-export function QualityChoice({ cls }: { cls?: string }) {
+export function QualityChoice({ cls, language = null }: { cls?: string; language?: string | null }) {
   const d = device.value
-  const { plan } = useSpeechPlan()
+  const { plan } = useSpeechPlan(language)
   const options: [Quality, string][] = [['fast', 'מהיר'], ['better', 'איכות טובה יותר']]
-  const sizes = options.map(([q]) => planFor(q, d))
+  const sizes = options.map(([q]) => planFor(q, d, gpuFailed.value, spokenLanguage(language)))
   const [have, setHave] = useState<boolean[]>([false, false])
   useEffect(() => {
     let live = true
@@ -88,7 +89,7 @@ export function SpeechProgress({ status, onCancel }: { status: SpeechStatus; onC
 /** The question before a template's subtitles download a model (shown over any screen). */
 export function SpeechAsk() {
   const ask = speechAsk.value
-  const { plan } = useSpeechPlan()
+  const { plan } = useSpeechPlan(ask?.language ?? null)
   useEffect(() => {
     if (!ask) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') answerSpeechAsk(null) }
@@ -104,7 +105,7 @@ export function SpeechAsk() {
         <div class="sheet-body">
           <p style="margin:0">{t('כדי ליצור כתוביות צריך מודל זיהוי דיבור. הוא יורד פעם אחת (כ-%d MB) ונשמר בדפדפן. מומלץ להיות ב-Wi-Fi.', mbOf(plan))}</p>
           <p class="small muted" style="margin:0">{d.weak ? t('בטלפון "מהיר" קטן יותר, חם פחות ומסיים מהר יותר.') : t('"איכות טובה יותר" מדויק יותר, אבל גדול ואיטי יותר.')}</p>
-          <QualityChoice />
+          <QualityChoice language={ask.language} />
         </div>
         <div class="actions">
           <button class="btn primary speech-go" onClick={() => answerSpeechAsk(plan.quality)}>{t('הורד והמשך')}</button>
