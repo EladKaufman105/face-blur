@@ -447,7 +447,10 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
     const k = sorted.findIndex((x) => x.id === c.id)
     const n = sorted[k + 1]
     if (!n) return
-    onCues(cues.filter((x) => x.id !== n.id).map((x) => (x.id === c.id ? mergeCues(x, n) : x)), true)
+    const m = mergeCues(c, n, words, bleeped)
+    if (!m) { setListNote(t('אי אפשר למזג: מילה מוסתרת הייתה מופיעה')); return }
+    setListNote(null)
+    onCues(cues.filter((x) => x.id !== n.id).map((x) => (x.id === c.id ? m : x)), true)
   }
   // How the subtitles are cut (as the app's): by spoken words or by characters, up to whole sentences.
   const [byChars, setByChars] = useState(false)

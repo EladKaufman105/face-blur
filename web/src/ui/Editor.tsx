@@ -1116,8 +1116,9 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     if (!selCue) return
     const next = sortedCues[cueAtIdx + 1]
     const prev = sortedCues[cueAtIdx - 1]
-    if (next) setCuesH(cues.filter((c) => c.id !== next.id).map((c) => (c.id === selCue.id ? mergeCues(selCue, next) : c)), true)
-    else if (prev) { setCuesH(cues.filter((c) => c.id !== selCue.id).map((c) => (c.id === prev.id ? mergeCues(prev, selCue) : c)), true); setSelectedCue(prev.id) }
+    const refuse = () => setNotice(t('אי אפשר למזג: מילה מוסתרת הייתה מופיעה'))
+    if (next) { const m = mergeCues(selCue, next, words, bleeped); if (!m) return refuse(); setCuesH(cues.filter((c) => c.id !== next.id).map((c) => (c.id === selCue.id ? m : c)), true) }
+    else if (prev) { const m = mergeCues(prev, selCue, words, bleeped); if (!m) return refuse(); setCuesH(cues.filter((c) => c.id !== selCue.id).map((c) => (c.id === prev.id ? m : c)), true); setSelectedCue(prev.id) }
   }
   function deleteCue() {
     if (!selCue) return

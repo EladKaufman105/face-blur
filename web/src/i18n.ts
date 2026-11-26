@@ -604,6 +604,7 @@ const EN: Record<string, string> = {
   'סאונד מקורי': 'Original sound',
   // The phone panel's scrubber, the batch's flag, leaving the template editor.
   'מיקום בסרטון': 'Position in the video',
+  'אי אפשר למזג: מילה מוסתרת הייתה מופיעה': "Can't merge: a hidden word would show",
   'זיהוי לא בטוח': 'Uncertain detection',
   'כדאי לבדוק את הפנים בעורך.': 'Worth checking the faces in the editor.',
   'לשמור את השינויים?': 'Save the changes?',
