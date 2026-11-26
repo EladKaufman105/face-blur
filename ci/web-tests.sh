@@ -32,6 +32,8 @@ case "${1:?shard}" in
     t coi.cjs "http://localhost:4173/?backend=wasm" $R/coi   # 8
     # Playback over cuts close together (one a frame apart, one to the end of the video): the clock keeps moving, no jumping again and again.
     t cutskip.cjs "$U" $S/speech_two.mp4 $R/cutskip   # 30
+    # Which frames get a detection, measured in the browser: a clip re-timed to 20, 24, 25 (WebM), 30 and 31 fps at the full rate (15 a second or the app's cadence), no notice; a tune under the need measured short.
+    t gate.cjs "$U" $S/walk.mp4 $R/gate   # 110 (measured here, not on CI)
     # The ready screen: the video first, the blur's settings, "blur and save" without the editor.
     t ready.cjs "$U" $S/walk.mp4 $S/classroom.mp4 $R/ready   # 46
     # The editor as the app's, part two: effect cards that play (still with less motion), font cards each in its font, a group's tool chips on one row (360-412 px, he and en), the tablet layouts (upright under 840 px: one column; the rail of groups and the panel beside the video).
@@ -49,7 +51,7 @@ case "${1:?shard}" in
     # Subtitles on the timeline, as the app's: a tap selects, the bar's Start / End here, split, merge, delete and text, the edges dragged, all undone; bleeps follow their words. Desktop and a phone.
     # Bleeped words never show in the subtitles: 5000 random sequences of split, merge, retime, delete, bleep, edit, translate and undo (pure, no browser).
     t splitmask.cjs   # 1
-    # Face detection's pure parts: YuNet's decoding, the fusion with RetinaFace (the app's rules), the pace (1280 / 960 / 640 px, 15 to 4 a second), the low-confidence flag (pure, no browser).
+    # Face detection's pure parts: YuNet's decoding, the fusion with RetinaFace (the app's rules), the pace (1280 / 960 / 640 px, the full rate down to 8 a second), which frames get a detection and what that really covered (any frame rate, timestamps, VFR, cuts; never weaker in frames than before), the low-confidence flag (pure, no browser).
     t fusion.cjs   # 1
     t cues.cjs "$U" $S/speech_two.mp4 $R/cues   # 13
     t cues.cjs "$U" $S/speech_two.mp4 $R/cuesp phone   # 13

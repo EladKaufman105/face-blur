@@ -15,6 +15,7 @@ declare const __BUILD__: string
 type CellId =
   | 'detect' | 'wait' | 'frame' | 'resolution' | 'sampling'
   | 'backend' | 'workers' | 'fine' | 'coarse' | 'gpu' | 'check' | 'crops' | 'decode' | 'cuts' | 'merge'
+  | 'measured' | 'gap' | 'strength'
 type Size = 'big' | 'mid' | 'detail'
 
 const MAIN: [Size, CellId[]][] = [
@@ -23,6 +24,7 @@ const MAIN: [Size, CellId[]][] = [
 ]
 const DETAILS: [Size, CellId[]][] = [
   ['detail', ['backend']],
+  ['detail', ['measured', 'gap', 'strength']],
   ['detail', ['workers', 'fine', 'coarse']],
   ['detail', ['gpu', 'check', 'crops']],
   ['detail', ['decode', 'cuts', 'merge']],
@@ -36,6 +38,7 @@ const label = (c: CellId): string => ({
   detect: t('זיהוי'), wait: t('המתנה'), frame: t('פריים'), resolution: t('רזולוציה'), sampling: t('דגימה'),
   backend: t('מנוע'), workers: t('גלאים'), fine: t('מעבר עדין'), coarse: t('מעבר גס'), gpu: t('זמן GPU'),
   check: t('בדיקת GPU'), crops: t('בדיקות חיתוך'), decode: t('המתנה לפענוח'), cuts: t('חיתוכי סצנה'), merge: t('מיזוג'),
+  measured: t('זיהויים בפועל'), gap: t('הפער הארוך'), strength: t('עוצמת הזיהוי'),
 })[c]
 
 const info = (c: CellId): string => ({
@@ -54,6 +57,9 @@ const info = (c: CellId): string => ({
   decode: t('כמה זמן כל פריים מחכה לפענוח הווידאו.'),
   cuts: t('זמן הבדיקה אם הפריים הוא חיתוך בין סצנות, בכל פריים.'),
   merge: t('זמן מיזוג התוצאות של שני המעברים בכל זיהוי.'),
+  measured: t('כמה פריימים באמת עברו זיהוי בכל שנייה של וידאו, ובחלון של 2 שניות עם הכי מעט.'),
+  gap: t('הרווח הארוך ביותר בין שני זיהויים באותה סצנה, בפריימים ובשניות.'),
+  strength: t('הגודל הקטן ביותר שבו רץ המעבר המפורט, והאם YuNet רץ.'),
 })[c]
 
 /** The cell's value as [number, unit] parts, left to right; [word] is a small text before or after. */
@@ -77,6 +83,9 @@ function value(c: CellId, a: AnalysisStats): { num: string; unit?: string; after
     case 'decode': return ms(a.decodeWaitMs)
     case 'cuts': return ms(a.cutMs)
     case 'merge': return ms(a.mergeMs)
+    case 'measured': return { num: fmt(l.measured.rate), unit: '/s', after: `min ${l.measured.minWindow === null ? '—' : fmt(l.measured.minWindow)}` }
+    case 'gap': return { num: String(l.measured.gapFrames), unit: t('פריימים'), after: `${l.measured.gapS.toFixed(2)} s` }
+    case 'strength': return { num: String(l.measured.minSide), unit: 'px', after: l.measured.yunet ? 'YuNet' : t('בלי YuNet') }
   }
 }
 

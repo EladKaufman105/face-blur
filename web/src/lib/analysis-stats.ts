@@ -43,6 +43,22 @@ export interface StatsSnapshot {
   /** Detectors working side by side, and how many cores the device says it has. */
   workers: number
   cores: number
+  /** What detection really covered so far (lib/coverage.ts). */
+  measured: Measured
+}
+
+/** Measured from the frames really detected: D, G, S. */
+export interface Measured {
+  /** D: detections a second within shots; the fewest in a judged 2 s window (null: none yet); the need on a steady clip. */
+  rate: number
+  minWindow: number | null
+  need: number
+  /** G: the longest gap within a shot, in frames and in seconds. */
+  gapFrames: number
+  gapS: number
+  /** S: the smallest fine pass that ran (long side, px), and whether YuNet ran. */
+  minSide: number
+  yunet: boolean
 }
 
 /** One metric's last samples, oldest first. */
@@ -170,7 +186,8 @@ export function backendText(s: StatsSnapshot): string {
 /** One line to compare runs (also in the console). */
 export function summary(a: AnalysisStats): string {
   const s = a.latest
-  return `${s.backend} ${s.precision} · ${s.rate.toFixed(1)}/s · ${s.side} px · ${s.frames} frames · ${fmt(a.detectMs)} ms a detection · ${s.workers} detectors${s.noGpu ? ` · no GPU: ${s.noGpu}` : ''}`
+  const m = s.measured
+  return `${s.backend} ${s.precision} · ${s.rate.toFixed(1)}/s · ${s.side} px · ${s.frames} frames · ${fmt(a.detectMs)} ms a detection · ${s.workers} detectors · measured ${m.rate.toFixed(1)}/s (min ${m.minWindow?.toFixed(1) ?? '-'}), gap ${m.gapFrames} frames, ${m.minSide} px, YuNet ${m.yunet ? 'on' : 'off'}${s.noGpu ? ` · no GPU: ${s.noGpu}` : ''}`
 }
 
 export interface ReportContext {
@@ -216,6 +233,9 @@ export function statsReport(a: AnalysisStats, c: ReportContext): string {
     line('detect_ms', a.detectMs, a.detectHistory),
     line('wait_ms_per_frame', a.waitMs, a.waitHistory),
     line('frame_ms', a.frameMs, a.frameHistory),
+    `measured_detections_per_s: ${l.measured.rate.toFixed(2)} (fewest in a 2 s window ${l.measured.minWindow?.toFixed(2) ?? '-'}, needed ${l.measured.need.toFixed(2)})`,
+    `measured_max_gap: ${l.measured.gapFrames} frames, ${l.measured.gapS.toFixed(3)} s`,
+    `measured_strength: ${l.measured.minSide} px (smallest fine pass), yunet ${l.measured.yunet ? 'on' : 'off'}`,
     `workers: ${l.workers} detectors, ${l.cores} cores`,
     `per_detection_ms: fine ${fmt(a.fineMs)}, coarse ${fmt(a.coarseMs)} (ran on ${Math.round(a.coarseShare * 100)}% of detections), gpu_inference ${gpu ? fmt(a.gpuMs) : '-'}, gpu_check ${fmt(a.checkMs)}, crop_check ${fmt(a.verifyMs)}, merge ${fmt(a.mergeMs)}`,
     `per_frame_ms: decode_wait ${fmt(a.decodeWaitMs)}, cut_check ${fmt(a.cutMs)}`,

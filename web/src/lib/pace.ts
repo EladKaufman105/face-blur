@@ -1,7 +1,11 @@
 // How fast face detection runs on this device. The app's detection is the reference: the fine
-// pass at 1280 px (GPU) or 960 px (CPU), up to 15 detections per second of video. A device that
-// can't keep that up goes lighter, stepwise, and says so (`reduced`), as the app's
-// FaceAnalyzer.adapt does.
+// pass at 1280 px (GPU) or 960 px (CPU), on the frames the app's FaceAnalyzer takes: about 15 a
+// second of video, as every n-th frame (n = the frame rate / 15, rounded; at least 1): every frame
+// of a 20 fps clip, every second of a 31 fps one (15.5 a second), every third of a 50 fps one. The
+// full rate here is the more of the two (fullRate()): 15 a second (on any frame rate, see
+// DetectGate) or the app's cadence. Every frame in wide detection. A device that can't keep that up
+// goes lighter, stepwise, and says so (`reduced`), as the app's FaceAnalyzer.adapt does, down to 8
+// a second (the app's floor).
 //
 // Two times drive it. The whole detection's (RetinaFace, YuNet, the re-check of uncertain faces)
 // sets the rate. RetinaFace's own passes (fine + coarse) set the frame's size: YuNet runs on a
@@ -16,14 +20,18 @@
 //  - the rate never goes below that detection's rate on this device, at either of its sizes: its
 //    time is at least RetinaFace's fine pass at 640 px (estimated from the fine pass now, scaled
 //    down by the area, which underestimates it: the fixed costs don't shrink), so the rate from
-//    that time is at least the rate it had.
+//    that time is at least the rate it had (and never under 8, where it went down to 4);
+//  - at a rate, DetectGate detects on no fewer frames, and with no longer gaps, than that
+//    detection's gate (the next frame at least a period after the last detected one) did.
 // So YuNet's cost can make the analysis take longer, but never makes detection lighter than it
 // was before YuNet.
 
-/** The smallest the fine pass gets (the app's LOW_SIDE), the size between, and the fewest detections per second. */
+/** The smallest the fine pass gets (the app's LOW_SIDE), the size between, and the fewest detections per second (the app's MIN_RATE). */
 export const LOW_SIDE = 640
 export const MID_SIDE = 960
-export const MIN_RATE = 4
+export const MIN_RATE = 8
+/** Detections per second of video the app aims at (its RATE). */
+export const RATE = 15
 /** On the GPU, the fine pass leaves 1280 px only when RetinaFace's own passes take longer than this (ms; the app's GPU_SLOW_MS). */
 export const GPU_SLOW_MS = 80
 /** Detection time allowed per second of video, per detector: analysis stays near the video's own speed. */
@@ -44,7 +52,7 @@ export interface PaceIn {
   fineMs: number
   /** Detectors running side by side. */
   workers: number
-  /** The rate wanted: 15, or every frame when sensitive. */
+  /** The rate wanted: fullRate(the frame rate), or every frame when sensitive. */
   maxRate: number
   /** The fine pass's long side now, and the one detection starts at (1280 GPU, 960 CPU). */
   side: number
@@ -69,6 +77,70 @@ export interface Pace {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
+/** The app's detections per second of video at [fps]: every n-th frame, n = fps / 15 rounded, at least 1 (FaceAnalyzer's baseEvery). */
+export const appRate = (fps: number) => fps / Math.max(1, Math.round(fps / RATE))
+
+/**
+ * The full rate of normal detection at [fps]: 15 a second (at most every frame), or the app's
+ * cadence where that is more (20 fps: every frame; 31 fps: 15.5; 50 fps: 16.7). Never less than
+ * either, so never weaker than the app on a device that keeps up.
+ */
+export const fullRate = (fps: number) => Math.max(Math.min(fps, RATE), appRate(fps))
+
+/** Normal detection at the app's own cadence isn't reduced (23.976 fps: every second frame, 12 a second, against 80% of 15). */
+export const APP_SHARE = 0.97
+
+/**
+ * The fewest detections a second, measured (lib/coverage.ts), that still count as full detection
+ * at [fps]: 80% of the full rate, and in normal detection no more than 97% of the app's own
+ * cadence; wide (every frame): 80% of the frames.
+ */
+export const needRate = (fps: number, sensitive: boolean) =>
+  sensitive ? FULL_SHARE * fps : Math.min(FULL_SHARE * fullRate(fps), APP_SHARE * appRate(fps))
+
+/** How far before its due time a frame still counts as due (s): timestamps rounded to the millisecond (WebM) land up to 0.5 ms early. */
+export const GATE_SLACK_S = 1e-3
+
+/**
+ * Which frames get a detection: [rate] a second of video, on a fixed schedule. Each due time is a
+ * period after the last one was due, not after the frame that met it: snapping to the frame
+ * rounded every gap up to whole frames (15 a second on a 25 fps clip was 12.5; 11 a second on a
+ * 12 fps clip, 6). The schedule never runs ahead of the frames (a frame taken a little early moves
+ * it back) nor more than a frame behind them (after a hole in the frames, a dropped stretch or a
+ * VFR pause, it goes on from about that frame: no burst of catch-up detections). A cut, or
+ * [force], takes the frame and starts the schedule again from it. It detects on
+ * covered(rate, frameRate) frames a second, and never on fewer, nor with a longer gap, than
+ * snapping to the frame did at the same rate.
+ */
+export class DetectGate {
+  /** When the last detection was due (s). */
+  private anchor = -Infinity
+  /** The last frame's time, and the interval before it. */
+  private prev = NaN
+  private step = 0
+  /** The video's nominal frame interval (s). */
+  private frameDt: number
+
+  constructor(frameRate: number) {
+    this.frameDt = 1 / frameRate
+  }
+
+  /** Whether the frame at [ts] (s) gets a detection at [rate] a second. */
+  take(ts: number, rate: number, force = false): boolean {
+    // One frame: the nominal interval, or the last one if longer (a VFR stretch at a lower frame rate).
+    const frame = Math.max(this.frameDt, this.step)
+    if (Number.isFinite(this.prev)) this.step = Math.max(0, ts - this.prev)
+    this.prev = ts
+    const due = this.anchor + 1 / rate
+    if (!force && ts < due - GATE_SLACK_S) return false
+    this.anchor = force || this.anchor === -Infinity ? ts : Math.min(ts, Math.max(due, ts - frame))
+    return true
+  }
+}
+
+/** The frames a second DetectGate detects on at [rate] in a video of [frameRate]: the rate, at most every frame. */
+export const covered = (rate: number, frameRate?: number) => Math.min(rate, frameRate ?? Infinity)
+
 /** The long side the fine pass really runs at when set to [side] (as FaceDetector.detect: it resizes only a frame over 5% bigger). */
 export const runSide = (side: number, frameSide?: number) => (frameSide !== undefined && frameSide <= side * 1.05 ? frameSide : side)
 
@@ -76,7 +148,8 @@ export const runSide = (side: number, frameSide?: number) => (frameSide !== unde
 export function oldRate(i: PaceIn): number {
   const now = runSide(i.side, i.frameSide), low = runSide(OLD.lowSide, i.frameSide)
   const ms = i.fineMs * Math.min(1, (low / now) ** 2)
-  return clamp((OLD.budgetMs * i.workers) / Math.max(1, ms), MIN_RATE, Math.min(i.maxRate, i.gpu ? OLD.gpuRate : OLD.cpuRate))
+  const most = Math.min(i.maxRate, i.gpu ? OLD.gpuRate : OLD.cpuRate)
+  return clamp((OLD.budgetMs * i.workers) / Math.max(1, ms), Math.min(MIN_RATE, most), most)
 }
 
 /**
@@ -91,7 +164,7 @@ export function pace(i: PaceIn): Pace {
   const floor = oldRate(i)
   const out = (rate: number, side = i.side): Pace => {
     const r = Math.min(i.maxRate, Math.max(rate, floor))
-    return { rate: r, side, reduced: eff(side) < eff(i.startSide) || r < Math.min(i.maxRate, i.frameRate ?? Infinity) * FULL_SHARE }
+    return { rate: r, side, reduced: eff(side) < eff(i.startSide) || covered(r, i.frameRate) < covered(i.maxRate, i.frameRate) * FULL_SHARE }
   }
   /** On the GPU, how long RetinaFace's own passes may take at a size before the frame leaves it. */
   const gpuLimit = (side: number) => (side > MID_SIDE ? GPU_SLOW_MS : OLD.gpuSlowMs)
@@ -111,8 +184,8 @@ export function pace(i: PaceIn): Pace {
   // 960 -> 640 over 200 ms).
   const down = i.side > MID_SIDE ? MID_SIDE : LOW_SIDE
   if (i.side > LOW_SIDE && eff(down) < eff(i.side) && (!i.gpu || i.rfMs > gpuLimit(i.side))) return out(i.rate, down)
-  // Then fewer detections (never under the floor).
-  return out(clamp(wanted, MIN_RATE, i.maxRate))
+  // Then fewer detections (never under the floor, nor under 8 a second: the app's floor).
+  return out(clamp(wanted, Math.min(MIN_RATE, i.maxRate), i.maxRate))
 }
 
 /** A detection's times (ms): whole, RetinaFace's passes (fine + coarse), its fine pass; and the GPU's check against the CPU inside it, if it ran. */
