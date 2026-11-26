@@ -36,7 +36,7 @@ data class SubsPart(
     /** Create them automatically. */
     val create: Boolean? = null,
     val model: SpeechModel? = null,
-    /** "he", "en" or "auto" (the model's own by default). */
+    /** "he", "ar", "en", "fa" or "auto" (the model's own by default). */
     val language: String? = null,
     val translate: Boolean? = null,
     val style: SubtitleStyle? = null,

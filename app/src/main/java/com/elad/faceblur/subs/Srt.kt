@@ -14,7 +14,6 @@ object Srt {
 
     private val TIMES = Regex("""(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)""")
     private val TAGS = Regex("<[^>]+>")
-    private val HEBREW = Regex("[\u0590-\u05FF]")
 
     /**
      * The first [max] bytes of [bytes] (read up to max + 1), cut so no UTF-8 character is split:
@@ -58,9 +57,10 @@ object Srt {
         return out.sortedBy { it.startMs }
     }
 
-    /** Imported subtitles as new ones: Hebrew text is the spoken text in Hebrew, anything else in English. */
+    /** Imported subtitles as new ones: Hebrew, Arabic or Persian text is the spoken text in that language, anything else in English. */
     fun toNewCues(items: List<Item>): List<NewCue> = items.map {
-        if (HEBREW.containsMatchIn(it.text)) NewCue(it.startMs, it.endMs, it.text, "", "he", null)
+        val lang = SubLanguages.scriptLang(it.text)
+        if (lang == "he" || lang == "ar" || lang == "fa") NewCue(it.startMs, it.endMs, it.text, "", lang, null)
         else NewCue(it.startMs, it.endMs, "", it.text, "en", null)
     }
 
@@ -83,12 +83,18 @@ object Srt {
         }
     }
 
+    /** The language in the file's name: that of its text ("ar", "fa", "he", "en"), else the slot's ("en" or "he"). */
+    fun tag(cues: List<Cue>, english: Boolean): String {
+        val text = cues.sortedBy { it.startMs }.map { if (english) it.en else it.he }.firstOrNull { it.isNotBlank() }.orEmpty()
+        return SubLanguages.scriptLang(text).ifEmpty { if (english) "en" else "he" }
+    }
+
     /** Saves to Download/ONIT; returns null if there's nothing to save. */
     fun save(context: Context, baseName: String, cues: List<Cue>, english: Boolean): Uri? {
         val text = format(cues, english)
         if (text.isBlank()) return null
         val values = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, "$baseName.${if (english) "en" else "he"}.srt")
+            put(MediaStore.Downloads.DISPLAY_NAME, "$baseName.${tag(cues, english)}.srt")
             put(MediaStore.Downloads.MIME_TYPE, "application/x-subrip")
             put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/ONIT")
         }

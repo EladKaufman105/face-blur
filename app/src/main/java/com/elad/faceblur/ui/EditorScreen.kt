@@ -1780,7 +1780,7 @@ private fun PropertiesPanel(ctrl: EditorController, busy: Boolean, style: Subtit
                         val englishSpoken = cue.src == "en" || (cue.src == "" && cue.he.isBlank() && cue.en.isNotBlank())
                         CueField(cue.srcText, t("טקסט"), rtl = !englishSpoken, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(cue.id, it, cue.otherText) }
                         if (ctrl.hasTranslation) {
-                            CueField(cue.otherText, t("תרגום"), rtl = englishSpoken, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(cue.id, cue.srcText, it) }
+                            CueField(cue.otherText, t("תרגום"), rtl = null, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(cue.id, cue.srcText, it) }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(t("דובר"), style = MaterialTheme.typography.labelLarge)

@@ -3,6 +3,7 @@ package com.elad.faceblur.edit
 import com.elad.faceblur.analysis.Box
 import com.elad.faceblur.analysis.Det
 import com.elad.faceblur.analysis.OfflineTracker
+import com.elad.faceblur.subs.SubLanguages
 import java.util.TreeMap
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -50,7 +51,8 @@ class NewCue(val startMs: Long, val endMs: Long, val he: String, val en: String,
  *
  * @param group subtitles split from one sentence share a group; they're merged back when the
  *   words per subtitle change.
- * @param src the spoken language of the text, "he" or "en" ("" if unknown).
+ * @param src the spoken language of the text, "he", "ar", "fa" or "en" ("" if unknown). The spoken text of
+ *   the first three is in [he], English in [en]; the other one is the translation, in any of the four languages.
  * @param words when each word of the spoken text is said, if known.
  * @param speaker who says it: 0 unknown (shown like speaker 1), 1.. [Speakers.MAX].
  */
@@ -70,7 +72,7 @@ class Cue(
     /** The text in the spoken language (Hebrew if unknown). */
     val srcText get() = when (src) {
         "en" -> en
-        "he" -> he
+        "he", "ar", "fa" -> he
         else -> he.ifBlank { en }
     }
 
@@ -78,7 +80,7 @@ class Cue(
     val otherText: String get() {
         val o = when (src) {
             "en" -> he
-            "he" -> en
+            "he", "ar", "fa" -> en
             else -> if (he.isBlank()) "" else en
         }
         return if (o.trim() == srcText.trim()) "" else o
@@ -851,7 +853,7 @@ class EditModel(
         val parts = Subtitles.spread(Subtitles.words(translated), cs.map { Subtitles.words(it.srcText).size })
         cs.forEachIndexed { i, c ->
             // A manual subtitle (no language) gets one from the side it's written on.
-            if (c.src == "") c.src = if (intoEnglish) "he" else "en"
+            if (c.src == "") c.src = if (intoEnglish) SubLanguages.scriptLang(c.he).takeIf { it != "en" && it != "" } ?: "he" else "en"
             if (intoEnglish) c.en = parts[i] else c.he = parts[i]
         }
         changed()

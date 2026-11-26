@@ -18,8 +18,9 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * A transcribed sentence: time range (ms), both languages, the spoken one ("he", "en" or "")
- * and when each of its spoken words is said.
+ * A transcribed sentence: time range (ms), both texts, the spoken language ("he", "ar", "fa", "en"
+ * or "") and when each of its spoken words is said. Hebrew, Arabic and Persian speech is in [he],
+ * English speech in [en] (see [SubLanguages]).
  */
 class SubLine(
     val startMs: Long,
@@ -35,7 +36,7 @@ class SubResult(val lines: List<SubLine>, val speechLang: String, val translated
 
 /**
  * Speech -> subtitles, all on the device: decode the audio, transcribe with Whisper, then
- * translate Hebrew <-> English with ML Kit.
+ * translate between Hebrew, English, Arabic and Persian with ML Kit.
  */
 object SubtitleEngine {
     /** AUDIO: decoding; SPEECH: recognition; PACK: downloading the translation pack; TRANSLATE. */
@@ -52,7 +53,9 @@ object SubtitleEngine {
     class NoAudioException : Exception("no audio")
 
     /**
-     * @param lang language of the speech for the model ("he", "en" or "auto").
+     * @param lang language of the speech for the model ("he", "ar", "fa", "en" or "auto"). A language
+     *   that is not auto is forced: no detection.
+     * @param translateTo what the lines are translated into (null: English, or Hebrew for English speech).
      * @param translate also fill the other language (else lines have only the spoken one).
      * @param speed expected seconds of work per second of audio: recognition reports progress
      *   only per 30 s window, so in between, progress follows the clock.
@@ -64,6 +67,7 @@ object SubtitleEngine {
         modelPath: String,
         lang: String,
         translate: Boolean,
+        translateTo: String? = null,
         speed: Float = 0.6f,
         onSpeed: (Float) -> Unit = {},
         onProgress: (Stage, Float) -> Unit,
@@ -125,14 +129,14 @@ object SubtitleEngine {
             val t = s.text
             when (val l = lineLanguage(t, detected)) {
                 "en" -> SubLine(s.startMs, s.endMs, "", t, l, s.words)
-                "he" -> SubLine(s.startMs, s.endMs, t, "", l, s.words)
+                "he", "ar", "fa" -> SubLine(s.startMs, s.endMs, t, "", l, s.words)
                 else -> SubLine(s.startMs, s.endMs, t, t, "", s.words)
             }
         }
         if (!translate || lines.isEmpty()) return@withContext SubResult(lines, detected, false)
         val out = lines.toMutableList()
         val ok = try {
-            translateLines(lines.map { it.he to it.en }, onProgress) { i, he, en -> out[i] = SubLine(lines[i].startMs, lines[i].endMs, he, en, lines[i].src, lines[i].words) }
+            translateLines(lines.map { it.he to it.en }, lines.map { it.src }, translateTo, onProgress) { i, he, en -> out[i] = SubLine(lines[i].startMs, lines[i].endMs, he, en, lines[i].src, lines[i].words) }
             true
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -144,43 +148,65 @@ object SubtitleEngine {
     }
 
     /**
-     * Fills the missing language of each (Hebrew, English) pair, calling [onLine] as each one
-     * is done. Throws if the translation pack can't be downloaded or translating fails.
+     * One text to translate: [text] in [from], into [to] ("he", "en", "ar" or "fa"). [from] "" means
+     * the text is kept as it is.
+     */
+    class Item(val text: String, val from: String, val to: String)
+
+    /**
+     * What to translate for the (spoken-side, English-side) text [pairs] with spoken languages
+     * [srcs] ("he", "ar", "fa", "en" or ""): the pairs with one side empty. The source language
+     * comes from the line's [srcs] entry, else from the letters of its text; the target is
+     * [SubLanguages.target] of it with [pick]. Null entries are pairs with nothing to do.
+     */
+    fun items(pairs: List<Pair<String, String>>, srcs: List<String>, pick: String?): List<Item?> =
+        pairs.indices.map { i ->
+            val (side, other) = pairs[i]
+            if (side.isBlank() == other.isBlank()) return@map null
+            val text = side.ifBlank { other }
+            val known = srcs.getOrNull(i).orEmpty()
+            val from = if (SubLanguages.translatable(known)) known else SubLanguages.scriptLang(text).ifEmpty { if (side.isBlank()) "en" else "he" }
+            Item(text, from, SubLanguages.target(from, pick))
+        }
+
+    /**
+     * Fills the missing text of each (spoken-side, English-side) pair, calling [onLine] as each
+     * one is done: the translation goes in the slot that is empty. Throws if a translation pack
+     * can't be downloaded or translating fails.
      */
     suspend fun translateLines(
         pairs: List<Pair<String, String>>,
+        srcs: List<String>,
+        pick: String?,
         onProgress: (Stage, Float) -> Unit,
         onLine: (Int, String, String) -> Unit,
     ) {
-        val todo = pairs.indices.filter { (pairs[it].first.isBlank()) != (pairs[it].second.isBlank()) }
+        val todo = items(pairs, srcs, pick).withIndex().filter { it.value != null }
         if (todo.isEmpty()) return
         Translator.translate(
-            todo.map { i -> pairs[i].first.ifBlank { pairs[i].second } },
-            todo.map { i -> if (pairs[i].first.isBlank()) "en" else "he" },
+            todo.map { it.value!! },
             onDownload = { onProgress(Stage.PACK, 0f) },
             onProgress = { onProgress(Stage.TRANSLATE, it) },
         ) { k, out ->
-            val i = todo[k]
+            val i = todo[k].index
             val (he, en) = pairs[i]
             if (he.isBlank()) onLine(i, out, en) else onLine(i, he, out)
         }
     }
 
     /**
-     * "he" or "en" by which script most of the letters are in; "" (don't translate) for other
-     * languages and lines without letters.
+     * The spoken language of a line by which script most of its letters are in: "he", "ar", "fa"
+     * or "en"; "" (don't translate) for lines without letters and for English letters in speech
+     * that is in another language ([detected]: the Latin letters are then names or noise).
      */
     fun lineLanguage(text: String, detected: String): String {
-        var heb = 0
-        var lat = 0
-        for (ch in text) {
-            if (ch in '\u05D0'..'\u05EA') heb++ else if (ch in 'a'..'z' || ch in 'A'..'Z') lat++
-        }
+        val script = SubLanguages.scriptLang(text)
         val otherLanguage = detected.isNotEmpty() && detected != "auto" && detected != "he" && detected != "en"
         return when {
-            heb > lat -> "he"
-            lat > heb && !otherLanguage -> "en"
-            else -> ""
+            script == "en" && otherLanguage -> ""
+            // The model knows which of the two it heard (a loan word with پ or گ doesn't make Arabic Persian).
+            (script == "ar" || script == "fa") && (detected == "ar" || detected == "fa") -> detected
+            else -> script
         }
     }
 
@@ -203,7 +229,7 @@ object SubtitleEngine {
             cur += w
             chars += w.third.length + 1
             val next = sorted.getOrNull(i + 1)
-            val end = w.third.trimEnd().lastOrNull()?.let { it in ".?!…" } == true
+            val end = SubLanguages.endsSentence(w.third)
             val pause = next != null && next.first - w.second > PAUSE_MS
             val full = next != null && chars + next.third.length > MAX_CHARS
             if (next == null || end || pause || full) {

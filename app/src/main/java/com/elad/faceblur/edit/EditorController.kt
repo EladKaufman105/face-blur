@@ -18,6 +18,7 @@ import com.elad.faceblur.track.FaceTimeline
 import com.elad.faceblur.subs.ModelManager
 import com.elad.faceblur.prefs.AppPrefs
 import com.elad.faceblur.subs.SpeechModel
+import com.elad.faceblur.subs.SubLanguages
 import com.elad.faceblur.subs.SubtitleEngine
 import com.elad.faceblur.subs.SpeakerDetector
 import com.elad.faceblur.audio.AudioEdit
@@ -198,6 +199,10 @@ class EditorController(
         private set
     /** Translate new subtitles when they're created (remembered). */
     var translateOnCreate by mutableStateOf(prefs?.subsTranslate ?: false)
+        private set
+
+    /** What subtitles are translated into: "he", "en", "ar" or "fa"; null: English (Hebrew for English speech). This session only. */
+    var translateTo by mutableStateOf<String?>(null)
         private set
     private var pendingTextSnapshot = false
     private var subsJob: Job? = null
@@ -633,12 +638,16 @@ class EditorController(
         sync()
     }
 
-    /** Downloads [m] if needed, then transcribes the video with it. */
-    fun makeSubtitles(m: SpeechModel) {
+    /**
+     * Downloads [m] if needed, then transcribes the video with it. [lang]: the spoken language the
+     * person picked for the multilingual model ("he", "ar", "en", "fa"; null or "auto": detect it);
+     * the Hebrew model is always Hebrew.
+     */
+    fun makeSubtitles(m: SpeechModel, lang: String? = null) {
         val mm = models ?: return
         if (subsJob?.isActive == true || mm.downloading != null) return
         if (mm.isReady(m)) {
-            generateSubtitles(m)
+            generateSubtitles(m, lang)
             return
         }
         subsJob = scope.launch {
@@ -650,7 +659,7 @@ class EditorController(
                 notice = t("הורדת המודל נכשלה: %s").format(e.message ?: e.javaClass.simpleName)
                 return@launch
             }
-            generateSubtitles(m)
+            generateSubtitles(m, lang)
         }
     }
 
@@ -686,9 +695,9 @@ class EditorController(
     }
 
     /** Transcribes the video with [m] (downloaded) and fills the subtitles. */
-    fun generateSubtitles(m: SpeechModel) {
+    fun generateSubtitles(m: SpeechModel, lang: String? = null) {
         val path = models?.file(m)?.takeIf { models.isReady(m) }?.absolutePath ?: return
-        generateSubtitles(path, m.language)
+        generateSubtitles(path, if (m == SpeechModel.HEBREW) m.language else SubLanguages.speechCode(lang))
     }
 
     fun generateSubtitles(modelPath: String, lang: String) {
@@ -733,7 +742,7 @@ class EditorController(
         }
     }
 
-    /** Sentences (groups) that have only one of the two languages: (group, he, en). */
+    /** Sentences (groups) that have only one of the two texts: (group, he slot, en slot). */
     private fun untranslated(): List<Triple<Int, String, String>> {
         val groups = LinkedHashMap<Int, MutableList<Cue>>()
         for (c in model.cues.sortedBy { it.startMs }) groups.getOrPut(c.group) { ArrayList() } += c
@@ -743,6 +752,10 @@ class EditorController(
             if (he.isBlank() == en.isBlank()) null else Triple(g, he, en)
         }
     }
+
+    /** The spoken language of each untranslated sentence (its first subtitle's), for [untranslated]'s order. */
+    private fun untranslatedLangs(todo: List<Triple<Int, String, String>>): List<String> =
+        todo.map { (g, _, _) -> model.cues.filter { it.group == g }.minByOrNull { it.startMs }?.src.orEmpty() }
 
     val untranslatedCount get() = untranslated().size
 
@@ -767,6 +780,8 @@ class EditorController(
         try {
             SubtitleEngine.translateLines(
                 todo.map { it.second to it.third },
+                untranslatedLangs(todo),
+                translateTo,
                 { st, p -> main.post { if (subsProgress != null) subsProgress = st to p } },
             ) { i, he, en ->
                 val (g, he0, _) = todo[i]
@@ -1352,6 +1367,11 @@ class EditorController(
         if (model.cues.isEmpty()) return
         model.regroup(rule)
         sync()
+    }
+
+    /** Picks what subtitles are translated into (null: English, or Hebrew for English speech). */
+    fun changeTranslateTo(v: String?) {
+        translateTo = v?.takeIf { SubLanguages.translatable(it) }
     }
 
     fun changeTranslateOnCreate(v: Boolean) {

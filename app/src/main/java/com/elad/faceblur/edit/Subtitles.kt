@@ -1,5 +1,6 @@
 package com.elad.faceblur.edit
 
+import com.elad.faceblur.subs.SubLanguages
 import java.util.TreeMap
 import kotlin.math.ceil
 import kotlin.math.max
@@ -150,8 +151,9 @@ object Subtitles {
             if (i !in hide) m.value
             else {
                 val w = m.value
-                val a = w.indexOfFirst { it.isLetterOrDigit() }
-                val b = w.indexOfLast { it.isLetterOrDigit() }
+                // A mark (Hebrew point, Arabic diacritic) belongs to its letter: none is left showing, as on the web.
+                val a = w.indexOfFirst { SubLanguages.isWordChar(it) }
+                val b = w.indexOfLast { SubLanguages.isWordChar(it) }
                 // Always 4 stars: the length shouldn't hint at the word.
                 if (a < 0) w else w.substring(0, a) + "****" + w.substring(b + 1)
             }
