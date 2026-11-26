@@ -14,7 +14,6 @@ object Srt {
 
     private val TIMES = Regex("""(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)""")
     private val TAGS = Regex("<[^>]+>")
-    private val HEBREW = Regex("[\u0590-\u05FF]")
 
     /**
      * The first [max] bytes of [bytes] (read up to max + 1), cut so no UTF-8 character is split:
@@ -58,9 +57,10 @@ object Srt {
         return out.sortedBy { it.startMs }
     }
 
-    /** Imported subtitles as new ones: Hebrew text is the spoken text in Hebrew, anything else in English. */
+    /** Imported subtitles as new ones: Hebrew, Arabic or Persian text is the spoken text in that language, anything else in English. */
     fun toNewCues(items: List<Item>): List<NewCue> = items.map {
-        if (HEBREW.containsMatchIn(it.text)) NewCue(it.startMs, it.endMs, it.text, "", "he", null)
+        val lang = SubLanguages.scriptLang(it.text)
+        if (lang == "he" || lang == "ar" || lang == "fa") NewCue(it.startMs, it.endMs, it.text, "", lang, null)
         else NewCue(it.startMs, it.endMs, "", it.text, "en", null)
     }
 
@@ -83,18 +83,51 @@ object Srt {
         }
     }
 
+    /**
+     * The language in the file's name: the script most of the subtitles' text is in ("ar", "fa",
+     * "he", "en"; text without letters is skipped), else the slot's ("en" or "he").
+     */
+    fun tag(cues: List<Cue>, english: Boolean): String {
+        val counts = LinkedHashMap<String, Int>()
+        for (c in cues.sortedBy { it.startMs }) {
+            val l = SubLanguages.scriptLang(if (english) c.en else c.he)
+            if (l.isNotEmpty()) counts[l] = (counts[l] ?: 0) + 1
+        }
+        return counts.maxByOrNull { it.value }?.key ?: if (english) "en" else "he"
+    }
+
+    /** One file to save: the slot ([english]), its name's language tag and its text. */
+    class SrtFile(val english: Boolean, val tag: String, val text: String)
+
+    /**
+     * The .srt files for [cues]: one per text that has any, named by language. Two slots with the
+     * same text give one file; two files of the same language get distinct names.
+     */
+    fun files(cues: List<Cue>): List<SrtFile> {
+        val out = ArrayList<SrtFile>()
+        for (english in listOf(false, true)) {
+            val text = format(cues, english)
+            if (text.isBlank() || out.any { it.text == text }) continue
+            var name = tag(cues, english)
+            if (out.any { it.tag == name }) name += "2"
+            out += SrtFile(english, name, text)
+        }
+        return out
+    }
+
+    /** Saves the files of [cues] to Download/ONIT; returns how many. */
+    fun saveAll(context: Context, baseName: String, cues: List<Cue>): Int = files(cues).count { save(context, baseName, it) != null }
+
     /** Saves to Download/ONIT; returns null if there's nothing to save. */
-    fun save(context: Context, baseName: String, cues: List<Cue>, english: Boolean): Uri? {
-        val text = format(cues, english)
-        if (text.isBlank()) return null
+    fun save(context: Context, baseName: String, f: SrtFile): Uri? {
         val values = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, "$baseName.${if (english) "en" else "he"}.srt")
+            put(MediaStore.Downloads.DISPLAY_NAME, "$baseName.${f.tag}.srt")
             put(MediaStore.Downloads.MIME_TYPE, "application/x-subrip")
             put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/ONIT")
         }
         val r = context.contentResolver
         val uri = r.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
-        r.openOutputStream(uri)?.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+        r.openOutputStream(uri)?.use { it.write(f.text.toByteArray(Charsets.UTF_8)) }
         return uri
     }
 }

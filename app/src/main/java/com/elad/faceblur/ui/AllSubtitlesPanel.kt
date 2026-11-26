@@ -237,7 +237,8 @@ private fun CueRow(ctrl: EditorController, c: Cue, current: Boolean, translated:
                 ctrl.typeCueText(c.id, it, c.otherText)
             }
             if (translated) {
-                CueField(c.otherText, t("תרגום"), rtl = englishSpoken, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(c.id, c.srcText, it) }
+                CueField(c.otherText, t("תרגום"), rtl = null, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(c.id, c.srcText, it) }
+                HiddenTranslationNote(ctrl, c)
             }
         }
         if (!ctrl.bleepMode) Column {

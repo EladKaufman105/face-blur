@@ -630,7 +630,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ctrl.onFacesFound = { persistFaces(ctrl) }
         autosave?.cancel()
         autosave = viewModelScope.launch {
-            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, subtitleStyle, sessionExport, ctrl.background, ctrl.masksReady, ctrl.session.settings, ctrl.stabilizeLevel) }
+            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, subtitleStyle, sessionExport, ctrl.background, ctrl.masksReady, ctrl.session.settings, ctrl.stabilizeLevel, ctrl.translateTo) }
                 .drop(1)
                 .collectLatest {
                     delay(1500)
@@ -718,6 +718,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 Background.fromJson(j.optJSONObject("background")),
                 when (val st = j.opt("stabilize")) { is Boolean -> if (st) 2 else 0; is Number -> st.toInt(); else -> 0 },
             )
+            ctrl.changeTranslateTo(j.optString("translateTo").takeIf { it.isNotBlank() })
             editor = ctrl
             projectId = id
             startAutosave(ctrl)
