@@ -128,6 +128,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [safeOn, setSafeOn] = useState(false)
   /** The blur view (as the app's): the real blur in the player, or outlines only (to see the faces under it). Only here, never in the export. */
   const [blurView, setBlurView] = useState(true)
+  // With no blur left the switch goes (it shows only with blurs): the next blur starts on the real blur again.
+  useEffect(() => { if (tracks.length === 0 && !blurView) setBlurView(true) }, [tracks.length, blurView])
   const [safePlatform, setSafePlatform] = useState<Platform>(() => { try { const p = localStorage.getItem(storageKey('safezone.platform')); return p === 'reels' || p === 'shorts' ? p : 'tiktok' } catch { return 'tiktok' } })
   const safe = useRef<{ platform: Platform; from: Zone; at: number }>({ platform: safePlatform, from: zoneOf(safePlatform), at: -1e9 })
   // The picture tools: the camera's motion, the cuts and the people (from one pass over the video).
@@ -602,18 +604,34 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       .catch(() => { storageFull.current = true; setNotice(t('אין מקום לשמור את הפרויקט בדפדפן. אפשר להמשיך לערוך ולייצא.')) })
   }, [])
   const [projectTick, setProjectTick] = useState(0)
-  /** A small picture of the video as edited (faces blurred), for the projects' list. */
-  const snapshot = (): string | null => {
+  /**
+   * A small picture of the video as edited (faces blurred), for the projects' list. Always with the blur: with the blur view
+   * on outlines the preview holds the faces as they are, so the frame is drawn blurred for the picture and then as it was.
+   * Undefined (the saved picture is kept) when it can't be drawn blurred now.
+   */
+  const snapshot = (): string | null | undefined => {
     const c = canvas.current
     if (!c || !c.width) return null
+    const outlines = !state.current.blurView
     try {
+      if (outlines) {
+        const v = video.current
+        if (!v || v.readyState < 2) return undefined
+        state.current.blurView = true
+        draw()
+      }
       const small = document.createElement('canvas')
       small.width = 160
       small.height = Math.max(1, Math.round((160 * c.height) / c.width))
       small.getContext('2d')!.drawImage(c, 0, 0, small.width, small.height)
       return small.toDataURL('image/jpeg', 0.7)
     } catch {
-      return null
+      return outlines ? undefined : null
+    } finally {
+      if (outlines) {
+        state.current.blurView = false
+        draw()
+      }
     }
   }
   useEffect(() => {
@@ -626,7 +644,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       }
       const pic = savedPicture.current !== picture ? picture : undefined
       savedPicture.current = picture
-      saveProject(id, { duration: dur, thumb: snapshot(), ...summarize(state) }, state, pic).catch(() => {
+      const thumb = snapshot()
+      saveProject(id, { duration: dur, ...(thumb !== undefined ? { thumb } : {}), ...summarize(state) }, state, pic).catch(() => {
         storageFull.current = true
         setNotice(t('אין מקום לשמור את הפרויקט בדפדפן. אפשר להמשיך לערוך ולייצא.'))
       })
@@ -1233,6 +1252,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     // (Focus inside the subtitles tab, which is about to be hidden, goes to the group's button.)
     if ((document.activeElement as HTMLElement | null)?.closest('.subs-keep') && g !== 'subs') (document.querySelector(`.tabs [data-g=${g}]`) as HTMLElement | null)?.focus()
     if (phone) { video.current?.pause(); if (!following) setSelected(null); setSelectedSfx(null); setAdding(false) }
+    // A tablet's side panel shows the selected subtitle in the tool's place: a group picked there is shown instead.
+    if (tablet) setSelectedCue(null)
     setTab(g)
     setPanelOpen(true)
   }
@@ -1558,7 +1579,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           controls={timelineControls}
         />
         {/* (After the timeline, so the timeline does not move when a subtitle is selected on a wide screen; on a phone and a tablet the layout orders it.) */}
-        {cueProps && <CueBar {...cueProps} open={cueOpen && !sideCue} />}
+        {cueProps && <CueBar {...cueProps} open={cueOpen && !sideCue} noEdit={sideCue} />}
       </div>
 
       <aside class="side">

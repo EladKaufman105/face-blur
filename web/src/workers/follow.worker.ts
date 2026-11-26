@@ -60,7 +60,7 @@ async function times(file: File) {
   const out = Float64Array.from(ts)
   // The source's bitrate as the export reads it (its first packets), and its length: the export sheet's size estimate.
   const stats = await video.computePacketStats(240).catch(() => null)
-  const duration = ts.length ? ts[ts.length - 1] - Math.min(0, ts[0]) + 1 / fps : 0
+  const duration = ts.length ? ts[ts.length - 1] - ts[0] + 1 / fps : 0
   post({ type: 'times', times: out, fps, codec: video.codec ?? '', bitrate: stats?.averageBitrate ?? 0, duration }, [out.buffer])
 }
 

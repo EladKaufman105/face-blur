@@ -151,6 +151,34 @@ const SRT = `1\n00:00:01,000 --> 00:00:03,000\nשלום לכולם\n\n2\n00:00:0
     if ((await ink()) !== 0) fail('the outline stayed with the blur back on')
     const again = await p.screenshot({ clip: clipBox })
     if (!again.equals(blurred)) console.log('note: the blurred picture differs a little after the toggle (redraw)')
+    // The project's picture (the home screen's) is always the blurred one, outlines or not.
+    const readThumb = () => p.evaluate(async () => {
+      const name = (await indexedDB.databases()).map((d) => d.name).find((n) => /projects/.test(n))
+      const db = await new Promise((res, rej) => { const r = indexedDB.open(name); r.onsuccess = () => res(r.result); r.onerror = rej })
+      const all = await new Promise((res) => { const q = db.transaction('meta').objectStore('meta').getAll(); q.onsuccess = () => res(q.result) })
+      db.close()
+      return all[0]?.thumb ?? null
+    })
+    const bump = async () => { await p.keyboard.press('Control+z'); await p.waitForTimeout(300); await p.keyboard.press('Control+Shift+z'); await p.waitForTimeout(2500) }
+    const thumbDiff = (x, y) => p.evaluate(async ([x, y]) => {
+      const px = async (u) => { const i = new Image(); i.src = u; await i.decode(); const c = document.createElement('canvas'); c.width = i.width; c.height = i.height; const g = c.getContext('2d'); g.drawImage(i, 0, 0); return g.getImageData(0, 0, c.width, c.height).data }
+      const a = await px(x), b = await px(y); let s = 0; for (let k = 0; k < a.length; k += 4) s += Math.abs(a[k] - b[k]) + Math.abs(a[k + 1] - b[k + 1]) + Math.abs(a[k + 2] - b[k + 2]); return s / (a.length / 4)
+    }, [x, y])
+    await bump()
+    const thumbOn = await readThumb()
+    await p.click('.blur-view')
+    await p.waitForTimeout(400)
+    await bump()
+    const thumbOutlines = await readThumb()
+    await p.click('.blur-view')
+    await p.waitForTimeout(400)
+    await bump()
+    const thumbAgain = await readThumb()
+    if (!thumbOn || !thumbOutlines || !thumbAgain) fail('no project picture saved')
+    const dOut = await thumbDiff(thumbOn, thumbOutlines), dAgain = await thumbDiff(thumbOn, thumbAgain)
+    console.log('project picture: blur vs outlines', dOut.toFixed(2), 'blur vs blur again', dAgain.toFixed(2))
+    if (dOut > Math.max(3, dAgain * 3)) fail(`the project's picture shows the face with outlines on (${dOut.toFixed(2)} against ${dAgain.toFixed(2)})`)
+    if ((await p.getAttribute('.blur-view', 'aria-pressed')) !== 'true') fail('the blur view is not back on')
     // A phone with the safe zone's switch too (a 9:16 frame): the top bar still fits (Export keeps only its icon).
     await p.click('.tabs button[data-g=picture]')
     await p.click('.frame-aspect button >> nth=1')
@@ -194,6 +222,7 @@ const SRT = `1\n00:00:01,000 --> 00:00:03,000\nשלום לכולם\n\n2\n00:00:0
     await p.waitForSelector('.side .cue-side')
     if (!(await p.isHidden('.side > .panel'))) fail('the tool panel shows beside the subtitle\'s properties')
     if (await p.$('.player .cue-props')) fail('the properties are under the bar too')
+    if (await p.$('.cue-bar .cue-edit')) fail('"Edit text" in the bar opens nothing with the side panel open')
     const sideText = await p.textContent('.cue-side')
     for (const w of ['Text', 'Start here', 'End here', 'Split here', 'Merge with', 'Delete']) if (!sideText.includes(w)) fail(`no "${w}" in the side panel: ` + sideText)
     if ((await p.inputValue('.cue-side .cue-prop-text')) !== 'היום נדבר') fail('the side panel is not the selected subtitle')
@@ -206,6 +235,18 @@ const SRT = `1\n00:00:01,000 --> 00:00:03,000\nשלום לכולם\n\n2\n00:00:0
     await p.waitForTimeout(200)
     if (Math.abs((await cues(p))[1].a - 4.5) > 0.06) fail('Start here in the side panel: ' + JSON.stringify((await cues(p))[1]))
     await p.screenshot({ path: `${out}/6_tablet_props.png` })
+    // Esc in its text field closes it; a group picked in the rail is shown (the subtitle no longer selected).
+    await p.focus('.cue-side .cue-prop-text')
+    await p.keyboard.press('Escape')
+    await p.waitForSelector('.cue-side', { state: 'detached' })
+    await p.click('.tl-cue >> nth=1')
+    await p.waitForSelector('.side .cue-side')
+    await p.click('.tabs button[data-g=sound]')
+    await p.waitForSelector('.cue-side', { state: 'detached' })
+    if (await p.isHidden('.side > .panel')) fail('the group picked with a subtitle selected is not shown')
+    await p.click('.tabs button[data-g=subs]')
+    await p.click('.tl-cue >> nth=1')
+    await p.waitForSelector('.side .cue-side')
     const m = await p.evaluate(() => ({ sideways: document.documentElement.scrollWidth > innerWidth, scroll: document.documentElement.scrollHeight - document.documentElement.clientHeight }))
     if (m.sideways || m.scroll > 1) fail('the tablet page scrolls with the properties: ' + JSON.stringify(m))
     // The panel closed: "Properties" in the top bar opens it again.

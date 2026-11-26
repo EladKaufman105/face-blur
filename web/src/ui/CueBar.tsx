@@ -37,6 +37,8 @@ type Props = {
   onTranslation: (tr: string) => void
   onSpeaker: (s: number) => void
   onClose: () => void
+  /** The properties are in a tablet's side panel: the bar has no "Edit text" (it would open nothing). */
+  noEdit?: boolean
 }
 
 /** A time as m:ss.s (the decimals tell a retimed edge from the one next to it). */
@@ -91,7 +93,8 @@ function CueFields(p: FieldsProps & { cls: string; children?: any }) {
  */
 export function CueSidePanel(p: Props) {
   return (
-    <section class="card cue-side" aria-label={t('כתובית')}>
+    // Esc closes it from its fields too (the editor's own keys skip text fields).
+    <section class="card cue-side" aria-label={t('כתובית')} onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); p.onClose() } }}>
       <div class="row">
         <h3 class="section-title grow" style="margin:0">{t('כתובית')}</h3>
         <button class="icon-btn" aria-label={t('סגור')} title={t('סגור') + ' (Esc)'} onClick={p.onClose}><CloseIcon size={18} /></button>
@@ -145,7 +148,7 @@ export function CueBar(p: Props) {
           {act(t('סוף כאן'), EndHereIcon, p.onEnd, 'cue-end')}
           {act(t('פצל'), CutIcon, p.onSplit, 'cue-split')}
           {(p.hasNext || p.hasPrev) && act(merge, MergeIcon, p.onMerge, 'cue-merge')}
-          {act(t('ערוך טקסט'), EditIcon, () => p.onOpen(!p.open), 'cue-edit')}
+          {!p.noEdit && act(t('ערוך טקסט'), EditIcon, () => p.onOpen(!p.open), 'cue-edit')}
           {act(t('מחק'), DeleteIcon, p.onDelete, 'danger cue-delete')}
         </div>
         <button class="icon-btn" aria-label={t('סגור')} title={t('סגור') + ' (Esc)'} onClick={p.onClose}><CloseIcon size={18} /></button>
