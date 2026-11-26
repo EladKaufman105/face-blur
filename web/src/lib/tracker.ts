@@ -10,14 +10,21 @@
 // Coordinates inside are "width units": x and w as a fraction of the width, y and h scaled by
 // the aspect ratio so both axes share the unit.
 import type { Det, Track } from './types'
-import { DEFAULT_THRESHOLDS, type Thresholds } from './sensitivity'
+// With the extension: tests/fusion.cjs runs it in Node as it is.
+import { DEFAULT_THRESHOLDS, type Thresholds } from './sensitivity.ts'
 
 interface SDet { x: number; y: number; w: number; h: number; score: number; verify: number }
 
 class Tracklet {
   det = new Map<number, SDet>()
   keys: number[] = []
-  constructor(readonly shotStart: number, readonly shotEnd: number) {}
+  readonly shotStart: number
+  readonly shotEnd: number
+  // Plain fields (no parameter properties): tests/fusion.cjs runs this file in Node as it is.
+  constructor(shotStart: number, shotEnd: number) {
+    this.shotStart = shotStart
+    this.shotEnd = shotEnd
+  }
   add(i: number, d: SDet) {
     if (!this.det.has(i)) this.keys.push(i)
     this.det.set(i, d)

@@ -25,7 +25,8 @@
 // sensitivity never blurs less than a lower one, nor than the default. CLEAR (0.8: no re-check
 // needed, no "check the faces" flag) doesn't move.
 import type { Det, Track } from './types'
-import { iou } from './fusion'
+// With the extension: tests/fusion.cjs runs it in Node as it is.
+import { iou } from './fusion.ts'
 
 export type DetectMode = 'normal' | 'extended' | 'fast'
 

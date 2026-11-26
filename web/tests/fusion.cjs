@@ -14,6 +14,8 @@ const F = await import('./src/lib/fusion.ts')
 const P = await import('./src/lib/pace.ts')
 const L = await import('./src/lib/lowconf.ts')
 const C = await import('./src/lib/coverage.ts')
+const S = await import('./src/lib/sensitivity.ts')
+const T = await import('./src/lib/tracker.ts')
 const fail = (m) => { console.log(JSON.stringify({ fail: m })); process.exit(0) }
 const near = (a, b, e = 1e-6) => Math.abs(a - b) <= e
 const det = (cx, cy, w, h, score, verify = 0) => ({ cx, cy, w, h, score, verify })
@@ -836,8 +838,155 @@ if (F.fuse([], []).length !== 0) fail('empty')
   }
 }
 
-// ---- the flag: low-confidence faces, or detection that ran reduced
+// ---- the flag: low-confidence faces, or detection that ran reduced, or fast detection
 if (!L.isLowConfidence({ reduced: true }) || !L.isLowConfidence({ lowConfidence: 2 }) || L.isLowConfidence({}) || L.isLowConfidence({ lowConfidence: 0, reduced: false })) fail('isLowConfidence')
+if (!L.isLowConfidence({ fast: true }) || L.isLowConfidence({ fast: false })) fail('a fast run is flagged for a look')
+
+// ---- fast detection: 5 a second, never fewer; judged against 5, so a device that keeps up is never 'reduced'
+{
+  if (S.FAST_RATE !== 5 || S.modeOf(false, true) !== 'fast' || S.modeOf(true, true) !== 'extended' || S.modeOf(false) !== 'normal') fail('modes')
+  for (const fps of [8, 10, 12, 15, 20, 23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 120]) {
+    for (const stamp of ['exact', 'ms']) {
+      const ts = Array.from({ length: Math.round(60 * fps) }, (_, k) => (stamp === 'ms' ? Math.round((k / fps) * 1000) / 1000 : k / fps))
+      for (const [label, ms, workers, gpu] of [['fast GPU', 20, 1, true], ['slow CPU', 900, 2, false], ['very slow CPU', 3000, 1, false]]) {
+        let rate = S.FAST_RATE, side = gpu ? 1280 : 640, reduced = false
+        const g = new P.DetectGate(), pacer = new P.Pacer(3), mm = new C.CoverageMeter({ needAt: (f) => P.needRate(f, false, S.FAST_RATE, true) }), got = []
+        ts.forEach((t, k) => {
+          const take = g.take(t, rate)
+          mm.frame(t, false, take, rate)
+          if (!take) return
+          got.push(k)
+          const w = pacer.add({ ms, rfMs: ms * 0.7, fineMs: ms * 0.6 })
+          if (!w) return
+          const p = P.pace({ ...w, workers, maxRate: S.FAST_RATE, side, startSide: gpu ? 1280 : 640, rate, gpu, frameSide: gpu ? 1280 : 960, frameRate: fps, nominal: fps, sizeRate: S.FAST_RATE })
+          rate = p.rate; side = p.side; reduced ||= p.reduced
+        })
+        const cov = mm.result(true)
+        const what = JSON.stringify({ fps, stamp, label, rate, side, n: got.length, cov: cov.rate, need: cov.need })
+        if (rate !== S.FAST_RATE) fail('fast detection left 5 a second: ' + what)
+        // About 5 a second (all frames of a slower clip), never fewer.
+        if (cov.rate < Math.min(fps, 5) * 0.97 || cov.rate > Math.min(fps, 5) * 1.05) fail('fast detection is not 5 a second: ' + what)
+        if (cov.short) fail('fast detection measured short against its own rate: ' + what)
+        // The longest gap stays within what the tracker bridges (0.7 s) and a frame over 0.2 s.
+        if (cov.maxGapS > 0.2 + 1.5 / fps) fail('fast detection gap: ' + what)
+        // The frame never shrinks on the CPU (already 640), nor on a fast GPU.
+        if (!gpu && side !== 640) fail('fast detection shrank the frame on the CPU: ' + what)
+        if (label === 'fast GPU' && (side !== 1280 || reduced)) fail('fast detection on a fast GPU reduced: ' + what)
+        if (!gpu && reduced) fail('fast detection on a CPU at 5 a second reads reduced: ' + what)
+      }
+    }
+  }
+  // The need of fast detection: 80% of 5 (4 a second), at most of the frames; normal and wide unchanged.
+  if (!near(P.needRate(30, false, 5, true), 4) || !near(P.needRate(3, false, 5, true), 2.4)) fail('fast need')
+  if (!near(P.needRate(30, false, P.fullRate(30)), Math.min(0.8 * 15, 0.97 * 15)) || !near(P.needRate(30, true), 24)) fail('normal and wide need changed')
+  // sizeRate leaves the pace as it was when not given (normal detection unchanged).
+  for (const i of [{ recentMs: 300, rfMs: 200, fineMs: 150, workers: 1, maxRate: 15, side: 960, startSide: 960, rate: 15, gpu: false, frameSide: 960, frameRate: 30, nominal: 30 }, { recentMs: 40, rfMs: 30, fineMs: 25, workers: 1, maxRate: 15, side: 1280, startSide: 1280, rate: 15, gpu: true, frameSide: 1280, frameRate: 30, nominal: 30 }]) {
+    if (JSON.stringify(P.pace(i)) !== JSON.stringify(P.pace({ ...i, sizeRate: undefined }))) fail('sizeRate changed normal pacing')
+  }
+}
+
+// ---- sensitivity: 0 is the default exactly; higher only ever lowers a threshold, never under the minimum
+{
+  const D = S.DEFAULT_THRESHOLDS
+  if (S.thresholds(0) !== D || S.thresholds(-1) !== D || S.thresholds(NaN) !== D || S.thresholds('x') !== D) fail('sensitivity 0 is not the default')
+  if (D.cut !== 0.4 || D.birth !== 0.45 || D.strong !== 0.6 || D.verified !== 0.5 || D.shortVerified !== 0.9) fail('the default thresholds of the tracker')
+  if (T.DET_THRESHOLD !== 0.4) fail('DET_THRESHOLD of the tracker')
+  if (JSON.stringify(S.thresholds(1)) !== JSON.stringify({ ...S.MOST }) || JSON.stringify(S.thresholds(5)) !== JSON.stringify({ ...S.MOST })) fail('sensitivity 1')
+  let prev = D
+  for (let i = 1; i <= 100; i++) {
+    const t = S.thresholds(i / 100)
+    for (const k of Object.keys(D)) if (!(t[k] <= prev[k] && t[k] >= S.MOST[k])) fail('sensitivity not monotone at ' + i / 100 + ' ' + k)
+    prev = t
+  }
+  if (!(S.POOL_RF <= S.MOST.cut && S.POOL_YUNET <= S.MOST.cut && S.MOST.strong < F.CLEAR)) fail('the pool')
+  if (S.quantize(0.02) !== 0 || S.quantize(0.03) !== 0.05 || S.quantize(7) !== 1 || S.levels(0).length !== 0 || JSON.stringify(S.levels(0.15)) !== JSON.stringify([0.05, 0.1, 0.15]) || S.levels(1).length !== 20) fail('steps')
+}
+
+// ---- sensitivity: the default detections come out exactly as before; the extra ones are nested
+{
+  let seed = 3
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648)
+  const rdets = (n, lo) => Array.from({ length: n }, () => { const w = 0.03 + rnd() * 0.15; return det(rnd(), rnd(), w, w * (1 + rnd() * 0.4), lo + rnd() * (1 - lo)) })
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+  for (let r = 0; r < 400; r++) {
+    // The decoding's NMS keeps the higher scores first: the faces from a threshold up are the same whatever the lower ones (so YuNet runs once, from the pool's threshold).
+    const raw = rdets(Math.floor(rnd() * 30), S.POOL_RF)
+    if (!same(F.nmsIou(raw.filter((d) => d.score >= 0.4), 0.3), F.nmsIou(raw, 0.3).filter((d) => d.score >= 0.4))) fail('nms prefix')
+    // YuNet's own decoding: random outputs, at two thresholds.
+    const side = 64, lv = [8, 16, 32].map((st) => (side / st) ** 2)
+    const o = { cls: lv.map((n) => Float32Array.from({ length: n }, () => rnd())), obj: lv.map((n) => Float32Array.from({ length: n }, () => rnd())), bbox: lv.map((n) => Float32Array.from({ length: 4 * n }, () => rnd() * 2 - 1)) }
+    if (!same(F.decodeYunet(o, 64, 48, 0.4, side), F.decodeYunet(o, 64, 48, S.POOL_YUNET, side).filter((d) => d.score >= 0.4))) fail('YuNet from the pool threshold')
+    // Extras: from the cut up, never a face already found, nested as the cut goes down.
+    const kept = F.fuse(rdets(Math.floor(rnd() * 6), 0.35), rdets(Math.floor(rnd() * 6), 0.4))
+    const pool = F.fuse(rdets(Math.floor(rnd() * 12), S.POOL_RF), rdets(Math.floor(rnd() * 12), S.POOL_YUNET), S.POOL_YUNET_ONLY)
+    let before = []
+    for (const lv2 of S.levels(1)) {
+      const ex = S.extras(kept, pool, S.thresholds(lv2).cut)
+      if (!before.every((e) => ex.includes(e))) fail('extras not nested')
+      if (ex.some((e) => e.score < S.thresholds(lv2).cut || kept.some((k) => F.iou(k, e) > S.SAME_FACE_IOU))) fail('extras')
+      before = ex
+    }
+  }
+}
+
+// ---- sensitivity: tracks. The default tracks stay whole; a higher sensitivity never covers less
+{
+  let seed = 11
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648)
+  const scene = () => {
+    const n = 150, faces = [], dets = new Map(), pool = new Map()
+    for (let f = 0; f < n; f += 2) dets.set(f, [])
+    const nf = 1 + Math.floor(rnd() * 4)
+    for (let q = 0; q < nf; q++) {
+      const a = Math.floor(rnd() * n / 2), b = a + 10 + Math.floor(rnd() * (n - a - 10))
+      const x0 = 0.1 + rnd() * 0.8, y0 = 0.1 + rnd() * 0.8, vx = (rnd() - 0.5) * 0.004, w = 0.02 + rnd() * 0.1, mean = 0.15 + rnd() * 0.8
+      const face = new Map()
+      for (let f = a; f <= b; f++) {
+        const box = det(x0 + vx * (f - a), y0, w, w, 1)
+        face.set(f, box)
+        if (f % 2) continue
+        const sc = Math.min(1, Math.max(0, mean + (rnd() - 0.5) * 0.4)), v = Math.min(1, Math.max(0, sc + (rnd() - 0.5) * 0.3))
+        const d = det(box.cx + (rnd() - 0.5) * 0.004, box.cy, w, w, sc, v)
+        if (sc >= 0.4) dets.get(f).push(d)
+        else if (sc >= S.MOST.cut) pool.set(f, [...(pool.get(f) ?? []), d])
+      }
+      faces.push(face)
+    }
+    for (let c = Math.floor(rnd() * 20); c > 0; c--) { const f = 2 * Math.floor(rnd() * n / 2); pool.set(f, [...(pool.get(f) ?? []), det(rnd(), rnd(), 0.05, 0.05, S.MOST.cut + rnd() * 0.15, rnd() * 0.5)]) }
+    return { n, faces, dets, pool }
+  }
+  const tracksAt = (sc, s, sensitive) => {
+    const base = T.track(sc.n, sc.dets, [], 30, 1, sensitive)
+    return S.widen(base, s, (level) => {
+      const thr = S.thresholds(level), all = new Map()
+      for (const [f, d] of sc.dets) all.set(f, [...d, ...S.extras(d, sc.pool.get(f) ?? [], thr.cut)])
+      return T.track(sc.n, all, [], 30, 1, sensitive, thr)
+    })
+  }
+  const boxOf = (t, f) => { const k = f - t.first; return k >= 0 && k * 4 < t.boxes.length ? det(t.boxes[k * 4], t.boxes[k * 4 + 1], t.boxes[k * 4 + 2], t.boxes[k * 4 + 3], 1) : null }
+  const covered = (sc, tr) => sc.faces.reduce((m, face) => m + [...face].filter(([f, b]) => tr.some((t) => { const x = boxOf(t, f); return x && F.iou(x, b) > 0.3 })).length, 0)
+  let gained = 0
+  for (let r = 0; r < 150; r++) {
+    const sc = scene()
+    for (const sensitive of [false, true]) {
+      const base = T.track(sc.n, sc.dets, [], 30, 1, sensitive)
+      if (JSON.stringify(base) !== JSON.stringify(T.track(sc.n, sc.dets, [], 30, 1, sensitive, S.thresholds(0)))) fail('the tracker at sensitivity 0')
+      if (JSON.stringify(tracksAt(sc, 0, sensitive)) !== JSON.stringify(base) || S.widen(base, 0, () => fail('a tracker run at sensitivity 0')) !== base) fail('sensitivity 0 is not the default tracks')
+      let prev = covered(sc, base)
+      for (let i = 1; i <= 10; i++) {
+        const tr = tracksAt(sc, i / 10, sensitive)
+        for (const b of base) {
+          if (!tr.some((t) => { for (let f = b.first; f < b.first + b.boxes.length / 4; f++) { const x = boxOf(t, f), y = boxOf(b, f); if (!x || x.cx !== y.cx || x.cy !== y.cy || x.w !== y.w || x.h !== y.h) return false } return true })) fail('a default track was changed at ' + i / 10)
+        }
+        const c = covered(sc, tr)
+        if (c < prev) fail('a higher sensitivity covered less (' + c + ' after ' + prev + ') at ' + i / 10)
+        if (i === 10 && c > covered(sc, base)) gained++
+        prev = c
+      }
+    }
+  }
+  if (gained < 20) fail('sensitivity found nothing more: ' + gained)
+}
 console.log(JSON.stringify({ ok: true }))
 `
 const r = JSON.parse(execFileSync(process.execPath, ['--experimental-strip-types', '--no-warnings', '--input-type=module', '-e', script], { cwd: path.join(__dirname, '..') }).toString().trim().split('\n').pop())
