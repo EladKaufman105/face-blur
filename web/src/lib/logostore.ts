@@ -49,12 +49,27 @@ export async function saveLogo(dataUrl: string | null): Promise<void> {
   }
 }
 
-/** A picked picture as a data URL (it outlives the page: an object URL does not). */
-export function readLogo(f: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
+/** The longest side a kept logo has (a watermark is small; a phone photo would fill the store). */
+const MAX_SIDE = 512
+
+/** A picked picture as a data URL (it outlives the page: an object URL does not), shrunk to [MAX_SIDE] when bigger. */
+export async function readLogo(f: Blob): Promise<string> {
+  const raw = await new Promise<string>((resolve, reject) => {
     const r = new FileReader()
     r.onload = () => resolve(String(r.result))
     r.onerror = () => reject(r.error)
     r.readAsDataURL(f)
   })
+  try {
+    const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('image')); i.src = raw })
+    const k = MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight)
+    if (!(k < 1)) return raw
+    const c = document.createElement('canvas')
+    c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k))
+    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
+    // PNG keeps a logo's transparency.
+    return c.toDataURL('image/png')
+  } catch {
+    return raw
+  }
 }

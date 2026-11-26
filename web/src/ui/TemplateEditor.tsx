@@ -244,7 +244,7 @@ export function TemplateEditor({ template, onClose, onSaved }: Props) {
         <div class="tpl-foot">
           {edited && <button class="btn tonal tpl-restore" onClick={async () => { await restoreTemplate(template.id); onSaved?.(template.id); onClose() }}>{t('שחזר מקור')}</button>}
           <span class="grow" />
-          <button class="btn ghost" onClick={onClose}>{t('ביטול')}</button>
+          <button class="btn ghost" onClick={() => leave.current()}>{t('ביטול')}</button>
           <button class="btn primary tpl-save" disabled={busy || (!template.builtIn && !name.trim())} onClick={save}>{t('שמור')}</button>
         </div>
         {askLeave && (

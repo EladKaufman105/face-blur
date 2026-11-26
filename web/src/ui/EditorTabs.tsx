@@ -438,8 +438,8 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
     onCues([...cues, { id: newCueId(), start: time, end, text: '' }].sort((a, b) => a.start - b.start), true)
   }
   const splitAt = (c: Cue) => {
-    const parts = splitCue(c, caret.current.get(c.id) ?? Math.floor(c.text.length / 2), words)
-    if (!parts) { setListNote(t('אפשר לפצל רק כתובית עם יותר ממילה אחת')); return }
+    const parts = splitCue(c, caret.current.get(c.id) ?? Math.floor(c.text.length / 2), words, bleeped)
+    if (!parts) { setListNote(t('אי אפשר לפצל כאן: הכתובית קצרה מדי, יש בה מילה אחת, או שמילה מוסתרת לא תישאר מוסתרת')); return }
     setListNote(null)
     onCues(cues.flatMap((x) => (x.id === c.id ? parts : [x])), true)
   }

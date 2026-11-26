@@ -393,7 +393,7 @@ const EN: Record<string, string> = {
   'לא נמצא': 'Not found',
   'הוחלפו %d': 'Replaced %d',
   'אין כאן מקום לכתובית חדשה. אפשר לפצל כתובית קיימת.': 'No room for a new subtitle here. You can split an existing one.',
-  'אפשר לפצל רק כתובית עם יותר ממילה אחת': 'Only a subtitle with more than one word can be split',
+  'אי אפשר לפצל כאן: הכתובית קצרה מדי, יש בה מילה אחת, או שמילה מוסתרת לא תישאר מוסתרת': "Can't split here: the subtitle is too short, has one word, or a hidden word would show",
   'הוסף כתובית כאן': 'Add a subtitle here',
   'חפש והחלף': 'Find and replace',
   'חפש': 'Find',

@@ -169,6 +169,10 @@ function png(w, h, [r, g, b, a]) {
       await p.keyboard.press('Escape')
       await p.waitForFunction(() => !document.querySelector('.tpl-leave'))
       if (!(await p.$('.tpl-sheet'))) fail('Esc on the question closed the editor')
+      // Cancel asks as well, with changes.
+      await p.click('.tpl-sheet .btn.ghost:has-text("ביטול")')
+      await p.waitForSelector('.tpl-leave')
+      await p.click('.tpl-leave-keep')
       // "Discard changes" closes and nothing is saved.
       await p.click('.tpl-x')
       await p.waitForSelector('.tpl-leave')

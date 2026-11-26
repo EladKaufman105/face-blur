@@ -195,25 +195,50 @@ export function shownText(c: Cue, text: string, show: SubShow | undefined): stri
   return show === 'tr' ? tr : text + '\n' + tr
 }
 
-/** [cue] in two at character [at] of its text: the time split where the words say, else by length. */
-export function splitCue(cue: Cue, at: number, words: Word[]): [Cue, Cue] | null {
+/** The words of [cue] with where each one's text sits in it (the walk [maskCue] makes), and the index into [words]. */
+function placed(cue: Cue, words: Word[]): { k: number; pos: number; len: number; start: number }[] {
+  const out: { k: number; pos: number; len: number; start: number }[] = []
+  let from = 0
+  words.forEach((w, k) => {
+    if (!holds(cue, w.start)) return
+    const word = w.text.trim()
+    const pos = cue.text.indexOf(word, from)
+    if (pos < 0) return
+    out.push({ k, pos, len: word.length, start: w.start })
+    from = pos + 1
+  })
+  return out
+}
+
+/** How many words [maskCue] hides in [cue]. */
+const maskedCount = (cue: Cue, words: Word[], bleeped: Set<number>) => (maskCue(cue, words, bleeped).match(/\*\*\*\*/g) ?? []).length
+
+/**
+ * [cue] in two at character [at] of its text: the text and the words split at the same place (the first word whose text
+ * is at or after [at] starts the second half), the time where that word starts, else by length.
+ * Null when it can't be split, or when a bleeped word would not stay hidden in the half that shows it (given [bleeped]).
+ */
+export function splitCue(cue: Cue, at: number, words: Word[], bleeped?: Set<number>): [Cue, Cue] | null {
   const a = cue.text.slice(0, at).trim(), b = cue.text.slice(at).trim()
   if (!a || !b) return null
-  const inCue = words.filter((w) => holds(cue, w.start))
-  const before = a.split(/\s+/).length
+  // A cue too short to hold two (0.2 s each) is not split.
+  if (cue.end - cue.start < 0.4 - 1e-6) return null
+  const boundary = placed(cue, words).find((w) => w.pos >= at)
   const len = cue.end - cue.start
-  const exact = inCue.length === a.split(/\s+/).length + b.split(/\s+/).length ? inCue[before].start : null
-  let t = exact ?? cue.start + len * (a.length / (a.length + b.length))
+  let t = boundary?.start ?? cue.start + len * (a.length / (a.length + b.length))
   t = Math.min(cue.end - 0.2, Math.max(cue.start + 0.2, t))
   const first: Cue = { ...cue, end: t, text: a, tr: undefined }
   const second: Cue = { ...cue, id: newCueId(), start: t, text: b, tr: undefined, speaker: cue.speaker }
-  // A cue whose edges were moved keeps its words' stretch: it is shared out at the word where the text splits.
-  if (cue.ws !== undefined || cue.we !== undefined) { const w = exact ?? t; first.we = w; second.ws = w }
+  // The words' stretch is shared out exactly at the word where the text splits (even when [t] was held back from an edge).
+  const w = boundary?.start ?? t
+  if (boundary || cue.ws !== undefined || cue.we !== undefined || w !== t) { first.ws = winStart(cue); first.we = w; second.ws = w; second.we = winEnd(cue) }
+  for (const c of [first, second]) { if (c.ws === c.start) delete c.ws; if (c.we === c.end) delete c.we }
+  if (bleeped && bleeped.size > 0 && maskedCount(first, words, bleeped) + maskedCount(second, words, bleeped) !== maskedCount(cue, words, bleeped)) return null
   return [first, second]
 }
 
 /** [cue] split at the playhead [time]: before the first word that starts at or after it (as the app's split at the word nearest to the playhead). */
-export function splitCueAtTime(cue: Cue, time: number, words: Word[]): [Cue, Cue] | null {
+export function splitCueAtTime(cue: Cue, time: number, words: Word[], bleeped?: Set<number>): [Cue, Cue] | null {
   const tokens = [...cue.text.matchAll(/\S+/g)]
   const inCue = words.filter((w) => holds(cue, w.start))
   let k = inCue.filter((w) => w.start < time - 0.02).length
@@ -222,7 +247,7 @@ export function splitCueAtTime(cue: Cue, time: number, words: Word[]): [Cue, Cue
   if (inCue.length !== tokens.length) k = Math.round(tokens.length * Math.min(1, Math.max(0, (time - cue.start) / Math.max(0.001, cue.end - cue.start))))
   k = Math.min(tokens.length - 1, Math.max(1, k))
   const at = tokens[k].index!
-  return splitCue(cue, at, words)
+  return splitCue(cue, at, words, bleeped)
 }
 
 /** The cue's text with its bleeped words as **** (the words timed inside the cue). */

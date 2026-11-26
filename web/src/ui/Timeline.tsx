@@ -324,21 +324,23 @@ function FaceBlock(p: { track: Track; left: number; width: number; a: number; b:
  * handles at its ends, dragged to set when it shows and when it goes. Its text and its words stay.
  */
 function CueBlock(p: { cue: Cue; left: number; width: number; pps: number; selected: boolean; bar: string | null; onSelect: () => void; onTrimStart: () => void; onTrim: (start: boolean, at: number) => void }) {
-  const drag = useRef<{ x: number; at: number; start: boolean } | null>(null)
+  const drag = useRef<{ x: number; at: number; start: boolean; moved: boolean } | null>(null)
+  // A drag of a handle ends with a click on the clip: it is no tap.
+  const swallow = useRef(false)
   const handle = (start: boolean) => ({
     onPointerDown: (e: PointerEvent) => {
       e.stopPropagation()
       ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-      drag.current = { x: e.clientX, at: start ? p.cue.start : p.cue.end, start }
-      p.onTrimStart()
+      drag.current = { x: e.clientX, at: start ? p.cue.start : p.cue.end, start, moved: false }
     },
     onPointerMove: (e: PointerEvent) => {
       const d = drag.current
       if (!d) return
       e.stopPropagation()
+      if (!d.moved) { if (Math.abs(e.clientX - d.x) < 3) return; d.moved = true; p.onTrimStart() }
       p.onTrim(d.start, d.at + (e.clientX - d.x) / p.pps)
     },
-    onPointerUp: () => { drag.current = null },
+    onPointerUp: () => { if (drag.current?.moved) { swallow.current = true; setTimeout(() => { swallow.current = false }, 0) } drag.current = null },
     onPointerCancel: () => { drag.current = null },
   })
   return (
@@ -351,7 +353,7 @@ function CueBlock(p: { cue: Cue; left: number; width: number; pps: number; selec
       data-a={p.cue.start.toFixed(3)}
       data-b={p.cue.end.toFixed(3)}
       style={{ left: `${p.left}px`, width: `${p.width}px` }}
-      onClick={p.onSelect}
+      onClick={() => { if (!swallow.current) p.onSelect() }}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); p.onSelect() } }}
       dir="auto"
     >

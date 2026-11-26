@@ -1107,8 +1107,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const splitSelCue = () => {
     if (!selCue) return
     video.current?.pause()
-    const parts = splitCueAtTime(selCue, state.current.mediaTime, words)
-    if (!parts) { setNotice(t('אפשר לפצל רק כתובית עם יותר ממילה אחת')); return }
+    const parts = splitCueAtTime(selCue, state.current.mediaTime, words, bleeped)
+    if (!parts) { setNotice(t('אי אפשר לפצל כאן: הכתובית קצרה מדי, יש בה מילה אחת, או שמילה מוסתרת לא תישאר מוסתרת')); return }
     setCuesH(cues.flatMap((c) => (c.id === selCue.id ? parts : [c])), true)
   }
   /** With the next subtitle; the last one with the one before it. */

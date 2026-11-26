@@ -47,6 +47,8 @@ case "${1:?shard}" in
     # Where it was filmed and on what phone don't go out with the export.
     t privacy.cjs "$U" $S/speech_two.mp4 $R/privacy   # 10
     # Subtitles on the timeline, as the app's: a tap selects, the bar's Start / End here, split, merge, delete and text, the edges dragged, all undone; bleeps follow their words. Desktop and a phone.
+    # Splitting a subtitle keeps every bleeped word hidden and never makes a cue that ends before it starts (pure, no browser).
+    t splitmask.cjs   # 1
     t cues.cjs "$U" $S/speech_two.mp4 $R/cues   # 12
     t cues.cjs "$U" $S/speech_two.mp4 $R/cuesp phone   # 13
     ;;
