@@ -742,22 +742,14 @@ class EditorController(
         }
     }
 
-    /** Sentences (groups) that have only one of the two texts: (group, he slot, en slot). */
-    private fun untranslated(): List<Triple<Int, String, String>> {
-        val groups = LinkedHashMap<Int, MutableList<Cue>>()
-        for (c in model.cues.sortedBy { it.startMs }) groups.getOrPut(c.group) { ArrayList() } += c
-        return groups.mapNotNull { (g, cs) ->
-            val he = cs.joinToString(" ") { it.he.trim() }.trim()
-            val en = cs.joinToString(" ") { it.en.trim() }.trim()
-            if (he.isBlank() == en.isBlank()) null else Triple(g, he, en)
-        }
-    }
+    /** What needs translating now (see [EditModel.translationJobs]). */
+    private fun jobs() = model.translationJobs(audio.maskWords)
 
-    /** The spoken language of each untranslated sentence (its first subtitle's), for [untranslated]'s order. */
-    private fun untranslatedLangs(todo: List<Triple<Int, String, String>>): List<String> =
-        todo.map { (g, _, _) -> model.cues.filter { it.group == g }.minByOrNull { it.startMs }?.src.orEmpty() }
+    /** Sentences without a translation, or whose translation is hidden over bleeped words. */
+    val untranslatedCount get() = jobs().size
 
-    val untranslatedCount get() = untranslated().size
+    /** Whether [c]'s translation is hidden in the video: it may carry a bleeped word (see [EditModel.translationShown]). */
+    fun translationHidden(c: Cue) = c.otherText.isNotBlank() && !model.translationShown(c, audio.maskWords)
 
     /** Translates the subtitles that have only one language (again, after a failure). */
     fun translateSubtitles() {
@@ -774,19 +766,20 @@ class EditorController(
 
     /** Whole sentences translate better than pieces of them: one per group. */
     private suspend fun translateMissing() {
-        val todo = untranslated()
+        val todo = jobs()
         if (todo.isEmpty()) return
         subsProgress = SubtitleEngine.Stage.TRANSLATE to 0f
         try {
             SubtitleEngine.translateLines(
-                todo.map { it.second to it.third },
-                untranslatedLangs(todo),
+                todo.map { it.pair },
+                todo.map { it.src },
                 translateTo,
                 { st, p -> main.post { if (subsProgress != null) subsProgress = st to p } },
             ) { i, he, en ->
-                val (g, he0, _) = todo[i]
+                val job = todo[i]
                 main.post {
-                    if (he0.isBlank()) model.fillGroup(g, he, intoEnglish = false) else model.fillGroup(g, en, intoEnglish = true)
+                    if (job.pair.first.isBlank()) model.fillGroup(job.group, he, intoEnglish = false, source = job.source)
+                    else model.fillGroup(job.group, en, intoEnglish = true, source = job.source)
                     sync()
                 }
             }

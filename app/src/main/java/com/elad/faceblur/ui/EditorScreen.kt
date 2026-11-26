@@ -894,7 +894,9 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
         val faded = subs == SubLang.NONE
         val lang = if (faded) SubLang.BOTH else subs
         val hide = if (cue != null && ctrl.audio.maskWords) ctrl.model.bleepedWords(cue) else emptySet()
-        val blocks = cue?.blocks(lang, hide) ?: if (ctrl.stylePanel) {
+        // A translation that may carry a bleeped word stays hidden (as in the export).
+        val trShown = cue == null || ctrl.model.translationShown(cue, ctrl.audio.maskWords)
+        val blocks = cue?.blocks(lang, hide, trShown) ?: if (ctrl.stylePanel) {
             when (lang) {
                 SubLang.ORIGINAL -> SampleBlocks.take(1)
                 SubLang.TRANSLATED -> SampleBlocks.drop(1)
@@ -937,7 +939,7 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
             if (cue != null) {
                 subHit.rect = renderer.draw(
                     nc, blocks, cue.startMs * 1000, cue.endMs * 1000, nowMs * 1000, style.forSpeaker(cue.speaker),
-                    fw.toInt(), fh.toInt(), cue.blockTimes(lang),
+                    fw.toInt(), fh.toInt(), cue.blockTimes(lang, trShown),
                 )?.apply { offset(fl, ft) }
                 subHit.cueId = cue.id
             } else {
@@ -1781,6 +1783,7 @@ private fun PropertiesPanel(ctrl: EditorController, busy: Boolean, style: Subtit
                         CueField(cue.srcText, t("טקסט"), rtl = !englishSpoken, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(cue.id, it, cue.otherText) }
                         if (ctrl.hasTranslation) {
                             CueField(cue.otherText, t("תרגום"), rtl = null, onFocus = ctrl::beginTextEdit) { ctrl.typeCueText(cue.id, cue.srcText, it) }
+                            HiddenTranslationNote(ctrl, cue)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(t("דובר"), style = MaterialTheme.typography.labelLarge)

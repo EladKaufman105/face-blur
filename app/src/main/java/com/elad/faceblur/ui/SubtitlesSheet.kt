@@ -99,6 +99,19 @@ internal fun TranslateToPicker(ctrl: EditorController, enabled: Boolean) {
     }
 }
 
+/** Said under a subtitle whose translation is hidden in the video because it may carry a bleeped word. */
+@Composable
+internal fun HiddenTranslationNote(ctrl: EditorController, c: com.elad.faceblur.edit.Cue) {
+    @Suppress("UNUSED_VARIABLE") val v = ctrl.version
+    if (ctrl.translationHidden(c)) {
+        Text(
+            t("התרגום מוסתר בסרטון כי יש בכתובית מילים מוסתרות והתרגום לא נוצר מהטקסט המוסתר. תרגם שוב כדי להציג אותו."),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
 private fun mb(bytes: Long) = ltr("%d MB".format((bytes / 1e6).roundToInt()))
 
 /**
@@ -449,6 +462,7 @@ fun CueEditorDialog(ctrl: EditorController, style: SubtitleStyle = SubtitleStyle
                 OutlinedTextField(spoken, { spoken = it }, label = { Text(t("טקסט")) }, modifier = Modifier.fillMaxWidth())
                 if (showTranslation) {
                     OutlinedTextField(translation, { translation = it }, label = { Text(t("תרגום")) }, modifier = Modifier.fillMaxWidth())
+                    HiddenTranslationNote(ctrl, c)
                 }
                 // Who says it.
                 @Suppress("UNUSED_VARIABLE") val v = ctrl.version

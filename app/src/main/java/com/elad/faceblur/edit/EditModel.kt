@@ -66,8 +66,14 @@ class Cue(
     var src: String = "",
     var words: List<TimedWord>? = null,
     var speaker: Int = 0,
+    /**
+     * The sentence's spoken text, with its bleeped words masked, that the translation was made from
+     * (null: made from the raw text, by hand, or by an older version). A translation shows over
+     * hidden words only while this is the text that shows (see [EditModel.translationShown]).
+     */
+    var trm: String? = null,
 ) {
-    fun copy() = Cue(id, startMs, endMs, he, en, group, src, words, speaker)
+    fun copy() = Cue(id, startMs, endMs, he, en, group, src, words, speaker, trm)
 
     /** The text in the spoken language (Hebrew if unknown). */
     val srcText get() = when (src) {
@@ -88,7 +94,10 @@ class Cue(
 
     /** Sets the spoken-language text and / or the translation. */
     fun setTexts(spoken: String, translation: String) {
-        if (src == "en" || (src == "" && he.isBlank() && en.isNotBlank())) {
+        val english = src == "en" || (src == "" && he.isBlank() && en.isNotBlank())
+        // A translation typed by hand is not made from the masked text.
+        if (translation != (if (english) he else en)) trm = null
+        if (english) {
             en = spoken
             he = translation
         } else {
@@ -105,9 +114,9 @@ class Cue(
     }
 
     /** [blocks] with each one's word start times (only the spoken text has them). */
-    fun blockTimes(lang: SubLang): List<LongArray?> {
+    fun blockTimes(lang: SubLang, translation: Boolean): List<LongArray?> {
         val src = srcText
-        val other = otherText
+        val other = if (translation) otherText else ""
         val pairs = when (lang) {
             SubLang.ORIGINAL -> listOf(src to true)
             SubLang.TRANSLATED -> listOf(if (other.isBlank()) src to true else other to false)
@@ -120,14 +129,17 @@ class Cue(
 
     /**
      * Paragraphs to show for [lang] (the spoken language above the translation for both).
-     * Spoken words at [hide] (indices) are masked, e.g. ones bleeped out of the sound.
+     * Spoken words at [hide] (indices) are masked, e.g. ones bleeped out of the sound. [translation]
+     * false: the translation is not shown (it was not made from the masked text, see
+     * [EditModel.translationShown]); the spoken text shows instead.
      */
-    fun blocks(lang: SubLang, hide: Set<Int> = emptySet()): List<String> {
+    fun blocks(lang: SubLang, hide: Set<Int>, translation: Boolean): List<String> {
         val spoken = if (hide.isEmpty()) srcText else Subtitles.mask(srcText, hide)
+        val other = if (translation) otherText else ""
         return when (lang) {
             SubLang.ORIGINAL -> listOf(spoken)
-            SubLang.TRANSLATED -> listOf(otherText.ifBlank { spoken })
-            SubLang.BOTH -> listOf(spoken, otherText)
+            SubLang.TRANSLATED -> listOf(other.ifBlank { spoken })
+            SubLang.BOTH -> listOf(spoken, other)
             SubLang.NONE -> emptyList()
         }.filter { it.isNotBlank() }
     }
@@ -541,11 +553,70 @@ class EditModel(
         return on
     }
 
-    /** Copies of the subtitles to export; with [mask], bleeped words are hidden (****). */
+    /**
+     * The spoken text of [c]'s whole sentence (its group) as it shows: with [maskWords], the
+     * bleeped words are masked (****). A translation is made from this text.
+     */
+    fun maskedSentence(c: Cue, maskWords: Boolean): String =
+        cues.filter { it.group == c.group }.sortedBy { it.startMs }.mapNotNull { cc ->
+            val hide = if (maskWords) bleepedWords(cc) else emptySet()
+            (if (hide.isEmpty()) cc.srcText else Subtitles.mask(cc.srcText, hide)).trim().takeIf { it.isNotEmpty() }
+        }.joinToString(" ")
+
+    /** Whether a word of [c]'s sentence is masked (given [maskWords]). */
+    fun masksWords(c: Cue, maskWords: Boolean): Boolean =
+        maskWords && cues.any { it.group == c.group && bleepedWords(it).isNotEmpty() }
+
+    /**
+     * Whether [c]'s translation may show: nothing of its sentence is masked, or the translation was
+     * made from exactly the masked text that shows now. Otherwise it could carry a bleeped word
+     * (an old translation, one typed by hand, or text edited or bleeped after translating), so it is
+     * hidden (not deleted). As the web app does (`trVisible`).
+     */
+    fun translationShown(c: Cue, maskWords: Boolean): Boolean =
+        !masksWords(c, maskWords) || c.trm == maskedSentence(c, maskWords)
+
+    /** A sentence to translate: (spoken-side text, English-side text) of which one is empty, its spoken language, and the masked text it is made from. */
+    class TranslationJob(val group: Int, val pair: Pair<String, String>, val src: String, val source: String?)
+
+    /**
+     * What needs translating: the sentences with one text only, and those whose translation is
+     * hidden over bleeped words (see [translationShown]). The text to translate is the masked
+     * one, so a bleeped word never reaches the translator.
+     */
+    fun translationJobs(maskWords: Boolean): List<TranslationJob> {
+        val groups = LinkedHashMap<Int, MutableList<Cue>>()
+        for (c in cues.sortedBy { it.startMs }) groups.getOrPut(c.group) { ArrayList() } += c
+        return groups.mapNotNull { (g, cs) ->
+            val first = cs.first()
+            val he = cs.joinToString(" ") { it.he.trim() }.trim()
+            val en = cs.joinToString(" ") { it.en.trim() }.trim()
+            val english = first.src == "en" || (first.src == "" && first.he.isBlank())
+            val spokenText = if (english) en else he
+            val stale = he.isNotBlank() && en.isNotBlank() && !translationShown(first, maskWords)
+            when {
+                spokenText.isNotBlank() && (he.isBlank() != en.isBlank() || stale) -> {
+                    val masked = maskedSentence(first, maskWords)
+                    TranslationJob(g, if (english) "" to masked else masked to "", first.src, masked)
+                }
+                he.isBlank() != en.isBlank() -> TranslationJob(g, he to en, first.src, null)
+                else -> null
+            }
+        }
+    }
+
+    /**
+     * Copies of the subtitles to export; with [mask], bleeped words are hidden (****) and a
+     * translation that may carry one is left out (so neither the video nor the .srt files show it).
+     */
     fun exportCues(mask: Boolean): List<Cue> = cues.sortedBy { it.startMs }.map { c ->
         val hide = if (mask) bleepedWords(c) else emptySet()
         val gone = cutWords(c)
+        val trShown = translationShown(c, mask)
         c.copy().also { m ->
+            if (!trShown) {
+                if (c.src == "en" || (c.src == "" && c.he.isBlank())) m.he = "" else m.en = ""
+            }
             if (hide.isNotEmpty() || gone.isNotEmpty()) {
                 var spoken = Subtitles.mask(c.srcText, hide - gone)
                 // Words cut out of the video leave the subtitle too.
@@ -819,6 +890,7 @@ class EditModel(
         a.endMs = m.endMs
         a.he = m.he
         a.en = m.en
+        a.trm = m.trm
         a.src = m.src
         a.words = m.words
         cues.remove(b)
@@ -836,8 +908,11 @@ class EditModel(
         if (n == 0) return 0
         snapshot()
         for (c in cues) {
-            c.he = c.he.replace(find, replace, ignoreCase)
-            c.en = c.en.replace(find, replace, ignoreCase)
+            val he = c.he.replace(find, replace, ignoreCase)
+            val en = c.en.replace(find, replace, ignoreCase)
+            if (he != c.he || en != c.en) c.trm = null
+            c.he = he
+            c.en = en
         }
         changed()
         return n
@@ -845,9 +920,10 @@ class EditModel(
 
     /**
      * A translation of a whole group's sentence arriving: spread its words over the group's
-     * subtitles in proportion to their spoken words. No undo step.
+     * subtitles in proportion to their spoken words. No undo step. [source]: the masked spoken text
+     * it was made from (see [maskedSentence]), kept in each subtitle as [Cue.trm].
      */
-    fun fillGroup(group: Int, translated: String, intoEnglish: Boolean) {
+    fun fillGroup(group: Int, translated: String, intoEnglish: Boolean, source: String?) {
         val cs = cues.filter { it.group == group }.sortedBy { it.startMs }
         if (cs.isEmpty()) return
         val parts = Subtitles.spread(Subtitles.words(translated), cs.map { Subtitles.words(it.srcText).size })
@@ -855,6 +931,7 @@ class EditModel(
             // A manual subtitle (no language) gets one from the side it's written on.
             if (c.src == "") c.src = if (intoEnglish) SubLanguages.scriptLang(c.he).takeIf { it != "en" && it != "" } ?: "he" else "en"
             if (intoEnglish) c.en = parts[i] else c.he = parts[i]
+            c.trm = source
         }
         changed()
     }
@@ -862,6 +939,7 @@ class EditModel(
     fun editCue(id: Int, he: String, en: String) {
         val c = cue(id) ?: return
         snapshot()
+        if (c.he != he || c.en != en) c.trm = null
         c.he = he
         c.en = en
         changed()
@@ -885,6 +963,7 @@ class EditModel(
     /** Fills in text without an undo step (a translation arriving). */
     fun setCueText(id: Int, he: String, en: String) {
         val c = cue(id) ?: return
+        if (c.he != he || c.en != en) c.trm = null
         c.he = he
         c.en = en
         changed()

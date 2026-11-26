@@ -79,7 +79,7 @@ class LoadedProject(val meta: ProjectMeta, val json: JSONObject, val analysis: A
  */
 object ProjectStore {
     private const val ANALYSIS_VERSION = 1
-    private const val EDITS_VERSION = 4
+    private const val EDITS_VERSION = 5
 
     fun root(context: Context) = File(context.filesDir, "projects")
 
@@ -438,6 +438,10 @@ object ProjectStore {
         val off = e.tracks.filter { it.off }
         o.writeInt(off.size)
         for (t in off) o.writeInt(t.id)
+        // The masked text each translation was made from (cue id, text); a cue without one has its translation hidden over bleeped words.
+        val trs = e.cues.filter { it.trm != null }
+        o.writeInt(trs.size)
+        for (c in trs) { o.writeInt(c.id); o.str(c.trm!!) }
     }
 
     fun readEdits(f: File): EditState = input(f).use { i ->
@@ -469,6 +473,11 @@ object ProjectStore {
             val off = HashSet<Int>()
             repeat(i.readInt()) { off += i.readInt() }
             for (t in tracks) t.off = t.id in off
+        }
+        if (version >= 5) {
+            val trs = HashMap<Int, String>()
+            repeat(i.readInt()) { val id = i.readInt(); trs[id] = i.str() }
+            for (c in cues) c.trm = trs[c.id]
         }
         EditState(tracks, cues, bleeps, nextId, nextCueId, sfx, removed)
     }

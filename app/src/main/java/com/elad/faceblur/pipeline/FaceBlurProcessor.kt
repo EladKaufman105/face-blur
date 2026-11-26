@@ -340,7 +340,8 @@ class FaceBlurProcessor(private val context: Context) {
         // Blur at full resolution first, then resize / drop frames for the chosen output.
         val cues = model.exportCues(audio.maskWords)
         val burn = cues.mapNotNull { c ->
-            c.blocks(export.subs).takeIf { it.isNotEmpty() }?.let { BurnCue(c.startMs * 1000, c.endMs * 1000, it, c.blockTimes(export.subs), c.speaker) }
+            // exportCues already left out a translation that may carry a bleeped word.
+            c.blocks(export.subs, emptySet(), translation = true).takeIf { it.isNotEmpty() }?.let { BurnCue(c.startMs * 1000, c.endMs * 1000, it, c.blockTimes(export.subs, translation = true), c.speaker) }
         }
         val overlays = ArrayList<TextureOverlay>()
         if (burn.isNotEmpty()) overlays += SubtitleOverlay(burn, subStyle, SubtitleRenderer.get(context))
