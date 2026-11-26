@@ -19,82 +19,88 @@ t() {
 }
 
 case "${1:?shard}" in
-  1) # 258 s
+  1) # 270 s (CI, ee9588d)
     # The picture: a green screen, a 9:16 frame, a steadied camera, the people's background.
-    t picture.cjs "$U" $S/green_screen.mp4 $S/classroom.mp4 $S/walk.mp4 $S/speech_two.mp4 $R/picture   # 107
+    t picture.cjs "$U" $S/green_screen.mp4 $S/classroom.mp4 $S/walk.mp4 $S/speech_two.mp4 $R/picture   # 114
     # Settings: language, light / dark / the device's, the color palette; kept after a reload.
     t settings.cjs "$U" $R/settings   # 2
     # A video shared to the installed app (Web Share Target) or opened with it.
-    t share.cjs "$U" $S/walk.mp4 $R/share   # 1
+    t share.cjs "$U" $S/walk.mp4 $R/share   # 2
     # The analysis stats panel: tiles and charts that update, more details, an (i), Copy (the report).
-    t stats.cjs "$U" $S/walk.mp4 $R/stats   # 22
+    t stats.cjs "$U" $S/walk.mp4 $R/stats   # 14
     # The page is cross-origin isolated by the service worker (threads for WebAssembly): one reload on the first visit, none after.
     t coi.cjs "http://localhost:4173/?backend=wasm" $R/coi   # 8
     # Playback over cuts close together (one a frame apart, one to the end of the video): the clock keeps moving, no jumping again and again.
-    t cutskip.cjs "$U" $S/speech_two.mp4 $R/cutskip   # 25
+    t cutskip.cjs "$U" $S/speech_two.mp4 $R/cutskip   # 30
     # The ready screen: the video first, the blur's settings, "blur and save" without the editor.
-    t ready.cjs "$U" $S/walk.mp4 $S/classroom.mp4 $R/ready   # 39
+    t ready.cjs "$U" $S/walk.mp4 $S/classroom.mp4 $R/ready   # 46
     # The editor as the app's, part two: effect cards that play (still with less motion), font cards each in its font, a group's tool chips on one row (360-412 px, he and en), the tablet layouts (upright under 840 px: one column; the rail of groups and the panel beside the video).
-    t parity.cjs "$U" $S/speech_two.mp4 $R/parity ../app/src/main/assets/fonts/heebo.ttf   # 62
+    t parity.cjs "$U" $S/speech_two.mp4 $R/parity ../app/src/main/assets/fonts/heebo.ttf   # 54
     ;;
-  2) # 260 s
+  2) # about 670 s (CI, ee9588d: panels.cjs analyses many times, about 1.7x slower since YuNet and the app's sizes)
     # Subtitles on a phone (390 px): the one button on the first screen, the looks as drawn cards, one tap applies one, a subtitle edited where it is, 44 px targets. No model.
-    t subsmobile.cjs "$U" $S/speech_two.mp4 $R/subsmobile   # 8
+    t subsmobile.cjs "$U" $S/speech_two.mp4 $R/subsmobile   # 10
     # The editor's panels on a phone (390 px), as the app's: each group one compact panel of a bounded height with its tools as chips, the video in view, nothing sideways, no empty "more options".
-    t panels.cjs "$U" $S/speech_two.mp4 $R/panels $S/classroom.mp4   # 210
+    t panels.cjs "$U" $S/speech_two.mp4 $R/panels $S/classroom.mp4   # 562
     # An SRT imported over subtitles that have bleeped words asks first; keeping changes nothing; replacing is undone with its words and bleeps.
-    t subsimport.cjs "$U" $S/speech_two.mp4 $R/subsimport   # 8
+    t subsimport.cjs "$U" $S/speech_two.mp4 $R/subsimport   # 5
     # Where it was filmed and on what phone don't go out with the export.
-    t privacy.cjs "$U" $S/speech_two.mp4 $R/privacy   # 10
+    t privacy.cjs "$U" $S/speech_two.mp4 $R/privacy   # 13
     # Subtitles on the timeline, as the app's: a tap selects, the bar's Start / End here, split, merge, delete and text, the edges dragged, all undone; bleeps follow their words. Desktop and a phone.
     # Bleeped words never show in the subtitles: 5000 random sequences of split, merge, retime, delete, bleep, edit, translate and undo (pure, no browser).
-    t splitmask.cjs   # 2
-    t cues.cjs "$U" $S/speech_two.mp4 $R/cues   # 12
+    t splitmask.cjs   # 1
+    # Face detection's pure parts: YuNet's decoding, the fusion with RetinaFace (the app's rules), the pace (1280 / 960 / 640 px, 15 to 4 a second), the low-confidence flag (pure, no browser).
+    t fusion.cjs   # 1
+    t cues.cjs "$U" $S/speech_two.mp4 $R/cues   # 13
     t cues.cjs "$U" $S/speech_two.mp4 $R/cuesp phone   # 13
     # A subtitle edited so a bleeped word may show: the alert, the mark on the timeline, the export asking first; a deleted subtitle's bleeps listed.
-    t maskwarn.cjs "$U" $S/speech_two.mp4 $R/maskwarn   # 15
+    t maskwarn.cjs "$U" $S/speech_two.mp4 $R/maskwarn   # 37
     ;;
-  3) # 255 s
+  3) # about 330 s
     # Subtitle design: styles, fonts (one imported with Hebrew, one without), effects, burned into the export.
-    t style.cjs "$U" $S/speech_two.mp4 ../app/src/main/assets/fonts/heebo.ttf /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf $R/style   # 33
+    t style.cjs "$U" $S/speech_two.mp4 ../app/src/main/assets/fonts/heebo.ttf /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf $R/style   # 38
     # Face detection on the CPU path, the editor, the export: desktop and a phone.
-    t e2e.cjs "$U" $S/walk.mp4 $R/desktop   # 20
-    t e2e.cjs "$U" $S/walk.mp4 $R/phone phone   # 22
+    t e2e.cjs "$U" $S/walk.mp4 $R/desktop   # 28
+    t e2e.cjs "$U" $S/walk.mp4 $R/phone phone   # 28
     # Sounds imported from the device: kept, placed, mixed into the export, deleted.
-    t mysounds.cjs "$U" $S/walk.mp4 $R/mysounds   # 7
+    t mysounds.cjs "$U" $S/walk.mp4 $R/mysounds   # 8
     # Templates (a built-in look applied, edited and restored, copied and deleted) and two videos
     # at once as a batch kept in a folder of projects. The speech model is blocked, not downloaded.
-    t templates.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/templates   # 95
+    t templates.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/templates   # 88
     # The speech model's flow with no download: faster / better quality kept, a stuck recognition ends with an error and a retry, Cancel ends the worker, a template asks before downloading.
-    t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 40
+    t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 38
+    # Detection that ran lighter than the app's is never silent: the notice in the editor, on a phone, on the "no faces" screen (he and en), none after a full run; "blur and save straight" stopping at the check screen.
+    t reduced.cjs "$U" $S/walk.mp4 $R/reduced   # 63
     # The watermark's logo kept between visits and a template's logo shown; the template editor asking before it drops changes, and "Edit" for the chosen template (ready screen, batch); the safe zone's switch, chooser and mock (9:16 only, never in the export); the thin scrubber over a phone's panel; the low-confidence rule.
     t parity2.cjs "$U" $S/speech_two.mp4 $S/stress_cuts.mp4 $R/parity2   # 30
     # Two fingers on the video resize the selected blur, one undo step each.
     t pinch.cjs "$U" $S/walk.mp4 $R/pinch   # 8
     ;;
-  4) # 222 s
+  4) # about 370 s
     # The sound's cleanup, MP3 (from the editor and the home screen), a lower size and frame rate.
-    t sound.cjs "$U" $S/speech_two.mp4 $S/speech_en.mp4 $S/classroom60.mp4 $R/sound   # 19
+    t sound.cjs "$U" $S/speech_two.mp4 $S/speech_en.mp4 $S/classroom60.mp4 $R/sound   # 28
     # A sound step that fails never exports the original voice: the editor's export stays blocked, a batch item fails.
-    t soundfail.cjs "$U" $S/speech_two.mp4 $R/soundfail   # 15
+    t soundfail.cjs "$U" $S/speech_two.mp4 $R/soundfail   # 19
     # Editing: a blur by hand (followed, split, deleted, ended), cuts by hand and of pauses.
-    t edit.cjs "$U" $S/speech_two.mp4 $R/edit   # 19
+    t edit.cjs "$U" $S/speech_two.mp4 $R/edit   # 24
     # A tool from the home screen; faces found later; the editor kept across the export.
-    t tools.cjs "$U" $S/walk.mp4 $R/tools   # 17
+    t tools.cjs "$U" $S/walk.mp4 $R/tools   # 22
     # No faces found: wider detection offered, a blur by hand in the editor.
-    t nofaces.cjs "$U" $R/nofaces   # 14
+    t nofaces.cjs "$U" $R/nofaces   # 25
     # Subtitles as a list (from an SRT) and their translation; projects kept, opened, renamed, deleted.
-    t project.cjs "$U" $S/speech_two.mp4 $R/project   # 12
+    t project.cjs "$U" $S/speech_two.mp4 $R/project   # 15
     # The landing page (/home/): it loads whole, its parts work, its links lead to the editor.
-    t home.cjs "http://localhost:4173/" $R/home   # 24
+    t home.cjs "http://localhost:4173/" $R/home   # 32
     # A template renamed where it is picked; no face detection with no face blur (one video, a batch); the home screen's several videos apart; the template editor's subtitle preview moving; a template's font; a template saved from a tool's video.
-    t usernotes.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/usernotes   # 60
+    t usernotes.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/usernotes   # 43
     # Speakers found from their voices (the sample's two halves).
-    t speakers.cjs "$U" $S/speech_two.mp4 $R/speakers   # 8
+    t speakers.cjs "$U" $S/speech_two.mp4 $R/speakers   # 10
+    # Face detection with YuNet: RetinaFace + YuNet at 960 px (in the detector workers, and as one detector with YuNet in its own worker) finds no fewer faces than the old web detector (RetinaFace alone, 640 px) on the same frames of the stress clip and the classroom.
+    t detect.cjs "$U" $R/detect 1.5 $S/stress_cuts.mp4 $S/classroom.mp4   # 73
     # The keyboard: groups by number, play / pause, a frame step, undo and redo.
     t keys.cjs "$U" $S/walk.mp4 $R/keys.png   # 6
     # A deep voice on a clip with speech.
-    (export VOICE=1; t e2e.cjs "$U" $S/speech_two.mp4 $R/voice)   # 43
+    (export VOICE=1; t e2e.cjs "$U" $S/speech_two.mp4 $R/voice)   # 58
     # Which speech model the subtitles tab offers (no download): ivrit.ai's for Hebrew, with its size; Whisper for the other languages.
     t subsplan.cjs "$U" $S/speech_two.mp4 $R/subsplan   # 15
     ;;

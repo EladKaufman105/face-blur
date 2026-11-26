@@ -11,6 +11,7 @@ import { batchName, createProject, saveProject, deleteProject, summarize, type P
 import { keepAwake } from './wakelock'
 import { cutCues, toSrt } from './subtitles'
 import { CutMap } from './cutmap'
+import { isLowConfidence } from './lowconf'
 
 export const MAX_VIDEOS = 10
 
@@ -281,7 +282,7 @@ async function processOne(b: Batch, item: BatchItem) {
     }, item.controller.signal)
     mark('export')
     item.notes = p.notes
-    item.lowConfidence = !s.blurOff && (p.analysis.lowConfidence ?? 0) > 0
+    item.lowConfidence = !s.blurOff && isLowConfidence(p.analysis)
     const state = stateOf(s, p)
     const picture: ProjectPicture | null = p.picture ? { motion: p.picture.motion, cuts: p.picture.cuts, masks: p.picture.masks } : null
     const meta = (thumb: string | null) => ({ duration: p.analysis.times.length ? p.analysis.times[p.analysis.times.length - 1] : item.duration, thumb, ...summarize(state) })
@@ -315,7 +316,8 @@ async function processOne(b: Batch, item: BatchItem) {
     const srt = s.saveSrt && p.cues.length ? new Blob([toSrt(cutCues(p.cues, new CutMap(p.cuts)))], { type: 'application/x-subrip' }) : null
     item.output = { name: base + '.mp4', blob: r.blob, url, srt: srt ? { name: base + '.srt', url: URL.createObjectURL(srt) } : null }
     if (id && thumb) saveProject(id, { thumb }, state).catch(() => {})
-    if (b.autoDownload) download(item.output.url, item.output.name)
+    // A video saved on its own (a template's "save straight") whose faces are to be checked isn't downloaded unasked: it waits in the list, flagged.
+    if (b.autoDownload && !(item.lowConfidence && !b.folder)) download(item.output.url, item.output.name)
     item.progress = 1
     item.status = noFaces ? 'nofaces' : 'saved'
     // What this device does, for the next estimate.

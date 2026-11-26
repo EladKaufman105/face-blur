@@ -17,6 +17,12 @@ const src = join(assets, 'retinaface_mv2.onnx')
 if (!existsSync(model) || statSync(model).mtimeMs < statSync(src).mtimeMs || !existsSync(join(pub, 'models', 'retinaface_fp32.onnx'))) {
   execFileSync('python3', [join(web, 'scripts', 'model_web.py'), src, join(pub, 'models')], { stdio: 'inherit' })
 }
+// YuNet (OpenCV Zoo, 2023mar; float32, 230 KB), the second detector, as the app's own file (one source of truth, nothing fetched from elsewhere at run time).
+{
+  const yunet = join(assets, 'face_detection_yunet_2023mar.onnx')
+  const out = join(pub, 'models', 'yunet.onnx')
+  if (!existsSync(out) || statSync(out).mtimeMs < statSync(yunet).mtimeMs) copy(yunet, out)
+}
 // Every subtitle font (all under the SIL Open Font License, its text beside them).
 for (const f of readdirSync(join(assets, 'fonts'))) if (f.endsWith('.ttf')) copy(join(assets, 'fonts', f), join(pub, 'fonts', f))
 copy(join(assets, 'fonts', 'licenses'), join(pub, 'fonts', 'licenses'))

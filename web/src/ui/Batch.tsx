@@ -246,7 +246,10 @@ export function BatchQueue({ onHome, onCheck }: { onHome: () => void; onCheck: (
               {saved > 1 && <button class="btn primary batch-save-all" onClick={() => downloadAll(b)}><SaveIcon /> {t('שמור הכל')}</button>}
               <button class="btn tonal batch-home" onClick={() => { dismiss(); onHome() }}>{t('חזרה לדף הבית')}</button>
             </div>
-            {b.autoDownload && saved > 0 && <p class="small muted" style="margin:6px 0 0">{t('אם הדפדפן חסם את ההורדות האוטומטיות, אפשר לשמור כל סרטון מהרשימה.')}</p>}
+            {/* A video saved on its own whose faces are to be checked isn't downloaded unasked (lib/batch.ts): it says why it waits. */}
+            {b.autoDownload && saved > 0 && (!b.folder && b.items.some((i) => i.lowConfidence && i.output)
+              ? <p class="small muted batch-held" style="margin:6px 0 0">{t('לא הורד אוטומטית, כי כדאי לבדוק קודם את הפנים: "בדיקה" פותחת אותו בעורך, ו"שמור" שומר אותו כמו שהוא.')}</p>
+              : <p class="small muted" style="margin:6px 0 0">{t('אם הדפדפן חסם את ההורדות האוטומטיות, אפשר לשמור כל סרטון מהרשימה.')}</p>)}
           </>
         )}
       </section>

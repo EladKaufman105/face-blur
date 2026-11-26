@@ -29,7 +29,8 @@ class Tracklet {
   get last() { return this.keys[this.keys.length - 1] }
 }
 
-const DET_THRESHOLD = 0.4
+/** A detection under this score is no evidence of a face to the tracker (the detector re-checks only faces from here). */
+export const DET_THRESHOLD = 0.4
 const BIRTH_THRESHOLD = 0.45
 const STRONG = 0.6
 const VERIFIED = 0.5
