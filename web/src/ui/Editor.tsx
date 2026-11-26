@@ -33,7 +33,7 @@ import { cleanupOn, type Cleanup } from '../lib/cleanup'
 import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
 import { Analyzing } from './Analyzing'
 import { ChipTabs, PANEL_ID, STYLE_PARTS, subsOf, useNarrow, useTablet } from './panels'
-import { bleepRanges, cueAt, cueRoom, cueWi, maskCue, maskWarning, mergeCues, migrateCues, retimeCue, shownText, splitCueAtTime, trVisible, type Cue, type SubStyle, type Word } from '../lib/subtitles'
+import { bleepRanges, cueAt, cueRoom, cueWi, maskCue, maskWarning, mergeCues, migrateCues, orphansOf, retimeCue, shownText, splitCueAtTime, trVisible, type Cue, type SubStyle, type Word } from '../lib/subtitles'
 import { DEFAULT_SUB_STYLE, loadSubFont, normalizeStyle } from '../lib/substyle'
 import { cueWordTimes, drawCue } from '../lib/subrender'
 import { getFont } from '../lib/projects'
@@ -217,7 +217,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [mark, setMark] = useState<Watermark>(() => (saved?.mark ? normalizeWatermark(saved.mark) : tpl ? normalizeWatermark(tpl.watermark) : loadWatermark()))
   const logo = useRef<HTMLImageElement | null>(null)
   const scheduler = useMemo(() => new SfxScheduler(), [])
-  const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, voiceBuf: null as AudioBuffer | null, tracks, selected, cuts, cutMap, fps: an.fps, times, steadied, crop, framePath, masks: null as PeopleMasks | null, background, safeOn: false })
+  const orphans = useMemo(() => orphansOf(cues, bleeped), [cues, bleeped])
+  const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, orphans, voiceBuf: null as AudioBuffer | null, tracks, selected, cuts, cutMap, fps: an.fps, times, steadied, crop, framePath, masks: null as PeopleMasks | null, background, safeOn: false })
   // (The drawing runs in callbacks made once: it reads the frame times from here, as they can
   // arrive later, from a search for faces or a first blur by hand.)
   state.current.times = times
@@ -240,6 +241,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   state.current.subStyle = subStyle
   state.current.words = words
   state.current.bleeped = bleeped
+  state.current.orphans = orphans
   state.current.voiceBuf = voiceAudio?.buffer ?? null
 
   useEffect(() => {
@@ -358,7 +360,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       const cue = cueAt(state.current.cues, state.current.mediaTime)
       if (cue) {
         const st = state.current.subStyle
-        const text = state.current.subStyle.maskBleeped === false ? cue.text : maskCue(cue, state.current.words, state.current.bleeped)
+        const text = state.current.subStyle.maskBleeped === false ? cue.text : maskCue(cue, state.current.words, state.current.bleeped, state.current.orphans)
         const blocks = shownText(cue, text, st.show, st.maskBleeped !== false).split('\n')
         const times = st.show === 'tr' ? [] : [cueWordTimes(text, cue.wi, state.current.words)]
         drawCue(tc, blocks, cue.start, cue.end, state.current.mediaTime, { ...st, color: speakerColor(st.color, cue.speaker, st.speakerColors) }, fw, fh, times)
@@ -1090,7 +1092,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [hidden, detecting, selectedSfx, selected, selectedCue, cues, following, tracks, dur, an])
+  }, [hidden, detecting, selectedSfx, selected, selectedCue, cues, bleeped, following, tracks, dur, an])
 
   // ---------------------------------------------------------------- the selected subtitle
 
@@ -1107,7 +1109,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const splitSelCue = () => {
     if (!selCue) return
     video.current?.pause()
-    const parts = splitCueAtTime(selCue, state.current.mediaTime, words, bleeped)
+    const parts = splitCueAtTime(selCue, state.current.mediaTime, words, bleeped, orphans)
     if (!parts) { setNotice(t('אי אפשר לפצל כאן: הכתובית קצרה מדי, יש בה מילה אחת, או שמילה מוסתרת לא תישאר מוסתרת')); return }
     setCuesH(cues.flatMap((c) => (c.id === selCue.id ? parts : [c])), true)
   }
@@ -1144,11 +1146,11 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     v.currentTime = Math.min(end, Math.max(0, v.currentTime + dir / (an.fps || 30)))
   }
   /** A subtitle's text with the bleeped words hidden (unless they're to show as said). */
-  const masked = (c: Cue) => (subStyle.maskBleeped === false ? c.text : maskCue(c, words, bleeped))
+  const masked = (c: Cue) => (subStyle.maskBleeped === false ? c.text : maskCue(c, words, bleeped, orphans))
   /** What the video shows of a subtitle: its masked text, and its translation where that can't give a masked word away. */
   const shown = (c: Cue) => shownText(c, masked(c), subStyle.show, subStyle.maskBleeped !== false)
   /** The subtitles whose text was edited so that a bleeped word of theirs may show (see [maskWarning]). */
-  const maskWarned = useMemo(() => (subStyle.maskBleeped === false ? [] : cues.filter((c) => maskWarning(c, words, bleeped))), [cues, words, bleeped, subStyle.maskBleeped])
+  const maskWarned = useMemo(() => (subStyle.maskBleeped === false ? [] : cues.filter((c) => maskWarning(c, words, bleeped, orphans))), [cues, words, bleeped, orphans, subStyle.maskBleeped])
 
   const subList = subsOf(tab, { hasCues: cues.length > 0, hasWords: words.length > 0, hasFaces: analyzed || tracks.length > 0 })
   const part = (subTab[tab] && subList.some(([id]) => id === subTab[tab]) ? subTab[tab] : subList[0]?.[0]) ?? ''
@@ -1505,7 +1507,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             sheet={phone}
             speakers={cueSpeakers > 1 ? cueSpeakers : 0}
             warn={maskWarned.some((c) => c.id === selCue.id)}
-            trHidden={subStyle.maskBleeped !== false && !!selCue.tr && !trVisible(selCue, maskCue(selCue, words, bleeped))}
+            trHidden={subStyle.maskBleeped !== false && !!selCue.tr && !trVisible(selCue, maskCue(selCue, words, bleeped, orphans))}
             color={subStyle.color}
             chosen={subStyle.speakerColors}
             onStart={() => cueEdgeHere(true)}

@@ -10,7 +10,7 @@ const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/lib
 const mod = { exports: {} }
 new Function('module', 'exports', 'require', code)(mod, mod.exports, () => ({}))
 const S = mod.exports
-const { splitCue, splitCueAtTime, maskCue, maskWarning, mergeCues, retimeCue, cueRoom, wordsToCues, migrateCues, normWord, shownText, trVisible, cueWi } = S
+const { splitCue, splitCueAtTime, maskCue, maskWarning, mergeCues, retimeCue, cueRoom, wordsToCues, migrateCues, normWord, shownText, trVisible, cueWi, orphansOf, unownedIn } = S
 const W = (list) => list.map(([text, start, end]) => ({ text: ' ' + text, start, end: end ?? start + 0.2 }))
 const fail = (m) => { console.error('FAIL', m); process.exit(1) }
 const eq = (name, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) fail(`${name}: ${JSON.stringify(got)} (wanted ${JSON.stringify(want)})`) }
@@ -103,6 +103,44 @@ const toks = (s) => s.match(/\S+/g) ?? []
   eq('merge joins the translations with their sources', [j.tr, j.trm], ['א **** ג ד', 'a **** c d'])
   eq('masking off shows it', shownText(c, 'a bad c', 'tr', false), 'א רע ג')
 }
+// ---- a bleeped word respelled and moved: said so, not masked by a guess
+{
+  const w = W([['so', 1], ['Dani', 1.3], ['said', 1.6], ['yes', 1.9]])
+  const c = wordsToCues(w)[0], b = new Set([1])
+  eq('orig', [maskCue(c, w, b), maskWarning(c, w, b)], ['so **** said yes', false])
+  eq('respelled in place', [maskCue({ ...c, text: 'so Danny said yes' }, w, b), maskWarning({ ...c, text: 'so Danny said yes' }, w, b)], ['so **** said yes', false])
+  const moved = { ...c, text: 'Danny said yes, okay' }
+  eq('respelled and moved', [maskCue(moved, w, b), maskWarning(moved, w, b)], ['Danny **** yes, okay', true])
+  eq('moved, other text', maskWarning({ ...c, text: 'Today I met Danny' }, w, b), true)
+  const w2 = W([['I', 1], ['can', 1.2], ['not', 1.4], ['tell', 1.6], ['Dani', 1.8]]), b2 = new Set([4])
+  const c2 = wordsToCues(w2)[0]
+  eq('cannot', maskWarning({ ...c2, text: 'I cannot tell Danny, ok' }, w2, b2), true)
+}
+// ---- a subtitle made by hand over a bleeped word whose subtitle was deleted
+{
+  const w = W([['hello.', 1], ['you', 3], ['are', 3.3], ['bad.', 3.6]])
+  const cues = wordsToCues(w), b = new Set([3])
+  const left = [cues[0]], orph = orphansOf(left, b)
+  eq('orphan', orph, [3])
+  const typed = { id: 999, start: 3, end: 4.2, text: 'you are bad.', wi: [] }
+  eq('typed over the orphan', [maskCue(typed, w, b, orph), maskWarning(typed, w, b, orph)], ['you are ****.', false])
+  eq('typed without the word', maskWarning({ ...typed, text: 'you are' }, w, b, orph), true)
+  eq('typed far from it', maskCue({ ...typed, start: 10, end: 11 }, w, b, orph), 'you are bad.')
+  eq('made by hand: the free words are its', unownedIn(left, w, 3, 4.2), [1, 2, 3])
+  const owned = { ...typed, wi: unownedIn(left, w, 3, 4.2) }
+  eq('hand-made with its words', [maskCue(owned, w, b, orphansOf([...left, owned], b)), maskWarning(owned, w, b)], ['you are ****.', false])
+}
+// ---- migration: a word goes to one subtitle only; an empty one has no warning
+{
+  const w = W([['done.', 2.0, 2.3], ['Next', 2.005], ['one', 2.3]])
+  const cues = wordsToCues(w)
+  const m = migrateCues(cues.map(({ wi, ...c }) => c), w)
+  const all = m.flatMap((c) => c.wi)
+  if (new Set(all).size !== all.length) fail('a word in two subtitles after migrating: ' + JSON.stringify(m.map((c) => c.wi)))
+  const empty = { id: 5, start: 0, end: 1, text: '', wi: [0] }
+  eq('empty cue', maskWarning(empty, w, new Set([0])), false)
+}
+
 // ---- too short; strictly inside; retime clamps
 {
   const words = W([['a', 1.0, 1.1], ['b', 1.15, 1.25]])
@@ -121,11 +159,11 @@ const toks = (s) => s.match(/\S+/g) ?? []
 // its text in the translation) with no warning on that subtitle.
 {
   const rounds = Number(process.argv[2] || 5000)
-  let seed = 20260101
+  let seed = Number(process.argv[3] || 20260101)
   const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32
   const pick = (a) => a[Math.floor(rnd() * a.length)]
   const vocab = ['bad', 'ass', 'a', 'the', 'cat', 'Damn', 'damn,', 'ok', 'כלב', 'והכלב', 'הכלב', 'שלום', 'לא', 'ולא', 'x', 'classic', '🤬']
-  const ops = { split: 0, splitT: 0, merge: 0, retime: 0, bleep: 0, del: 0, edit: 0, tr: 0, undo: 0, refused: 0, warned: 0 }
+  const ops = { hand: 0, respell: 0, split: 0, splitT: 0, merge: 0, retime: 0, bleep: 0, del: 0, edit: 0, tr: 0, undo: 0, refused: 0, warned: 0 }
   let leaks = 0
   const edits = [
     (t) => t.replace(/\S+/, (w) => w + 's'), (t) => 'so ' + t, (t) => t + ' extra', (t) => t.replace(/\S+/, 'fine'),
@@ -136,15 +174,21 @@ const toks = (s) => s.match(/\S+/g) ?? []
     for (const x of cues) {
       const wi = cueWi(x)
       const mine = wi.filter((k) => b.has(k))
-      if (!mine.length) continue
-      const m = maskCue(x, words, b), warn = maskWarning(x, words, b)
+      const orph0 = orphansOf(cues, b).filter((k) => words[k].start >= x.start - 0.01 && words[k].start < x.end + 0.01)
+      if (!mine.length && !orph0.length) continue
+      const orph = orphansOf(cues, b)
+      const m = maskCue(x, words, b, orph), warn = maskWarning(x, words, b, orph)
       const tk = toks(x.text), mt = toks(m)
       const exact = tk.length === wi.length && wi.every((k, p) => normWord(tk[p]) === normWord(words[k].text) || (normWord(tk[p]) === '' && tk[p] === words[k].text.trim()))
       const bad = []
+      // a bleeped word with no subtitle that starts inside this one: its text must not show
+      if (!warn && orph0.length) { const keys = new Set(orph0.map((k) => normWord(words[k].text)).filter(Boolean)); mt.forEach((t) => { if (keys.has(normWord(t))) bad.push('orphan ' + t) }) }
+      // a word respelled and moved: the respelled token shows only with a warning
+      if (!warn && x._re && b.has(x._rek) && cueWi(x).includes(x._rek) && mt.includes(x._re)) bad.push('respelled ' + x._re)
       if (exact) wi.forEach((k, p) => { if (b.has(k) && !mt[p].includes('****')) bad.push(`place ${p}`) })
       else if (!warn) {
         const keys = new Set(mine.map((k) => normWord(words[k].text)).filter(Boolean))
-        mt.forEach((t, p) => { if (keys.has(normWord(t))) bad.push(`token ${t}`) })
+        if (mine.length) mt.forEach((t, p) => { if (keys.has(normWord(t))) bad.push(`token ${t}`) })
         if (tk.length === wi.length) wi.forEach((k, p) => { if (b.has(k) && !mt[p].includes('****')) bad.push(`place ${p}`) })
       }
       // the translation: shown only when it was made from this masked text, or nothing is masked
@@ -174,13 +218,13 @@ const toks = (s) => s.match(/\S+/g) ?? []
         const tk = [...c.text.matchAll(/\S+/g)]
         if (tk.length < 2) continue
         const at = rnd() < 0.7 ? tk[1 + Math.floor(rnd() * (tk.length - 1))].index : Math.floor(rnd() * c.text.length)
-        const p = splitCue(c, at, words, b)
+        const p = splitCue(c, at, words, b, orphansOf(cues, b))
         log.push(['split', c.id, at, !!p])
         if (!p) { ops.refused++; continue }
         push(); ops.split++; cues = cues.flatMap((x) => (x.id === c.id ? p : [x]))
       } else if (r < 0.32) {
         const tm = c.start + rnd() * (c.end - c.start)
-        const p = splitCueAtTime(c, tm, words, b)
+        const p = splitCueAtTime(c, tm, words, b, orphansOf(cues, b))
         log.push(['splitT', c.id, tm, !!p])
         if (!p) { ops.refused++; continue }
         push(); ops.splitT++; cues = cues.flatMap((x) => (x.id === c.id ? p : [x]))
@@ -201,12 +245,32 @@ const toks = (s) => s.match(/\S+/g) ?? []
         const k = pick(held)
         log.push(['bleep', c.id, k]); push(); ops.bleep++
         b = new Set(b); if (b.has(k)) b.delete(k); else b.add(k)
-      } else if (r < 0.84) {
-        const text = pick(edits)(c.text)
-        log.push(['edit', c.id, text]); push(); ops.edit++; cues = cues.map((x) => (x.id === c.id ? { ...x, text } : x))
+      } else if (r < 0.8) {
+        // a subtitle made by hand over a bleeped word that has none, typed as said or not; sometimes it is given the free words
+        const orph = orphansOf(cues, b)
+        if (!orph.length) continue
+        const k = pick(orph), start = words[k].start - 0.3, end = words[k].end + 0.5
+        const free = unownedIn(cues, words, start, end)
+        const text = free.length && rnd() < 0.7 ? free.map((j) => words[j].text.trim()).join(' ') : pick(edits)(words[k].text.trim() + ' ' + pick(vocab))
+        log.push(['hand', k, text]); push(); ops.hand++
+        cues = [...cues, { id: 90000 + round * 100 + step, start, end, text, wi: rnd() < 0.5 ? free : [] }]
+      } else if (r < 0.86) {
+        // a bleeped word respelled, in place or with the text moved along
+        const bk = cueWi(c).filter((k) => b.has(k))
+        const tk = toks(c.text)
+        if (!bk.length || tk.length !== cueWi(c).length || tk.length < 2 || !cueWi(c).every((k, i) => normWord(tk[i]) === normWord(words[k].text) || (normWord(tk[i]) === '' && tk[i] === words[k].text.trim()))) continue
+        const kk = pick(bk), p = cueWi(c).indexOf(kk), moved = rnd() < 0.6
+        const re = tk[p].replace(/[^\p{L}\p{N}]+$/u, '') + 'y'
+        const nt = tk.map((x, i) => (i === p ? re : x))
+        const text = (moved ? [...nt.slice(1), 'okay'] : nt).join(' ')
+        log.push(['respell', c.id, text, moved]); push(); ops.respell++
+        cues = cues.map((x) => (x.id === c.id ? { ...x, text, _re: re, _rek: kk } : x))
       } else if (r < 0.9) {
+        const text = pick(edits)(c.text)
+        log.push(['edit', c.id, text]); push(); ops.edit++; cues = cues.map((x) => (x.id === c.id ? { ...x, text, _re: undefined } : x))
+      } else if (r < 0.95) {
         // translated from the masked text (as the tab does), or an old translation of the raw text
-        const fromMasked = rnd() < 0.6, src = fromMasked ? maskCue(c, words, b) : c.text
+        const fromMasked = rnd() < 0.6, src = fromMasked ? maskCue(c, words, b, orphansOf(cues, b)) : c.text
         log.push(['tr', c.id, fromMasked]); push(); ops.tr++
         cues = cues.map((x) => (x.id === c.id ? (fromMasked ? { ...x, tr: '«T» ' + src, trm: src } : { ...x, tr: '«T» ' + src, trm: undefined }) : x))
       } else if (stack.length) {
@@ -217,6 +281,6 @@ const toks = (s) => s.match(/\S+/g) ?? []
   }
   console.log('sequences:', JSON.stringify(ops), 'leaks', leaks)
   if (leaks) fail(leaks + ' leaks')
-  if (ops.split + ops.splitT < rounds || ops.merge < rounds / 4 || ops.edit < rounds / 2 || ops.warned < 10) fail('the random test did too little: ' + JSON.stringify(ops))
+  if (ops.split + ops.splitT < rounds || ops.merge < rounds / 4 || ops.edit < rounds / 4 || ops.hand < 100 || ops.respell < 100 || ops.warned < 10) fail('the random test did too little: ' + JSON.stringify(ops))
 }
 console.log('PASS')

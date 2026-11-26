@@ -137,11 +137,22 @@ export function wordsToCues(words: Word[], maxWords = 0, maxChars = 0): Cue[] {
  */
 export function migrateCues(cues: Cue[], words: Word[]): Cue[] {
   if (cues.every((c) => c.wi !== undefined)) return cues
+  // A word goes to the first subtitle (by time) whose stretch has it, never to two.
+  const taken = new Set<number>()
+  const order = [...cues].sort((a, b) => a.start - b.start)
+  const got = new Map<number, number[]>()
+  for (const c of order) {
+    if (c.wi !== undefined) { for (const k of c.wi) taken.add(k); continue }
+    const { ws, we } = c as Cue & { ws?: number; we?: number }
+    const a = (ws ?? c.start) - 0.01, b = we ?? c.end
+    const mine = words.map((w, k) => (!taken.has(k) && w.start >= a && w.start < b && !isNoise(w.text) ? k : -1)).filter((k) => k >= 0)
+    for (const k of mine) taken.add(k)
+    got.set(c.id, mine)
+  }
   return cues.map((c) => {
     if (c.wi !== undefined) return c
     const { ws, we, ...rest } = c as Cue & { ws?: number; we?: number }
-    const a = (ws ?? c.start) - 0.01, b = we ?? c.end
-    return { ...rest, wi: words.map((w, k) => (w.start >= a && w.start < b && !isNoise(w.text) ? k : -1)).filter((k) => k >= 0) }
+    return { ...rest, wi: got.get(c.id) ?? [] }
   })
 }
 
@@ -250,25 +261,76 @@ function hit(token: string, keys: Set<string>): boolean {
 
 const tokensOf = (text: string) => [...text.matchAll(/\S+/g)].map((m) => ({ t: m[0], i: m.index! }))
 
-/** Which tokens of [cue] are masked (by position, or by text once the text was edited), and whether a bleeped word may show. */
-function analyse(cue: Cue, words: Word[], bleeped: Set<number>) {
+/** The bleeped words that no subtitle holds (a subtitle was deleted): they are still said, so a subtitle made by hand over them masks them too. */
+export function orphansOf(cues: Cue[], bleeped: Set<number>): number[] {
+  if (bleeped.size === 0) return []
+  const owned = new Set<number>()
+  for (const c of cues) for (const k of cueWi(c)) owned.add(k)
+  return [...bleeped].filter((k) => !owned.has(k))
+}
+
+/** The words with no subtitle yet that start inside [start, end] (what a subtitle made by hand there holds). */
+export function unownedIn(cues: Cue[], words: Word[], start: number, end: number): number[] {
+  const owned = new Set<number>()
+  for (const c of cues) for (const k of cueWi(c)) owned.add(k)
+  return words.map((w, k) => (!owned.has(k) && !isNoise(w.text) && w.start >= start - 0.01 && w.start < end ? k : -1)).filter((k) => k >= 0)
+}
+
+/** Whether [a] looks like a respelling of [b]: not the same, and they start alike (3 letters, or the shorter one whole). */
+function near(a: string, b: string): boolean {
+  if (!a || !b || a === b) return false
+  const n = Math.min(3, a.length, b.length)
+  return a.slice(0, n) === b.slice(0, n)
+}
+
+/**
+ * Which tokens of [cue] are masked (by position, or by text once the text was edited), and whether a bleeped word may show.
+ * [orphans]: bleeped words in no subtitle; those that start inside the cue's time count as its own, by text.
+ */
+function analyse(cue: Cue, words: Word[], bleeped: Set<number>, orphans?: number[]) {
   const tokens = tokensOf(cue.text)
   const masked = new Set<number>()
   const wi = cueWi(cue)
   const mine = wi.filter((k) => bleeped.has(k) && words[k])
-  if (mine.length === 0) return { tokens, masked, warn: false }
+  const orph = (orphans ?? []).filter((k) => words[k] && !wi.includes(k) && words[k].start >= cue.start - 0.01 && words[k].start < cue.end + 0.01)
+  if (mine.length === 0 && orph.length === 0) return { tokens, masked, warn: false }
   const same = tokens.length === wi.length
-  // The text as the words were said (one token for each word): it is masked by place, as the app does.
-  if (same && wi.every((k, p) => words[k] && keyOf(tokens[p].t) === keyOf(words[k].text))) {
+  const noHit = (k: number) => !tokens.some((x) => hit(x.t, new Set([keyOf(words[k].text)])))
+  const exact = same && wi.every((k, p) => words[k] && keyOf(tokens[p].t) === keyOf(words[k].text))
+  let warn = false
+  if (exact) {
+    // The text as the words were said (one token for each word): masked by place, as the app does.
     wi.forEach((k, p) => { if (bleeped.has(k)) masked.add(p) })
-    return { tokens, masked, warn: false }
+  } else if (mine.length > 0) {
+    // Edited: every token that says what a bleeped word of the subtitle said is masked, and, when the words still fit the tokens one to one, the tokens at their places.
+    const keys = new Set(mine.map((k) => keyOf(words[k].text)))
+    tokens.forEach((x, p) => { if (hit(x.t, keys)) masked.add(p) })
+    if (same) wi.forEach((k, p) => { if (bleeped.has(k)) masked.add(p) })
+    if (!same) {
+      // Each word of the subtitle that says a bleeped word's text needs a token of its own: with fewer, one was respelled or lost.
+      for (const key of keys) {
+        const said = [...wi, ...orph].filter((k) => words[k] && keyOf(words[k].text) === key).length
+        const found = tokens.filter((x) => hit(x.t, new Set([key]))).length
+        if (found < said) warn = true
+      }
+    } else {
+      // The same count: a bleeped word whose token no longer says it, while every other token still says its word, was respelled in place and is as good as said; anything else may have moved it.
+      const lostAt = new Set<number>()
+      wi.forEach((k, p) => { if (bleeped.has(k) && words[k] && keyOf(tokens[p].t) !== keyOf(words[k].text)) lostAt.add(p) })
+      if (lostAt.size > 0) warn = !wi.every((k, p) => lostAt.has(p) || (words[k] && keyOf(tokens[p].t) === keyOf(words[k].text)))
+      // Every bleeped word still stands at its place; but another token that is a respelling of one (and so may be it, moved) is not trusted.
+      else {
+        const bk = new Set(mine.map((k) => normWord(words[k].text)).filter(Boolean))
+        wi.forEach((k, p) => { if (words[k] && keyOf(tokens[p].t) !== keyOf(words[k].text) && [...bk].some((w) => near(normWord(tokens[p].t), w))) warn = true })
+      }
+    }
   }
-  // Edited: every token that says what a bleeped word of the subtitle said is masked, and, when the words still fit the tokens one to one, the tokens at their places.
-  const keys = new Set(mine.map((k) => keyOf(words[k].text)))
-  tokens.forEach((x, p) => { if (hit(x.t, keys)) masked.add(p) })
-  if (same) wi.forEach((k, p) => { if (bleeped.has(k)) masked.add(p) })
-  // A bleeped word that is in no token, and no way to tell which token is it: the subtitle may show it.
-  const warn = !same && mine.some((k) => !tokens.some((x) => hit(x.t, new Set([keyOf(words[k].text)]))))
+  if (orph.length > 0) {
+    const keys = new Set(orph.map((k) => keyOf(words[k].text)))
+    tokens.forEach((x, p) => { if (hit(x.t, keys)) masked.add(p) })
+    if (orph.some(noHit)) warn = true
+  }
+  if (tokens.length === 0) warn = false
   return { tokens, masked, warn }
 }
 
@@ -277,9 +339,9 @@ function analyse(cue: Cue, words: Word[], bleeped: Set<number>) {
  * length doesn't hint at the word). By the subtitle's own words (see [Cue.wi]); once its text was edited, also every token
  * that says what one of them said, and its words by place when they still fit the text one to one.
  */
-export function maskCue(cue: Cue, words: Word[], bleeped: Set<number>): string {
+export function maskCue(cue: Cue, words: Word[], bleeped: Set<number>, orphans?: number[]): string {
   if (bleeped.size === 0) return cue.text
-  const { masked } = analyse(cue, words, bleeped)
+  const { masked } = analyse(cue, words, bleeped, orphans)
   if (masked.size === 0) return cue.text
   let p = -1
   return cue.text.replace(/\S+/g, (tok) => {
@@ -291,7 +353,7 @@ export function maskCue(cue: Cue, words: Word[], bleeped: Set<number>): string {
 }
 
 /** Whether a bleeped word of [cue] is in none of its tokens and the text no longer fits its words: the subtitle may show it. */
-export const maskWarning = (cue: Cue, words: Word[], bleeped: Set<number>) => bleeped.size > 0 && analyse(cue, words, bleeped).warn
+export const maskWarning = (cue: Cue, words: Word[], bleeped: Set<number>, orphans?: number[]) => bleeped.size > 0 && analyse(cue, words, bleeped, orphans).warn
 
 /** Whether [cue] holds a bleeped word. */
 export const hasBleeped = (cue: Cue, bleeped: Set<number>) => bleeped.size > 0 && cueWi(cue).some((k) => bleeped.has(k))
@@ -301,7 +363,7 @@ export const hasBleeped = (cue: Cue, bleeped: Set<number>) => bleeped.size > 0 &
  * their text (the first [n] words, while the text is the words said). Null when it can't be split (a cue under 0.4 s, one
  * word), or when what a half masks is less than the whole did (given [bleeped]).
  */
-export function splitCue(cue: Cue, at: number, words: Word[], bleeped?: Set<number>): [Cue, Cue] | null {
+export function splitCue(cue: Cue, at: number, words: Word[], bleeped?: Set<number>, orphans?: number[]): [Cue, Cue] | null {
   const tokens = tokensOf(cue.text)
   if (tokens.length < 2) return null
   // A cue too short to hold two (0.2 s each) is not split.
@@ -332,16 +394,17 @@ export function splitCue(cue: Cue, at: number, words: Word[], bleeped?: Set<numb
   const first: Cue = { ...cue, end: t, text: textA, tr: undefined, trm: undefined, wi: w1 }
   const second: Cue = { ...cue, id: newCueId(), start: t, text: textB, tr: undefined, trm: undefined, wi: w2, speaker: cue.speaker }
   if (bleeped && bleeped.size > 0) {
-    const was = analyse(cue, words, bleeped)
-    const a = analyse(first, words, bleeped), b = analyse(second, words, bleeped)
-    if (!was.warn && (a.warn || b.warn)) return null
+    const was = analyse(cue, words, bleeped, orphans)
+    const a = analyse(first, words, bleeped, orphans), b = analyse(second, words, bleeped, orphans)
+    // A subtitle that may already show a bleeped word is fixed first: its halves could not tell which word went where.
+    if (was.warn || a.warn || b.warn) return null
     for (const p of was.masked) if (!(p < n1 ? a.masked.has(p) : b.masked.has(p - n1))) return null
   }
   return [first, second]
 }
 
 /** [cue] split at the playhead [time]: before the first word that starts at or after it (as the app's split at the word nearest to the playhead). */
-export function splitCueAtTime(cue: Cue, time: number, words: Word[], bleeped?: Set<number>): [Cue, Cue] | null {
+export function splitCueAtTime(cue: Cue, time: number, words: Word[], bleeped?: Set<number>, orphans?: number[]): [Cue, Cue] | null {
   const tokens = tokensOf(cue.text)
   if (tokens.length < 2) return null
   const wi = cueWi(cue)
@@ -350,7 +413,7 @@ export function splitCueAtTime(cue: Cue, time: number, words: Word[], bleeped?: 
   if (wi.length === tokens.length && wi.every((j) => words[j])) k = wi.filter((j) => words[j].start < time - 0.02).length
   else k = Math.round(tokens.length * Math.min(1, Math.max(0, (time - cue.start) / Math.max(0.001, cue.end - cue.start))))
   k = Math.min(tokens.length - 1, Math.max(1, k))
-  return splitCue(cue, tokens[k].i, words, bleeped)
+  return splitCue(cue, tokens[k].i, words, bleeped, orphans)
 }
 
 /** The time stretches of the bleeped words. */

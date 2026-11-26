@@ -43,7 +43,9 @@ export function ExportSheet(p: Props) {
   }, [])
   // A subtitle that may show a bleeped word blocks the video's export until it is fixed or the person says to go on.
   const [maskOk, setMaskOk] = useState(false)
-  const blocked = (p.maskWarn ?? 0) > 0 && o.format === 'mp4' && !maskOk
+  // (Only what carries the subtitles: the burned-in text, or the SRT file.)
+  const carries = o.format === 'mp4' && (o.burn !== false || o.srt)
+  const blocked = (p.maskWarn ?? 0) > 0 && carries && !maskOk
   const chip = (on: boolean, label: string, onClick: () => void) => <button class={'chip' + (on ? ' on' : '')} onClick={onClick}>{label}</button>
   return (
     <div class="sheet-back" onClick={(e) => { if (e.target === e.currentTarget) p.onClose() }}>
@@ -54,7 +56,7 @@ export function ExportSheet(p: Props) {
         </div>
         <div class="sheet-body">
           {(p.lostBleeps ?? 0) > 0 && <p class="small lost-note" role="note" style="margin:0;color:var(--primary)">{p.lostBleeps === 1 ? t('מילה מצופצפת אחת לא נמצאה בכתוביות החדשות ולא תצופצף') : t('%d מילים מצופצפות לא נמצאו בכתוביות החדשות ולא יצופצפו', p.lostBleeps ?? 0)}</p>}
-          {(p.maskWarn ?? 0) > 0 && o.format === 'mp4' && (
+          {(p.maskWarn ?? 0) > 0 && carries && (
             <label class="small mask-warn-note confirm" role="alert" style="margin:0;display:flex;gap:8px;align-items:flex-start">
               <input type="checkbox" class="mask-warn-ok" checked={maskOk} onChange={(e) => setMaskOk((e.currentTarget as HTMLInputElement).checked)} />
               <span>{p.maskWarn === 1 ? t('בכתובית אחת מילה מצופצפת לא נמצאת בטקסט, ולכן הכתובית עלולה להציג אותה. סמן כדי לייצא בכל זאת.') : t('ב-%d כתוביות מילה מצופצפת לא נמצאת בטקסט, ולכן הן עלולות להציג אותה. סמן כדי לייצא בכל זאת.', p.maskWarn ?? 0)}</span>

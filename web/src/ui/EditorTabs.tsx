@@ -8,7 +8,7 @@ import { fontFamily, SUB_COLORS, SUB_FONTS } from '../lib/substyle'
 import { FontAxes } from './FontAxes'
 import { AddIcon, CloseIcon, CutIcon, DeleteIcon, MergeIcon, PlayIcon } from './icons'
 import { deleteSound, listSounds, saveSound } from '../lib/projects'
-import { LANGUAGES, cueWi, isNoise, maskCue, maskWarning, mergeCues, newCueId, parseSrt, splitCue, toSrt, trVisible, wordsToCues, type Cue, type SubShow, type SubStyle, type Word } from '../lib/subtitles'
+import { LANGUAGES, cueWi, isNoise, maskCue, maskWarning, mergeCues, newCueId, orphansOf, parseSrt, unownedIn, splitCue, toSrt, trVisible, wordsToCues, type Cue, type SubShow, type SubStyle, type Word } from '../lib/subtitles'
 import { SubStyleCard } from './SubStyleCard'
 import { canTranslate, guessLang, LANG_NAMES, translateAll } from '../lib/translate'
 import { MAX_SPEAKERS } from '../lib/speakers'
@@ -198,7 +198,8 @@ function TranslateCard({ cues, words, bleeped, maskOn, onCues, show, onShow, onB
     try {
       const ordered = [...cues].sort((a, b) => a.start - b.start)
       // What is translated is what the video shows (the bleeped words masked), so the translation can't give one away.
-      const sent = ordered.map((c) => (maskOn ? maskCue(c, words, bleeped) : c.text))
+      const orph = orphansOf(latest.current, bleeped)
+      const sent = ordered.map((c) => (maskOn ? maskCue(c, words, bleeped, orph) : c.text))
       const out = await translateAll(sent, from, to, (stage, p) => setRun({ stage, p }))
       if (!alive.current) return
       const byId = new Map(ordered.map((c, k) => [c.id, [out[k], sent[k]] as [string, string]]))
@@ -439,10 +440,10 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
     const end = Math.min(time + 2, next ? next.start : time + 2)
     if (end - time < 0.3) { setListNote(t('אין כאן מקום לכתובית חדשה. אפשר לפצל כתובית קיימת.')); return }
     setListNote(null)
-    onCues([...cues, { id: newCueId(), start: time, end, text: '', wi: [] }].sort((a, b) => a.start - b.start), true)
+    onCues([...cues, { id: newCueId(), start: time, end, text: '', wi: unownedIn(cues, words, time, end) }].sort((a, b) => a.start - b.start), true)
   }
   const splitAt = (c: Cue) => {
-    const parts = splitCue(c, caret.current.get(c.id) ?? Math.floor(c.text.length / 2), words, bleeped)
+    const parts = splitCue(c, caret.current.get(c.id) ?? Math.floor(c.text.length / 2), words, bleeped, orphans)
     if (!parts) { setListNote(t('אי אפשר לפצל כאן: הכתובית קצרה מדי, יש בה מילה אחת, או שמילה מוסתרת לא תישאר מוסתרת')); return }
     setListNote(null)
     onCues(cues.flatMap((x) => (x.id === c.id ? parts : [x])), true)
@@ -526,7 +527,10 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
   const cancel = () => { ctl.current?.abort(); ctl.current = null; setRun(null) }
   const set = (patch: Partial<SubStyle>) => onStyle({ ...styleNow.current, ...patch })
   const edit = (id: number, patch: Partial<Cue>) => onCues(cues.map((c) => (c.id === id ? { ...c, ...patch } : c)))
+  // The file has every word as typed: with bleeped words it asks first.
+  const [srtAsk, setSrtAsk] = useState(false)
   const srt = () => {
+    setSrtAsk(false)
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([toSrt(cues)], { type: 'application/x-subrip' }))
     a.download = file.name.replace(/\.[^.]+$/, '') + '.srt'
@@ -589,9 +593,18 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
     <>
       <div class="row wrap">
         <button class={'btn small-btn ' + (findOpen ? 'primary' : 'tonal')} onClick={() => { setFindOpen(!findOpen); setFindResult(null) }}>{t('חפש והחלף')}</button>
-        <button class="btn tonal small-btn" onClick={srt} title={t('הקובץ כולל את כל המילים, בלי הסתרה: לעריכה')}>{t('הורד SRT')} <span class="small muted">{t('(בלי הסתרה, לעריכה)')}</span></button>
+        <button class="btn tonal small-btn srt-download" onClick={() => (bleeped.size > 0 ? setSrtAsk(true) : srt())} title={t('הקובץ כולל את כל המילים, בלי הסתרה: לעריכה')}>{t('הורד SRT')} <span class="small muted">{t('(בלי הסתרה, לעריכה)')}</span></button>
         {!part && importSrt}
       </div>
+      {srtAsk && (
+        <div class="confirm srt-ask" role="alertdialog" aria-label={t('להוריד SRT בלי הסתרה?')}>
+          <span class="small">{t('קובץ ה-SRT יכלול את המילים המצופצפות כפי שהן. אל תפרסם אותו.')}</span>
+          <div class="row">
+            <button class="btn small-btn danger-btn srt-ask-yes" onClick={srt}>{t('הורד')}</button>
+            <button class="btn ghost small-btn srt-ask-no" onClick={() => setSrtAsk(false)}>{t('ביטול')}</button>
+          </div>
+        </div>
+      )}
       {findOpen && (
         <div class="find-row">
           <input class="text-in find-in" dir="auto" placeholder={t('חפש')} value={find} onInput={(e) => { setFind((e.currentTarget as HTMLInputElement).value); setFindResult(null) }} />
@@ -717,8 +730,8 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
             {sorted.map((c) => {
               const isOpen = openId === c.id
               const maskOn = style.maskBleeped !== false
-              const warn = maskOn && maskWarning(c, words, bleeped)
-              const trHidden = maskOn && !!c.tr && !trVisible(c, maskCue(c, words, bleeped))
+              const warn = maskOn && maskWarning(c, words, bleeped, orphans)
+              const trHidden = maskOn && !!c.tr && !trVisible(c, maskCue(c, words, bleeped, orphans))
               return (
               <div class={'clip' + (time >= c.start && time < c.end ? ' now' : '') + (isOpen ? ' open' : '')}>
                 <div class="row">
