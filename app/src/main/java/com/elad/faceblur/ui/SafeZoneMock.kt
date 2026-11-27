@@ -5,7 +5,21 @@ import android.graphics.Typeface
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -44,12 +58,17 @@ internal object MockGlyphs {
  * placed from the platform's [SafeZone] margins. Preview only: it is never burned into the video.
  */
 private object Mock {
+    /** Set while a mirrored (right-to-left app) mock is drawn: the canvas is flipped, and text is flipped back so that it still reads. */
+    var flipped = false
     private val paths = HashMap<String, Path>()
     fun path(d: String): Path = paths.getOrPut(d) { PathParser().parsePathString(d).toPath() }
 
     // Only the UI thread draws, so the paints are shared.
     val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xF2FFFFFF.toInt() }
 }
+
+/** The most the caption gives way to the button column (as a fraction of the width). The column itself is centred in the zone's right margin. */
+private const val RAIL_MAX = 0.19f
 
 private val INK = Color.White.copy(alpha = 0.92f)
 private val SOFT = Color.White.copy(alpha = 0.55f)
@@ -88,8 +107,23 @@ private fun DrawScope.label(s: String, x: Float, baseline: Float, size: Float, b
     p.color = android.graphics.Color.argb((alpha * 255).toInt(), 255, 255, 255)
     p.setShadowLayer(size * 0.18f, 0f, size * 0.06f, 0x88000000.toInt())
     p.textAlign = if (centered) Paint.Align.CENTER else Paint.Align.LEFT
-    drawContext.canvas.nativeCanvas.drawText(s, x, baseline, p)
+    drawTextReadable(s, x, baseline, p)
     p.clearShadowLayer()
+}
+
+/** Draws [s] with its (left, or centre) at [x], reading the right way round also when the canvas is flipped. */
+private fun DrawScope.drawTextReadable(s: String, x: Float, baseline: Float, p: Paint) {
+    val c = drawContext.canvas.nativeCanvas
+    if (!Mock.flipped) {
+        c.drawText(s, x, baseline, p)
+        return
+    }
+    val anchor = if (p.textAlign == Paint.Align.CENTER) x else x + p.measureText(s)
+    c.save()
+    c.translate(anchor, 0f)
+    c.scale(-1f, 1f)
+    c.drawText(s, 0f, baseline, p)
+    c.restore()
 }
 
 private fun measure(s: String, size: Float, bold: Boolean): Float {
@@ -120,24 +154,34 @@ internal fun glidingSafeZone(platform: Platform): () -> SafeZone {
  * The platform's own interface, imitated, over a frame at [origin] of [frame] size, laid out by
  * the platform's [zone]: a tab strip at the top, a column of buttons at the right, the account,
  * caption and sound lines at the bottom and a thin progress bar. A soft shade behind the top and
- * bottom parts and a thin dashed outline around the clear middle help the eye. Only drawn on
+ * bottom parts and a thin dashed outline around the clear middle help the eye. [mirrored]: the app in a
+ * right-to-left language: the whole picture flipped (the column of buttons at the left), text still readable. Only drawn on
  * screen, never burned into the video.
  */
-internal fun DrawScope.drawSafeZone(platform: Platform, zone: SafeZone, origin: Offset, frame: Size) {
+internal fun DrawScope.drawSafeZone(platform: Platform, zone: SafeZone, origin: Offset, frame: Size, reserved: Float = 0f, mirrored: Boolean = false) {
     val w = frame.width
     val h = frame.height
     val topH = h * zone.top
     val botH = h * zone.bottom
     val leftW = w * zone.left
     val rightW = w * zone.right
-    withTransform({ translate(origin.x, origin.y) }) {
+    // The button column is centred in the platform's right margin (mirrored: the left one, the canvas is flipped), and its caption stops short of it.
+    val colX = w - rightW / 2f
+    val railW = minOf(rightW, w * RAIL_MAX)
+    Mock.flipped = mirrored
+    withTransform({
+        translate(origin.x, origin.y)
+        // Mirrored (an app in a right-to-left language): the whole picture flipped, so the column of buttons is at the left.
+        if (mirrored) { translate(w, 0f); scale(-1f, 1f, Offset.Zero) }
+    }) {
         // Light shade where the platform's screens sit, so white shapes read on any video.
         drawRect(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.34f), Color.Transparent), 0f, topH), Offset.Zero, Size(w, topH))
         drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.42f)), h - botH, h), Offset(0f, h - botH), Size(w, botH))
 
         // Top: the tab strip (and, per platform, search / menu).
         val tabSize = w * 0.04f
-        val tabY = topH * 0.62f
+        // Below the platform chooser's floating pill ([reserved] px from the frame's top), which it must not sit under.
+        val tabY = maxOf(topH * 0.62f, reserved + tabSize * 1.15f)
         val a = t("עוקבים")
         val b = t("בשבילך")
         val gap = w * 0.05f
@@ -149,17 +193,17 @@ internal fun DrawScope.drawSafeZone(platform: Platform, zone: SafeZone, origin: 
         bar(sx + wa + gap, tabY + tabSize * 0.35f, wb, maxOf(2.dp.toPx(), tabSize * 0.1f), INK)
         val topIcon = minOf(w * 0.06f, topH * 0.36f)
         when (platform) {
-            Platform.TIKTOK -> glyph(MockGlyphs.SEARCH, w - rightW / 2f - topIcon * 0.1f, tabY - tabSize * 0.35f, topIcon)
+            Platform.TIKTOK -> glyph(MockGlyphs.SEARCH, colX - topIcon * 0.1f, tabY - tabSize * 0.35f, topIcon)
             Platform.SHORTS -> {
-                glyph(MockGlyphs.SEARCH, w - rightW / 2f - topIcon * 1.15f, tabY - tabSize * 0.35f, topIcon)
-                glyph(MockGlyphs.DOTS, w - rightW / 2f + topIcon * 0.1f, tabY - tabSize * 0.35f, topIcon)
+                glyph(MockGlyphs.SEARCH, colX - topIcon * 1.15f, tabY - tabSize * 0.35f, topIcon)
+                glyph(MockGlyphs.DOTS, colX + topIcon * 0.1f, tabY - tabSize * 0.35f, topIcon)
             }
             Platform.REELS -> Unit
         }
 
         // Right: the column of buttons, ending with the sound disc / thumbnail low in the bottom zone.
         val icon = (rightW * 0.5f).coerceIn(w * 0.045f, w * 0.07f)
-        val cx = w - rightW / 2f
+        val cx = colX
         val step = icon * 2.05f
         val last = h - botH * 0.52f
         val items = when (platform) {
@@ -235,7 +279,7 @@ internal fun DrawScope.drawSafeZone(platform: Platform, zone: SafeZone, origin: 
                     drawRoundRect(Color.White.copy(alpha = 0.92f), Offset(px, py), Size(tw + ps * 1.6f, ph), r)
                     val p = Mock.text
                     p.textSize = ps; p.typeface = Typeface.DEFAULT_BOLD; p.color = 0xFF202020.toInt(); p.textAlign = Paint.Align.LEFT
-                    drawContext.canvas.nativeCanvas.drawText(txt, px + ps * 0.8f, py + ph / 2f + ps * 0.35f, p)
+                    drawTextReadable(txt, px + ps * 0.8f, py + ph / 2f + ps * 0.35f, p)
                 } else {
                     drawRoundRect(INK, Offset(px, py), Size(tw + ps * 1.6f, ph), r, style = Stroke(maxOf(1.5f, ps * 0.1f)))
                     label(txt, px + ps * 0.8f, py + ph / 2f + ps * 0.35f, ps, true, 0.95f)
@@ -244,7 +288,7 @@ internal fun DrawScope.drawSafeZone(platform: Platform, zone: SafeZone, origin: 
             Platform.TIKTOK -> Unit
         }
         val barH = textSize * 0.42f
-        val capW = w - x0 - rightW - w * 0.03f
+        val capW = w - x0 - railW - w * 0.03f
         bar(x0, cap1 - barH, capW * 0.9f, barH, Color.White.copy(alpha = 0.7f))
         bar(x0, cap2 - barH, capW * 0.55f, barH, Color.White.copy(alpha = 0.7f))
         glyph(MockGlyphs.NOTE, x0 + textSize * 0.55f, soundY - textSize * 0.3f, textSize * 1.1f)
@@ -257,5 +301,35 @@ internal fun DrawScope.drawSafeZone(platform: Platform, zone: SafeZone, origin: 
             Color.White.copy(alpha = 0.55f), Offset(leftW, topH), Size(w - leftW - rightW, h - topH - botH),
             style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))),
         )
+    }
+    Mock.flipped = false
+}
+
+/** Material's "flip" glyph (24x24, Apache 2.0): a plain mirror symbol. */
+private const val MIRROR_GLYPH = "M15 21h2v-2h-2v2zm4-12h2V7h-2v2zM3 5v14c0 1.1.9 2 2 2h4v-2H5V5h4V3H5c-1.1 0-2 .9-2 2zm16-2v2h2c0-1.1-.9-2-2-2zm-8 20h2V1h-2v22zm8-6h2v-2h-2v2zM15 5h2V3h-2v2zm4 8h2v-2h-2v2zm0 8c1.1 0 2-.9 2-2h-2v2z"
+
+/**
+ * The small round switch beside the platform chooser: the zone and the mock mirrored, for an app in a
+ * right-to-left language (Arabic, Hebrew). Dark glass over the video, white when on.
+ */
+@Composable
+internal fun SafeMirrorButton(on: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val fg = if (on) Color(0xFF111111) else Color.White.copy(alpha = 0.85f)
+    val label = t("מראה: אפליקציה מימין לשמאל")
+    Box(
+        modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(if (on) Color.White else Color.Black.copy(alpha = 0.55f))
+            .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape)
+            .toggleable(value = on, role = Role.Switch, onValueChange = onChange)
+            .semantics { contentDescription = label }
+            .testTag(Tags.SAFE_ZONE + ".mirror"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(18.dp)) {
+            val k = size.width / 24f
+            withTransform({ scale(k, k, Offset.Zero) }) { drawPath(Mock.path(MIRROR_GLYPH), fg) }
+        }
     }
 }

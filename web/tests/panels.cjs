@@ -595,6 +595,48 @@ self.onmessage = async () => { const n = Number(await (await fetch('/__run')).te
     // ---- a wide screen: everything as before, and "more options" holds something
     if (part !== 1) {
       const w = await open(b, { width: 1366, height: 860 }, false)
+      // The top is one compact row (the site header gives way to it), so the video gets more height than the old 100dvh - 380 px
+      // (480 px here): a laptop's video is bigger, never smaller.
+      for (const [vw, vh] of [[1366, 860], [1366, 768], [1280, 720]]) {
+        await w.setViewportSize({ width: vw, height: vh })
+        await w.waitForTimeout(300)
+        const top = await w.evaluate(() => {
+          const r = (s) => document.querySelector(s)?.getBoundingClientRect()
+          const row = r('.player > .top-row'), screen = r('.screen'), view = r('.screen .view')
+          return { siteHeader: getComputedStyle(document.querySelector('header.top')).display !== 'none', rowH: row.height, rowTop: row.top, screenTop: screen.top, screenH: screen.height, viewH: view.height, brand: !!document.querySelector('.top-row .brand-mini'), settings: !!document.querySelector('.top-row .settings-open'), twoLines: [...document.querySelectorAll('.player > .top-row > *')].some((e) => e.getBoundingClientRect().height > 50) }
+        })
+        console.log('wide top', vw + 'x' + vh, JSON.stringify(top))
+        if (top.siteHeader) fail(`${vw}x${vh}: the site header still takes a row above the editor`)
+        if (top.rowH > 50 || top.twoLines) fail(`${vw}x${vh}: the top row is ${top.rowH} px (not one compact row)`)
+        if (top.screenTop > 130) fail(`${vw}x${vh}: the video starts ${Math.round(top.screenTop)} px down`)
+        if (!top.brand || !top.settings) fail(`${vw}x${vh}: the brand or the settings button is not in the top row`)
+        // More than the old layout's (100dvh - 380 px, at most as wide as the column of 1280 px allowed), by at least 40 px.
+        const old = vh - 380
+        if (top.screenH < old + 40) fail(`${vw}x${vh}: the video is ${Math.round(top.screenH)} px tall, not bigger than the old ${old} px`)
+      }
+      // A landscape phone / small tablet that is neither the phone's nor the tablet's layout (601-839 px wide, under 600 px tall) keeps the
+      // site header and the old video (half the height): the compact row is only from 840 px wide, and a short wide screen never gets less than half.
+      for (const [vw, vh, compactRow] of [[740, 360, false], [667, 375, false], [640, 360, false], [839, 500, false], [900, 420, true], [1024, 360, true]]) {
+        await w.setViewportSize({ width: vw, height: vh })
+        await w.waitForTimeout(300)
+        const m = await w.evaluate(() => {
+          const r = (s) => document.querySelector(s)?.getBoundingClientRect()
+          const row = document.querySelector('.player > .top-row')
+          return { screenH: r('.screen').height, siteHeader: getComputedStyle(document.querySelector('header.top')).display !== 'none', brand: !!document.querySelector('.top-row .brand-mini'), rowOverflow: row.scrollWidth > row.clientWidth + 1, pageOverflow: document.documentElement.scrollWidth > innerWidth + 1 }
+        })
+        console.log('short', vw + 'x' + vh, JSON.stringify(m))
+        if (m.screenH < vh * 0.5 - 2) fail(`${vw}x${vh}: the video is ${Math.round(m.screenH)} px tall, under half the screen (the old layout's)`)
+        if (m.siteHeader === compactRow) fail(`${vw}x${vh}: the site header is ${m.siteHeader ? 'shown' : 'hidden'}, the compact row ${compactRow ? 'should' : 'should not'} be in use`)
+        if (m.brand !== compactRow) fail(`${vw}x${vh}: the brand in the top row is ${m.brand}, expected ${compactRow}`)
+        if (m.rowOverflow || m.pageOverflow) fail(`${vw}x${vh}: the top row or the page overflows sideways`)
+      }
+      await w.setViewportSize({ width: 1366, height: 860 })
+      // The privacy line is behind the (i) in the row.
+      await w.click('.top-row .info-btn')
+      await w.waitForSelector('.info-pop .tag', { state: 'visible' })
+      if (!(await w.textContent('.info-pop .tag')).includes('המכשיר')) fail('the privacy line is not in the (i)')
+      await w.keyboard.press('Escape')
+      await w.waitForSelector('.info-pop', { state: 'detached' })
       await w.click('.tabs button[data-g=subs]')
       const wide = async (label) => {
         const n = await w.evaluate(() => [...document.querySelectorAll('.subs-more')].map((d) => d.querySelector('.subs-more-body')?.textContent.trim().length ?? 0))

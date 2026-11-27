@@ -83,6 +83,8 @@ export type ProjectState = {
   background: Background
   steady: number
   aspect: Aspect
+  /** The safe zone's view aid (see lib/safezone.ts): on or off, and the platform. Missing in projects saved before it was kept. */
+  safe?: { on: boolean; platform: 'tiktok' | 'reels' | 'shorts'; /** Mirrored for an app in a right-to-left language. */ mirrored?: boolean }
 }
 
 /** What the picture pass found (kept apart: the people's masks are big). */

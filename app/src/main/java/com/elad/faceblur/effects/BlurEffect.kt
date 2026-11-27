@@ -7,6 +7,7 @@ import androidx.media3.effect.BaseGlShaderProgram
 import androidx.media3.effect.GlEffect
 import androidx.media3.effect.GlShaderProgram
 import com.elad.faceblur.gl.Gl
+import com.elad.faceblur.pipeline.ExportCounters
 import com.elad.faceblur.gl.Quad
 import com.elad.faceblur.gl.Uniforms
 import com.elad.faceblur.track.FaceSource
@@ -33,11 +34,13 @@ class BlurEffect(
     private val timeline: FaceSource,
     private val mode: () -> BlurMode,
     private val strength: () -> Float,
+    /** The export's counters (frames and the time in this step, for its stats panel); null in the editor's preview. */
+    private val counters: ExportCounters? = null,
 ) : GlEffect {
-    constructor(timeline: FaceSource, mode: BlurMode, strength: Float) : this(timeline, { mode }, { strength })
+    constructor(timeline: FaceSource, mode: BlurMode, strength: Float, counters: ExportCounters? = null) : this(timeline, { mode }, { strength }, counters)
 
     override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram =
-        BlurProgram(timeline, mode, strength, useHdr)
+        BlurProgram(timeline, mode, strength, useHdr, counters)
 }
 
 /** [modeOf] and [strengthOf] are read for each frame (the editor's preview can change them). */
@@ -46,6 +49,7 @@ private class BlurProgram(
     private val modeOf: () -> BlurMode,
     private val strengthOf: () -> Float,
     private val highPrecision: Boolean,
+    private val counters: ExportCounters? = null,
 ) : BaseGlShaderProgram(highPrecision, /* texturePoolCapacity= */ 1) {
 
     private var copyProg = 0
@@ -112,6 +116,21 @@ private class BlurProgram(
     }
 
     override fun drawFrame(inputTexId: Int, presentationTimeUs: Long) {
+        val c = counters
+        if (c == null) {
+            drawBlur(inputTexId, presentationTimeUs)
+            return
+        }
+        // The export's stats: the time this frame spends here (on this thread; the GPU may finish its part later).
+        val t0 = System.nanoTime()
+        try {
+            drawBlur(inputTexId, presentationTimeUs)
+        } finally {
+            c.onFrame(System.nanoTime() - t0)
+        }
+    }
+
+    private fun drawBlur(inputTexId: Int, presentationTimeUs: Long) {
         val faces = timeline.facesAt(presentationTimeUs)
         val mode = modeOf()
         val strength = strengthOf()
