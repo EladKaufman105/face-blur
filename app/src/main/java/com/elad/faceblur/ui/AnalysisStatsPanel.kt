@@ -152,7 +152,7 @@ private fun Cell.info(): String = when (this) {
     Cell.RESOLUTION -> t("גודל התמונה שגלאי הפנים בודק. יורד אוטומטית במכשיר איטי.")
     Cell.SAMPLING -> t("כל כמה פריימים מחפשים פנים. \"קל\": בדיקה מהירה יותר; המעקב משלים בין הבדיקות.")
     Cell.BACKEND -> t("איפה רץ זיהוי הפנים: במעבד הגרפי (GPU) או במעבד, ובאיזה דיוק. כשאין GPU, כתוב למה.")
-    Cell.MODE -> t("רגיל, מורחב (כל פריים) או מהיר (5 בשנייה), והרגישות שנבחרה.")
+    Cell.MODE -> t("רגיל, מורחב (כל פריים), מהיר (5 בשנייה) או סלפי, והרגישות שנבחרה.")
     Cell.WORKERS -> t("כמה גלאים עובדים במקביל, מתוך המקסימום.")
     Cell.FINE -> t("זמן המעבר המפורט בכל זיהוי.")
     Cell.COARSE -> t("זמן המעבר המהיר שמוצא פנים גדולות.")
@@ -209,6 +209,7 @@ private fun Cell.value(s: AnalysisStats, small: SpanStyle): AnnotatedString = bu
             append(
                 when (l.mode) {
                     "fast" -> t("מהיר")
+                    "selfie" -> t("סלפי")
                     "extended" -> t("מורחב")
                     else -> t("רגיל")
                 },

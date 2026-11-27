@@ -82,6 +82,7 @@ import kotlin.math.roundToInt
 /** A pack's name (also in the download notification). */
 fun packName(id: PackId): String = when (id) {
     PackId.FACES -> t("טשטוש פנים")
+    PackId.SELFIE -> t("מצב סלפי")
     PackId.PEOPLE -> t("הסרת רקע")
     PackId.SPEAKERS -> t("זיהוי דוברים")
     PackId.SPEECH_HE -> t("כתוביות בעברית")
@@ -91,6 +92,7 @@ fun packName(id: PackId): String = when (id) {
 /** What the pack is (the model in it). */
 private fun packDesc(id: PackId): String = when (id) {
     PackId.FACES -> t("זיהוי פנים: RetinaFace ו-YuNet, גם על ה-GPU")
+    PackId.SELFIE -> t("BlazeFace של MediaPipe, פנים קרובות למצלמה")
     PackId.PEOPLE -> t("מוצא את האנשים בכל פריים")
     PackId.SPEAKERS -> t("WeSpeaker, מזהה מי מדבר")
     PackId.SPEECH_HE -> t("Whisper של ivrit.ai, כותב גם דיבור באנגלית")
@@ -100,6 +102,7 @@ private fun packDesc(id: PackId): String = when (id) {
 /** What the pack makes possible. */
 private fun packEnables(id: PackId): String = when (id) {
     PackId.FACES -> t("מאפשר: טשטוש פנים, אצוות ותבניות עם טשטוש")
+    PackId.SELFIE -> t("מאפשר: מצב זיהוי סלפי (אדם אחד קרוב למצלמה)")
     PackId.PEOPLE -> t("מאפשר: להשאיר את האנשים ולהחליף את הרקע")
     PackId.SPEAKERS -> t("מאפשר: צבע לכל דובר")
     PackId.SPEECH_HE -> t("מאפשר: תמלול על המכשיר")
@@ -107,7 +110,7 @@ private fun packEnables(id: PackId): String = when (id) {
 }
 
 private fun packIcon(id: PackId): ImageVector = when (id) {
-    PackId.FACES -> AppIcons.Face
+    PackId.FACES, PackId.SELFIE -> AppIcons.Face
     PackId.PEOPLE -> AppIcons.Person
     PackId.SPEAKERS -> AppIcons.Voice
     PackId.SPEECH_HE, PackId.SPEECH_ANY -> AppIcons.Subtitles
@@ -115,6 +118,7 @@ private fun packIcon(id: PackId): ImageVector = when (id) {
 
 private fun needTitle(id: PackId): String = when (id) {
     PackId.FACES -> t("כדי לטשטש פנים צריך את מודל זיהוי הפנים")
+    PackId.SELFIE -> t("כדי להשתמש במצב סלפי צריך את מודל הסלפי")
     PackId.PEOPLE -> t("כדי להסיר רקע צריך את מודל האנשים")
     PackId.SPEAKERS -> t("כדי למצוא דוברים צריך את מודל הקולות")
     PackId.SPEECH_HE, PackId.SPEECH_ANY -> t("כדי ליצור כתוביות צריך את מודל הדיבור")
@@ -122,6 +126,7 @@ private fun needTitle(id: PackId): String = when (id) {
 
 private fun needBody(id: PackId): String = when (id) {
     PackId.FACES -> t("הורדה חד-פעמית. בלי המודל ONIT לא מטשטש פנים, ולא מנסה בשיטה חלשה יותר.")
+    PackId.SELFIE -> t("הורדה חד-פעמית, קטנה. המודל מוצא פנים קרובות למצלמה בכל פריים.")
     PackId.PEOPLE -> t("הורדה חד-פעמית. המודל מוצא את האנשים בכל פריים.")
     PackId.SPEAKERS -> t("הורדה חד-פעמית. כל דובר יקבל צבע משלו.")
     PackId.SPEECH_HE, PackId.SPEECH_ANY -> t("הורדה חד-פעמית, גדולה. מומלץ ב-Wi-Fi.")
@@ -146,7 +151,7 @@ internal fun modelSize(bytes: Long, approx: Boolean = false): String {
 }
 
 /** The packs in the order the screens list them. */
-private val ORDER = listOf(PackId.FACES, PackId.PEOPLE, PackId.SPEAKERS, PackId.SPEECH_HE, PackId.SPEECH_ANY)
+private val ORDER = listOf(PackId.FACES, PackId.SELFIE, PackId.PEOPLE, PackId.SPEAKERS, PackId.SPEECH_HE, PackId.SPEECH_ANY)
 
 @Composable
 private fun rememberDownloads(): ModelDownloads {

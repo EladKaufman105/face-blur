@@ -33,10 +33,13 @@ data class BlurPart(
     val fast: Boolean? = null,
     /** 0..1: more faces blurred, never fewer (see [com.elad.faceblur.analysis.DetectTuning]). */
     val sensitivity: Float? = null,
+    /** Selfie detection (BlazeFace); [sensitive] and [fast] win if either is true. */
+    val selfie: Boolean? = null,
 ) {
-    /** The detection mode this part sets, or null when it leaves it (neither [sensitive] nor [fast] given). */
+    /** The detection mode this part sets, or null when it leaves it (none of [sensitive], [fast] and [selfie] given). */
     val detect: com.elad.faceblur.analysis.DetectMode?
-        get() = if (sensitive == null && fast == null) null else com.elad.faceblur.analysis.DetectMode.of(sensitive == true, fast == true)
+        get() = if (sensitive == null && fast == null && selfie == null) null
+        else com.elad.faceblur.analysis.DetectMode.of(sensitive == true, fast == true, selfie == true)
 }
 
 /** Subtitles. A null field is left as it is. */
@@ -124,6 +127,8 @@ data class Template(
                 // Older versions read only "sensitive": a fast template is normal detection there (never weaker).
                 b.fast?.let { put("fast", it) }
                 b.sensitivity?.let { put("sensitivity", it.toDouble()) }
+                // Older versions don't know "selfie": a selfie template is normal detection there (sensitive and fast are false), never weaker.
+                b.selfie?.let { put("selfie", it) }
             })
         }
         subs?.let { s ->
@@ -176,6 +181,7 @@ data class Template(
                     BlurPart(
                         b.boolOrNull("none"), b.enumOrNull<BlurMode>("mode"), b.floatOrNull("strength"), b.floatOrNull("padding"), b.boolOrNull("sensitive"),
                         b.boolOrNull("fast"), b.floatOrNull("sensitivity")?.takeIf { !it.isNaN() }?.let { com.elad.faceblur.analysis.DetectTuning.roundUp(it) },
+                        b.boolOrNull("selfie"),
                     )
                 },
                 subs = o.optJSONObject("subs")?.let { s ->
@@ -219,6 +225,8 @@ data class TemplateSettings(
     val sensitive: Boolean = false,
     /** Fast detection; [sensitive] wins if both are true. */
     val fast: Boolean = false,
+    /** Selfie detection; [sensitive] and [fast] win if either is true. */
+    val selfie: Boolean = false,
     /** 0..1 (see [com.elad.faceblur.analysis.DetectTuning]). */
     val sensitivity: Float = 0f,
     val createSubs: Boolean = false,
@@ -236,6 +244,9 @@ data class TemplateSettings(
     val stabilize: Int = 0,
     val export: ExportOptions = ExportOptions(),
 ) {
+    /** How faces are looked for. */
+    val detect: com.elad.faceblur.analysis.DetectMode get() = com.elad.faceblur.analysis.DetectMode.of(sensitive, fast, selfie)
+
     /** Something is done to the video beside the face blur (so a video without faces is still worth saving). */
     val hasProcessing: Boolean
         get() = createSubs || audio.voice != com.elad.faceblur.audio.VoiceFx.NONE || audio.denoise > 0 || audio.enhance || audio.loud ||
@@ -248,6 +259,7 @@ data class TemplateSettings(
     val neededPacks: List<com.elad.faceblur.models.PackId>
         get() = buildList {
             if (!blurOff) add(com.elad.faceblur.models.PackId.FACES)
+            if (!blurOff && detect == com.elad.faceblur.analysis.DetectMode.SELFIE) add(com.elad.faceblur.models.PackId.SELFIE)
             if (background.active && background.key == com.elad.faceblur.effects.BgKey.PERSON) add(com.elad.faceblur.models.PackId.PEOPLE)
             if (createSubs) add(speechModel.pack)
         }
@@ -279,7 +291,11 @@ fun Template.applyTo(base: TemplateSettings): TemplateSettings {
             padding = b.padding ?: s.padding,
         )
         b.detect?.let { d ->
-            s = s.copy(sensitive = d == com.elad.faceblur.analysis.DetectMode.EXTENDED, fast = d == com.elad.faceblur.analysis.DetectMode.FAST)
+            s = s.copy(
+                sensitive = d == com.elad.faceblur.analysis.DetectMode.EXTENDED,
+                fast = d == com.elad.faceblur.analysis.DetectMode.FAST,
+                selfie = d == com.elad.faceblur.analysis.DetectMode.SELFIE,
+            )
         }
         b.sensitivity?.let { s = s.copy(sensitivity = it.coerceIn(0f, 1f)) }
     }
@@ -325,7 +341,10 @@ fun TemplateSettings.toTemplate(id: String, name: String, keep: Set<TemplateCate
     id = id,
     name = name,
     group = TemplateGroup.USER,
-    blur = BlurPart(blurOff, mode, strength, padding, sensitive, fast && !sensitive, sensitivity),
+    blur = BlurPart(blurOff, mode, strength, padding, sensitive, fast && !sensitive, sensitivity,
+        // Written only when on: the other templates' files stay as they were.
+        (selfie && !sensitive && !fast).takeIf { it },
+    ),
     subs = SubsPart(createSubs, speechModel, language, translate, subStyle, split.words, split.chars, export.subs, export.saveSrt),
     voice = VoicePart(audio.copy(gainDb = 0f)),
     cuts = CutsPart(cutSilences, minPauseMs, cutFillers),

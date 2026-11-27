@@ -86,9 +86,9 @@ sealed interface UiState {
      */
     data class Working(val info: VideoInfo, val stage: Int, val progress: Float, val subsOnly: Boolean = false, val auto: Boolean = false) : UiState
     data class Editing(val info: VideoInfo, val editor: EditorController) : UiState
-    data class Done(val info: VideoInfo, val result: Outcome.Saved, val canEdit: Boolean, val subsOnly: Boolean = false, /** The faces were found with fast detection: its warning stays on the result. */ val fast: Boolean = false) : UiState
+    data class Done(val info: VideoInfo, val result: Outcome.Saved, val canEdit: Boolean, val subsOnly: Boolean = false, /** The faces were found with fast detection: its warning stays on the result. */ val fast: Boolean = false, /** The same for selfie detection. */ val selfie: Boolean = false) : UiState
     /** [note]: what the template's processing could not do (shown beside the message). */
-    data class NoFaces(val info: VideoInfo, val canEdit: Boolean, val note: String? = null, /** Found with fast detection: its warning shows here too. */ val fast: Boolean = false) : UiState
+    data class NoFaces(val info: VideoInfo, val canEdit: Boolean, val note: String? = null, /** Found with fast detection: its warning shows here too. */ val fast: Boolean = false, /** The same for selfie detection. */ val selfie: Boolean = false) : UiState
     /** A saved project whose video can't be read any more: pick it again. [wrong]: the last pick was another video. */
     data class Relink(val project: ProjectMeta, val wrong: Boolean = false) : UiState
     /**
@@ -121,15 +121,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var sensitive by mutableStateOf(false)
     /** Fast detection (5 a second); off whenever [sensitive] is on (see [detectMode]). */
     var fast by mutableStateOf(false)
+    /** Selfie detection (BlazeFace on every frame); off whenever [sensitive] or [fast] is on (see [detectMode]). */
+    var selfie by mutableStateOf(false)
     /** 0..1: more faces blurred, never fewer (see [com.elad.faceblur.analysis.DetectTuning]). */
     var sensitivity by mutableStateOf(0f)
 
-    /** Normal, extended or fast: one of three, set together. */
+    /** Normal, extended, fast or selfie: one of four, set together. */
     var detectMode: com.elad.faceblur.analysis.DetectMode
-        get() = com.elad.faceblur.analysis.DetectMode.of(sensitive, fast)
+        get() = com.elad.faceblur.analysis.DetectMode.of(sensitive, fast, selfie)
         set(v) {
             sensitive = v == com.elad.faceblur.analysis.DetectMode.EXTENDED
             fast = v == com.elad.faceblur.analysis.DetectMode.FAST
+            selfie = v == com.elad.faceblur.analysis.DetectMode.SELFIE
         }
     /** Open the editor between analysis and export. */
     var review by mutableStateOf(true)
@@ -207,7 +210,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Forgets the template chosen for the last video: its blur look comes back, its export and subtitle look go. */
     private fun resetTemplate() {
-        templateBase?.let { b -> mode = b.mode; strength = b.strength; padding = b.padding; sensitive = b.sensitive; fast = b.fast; sensitivity = b.sensitivity }
+        templateBase?.let { b -> mode = b.mode; strength = b.strength; padding = b.padding; sensitive = b.sensitive; fast = b.fast; selfie = b.selfie; sensitivity = b.sensitivity }
         templateBase = null
         templateChoice = TemplateChoice()
         templateSettings = null
@@ -386,7 +389,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * blur, and what the template's processing needs (people background, subtitles).
      */
     val missingPacks: List<com.elad.faceblur.models.PackId>
-        get() = (templateSettings?.neededPacks ?: listOf(com.elad.faceblur.models.PackId.FACES)).filter { !packReady(it) }
+        // Selfie mode's pack follows the mode chosen on the screen (the template's choice may have been changed there).
+        get() = ((templateSettings?.neededPacks ?: listOf(com.elad.faceblur.models.PackId.FACES)).filter { it != com.elad.faceblur.models.PackId.SELFIE } +
+            (if (selfieWanted) listOf(com.elad.faceblur.models.PackId.SELFIE) else emptyList())).filter { !packReady(it) }
+
+    /** Selfie detection is chosen and the video's face blur uses it. */
+    private val selfieWanted: Boolean
+        get() = detectMode == com.elad.faceblur.analysis.DetectMode.SELFIE && templateSettings?.blurOff != true
+
+    /** Selfie detection can't run: its pack is missing. */
+    val selfieMissing: Boolean get() = selfieWanted && !packReady(com.elad.faceblur.models.PackId.SELFIE)
 
     /** The next video's template needs a model that isn't on the phone beside the faces (subtitles, people). */
     val templateNeedsModel: Boolean get() = missingPacks.any { it != com.elad.faceblur.models.PackId.FACES }
@@ -495,7 +507,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The settings as they stand now (the Ready screen's), for a template to lay over. */
     private fun currentSettings() = TemplateSettings(
-        mode = mode, strength = strength, padding = padding, sensitive = sensitive, fast = fast, sensitivity = sensitivity,
+        mode = mode, strength = strength, padding = padding, sensitive = sensitive, fast = fast, selfie = selfie, sensitivity = sensitivity,
         translate = prefs.subsTranslate, subStyle = prefs.subStyle, export = prefs.export,
     )
 
@@ -528,6 +540,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         padding = s.padding
         sensitive = s.sensitive
         fast = s.fast && !s.sensitive
+        selfie = s.selfie && !s.sensitive && !s.fast
         sensitivity = s.sensitivity
         // Only for this video: the user's own export options and subtitle look stay as they are.
         sessionExport = s.export
@@ -540,7 +553,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val model = if (models.isReady(SpeechModel.HEBREW) || !models.isReady(SpeechModel.MULTILINGUAL)) SpeechModel.HEBREW else SpeechModel.MULTILINGUAL
         return TemplateSettings(
             blurOff = ctrl.session.subtitlesOnly,
-            mode = st.mode, strength = st.strength, padding = st.padding, sensitive = st.sensitive, fast = st.fast, sensitivity = st.sensitivity,
+            mode = st.mode, strength = st.strength, padding = st.padding, sensitive = st.sensitive, fast = st.fast, selfie = st.selfie, sensitivity = st.sensitivity,
             createSubs = ctrl.model.cues.isNotEmpty(),
             speechModel = model, language = model.language,
             translate = ctrl.translateOnCreate,
@@ -712,6 +725,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 sj.optBoolean("sensitive"),
                 sj.optBoolean("fast"),
                 sj.optDouble("sensitivity", 0.0).toFloat(),
+                sj.optBoolean("selfie"),
             )
             val session = EditSession(info, settings, loaded.analysis, j.optLong("analysisMs"), j.optBoolean("subtitlesOnly"))
             loaded.edits?.let { session.model.restore(it) }
@@ -871,6 +885,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             android.widget.Toast.makeText(getApplication(), t("כדי לטשטש פנים צריך את מודל זיהוי הפנים"), android.widget.Toast.LENGTH_LONG).show()
             return
         }
+        // Selfie detection never starts without its model, and never falls back to another detector.
+        if (selfieMissing) {
+            android.widget.Toast.makeText(getApplication(), t("כדי להשתמש במצב סלפי צריך את מודל הסלפי"), android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
         // A template with no face blur: the editor's frames without face detection; with the editor
         // off ("save straight") the video is saved from there, not opened for editing.
         val route = com.elad.faceblur.template.StartRoute.of(tpl?.blurOff == true, save = !review)
@@ -879,7 +898,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         closeSession()
-        val settings = Settings(mode, strength, padding, sensitive, fast, sensitivity)
+        val settings = Settings(mode, strength, padding, sensitive, fast, sensitivity, selfie)
         val auto = !review
         livePreview = null
         state = UiState.Working(info, 1, 0f, auto = auto)
@@ -911,9 +930,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // No faces and nothing the template really changed: no copy of the same video is saved.
                     val changed = tpl != null && (TemplateRunner.changesVideo(ctrl, tpl) || TemplateRunner.exportChangesVideo(getApplication(), tpl.export))
                     if (session.model.tracks.isEmpty() && !changed) {
-                        state = UiState.NoFaces(info, canEdit = true, note = failure, fast = settings.fast)
-                    } else if (settings.fast) {
-                        // Fast detection may have missed a face for a moment: never saved unseen. The editor
+                        state = UiState.NoFaces(info, canEdit = true, note = failure, fast = settings.fast, selfie = settings.selfie)
+                    } else if (settings.fast || settings.selfie) {
+                        // Fast and selfie detection may have missed a face: never saved unseen. The editor
                         // opens (its notice says why) and the video is saved from there, as the web app's check screen.
                         state = UiState.Editing(info, ctrl)
                     } else {
@@ -940,7 +959,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         job = viewModelScope.launch {
             guard(info, onCancel = { closeSession(); UiState.Ready(info) }) {
                 val analysis = withContext(Dispatchers.IO) { FaceBlurProcessor.framesOnly(getApplication(), info) }
-                val session = EditSession(info, Settings(mode, strength, padding, sensitive, fast, sensitivity), analysis, 0, subtitlesOnly = true)
+                val session = EditSession(info, Settings(mode, strength, padding, sensitive, fast, sensitivity, selfie), analysis, 0, subtitlesOnly = true)
                 val ctrl = EditorController(session, editorScope, getApplication(), models, prefs)
                 ctrl.previewAvailable = false
                 when (tool) {
@@ -1053,7 +1072,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             onPreview = { frame -> showLive(frame, emptyList()) },
         ) { p -> state = UiState.Working(s.info, 2, p, subsOnly, auto) }
         if (s.analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / s.analysisMs
-        state = UiState.Done(s.info, saved, canEdit = true, subsOnly = subsOnly, fast = !subsOnly && s.settings.fast)
+        state = UiState.Done(s.info, saved, canEdit = true, subsOnly = subsOnly, fast = !subsOnly && s.settings.fast, selfie = !subsOnly && s.settings.selfie)
     }
 
     private suspend fun guard(info: VideoInfo, onCancel: () -> UiState, block: suspend () -> Unit) {

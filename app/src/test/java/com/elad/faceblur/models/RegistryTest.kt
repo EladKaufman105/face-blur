@@ -32,7 +32,9 @@ class RegistryTest {
             // A commit (40 hex) in a raw URL, or an immutable models-* release: never a branch.
             val raw = Regex("^https://raw\\.githubusercontent\\.com/EladKaufman105/face-blur/([0-9a-f]{40})/.+")
             val release = Regex("^https://github\\.com/EladKaufman105/face-blur/releases/download/models-[0-9]+/.+")
-            assertTrue("not pinned: ${f.url}", raw.matches(f.url) || release.matches(f.url))
+            // MediaPipe's own versioned model files (a /float16/1/ path: a new version is a new path), checked by their SHA-256 too.
+            val mediapipe = Regex("^https://storage\\.googleapis\\.com/mediapipe-models/[a-z_]+/[a-z_]+/float(16|32)/[0-9]+/[A-Za-z0-9_.]+")
+            assertTrue("not pinned: ${f.url}", raw.matches(f.url) || release.matches(f.url) || mediapipe.matches(f.url))
         }
     }
 
@@ -89,6 +91,22 @@ class RegistryTest {
         for (id in listOf(PackId.FACES, PackId.PEOPLE, PackId.SPEAKERS, PackId.SPEECH_HE)) assertTrue(r[id].files.all { it.pinned })
     }
 
+    /** Selfie mode's pack: one small optional file (MediaPipe's BlazeFace full range), pinned by version and SHA-256. */
+    @Test
+    fun selfiePackIsOneOptionalPinnedFile() {
+        val p = shipped()[PackId.SELFIE]
+        assertNull(p.pending)
+        assertFalse(p.unpinned)
+        assertFalse("downloaded when asked for, not at the first launch", p.recommended)
+        val f = p.files.single()
+        assertEquals("blaze_face_full_range.tflite", f.name)
+        assertEquals(1_083_786L, f.size)
+        assertTrue(f.pinned)
+        assertEquals("3698b18f063835bc609069ef052228fbe86d9c9a6dc8dcb7c7c2d69aed2b181b", f.sha256)
+        assertEquals("https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range/float16/1/blaze_face_full_range.tflite", f.url)
+        assertEquals(PackId.SELFIE, shipped().packOf("blaze_face_full_range.tflite")?.id)
+    }
+
     @Test
     fun packOfFindsTheOwner() {
         val r = shipped()
@@ -129,7 +147,7 @@ class RegistryTest {
     fun onlySpeechMayBeUnpinned() {
         val loose = """{"name":"c.bin","size":0,"sha256":"","minSize":10,"approxSize":100,"url":"https://example.com/c.bin"}"""
         assertTrue(ModelRegistry.parse(one(loose, pack = "speech-any", extra = ",\"unpinned\":true"))[PackId.SPEECH_ANY].unpinned)
-        for (pack in listOf("faces", "people", "speakers")) rejects(one(loose, pack = pack, extra = ",\"unpinned\":true"))
+        for (pack in listOf("faces", "people", "speakers", "selfie")) rejects(one(loose, pack = pack, extra = ",\"unpinned\":true"))
         // Without a smallest size it can't be checked at all.
         rejects(one(loose.replace("\"minSize\":10,", ""), pack = "speech-any", extra = ",\"unpinned\":true"))
         // Not marked unpinned: it needs its size and checksum.

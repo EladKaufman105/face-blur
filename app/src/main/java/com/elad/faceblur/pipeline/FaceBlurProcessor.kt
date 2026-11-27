@@ -84,10 +84,13 @@ class Settings(
     fast: Boolean = false,
     /** 0..1: more faces blurred, never fewer (see [com.elad.faceblur.analysis.DetectTuning]). */
     sensitivity: Float = 0f,
+    /** Selfie detection (BlazeFace on every frame); extended and fast win if either is set. */
+    selfie: Boolean = false,
 ) {
-    /** How faces are looked for: normal, extended or fast. */
-    val detect: com.elad.faceblur.analysis.DetectMode = com.elad.faceblur.analysis.DetectMode.of(sensitive, fast)
+    /** How faces are looked for: normal, extended, fast or selfie. */
+    val detect: com.elad.faceblur.analysis.DetectMode = com.elad.faceblur.analysis.DetectMode.of(sensitive, fast, selfie)
     val fast: Boolean get() = detect == com.elad.faceblur.analysis.DetectMode.FAST
+    val selfie: Boolean get() = detect == com.elad.faceblur.analysis.DetectMode.SELFIE
     val sensitivity: Float = com.elad.faceblur.analysis.DetectTuning.quantize(sensitivity)
 }
 
