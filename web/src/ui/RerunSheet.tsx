@@ -43,8 +43,8 @@ export function RerunAsk({ count, onChoose, onCancel }: { count: number; onChoos
   return (
     <div class="sheet-back" onClick={(e) => { if (e.target === e.currentTarget) onCancel() }}>
       <div class="sheet rerun-ask" role="alertdialog" aria-modal="true" aria-label={t('מה לעשות בטשטושים הקיימים?')}>
+        <h2 class="sheet-title">{t('מה לעשות בטשטושים הקיימים?')}</h2>
         <div class="sheet-body">
-          <h2 class="sheet-title">{t('מה לעשות בטשטושים הקיימים?')}</h2>
           <p class="muted" style="margin:0">{t('יש %d טשטושים בסרטון.', count)}</p>
           <div role="radiogroup" class="opts">
             <button class={'opt opt-add' + (mode === 'add' ? ' on' : '')} role="radio" aria-checked={mode === 'add'} onClick={() => setMode('add')}>

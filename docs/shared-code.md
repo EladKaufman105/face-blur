@@ -99,6 +99,7 @@ shared/
   detect/detect.json      # thresholds, pool, fusion, detector sizes, tracker, cut detector, rates
   vectors/<area>/*.json   # golden vectors (Phase 2)
   perf/baseline.json      # chunk sizes, APK size, bench medians
+  prefs/choices.json      # remembered choices ("Remember my choice"): each key, its labels and allowed values (done: generated into A/gen/RememberedKeys.kt and W/gen/choices.ts)
 ci/shared_gen.py          # python3, stdlib only; --target kotlin|ts|all; --check
 ```
 

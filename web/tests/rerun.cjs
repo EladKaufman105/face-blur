@@ -67,6 +67,7 @@ const [, , url, video, out] = process.argv
       await p.click(`.rerun-sheet .detect-mode .mode-${m}`)
       if (!(await p.$('.rerun-sheet .fast-warning'))) fail(m + "'s warning is missing")
     }
+    await p.waitForTimeout(400)
     await p.screenshot({ path: `${out}/1_sheet.png` })
     await p.keyboard.press('Escape')
     await p.waitForSelector('.rerun-sheet', { state: 'detached' })
@@ -101,6 +102,7 @@ const [, , url, video, out] = process.argv
     }))
     console.log('question:', JSON.stringify(ask))
     if (ask.title !== 'מה לעשות בטשטושים הקיימים?' || !ask.first.includes('on') || ask.rec !== 'מומלץ' || !ask.warn || ask.remember !== false || ask.progress) fail('the question')
+    await p.waitForTimeout(400)
     await p.screenshot({ path: `${out}/2_question.png` })
     // (Cancel runs nothing.)
     await p.click('.rerun-ask-cancel')

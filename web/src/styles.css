@@ -1061,6 +1061,8 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 
 /* Run detection again: its sheet, the question about the blurs there, the progress and the undo toast. */
 .rerun-sheet .sheet-body, .rerun-ask .sheet-body { gap: var(--space-3); }
+.rerun-sheet .detect-mode { grid-template-columns: repeat(4, 1fr); }
+.rerun-sheet .detect-controls { margin-top: 0; }
 .rerun-sheet .actions, .rerun-ask .actions { justify-content: flex-end; flex-wrap: nowrap; }
 .rerun-sheet .actions .btn, .rerun-ask .actions .btn { flex: none; }
 .opts { display: grid; gap: var(--space-2); }
