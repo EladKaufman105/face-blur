@@ -1,4 +1,4 @@
-// The ready-made subtitle looks as a row of cards (as the app's style panel): each card is a
+// The ready-made subtitle looks as a grid of cards (as the app's style panel): each card is a
 // small picture of a sample line drawn with the real subtitle renderer, the chosen one outlined.
 import { memo } from 'preact/compat'
 import { useEffect, useRef, useState } from 'preact/hooks'
@@ -63,25 +63,17 @@ function Card({ name, preset, frame, on, onPick }: { name: string; preset: SubSt
   }, [frame, text, name, seen])
   return (
     <button ref={btn} class={'chip preset' + (on ? ' on' : '')} role="radio" aria-checked={on} onClick={onPick}>
-      <canvas ref={canvas} style={{ width: CARD_W + 'px', height: CARD_H + 'px' }} aria-hidden="true" />
+      <canvas ref={canvas} aria-hidden="true" />
       <span class="preset-name">{t(name)}</span>
     </button>
   )
 }
 
-/** A horizontally scrolling row of look cards. */
+/** The look cards as a grid (as many columns as the panel's width allows). */
 function PresetRow({ style, onStyle, file }: { style: SubStyle; onStyle: (s: SubStyle) => void; file: File | null }) {
   const frame = useFrame(file)
-  const row = useRef<HTMLDivElement>(null)
-  // The chosen card is in view when the row first shows (the row's own scroll: the page doesn't move).
-  useEffect(() => {
-    const r = row.current, on = r?.querySelector('.on')
-    if (!r || !on) return
-    const a = r.getBoundingClientRect(), b = on.getBoundingClientRect()
-    r.scrollLeft += b.left + b.width / 2 - (a.left + a.width / 2)
-  }, [])
   return (
-    <div class="chips presets preset-row" role="radiogroup" aria-label={t('סגנונות')} ref={row}>
+    <div class="chips presets preset-row" role="radiogroup" aria-label={t('סגנונות')}>
       {SUB_PRESETS.map(([name, p]) => (
         <Card key={name} name={name} preset={p} frame={frame} on={samePreset(style, p)} onPick={() => onStyle({ ...p, show: style.show, customFont: null, speakerColors: style.speakerColors, maskBleeped: style.maskBleeped })} />
       ))}

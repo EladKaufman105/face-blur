@@ -46,16 +46,15 @@ const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים 
     if (first.sideways) fail('the page scrolls sideways')
     await p.screenshot({ path: `${out}/1_start.png` })
 
-    // ---- the look cards (the panel's style tool): drawn, in a row that scrolls, many of them
+    // ---- the look cards (the panel's style tool): drawn, in a grid of 2-3 columns (no sideways row, no scrollbar of its own), many of them
     await p.click('.panel-head [data-sub=style]')
     await p.waitForSelector('.preset-row .chip.preset canvas')
-    if (await p.evaluate(() => scrollY) !== 0) fail('the page jumped when the row of looks showed')
-    // The cards are drawn as they come near the screen: go along the row, as a finger does.
+    if (await p.evaluate(() => scrollY) !== 0) fail('the page jumped when the grid of looks showed')
+    // The cards are drawn as they come near the screen: go down the panel, as a finger does.
     await p.evaluate(async () => {
-      const r = document.querySelector('.preset-row')
-      const dir = getComputedStyle(r).direction === 'rtl' ? -1 : 1
-      for (let x = 0; x <= r.scrollWidth + 300; x += 250) { r.scrollLeft = dir * x; await new Promise((ok) => setTimeout(ok, 120)) }
-      r.scrollLeft = 0
+      const r = document.querySelector('.panel-body')
+      for (let y = 0; y <= r.scrollHeight + 300; y += 200) { r.scrollTop = y; await new Promise((ok) => setTimeout(ok, 120)) }
+      r.scrollTop = 0
     })
     await p.waitForTimeout(1200)
     const cards = await p.evaluate(() => [...document.querySelectorAll('.preset-row .chip.preset')].map((c) => {
@@ -69,8 +68,14 @@ const SRT = `1\n00:00:00,500 --> 00:00:02,500\nשלום לכולם ברוכים 
     if (cards.length !== 28) fail('expected the 28 looks as cards, got ' + cards.length)
     if (cards.some((c) => c[1] < 6)) fail('a card is not drawn: ' + JSON.stringify(cards.filter((c) => c[1] < 6)))
     if (cards.filter((c) => c[2]).length !== 1 || !cards[0][2]) fail('the chosen look is not the one highlighted')
-    const scrolls = await p.evaluate(() => { const r = document.querySelector('.preset-row'); return r.scrollWidth > r.clientWidth + 50 })
-    if (!scrolls) fail('the row of looks does not scroll')
+    const grid = await p.evaluate(() => {
+      const r = document.querySelector('.preset-row')
+      const cols = new Set([...r.children].map((c) => Math.round(c.getBoundingClientRect().left))).size
+      return { cols, w: Math.round(r.children[0].getBoundingClientRect().width), ownScroll: r.scrollHeight > r.clientHeight + 1 || r.scrollWidth > r.clientWidth + 1, overflowY: getComputedStyle(r).overflowY }
+    })
+    console.log('looks grid:', JSON.stringify(grid))
+    if (grid.cols < 2 || grid.cols > 4) fail('the looks are not 2-4 columns on a phone: ' + JSON.stringify(grid))
+    if (grid.ownScroll || grid.overflowY === 'auto' || grid.overflowY === 'scroll') fail('the grid of looks scrolls on its own: ' + JSON.stringify(grid))
 
     // ---- the subtitles (from an SRT: no model, imported in the creation tool); the video shows the first at once
     await p.click('.panel-head [data-sub=make]')
