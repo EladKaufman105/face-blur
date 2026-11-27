@@ -398,6 +398,7 @@ private fun SubsEdit(p: SubsPart, styleOpen: Boolean, onStyleOpen: (Boolean) -> 
             ExportOptions(subs = p.burn ?: SubLang.ORIGINAL, saveSrt = p.saveSrt ?: true),
             { o -> onChange(p.copy(burn = o.subs, saveSrt = o.saveSrt)) },
             p.translate == true,
+            showSrt = true,
         )
     }
 }

@@ -192,7 +192,7 @@ fun SubtitlesPanel(ctrl: EditorController, export: ExportOptions, onExportChange
                     ctrl.subsSheet = false
                     ctrl.stylePanel = true
                 }
-                ActionRow(AppIcons.Download, t("שמור SRT עכשיו"), t("קובצי SRT ב-Download/ONIT, בלי לייצא את הסרטון"), enabled = !busy, onClick = saveSrt)
+                ActionRow(AppIcons.Download, t("שמור כתוביות (SRT)"), t("קובצי SRT ב-Download/ONIT, בלי לייצא את הסרטון"), enabled = !busy, onClick = saveSrt)
                 val missing = ctrl.untranslatedCount
                 val again = ctrl.staleCount
                 if (missing + again > 0 && models != null) {
@@ -375,9 +375,13 @@ internal fun ActionRow(icon: ImageVector, title: String, subtitle: String?, enab
     }
 }
 
-/** What subtitles go into the exported video, and whether .srt files are saved too. */
+/**
+ * What subtitles go into the exported video. [showSrt]: also the switch for .srt files (only a template
+ * has it: a batch saves them with each video; an export of one video has no switch, "Save subtitles (SRT)"
+ * is an action of the subtitles panel and of the done screen).
+ */
 @Composable
-fun SubtitleExportOptions(export: ExportOptions, onExportChange: (ExportOptions) -> Unit, translated: Boolean) {
+fun SubtitleExportOptions(export: ExportOptions, onExportChange: (ExportOptions) -> Unit, translated: Boolean, showSrt: Boolean = false) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Caption(t("כתוביות בסרטון המיוצא"))
@@ -403,7 +407,7 @@ fun SubtitleExportOptions(export: ExportOptions, onExportChange: (ExportOptions)
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        if (showSrt) Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(t("שמור גם קובצי SRT"), style = MaterialTheme.typography.titleSmall)
                 Text(

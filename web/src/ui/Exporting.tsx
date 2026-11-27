@@ -67,9 +67,9 @@ export function Exporting({ job, onBack, onNew, onEdit }: { job: ExportJob; onBa
   const url = useMemo(() => (result ? URL.createObjectURL(result.blob) : null), [result])
   useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
   const file = useMemo(() => (result ? new File([result.blob], name, { type: mp3 ? 'audio/mpeg' : 'video/mp4' }) : null), [result])
-  // The subtitles as SRT, at their times after the cuts.
+  // The subtitles as SRT, at their times after the cuts, as the export shows them (the bleeped words hidden): always offered when there are subtitles.
   const srt = useMemo(() => {
-    if (!opts.srt || mp3 || job.cues.length === 0) return null
+    if (mp3 || job.cues.length === 0) return null
     return URL.createObjectURL(new Blob([toSrt(cutCues(job.cues, new CutMap(job.cuts)))], { type: 'application/x-subrip' }))
   }, [job])
   useEffect(() => () => { if (srt) URL.revokeObjectURL(srt) }, [srt])
@@ -139,7 +139,7 @@ export function Exporting({ job, onBack, onNew, onEdit }: { job: ExportJob; onBa
           <button class="btn tonal" onClick={() => navigator.share({ files: [file!], title: name }).catch(() => {})}><ShareIcon /> {t('שתף')}</button>
         )}
       </div>
-      {srt && <a class="btn tonal srt-link" href={srt} download={base + '.srt'} style="text-decoration:none"><SubtitlesIcon /> {t('שמור כתוביות SRT')}</a>}
+      {srt && <a class="btn tonal srt-link" href={srt} download={base + '.srt'} style="text-decoration:none"><SubtitlesIcon /> {t('שמור כתוביות (SRT)')}</a>}
       <div class="actions">
         {!job.standalone && <button class="btn ghost" onClick={onBack}><span class="flip"><BackIcon /></span> {t('חזרה לעריכה')}</button>}
         {onEdit && <button class="btn ghost edit-saved" onClick={onEdit}>{t('ערוך')}</button>}

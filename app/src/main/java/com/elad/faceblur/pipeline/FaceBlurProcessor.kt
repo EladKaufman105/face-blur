@@ -22,6 +22,7 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
+import com.elad.faceblur.audio.BleepLevel
 import com.elad.faceblur.audio.CutAudioProcessor
 import com.elad.faceblur.edit.StabilizeEffect
 import com.elad.faceblur.edit.Stabilizer
@@ -282,12 +283,19 @@ class FaceBlurProcessor(private val context: Context) {
     /** The sound's processors (shared by the video and the MP3 export, so both apply the same edits). */
     class AudioChain(val processors: List<AudioProcessor>, val sfx: List<SfxPlay>, val cutMap: com.elad.faceblur.edit.CutMap, val removeAudio: Boolean)
 
-    private fun audioChain(model: EditModel, audio: AudioEdit): AudioChain {
+    /** Each bleep's beep level from the speech it replaces (null: no beeps, or the sound can't be read: the fallback level). */
+    private suspend fun bleepLevels(info: VideoInfo, model: EditModel, audio: AudioEdit): FloatArray? {
+        if (!audio.tone || audio.voice == VoiceFx.MUTE || model.bleeps.isEmpty()) return null
+        val pcm = withContext(Dispatchers.IO) { runCatching { com.elad.faceblur.subs.AudioDecoder.decode(context, info.uri, { true }) {} }.getOrNull() } ?: return null
+        return BleepLevel.levels(pcm, com.elad.faceblur.subs.AudioDecoder.RATE, model.bleeps.map { (a, b) -> longArrayOf(a, b) }, audio.gain)
+    }
+
+    private fun audioChain(model: EditModel, audio: AudioEdit, bleepLevels: FloatArray? = null): AudioChain {
         // The voice: the pitch, then bleeps and robot sound (so the beep isn't shifted).
         val audioFx = ArrayList<AudioProcessor>()
         val bleeps = model.bleeps.map { (a, b) -> longArrayOf(a, b) }
         val sfx = model.sfx.mapNotNull { c -> SfxLibrary.load(context, c.sound)?.let { SfxPlay(c.startMs * 1000, it, c.gain) } }
-        val dsp = VoiceDsp(bleeps, audio.voice, audio.tone, sfx = sfx, denoise = audio.denoise, enhance = audio.enhance, gain = audio.gain)
+        val dsp = VoiceDsp(bleeps, audio.voice, audio.tone, sfx = sfx, denoise = audio.denoise, enhance = audio.enhance, gain = audio.gain, bleepLevels = bleepLevels)
         // Stretches cut out: their frames and their sound are dropped at the end of the chains.
         val cutMap = model.cutMap()
         // No sound at all: the track is dropped, unless sound effects play over the silence.
@@ -306,7 +314,7 @@ class FaceBlurProcessor(private val context: Context) {
      * not save the original sound instead.
      */
     suspend fun renderAudio(info: VideoInfo, model: EditModel, audio: AudioEdit, onProgress: (Float) -> Unit): File {
-        val chain = audioChain(model, audio)
+        val chain = audioChain(model, audio, bleepLevels(info, model, audio))
         check(!chain.removeAudio) { t("אין סאונד לשמירה: הסאונד מושתק") }
         val out = temp("audio")
         out.delete()
@@ -364,7 +372,7 @@ class FaceBlurProcessor(private val context: Context) {
         if (burn.isNotEmpty()) overlays += SubtitleOverlay(burn, subStyle, SubtitleRenderer.get(context))
         if (export.watermark.enabled(context)) overlays += WatermarkOverlay(context, export.watermark)
         val subsEffect = if (overlays.isEmpty()) emptyList() else listOf<Effect>(OverlayEffect(ImmutableList.copyOf(overlays)))
-        val chain = audioChain(model, audio)
+        val chain = audioChain(model, audio, bleepLevels(info, model, audio))
         val audioFx = chain.processors
         val sfx = chain.sfx
         val cutMap = chain.cutMap

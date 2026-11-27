@@ -17,6 +17,7 @@ object Tags {
     const val SRT_IMPORT = "subs.srtImport"
     const val SRT_IMPORT_YES = "subs.srtImportYes"
     const val SRT_SAVE = "subs.srtSave"
+    const val SRT_SAVE_DONE = "done.srtSave"
     const val SRT_SAVE_YES = "subs.srtSaveYes"
     const val SRT_SAVE_RESULT = "subs.srtSaveResult"
     const val FIND_FACES = "faces.find"

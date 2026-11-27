@@ -272,7 +272,7 @@ const mkCheck = (p) => async (label) => {
       if (await p.$('.subs-more')) fail('"more options" on a phone')
       // the list's tools (find and replace, SRT, how they are cut) are in the list; translation, speakers and delete in create
       await p.click('.panel-head [data-sub=list]')
-      if (he) for (const sel of ['.replace-all, .panel-body .btn:has-text("חפש והחלף")', '.panel-body .btn:has-text("הורד SRT")']) if (!(await p.$(sel))) fail('missing in the list: ' + sel)
+      if (he) for (const sel of ['.replace-all, .panel-body .btn:has-text("חפש והחלף")', '.panel-body .srt-save']) if (!(await p.$(sel))) fail('missing in the list: ' + sel)
       await p.click('.panel-head [data-sub=make]')
       if (!(await p.$('.panel-body .translate-go, .panel-body .translate-unsupported'))) fail('no translation in create and translate')
       if (he && !(await p.$('.panel-body .btn:has-text("מחק כתוביות")'))) fail('no "delete subtitles" in create and translate')

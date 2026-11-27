@@ -819,7 +819,7 @@ internal val English: Map<String, String> = mapOf(
     "לא הצלחתי להסיר מהסרטון את פרטי המיקום והמכשיר, ולכן הוא לא נשמר. נסה שוב." to "Couldn't remove the location and device details from the video, so it wasn't saved. Try again.",
     "אין טשטוש פעיל: הפנים בסרטון לא יטושטשו." to "No blur is on: the faces in the video will not be blurred.",
     "הקובץ גדול מדי: נקרא רק החלק הראשון שלו." to "The file is too big: only its first part was read.",
-    "שמור SRT עכשיו" to "Save SRT now",
+    "שמור כתוביות (SRT)" to "Save subtitles (SRT)",
     "קובצי SRT ב-Download/ONIT, בלי לייצא את הסרטון" to "SRT files in Download/ONIT, without exporting the video",
     "אין טקסט בכתוביות לשמירה." to "The subtitles have no text to save.",
     "לא ניתן לשמור את קובצי ה-SRT." to "Couldn't save the SRT files.",
