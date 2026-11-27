@@ -169,7 +169,7 @@ Not measured anywhere yet: cold start, analysis ms per video second and export s
 
 The tools:
 
-- `ci/perf_check.py web-size` (in `web-build`): reads `web/dist/assets`, strips the hashes and compares with `shared/perf/baseline.json`. It fails on more than +1 KB or +0.5% gzip in `index`, or growth of more than 32 B (hash slack) in a worker chunk, unless the PR updates the baseline with a reason.
+- `ci/perf_check.py web-size` (in `web-build`): reads `web/dist/assets`, strips the hashes and compares with `shared/perf/baseline.json`. Past +1 KB or +0.5% gzip in `index`, or more than 32 B (hash slack) in a worker chunk, it warns on the PR (a feature may grow the app on purpose; that PR updates the baseline with a reason). The shared-code tasks run it with `--strict`, which fails instead.
 - `ci/perf_check.py bench`: runs `web/tests/bench.cjs` (`track`, `fuse`, `widen`, 10^6 `CutMap.out`, a 2,000-cue SRT) as A/B.
 - JVM `TrackerBench.kt` (only with `ONIT_BENCH=1`): runs the same input, `shared/vectors/tracker/bench.json` (3,000 frames at 30 fps, 6 faces, seeded). It prints ms per video second at sensitivity 0 and 0.5. A sub-agent runs it on base and on head, and puts both numbers in the PR body.
 - For information, since they are noisy:

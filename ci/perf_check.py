@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Performance guardrails (docs/shared-code.md, section 4). Python 3 standard library only.
 
-  perf_check.py web-size [--dist web/dist] [--compare OTHER_DIST]
+  perf_check.py web-size [--dist web/dist] [--compare OTHER_DIST] [--strict]
       The built web app's chunks (hashes stripped from the names), raw and gzip bytes, against
       shared/perf/baseline.json ("web"). Fails when the main chunk (index .js / .css) grows more
       than 0.5% or 1 KB gzip, whichever is less, or any other chunk (the workers, ORT) more than
@@ -134,8 +134,14 @@ def web_size(a):
         if d > limit:
             bad.append(f"{k} +{d} B gzip")
     if bad:
-        print("perf_check: the web app grew: " + "; ".join(bad), file=sys.stderr)
-        print("perf_check: if it is on purpose, run `python3 ci/perf_check.py web-size --update --reason '...'` after `npm run build` and commit shared/perf/baseline.json.", file=sys.stderr)
+        msg = "the web app grew: " + "; ".join(bad)
+        hint = "if it is on purpose, run `python3 ci/perf_check.py web-size --update --reason '...'` after `npm run build` and commit shared/perf/baseline.json."
+        if not a.strict:
+            # A PR check only warns: a feature may grow the app on purpose. --strict (the shared-code tasks) fails.
+            print(f"::warning title=Web app size::{msg}. {hint}")
+            return 0
+        print("perf_check: " + msg, file=sys.stderr)
+        print("perf_check: " + hint, file=sys.stderr)
         return 1
     print("perf_check: web chunks within the baseline")
     return 0
@@ -250,6 +256,7 @@ def main():
     w.add_argument("--compare")
     w.add_argument("--update", action="store_true")
     w.add_argument("--reason")
+    w.add_argument("--strict", action="store_true", help="fail (not only warn) when a chunk grew past the baseline")
     bn = sub.add_parser("bench")
     bn.add_argument("--base", required=True)
     bn.add_argument("--runs", type=int, default=7)

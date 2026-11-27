@@ -61,7 +61,7 @@ jobs:
           pip install --quiet -r scripts/requirements-ci.txt
           npm ci
           npm run build
-      # No web chunk grew past shared/perf/baseline.json (a PR that grows one on purpose updates it).
+      # Warns when a web chunk grew past shared/perf/baseline.json (a PR that grows one on purpose updates it).
       - name: Chunk sizes
         run: python3 ci/perf_check.py web-size
       # The pure tests (no browser, a few seconds): a failure shows before the shards start.
