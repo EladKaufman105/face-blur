@@ -11,7 +11,7 @@ import { Yunet } from './yunet'
 // The values: shared/detect/detect.json, shared with the app (generated).
 import { COARSE_MIN_BOX, COARSE_SIDE, CPU_SIDE, GPU_SIDE, LOW_SIDE, VERIFY_SIDE } from '../gen/detect'
 import type { YunetWorker } from './yunet-worker'
-import { adapterText, capturePlacement, isSoftwareAdapter, placementCounts, type GpuDiag } from './devicediag'
+import { adapterText, isSoftwareAdapter, type GpuDiag } from './devicediag'
 
 export { RF_THRESHOLD, iou, nmsIou }
 export type { GpuDiag }
@@ -43,6 +43,7 @@ export interface DetectStats {
 }
 
 type Session = ort.InferenceSession
+
 
 export class FaceDetector {
   private priorCache = new Map<string, Float32Array>()
@@ -124,9 +125,10 @@ export class FaceDetector {
 
   /**
    * [base]: the folder with retinaface_fp32.onnx, retinaface_fp16.onnx and yunet.onnx; [fp32], [yunet]: those models' bytes if already loaded.
+   * [allowSoftware]: for tests on localhost only (the page's ?detect=softgpu:1): a software WebGPU adapter is used all the same, to test the GPU path where no real GPU is.
    * [ynWorker]: YuNet already running in a worker of its own (from [yunet]): this thread's YuNet is then made only if that worker fails (one YuNet runtime, not two, on a phone short of memory).
    */
-  static async create(base: string, force?: Backend, fp32?: Uint8Array, yunet?: Uint8Array | null, ynWorker?: YunetWorker | null): Promise<FaceDetector> {
+  static async create(base: string, force?: Backend, fp32?: Uint8Array, yunet?: Uint8Array | null, ynWorker?: YunetWorker | null, allowSoftware = false): Promise<FaceDetector> {
     // One thread: ORT's thread pool can't start from inside a bundled module worker (WebGPU is
     // the fast path anyway).
     ort.env.wasm.numThreads = 1
@@ -148,20 +150,16 @@ export class FaceDetector {
         if (adapter) {
           // Half precision where the GPU has it: about twice the speed on phones and tablets.
           const half = adapter.features?.has?.('shader-f16') === true
-          diag = { adapter: adapterText(adapter), f16: half, software: isSoftwareAdapter(adapter), nodesGpu: null, nodesCpu: null, model: half ? 'fp16' : 'fp32', firstRunMs: null }
+          diag = { adapter: adapterText(adapter), f16: half, software: isSoftwareAdapter(adapter) && !allowSoftware, nodesGpu: null, nodesCpu: null, model: half ? 'fp16' : 'fp32', firstRunMs: null }
           // A software adapter (the browser's WebGPU on the CPU, e.g. SwiftShader): measured 785 ms against the CPU's 273 ms for one
           // frame, and it keeps the CPU workers from starting. Never used: the CPU's own path is the faster one.
-          if (diag.software) why = 'software WebGPU adapter (a slower CPU path)'
+          if (diag.software && !allowSoftware) why = 'software WebGPU adapter (a slower CPU path)'
           else {
             const model = half ? await load('retinaface_fp16.onnx') : model32
-            const seen: string[] = []
-            // The runtime logs where each node went when the session is made (verbose); only that log is kept (see capturePlacement).
-            const s = await capturePlacement(seen, () => ort.InferenceSession.create(model, { executionProviders: ['webgpu'], graphOptimizationLevel: 'all', logSeverityLevel: 0, logVerbosityLevel: 0 }))
-            const n = placementCounts(seen)
-            diag.nodesGpu = n.gpu
-            diag.nodesCpu = n.cpu
+            const s = await ort.InferenceSession.create(model, { executionProviders: ['webgpu'], graphOptimizationLevel: 'all' })
             const g = new FaceDetector(s, model32, half ? 'fp16' : 'fp32', ynBytes)
             g.gpuDiag = diag
+            g.probePlacement(model)
             await g.startYunet(ynWorker)
             return g
           }
@@ -176,6 +174,34 @@ export class FaceDetector {
     await d.cpuSession()
     await d.startYunet(ynWorker)
     return d
+  }
+
+  /**
+   * Where ONNX Runtime put the model's nodes (on the GPU, on the CPU), for the device report: a verbose session in a worker of its
+   * own, a few seconds after the start (this session stays quiet: its runs would log every dispatch). The report says "not
+   * measured yet" until it answers; a worker that fails or doesn't answer in 60 s leaves it so.
+   */
+  private probePlacement(model: Uint8Array) {
+    const diag = this.gpuDiag
+    if (!diag || typeof Worker === 'undefined') return
+    setTimeout(() => {
+      let w: Worker | null = null
+      const stop = () => { w?.terminate(); w = null }
+      try {
+        w = new Worker(new URL('../workers/placement.worker.ts', import.meta.url), { type: 'module' })
+        const timer = setTimeout(stop, 60000)
+        w.onmessage = (e: MessageEvent<{ gpu: number | null; cpu: number | null }>) => {
+          diag.nodesGpu = e.data.gpu
+          diag.nodesCpu = e.data.cpu
+          clearTimeout(timer)
+          stop()
+        }
+        w.onerror = (e) => { e.preventDefault(); clearTimeout(timer); stop() }
+        w.postMessage({ model: model.slice() })
+      } catch {
+        stop()
+      }
+    }, 3000)
   }
 
   private async cpuSession(): Promise<Session> {
@@ -278,7 +304,6 @@ export class FaceDetector {
     }
     this.last.fineMs = fineMs
     this.last.rfMs = fineMs + coarseMs
-    this.last.cold = this.cold
     t = performance.now()
     const rf = nmsIou(out, 0.4)
     // YuNet adds the faces RetinaFace misses and raises the score where both agree; the wait for it and the fusion count as the merge.
@@ -315,6 +340,7 @@ export class FaceDetector {
     }
     st.verify += performance.now() - t
     this.last.extraMs = this.extraMs
+    this.last.cold = this.cold
     return kept
   }
 

@@ -9,7 +9,7 @@ export interface GpuDiag {
   f16: boolean
   /** A software (fallback) adapter: never used, the CPU's own path is faster. */
   software: boolean
-  /** How many nodes ONNX Runtime put on the GPU and on the CPU (null: its log didn't say). */
+  /** How many nodes ONNX Runtime put on the GPU and on the CPU (null: not measured yet, see FaceDetector.probePlacement). */
   nodesGpu: number | null
   nodesCpu: number | null
   /** The model's precision on the GPU, and how long its first run took (ms: the shaders compiling; null: not run yet). */
@@ -49,7 +49,9 @@ export function adapterText(adapter: any): string {
 
 /** A software adapter (SwiftShader, llvmpipe: WebGPU running on the CPU, several times slower than the CPU's own WebAssembly). */
 export function isSoftwareAdapter(adapter: any): boolean {
-  return adapter?.isFallbackAdapter === true || adapter?.info?.isFallbackAdapter === true
+  if (adapter?.isFallbackAdapter === true || adapter?.info?.isFallbackAdapter === true) return true
+  // The browser doesn't always say it (newer ones keep it on adapter.info only): a software renderer names itself.
+  return /swiftshader|llvmpipe|software/i.test(`${adapter?.info?.architecture ?? ''} ${adapter?.info?.description ?? ''} ${adapter?.info?.vendor ?? ''}`)
 }
 
 /** The "Node(s) placed on [X]. Number of nodes: N" lines ONNX Runtime logs when a session is made (verbose), as counts per provider. */
@@ -87,13 +89,13 @@ export async function capturePlacement<T>(lines: string[], make: () => Promise<T
 
 /** Cores kept for the decoder, the page and the GPU's driver; a detector for each of the others. */
 const KEEP_CORES = 2
-/** The most CPU detectors a device runs at once, by what it says its memory is (each holds the model and a WebAssembly heap, ~250 MB at 960 px). */
-const MOST = { 8: 8, 4: 3 } as const
+/** The most CPU detectors a device runs at once, by what it says its memory is (each holds the model and a WebAssembly heap: 140 MB at 640 px, 200-350 MB at 960 px, measured). */
+const MOST = { 8: 6, 4: 3 } as const
 
 /**
  * How many CPU detectors (workers, one WebAssembly thread each) run side by side: a detection is a long single-thread run, so
  * the frames go to the cores in turn. Two even on two cores (measured: about 30% less time); up to cores - 2 beyond, no more than
- * the memory allows (browsers say at most 8 GB; Firefox and Safari don't say: two) and, on a phone or tablet (big.LITTLE cores
+ * the memory allows (6 with 8 GB: about 2 GB of heaps) (browsers say at most 8 GB; Firefox and Safari don't say: two) and, on a phone or tablet (big.LITTLE cores
  * that throttle, memory shared with the system), four.
  */
 export function poolSize(cores: number, memoryGB?: number, mobile = false): number {
@@ -110,7 +112,7 @@ export function diagLines(d: DeviceDiag): string[] {
   if (g) {
     out.push(`webgpu: ${g.adapter || 'adapter (the browser gives no name)'}${g.software ? ' (software adapter, not used)' : ''}`)
     out.push(`shader_f16: ${g.f16 ? 'yes' : 'no'} (model ${g.model})`)
-    out.push(`ep_nodes: ${g.nodesGpu === null && g.nodesCpu === null ? 'not logged' : `${g.nodesGpu ?? 0} on the GPU, ${g.nodesCpu ?? 0} on the CPU`}`)
+    out.push(`ep_nodes: ${g.software ? 'no WebGPU session (software adapter)' : g.nodesGpu === null && g.nodesCpu === null ? 'not measured yet' : `${g.nodesGpu ?? 0} on the GPU, ${g.nodesCpu ?? 0} on the CPU`}`)
     out.push(`gpu_first_run_ms: ${g.firstRunMs === null ? '-' : Math.round(g.firstRunMs)}`)
   } else out.push('webgpu: not available in this browser (or forced off)')
   out.push(`wasm: ${d.threads} thread${d.threads === 1 ? '' : 's'} per detector, simd ${d.simd ? 'yes' : 'no'}`)

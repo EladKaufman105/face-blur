@@ -23,7 +23,7 @@ export type AnalyzeMessage =
   | { type: 'error'; code: string; message: string }
   | { type: 'log'; message: string }
 
-export type Tune = { yunet?: boolean; side?: number; rate?: number; /** As if the device were too slow: the reduced mode from the start (the notice, the flag, the lower thresholds). */ reduced?: boolean }
+export type Tune = { yunet?: boolean; side?: number; rate?: number; /** As if the device were too slow: the reduced mode from the start (the notice, the flag, the lower thresholds). */ reduced?: boolean; /** On localhost only: a software WebGPU adapter is used (the GPU path's tests, where there is no real GPU). */ softGpu?: boolean }
 
 /** The measures for a log line: "D 15.0/s (window min 14.6, need 12.0, 30 windows, 0 short), G 2 frames 0.083 s, cuts 3 (0 missed), S 960 px, YuNet on". */
 const coverageText = (c: Coverage, side: number, yunet: boolean) =>
@@ -88,12 +88,17 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
       return null
     }
   }
-  if (cpuOnly && poolSize > 1) pool = await startPool(await fp32())
+  // The workers are tried once: a device that can't start them goes on with one detector.
+  let poolTried = false
+  if (cpuOnly && poolSize > 1) {
+    poolTried = true
+    pool = await startPool(await fp32())
+  }
   // One detector here (the GPU's, or one on the CPU): YuNet in a worker of its own, so that it runs
   // while RetinaFace does (else, or if that worker fails, in this thread, after it). The pool's
   // detectors (all the cores busy already) run it in theirs.
   let ynWorker = !pool && yunet ? await YunetWorker.create(yunet) : null
-  let detector: FaceDetector | null = pool ? null : await FaceDetector.create(base + 'models/', backend, undefined, yunet, ynWorker).catch((e) => { ynWorker?.close(); throw e })
+  let detector: FaceDetector | null = pool ? null : await FaceDetector.create(base + 'models/', backend, undefined, yunet, ynWorker, tune?.softGpu === true).catch((e) => { ynWorker?.close(); throw e })
   // The GPU-vs-CPU check compares the GPU with the detectors the CPU would run side by side.
   if (detector) detector.cpuLanes = poolSize
   // Why detection isn't on the GPU after it left it (the detector is gone once the workers took over).
@@ -110,7 +115,8 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
    * adapter's device measured "waves 1/16": one detector, 15 idle cores).
    */
   const toPool = async () => {
-    if (!detector || detector.backend !== 'wasm' || pool || poolSize <= 1) return
+    if (!detector || detector.backend !== 'wasm' || pool || poolTried || poolSize <= 1) return
+    poolTried = true
     const p = await startPool(detector.fp32Bytes)
     if (!p) return
     leftGpu = detector.fellBack
@@ -266,7 +272,7 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
     return {
       atMs: now, frames: times.length, frameMs: Math.max(0, now - loopStart - decodeWait - poolWait), waitMs: poolWait, decodeWaitMs: decodeWait, cutMs,
       detections: spent.length, detectMs, partDetections: d.detections, pre: d.pre, inf: d.inf, dec: d.dec, coarse: d.coarse, coarseRuns: d.coarseRuns, check: d.check, verify: d.verify, merge: d.nms,
-      backend: backendNow(), precision, noGpu: backendNow() === 'wasm' ? noGpu() : null,
+      backend: backendNow(), precision: detector?.precision ?? precision, noGpu: backendNow() === 'wasm' ? noGpu() : null,
       side: fineSide, rate, workers: pool?.size ?? 1, cores,
       measured: { rate: cover.rate, minWindow: cover.minWindow, need: cover.need, gapFrames: cover.maxGapFrames, gapS: cover.maxGapS, minSide: ranSide(), yunet: yunetOn },
       mode, sensitivity, diag: diag(),

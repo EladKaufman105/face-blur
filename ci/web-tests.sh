@@ -90,6 +90,8 @@ case "${1:?shard}" in
     t usernotes.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/usernotes   # 43
     # The speech model's flow with no download: faster / better quality kept, a stuck recognition ends with an error and a retry, Cancel ends the worker, a template asks before downloading.
     t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 38
+    # A software WebGPU adapter (headless Chromium's SwiftShader, not told ?backend=wasm) is never used for detection: the CPU workers run (more than one on a machine with cores), the report says why and lists the adapter, node placement, threads, isolation and the detector pool.
+    t softgpu.cjs "http://localhost:4173/?coi=0" $S/walk.mp4 $R/softgpu   # ~25
     ;;
   5) # about 210 s
     # A subtitle edited so a bleeped word may show: the alert, the mark on the timeline, the export asking first; a deleted subtitle's bleeps listed.

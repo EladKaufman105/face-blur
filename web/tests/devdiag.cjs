@@ -14,7 +14,7 @@ const fail = (m) => { console.log(JSON.stringify({ fail: m })); process.exit(0) 
 const sz = (c, m, mob) => D.poolSize(c, m, mob)
 if (sz(1, 8) !== 1 || sz(0, 8) !== 1 || sz(NaN, 8) !== 1) fail('one core, one detector')
 if (sz(2, 8) !== 2 || sz(2, undefined) !== 2 || sz(3, 8) !== 2) fail('two even on two cores')
-if (sz(4, 8) !== 2 || sz(6, 8) !== 4 || sz(8, 8) !== 6 || sz(12, 8) !== 8 || sz(16, 8) !== 8 || sz(64, 8) !== 8) fail('cores minus two, to 8 with the memory: ' + [4, 6, 8, 12, 16, 64].map((c) => sz(c, 8)))
+if (sz(4, 8) !== 2 || sz(6, 8) !== 4 || sz(8, 8) !== 6 || sz(12, 8) !== 6 || sz(16, 8) !== 6 || sz(64, 8) !== 6) fail('cores minus two, to 6 with the memory: ' + [4, 6, 8, 12, 16, 64].map((c) => sz(c, 8)))
 if (sz(16, undefined) !== 2 || sz(16, 2) !== 2 || sz(16, 1) !== 2) fail('memory not given or small: two')
 if (sz(16, 4) !== 3 || sz(8, 4) !== 3 || sz(4, 4) !== 2) fail('4 GB: three at most')
 if (sz(16, 8, true) !== 4 || sz(8, 8, true) !== 4 || sz(6, 8, true) !== 4 || sz(4, 8, true) !== 2) fail('a phone: four at most')
@@ -26,6 +26,7 @@ for (const cores of [2, 3, 4, 5, 6, 8, 10, 12, 16, 24]) for (const mem of [undef
 
 // ---- a software adapter
 if (!D.isSoftwareAdapter({ isFallbackAdapter: true }) || !D.isSoftwareAdapter({ info: { isFallbackAdapter: true } })) fail('a fallback adapter')
+if (!D.isSoftwareAdapter({ info: { architecture: 'swiftshader' } }) || !D.isSoftwareAdapter({ info: { description: 'llvmpipe (LLVM 15)' } })) fail('a named software renderer')
 if (D.isSoftwareAdapter({ isFallbackAdapter: false, info: { isFallbackAdapter: false } }) || D.isSoftwareAdapter({}) || D.isSoftwareAdapter(null)) fail('a real adapter is not software')
 if (D.adapterText({ info: { vendor: 'intel', architecture: 'gen-12lp', device: '', description: 'Intel(R) UHD Graphics' } }) !== 'intel gen-12lp Intel(R) UHD Graphics' || D.adapterText({}) !== '') fail('the adapter text')
 
@@ -76,10 +77,12 @@ if (D.placementCounts([]).gpu !== null || D.placementCounts(['x']).cpu !== null)
   const out = D.diagLines(diag).join('\\n')
   for (const k of ['webgpu: intel gen-12lp', 'shader_f16: yes (model fp16)', 'ep_nodes: 123 on the GPU, 18 on the CPU', 'gpu_first_run_ms: 2310', 'wasm: 1 thread per detector, simd yes', 'cross_origin_isolated: yes', 'detector_pool: 2 running, 2 wanted (2 cores, memory >= 4 GB)'])
     if (!out.includes(k)) fail('the report lacks "' + k + '": ' + out)
+  const pending = D.diagLines({ ...diag, gpu: { ...gpu, nodesGpu: null, nodesCpu: null } }).join('\\n')
+  if (!pending.includes('ep_nodes: not measured yet')) fail('pending nodes: ' + pending)
   const none = D.diagLines({ ...diag, gpu: null, isolated: false, pool: 1, memoryGB: null }).join('\\n')
   if (!none.includes('webgpu: not available') || !none.includes('cross_origin_isolated: no') || !none.includes('memory not given')) fail('the report without a GPU: ' + none)
   const soft = D.diagLines({ ...diag, gpu: { ...gpu, software: true, nodesGpu: null, nodesCpu: null, firstRunMs: null } }).join('\\n')
-  if (!soft.includes('software adapter, not used') || !soft.includes('ep_nodes: not logged') || !soft.includes('gpu_first_run_ms: -')) fail('the report with a software adapter: ' + soft)
+  if (!soft.includes('software adapter, not used') || !soft.includes('ep_nodes: no WebGPU session') || !soft.includes('gpu_first_run_ms: -')) fail('the report with a software adapter: ' + soft)
 }
 console.log(JSON.stringify({ ok: true }))
 `

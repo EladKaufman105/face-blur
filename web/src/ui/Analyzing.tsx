@@ -25,14 +25,14 @@ type Props = {
   onCancel: () => void
 }
 
-/** For tests, on localhost only: ?detect=yunet:0,side:640,rate:5 pins detection (no YuNet, a 640 px fine pass, 5 detections a second), with no pacing; reduced:1 starts it in the reduced mode. */
+/** For tests, on localhost only: ?detect=yunet:0,side:640,rate:5 pins detection (no YuNet, a 640 px fine pass, 5 detections a second), with no pacing; reduced:1 starts it in the reduced mode; softgpu:1 lets a software WebGPU adapter be used. */
 function tuneFromUrl(): Tune | undefined {
   // Only on this computer (the tests' server): on the site it would weaken detection with a link.
   if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return undefined
   const q = new URLSearchParams(location.search).get('detect')
   if (!q) return undefined
   const kv = Object.fromEntries(q.split(',').map((p) => p.split(':')))
-  return { yunet: kv.yunet !== '0', ...(Number(kv.side) ? { side: Number(kv.side) } : {}), ...(Number(kv.rate) ? { rate: Number(kv.rate) } : {}), ...(kv.reduced === '1' ? { reduced: true } : {}) }
+  return { yunet: kv.yunet !== '0', ...(Number(kv.side) ? { side: Number(kv.side) } : {}), ...(Number(kv.rate) ? { rate: Number(kv.rate) } : {}), ...(kv.reduced === '1' ? { reduced: true } : {}), ...(kv.softgpu === '1' ? { softGpu: true } : {}) }
 }
 
 export function Analyzing({ file, sensitive, fast, selfie, sensitivity, twoSteps, onDone, onError, onCancel }: Props) {
