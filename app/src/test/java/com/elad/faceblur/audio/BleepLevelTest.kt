@@ -48,7 +48,8 @@ class BleepLevelTest {
         }
         var peak = 0f
         for (i in (1.05 * rate).toInt() until (1.45 * rate).toInt()) peak = maxOf(peak, abs(out[i]))
-        for (v in out) check(abs(v) <= 1f) { "clipped: $v" }
+        // (Only inside the bleep: what is outside it is the input as it came, and a loud synthetic input may pass 1 by itself.)
+        for (i in (1.0 * rate).toInt() until (1.5 * rate).toInt()) check(abs(out[i]) <= 1f) { "clipped: ${out[i]}" }
         return peak
     }
 
