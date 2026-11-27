@@ -46,7 +46,8 @@ jobs:
       # app/.../gen/ and web/src/gen/ are made from shared/ by ci/shared_gen.py and committed: they
       # must match it (a stale or hand-edited one fails both required checks, as this job does).
       - name: Generated code matches shared/
-        run: python3 ci/shared_gen.py --check
+        run: |
+          python3 ci/shared_gen.py --check || { echo '::error::generated shared files are stale: run python3 ci/shared_gen.py'; exit 1; }
 
       - uses: dorny/paths-filter@v3
         id: f

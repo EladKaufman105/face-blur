@@ -2,7 +2,8 @@
 """Generates plain Kotlin and TypeScript constants from the definitions in shared/ (see
 docs/shared-code.md). The app and the web app read the generated files, never the JSON: nothing is
 parsed at run time, and each value compiles exactly as the literal it replaced (Kotlin `const val`,
-inlined where it is used; TypeScript `export const`).
+inlined where it is used; TypeScript `export const`, a module-level var: about +106 B gzip, no
+runtime cost).
 
     python3 ci/shared_gen.py                 writes app/.../gen/*.kt and web/src/gen/*.ts
     python3 ci/shared_gen.py --target ts     only the TypeScript (the web build runs this)
@@ -231,7 +232,7 @@ def main():
         d, ext = dirs[t]
         if d.is_dir():
             for f in sorted(d.iterdir()):
-                if f not in want:
+                if f.suffix in (".kt", ".ts") and f not in want:
                     problems.append(f"{f.relative_to(ROOT)}: not made by ci/shared_gen.py (remove it, or its definitions are gone from shared/)")
     for w in written:
         print(f"shared_gen: wrote {w}")

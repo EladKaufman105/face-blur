@@ -169,9 +169,9 @@ Not measured anywhere yet: cold start, analysis ms per video second and export s
 
 The tools:
 
-- `ci/perf_check.py web-size` (in `web-build`): reads `web/dist/assets`, strips the hashes and compares with `shared/perf/baseline.json`. It fails on more than +1 KB or +0.5% gzip in `index`, or any growth in a worker chunk, unless the PR updates the baseline with a reason.
+- `ci/perf_check.py web-size` (in `web-build`): reads `web/dist/assets`, strips the hashes and compares with `shared/perf/baseline.json`. It fails on more than +1 KB or +0.5% gzip in `index`, or growth of more than 32 B (hash slack) in a worker chunk, unless the PR updates the baseline with a reason.
 - `ci/perf_check.py bench`: runs `web/tests/bench.cjs` (`track`, `fuse`, `widen`, 10^6 `CutMap.out`, a 2,000-cue SRT) as A/B.
-- JVM `TrackerBench.kt` (only with `-Pbench`): runs the same input, `shared/vectors/tracker/bench.json` (3,000 frames at 30 fps, 6 faces, seeded). It prints ms per video second at sensitivity 0 and 0.5. A sub-agent runs it on base and on head, and puts both numbers in the PR body.
+- JVM `TrackerBench.kt` (only with `ONIT_BENCH=1`): runs the same input, `shared/vectors/tracker/bench.json` (3,000 frames at 30 fps, 6 faces, seeded). It prints ms per video second at sensitivity 0 and 0.5. A sub-agent runs it on base and on head, and puts both numbers in the PR body.
 - For information, since they are noisy:
   - `SelfTest` report lines `analysis_ms` and `render_ms`.
   - Cold start in `ci/e2e.sh`: `am start -W`, `TotalTime`, median of 5.
@@ -341,5 +341,5 @@ Differences from the plan:
 
 - No Gradle `genShared` task. The generated Kotlin is committed and CI checks it, so an Android build needs no python3; the task could not be tested here (no Android SDK).
 - `TrackerBench` runs with `ONIT_BENCH=1` instead of `-Pbench`, so `app/build.gradle.kts` is unchanged.
-- TypeScript fractions are emitted as their computed values (the division stays in a comment), so the bundler can inline them; exported constants are re-exported (`export { X }`), never copied into a new `const`.
+- TypeScript fractions are emitted as their computed values (the division stays in a comment), so the bundler sees plain literals (the constants become module-level vars: about +106 B gzip, no runtime cost; Kotlin `const val`s are inlined); exported constants are re-exported (`export { X }`), never copied into a new `const`.
 - In T1.4 `OLD`, `BUDGET_MS`, `APP_SHARE`, the reduced thresholds and the app-only `0.98` and `AGREE_CLEAR` stay where they are.

@@ -36,6 +36,10 @@ on:
       - 'web/**'
       # The models web/ shares; the app downloads them from pinned commits, never from here.
       - 'models/**'
+      - 'shared/perf/**'
+      - 'shared/vectors/**'
+      - 'ci/perf_check.py'
+      - 'ci/make_bench_vectors.py'
       - 'docs/**'
       - '.claude/**'
       - '.github/pull_request_template.md'
