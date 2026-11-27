@@ -9,6 +9,11 @@ pluginManagement {
             }
         }
         mavenCentral()
+        // Google's mirror of Maven Central: when Central answers "not found" for a moment (it has, failing PR checks), Gradle asks here next.
+        maven {
+            name = "MavenCentralMirror"
+            url = uri("https://maven-central.storage-download.googleapis.com/maven2/")
+        }
         gradlePluginPortal()
     }
 }
@@ -24,6 +29,11 @@ dependencyResolutionManagement {
             }
         }
         mavenCentral()
+        // Google's mirror of Maven Central: when Central answers "not found" for a moment (it has, failing PR checks), Gradle asks here next.
+        maven {
+            name = "MavenCentralMirror"
+            url = uri("https://maven-central.storage-download.googleapis.com/maven2/")
+        }
     }
 }
 
