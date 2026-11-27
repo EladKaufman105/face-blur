@@ -129,5 +129,20 @@ eq('line break kept in the middle', dropCutWords([br], new CutMap([[3, 3.9]]), w
   eq('imported, other language', dropCutWords([{ id: 35, start: 0, end: 2, text: 'שלום לך חבר יקר' }], new CutMap([[0.5, 0.8]]), ew).map((c) => c.text), ['שלום לך חבר יקר'])
   // A cleared subtitle leaves its cut words out of its list.
   eq('cleared', dropCutWords([{ id: 36, start: 0, end: 2, text: '', wi: [0, 1, 2, 3] }], new CutMap([[0.5, 0.8]]), ew).map((c) => c.wi), [[0, 2, 3]])
+  // An imported subtitle with no words of its own keeps every word that is not a cut word (no respelling or stretch match).
+  const mk = (str) => str.split(' ').map((x, k) => ({ text: ' ' + x, start: k * 0.4, end: k * 0.4 + 0.3 }))
+  const imp = (said, text, cut) => { const w = mk(said); const i = said.split(' ').indexOf(cut); return dropCutWords([{ id: 37, start: 0, end: 4, text }], new CutMap([[i * 0.4, i * 0.4 + 0.3]]), w).map((c) => c.text) }
+  eq('import ok we went home', imp('ok we went home', 'ok הלכנו הביתה עכשיו', 'went'), ['ok הלכנו הביתה עכשיו'])
+  eq('import spanish', imp('i paid 50 dollars for it', 'pagué 50 dólares por eso', 'dollars'), ['pagué 50 dólares por eso'])
+  eq('import same language', imp('ok we went home', 'ok we went home', 'went'), ['ok we home'])
+  // The translation of a subtitle whose text was masked stays hidden, as in the preview (a translation made from the unmasked text).
+  const tw = [{ text: ' דני', start: 0, end: 0.3 }, { text: ' אמר', start: 0.4, end: 0.7 }, { text: ' שלום', start: 0.8, end: 1.1 }]
+  const tb = new Set([0])
+  for (const cuts of [[], [[5, 6]]]) for (const trm of [undefined, 'דני אמר שלום']) {
+    const c = { id: 38, start: 0, end: 1.2, text: 'דני אמר שלום', wi: [0, 1, 2], tr: 'Danny said hello', ...(trm ? { trm } : {}) }
+    const orph = orphansOf([c], tb), masked = (x) => maskCue(x, tw, tb, orph)
+    const out = dropCutWords([c], new CutMap(cuts), tw, masked).map((x) => shownText(x, x.text, 'both', true))
+    if (out[0].includes('Danny')) fail('translation leaked: ' + JSON.stringify(out) + ' trm=' + trm)
+  }
 }
 console.log('cutsrt ok')

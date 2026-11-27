@@ -794,7 +794,7 @@ export function SubtitlesTab({ srtCues, onLost, onAttention, onBusy, hidden, par
                     </div>
                   )}
                 </div>
-                {warn && <p class="small cue-mask-warn" role="alert" style="margin:4px 0 0;color:var(--primary)">{t('מילה מצופצפת לא נמצאת בטקסט, ולכן הכתובית עלולה להציג אותה. תקן את הטקסט כדי שיופיע בו, או צפצף את המילה שוב.')}</p>}
+                {warn && <p class="small cue-mask-warn" role="alert" style="margin:4px 0 0;color:var(--primary)">{t('מופיעה מילה שאולי היא המילה המצופצפת, ולכן היא עלולה להיראות. בדוק אותה: תקן את הטקסט, או צפצף את המילה שוב.')}</p>}
                 {trHidden && <p class="small muted cue-tr-hidden" style="margin:4px 0 0">{t('התרגום לא מוצג בסרטון: הוא עלול להציג מילה מצופצפת. תרגם שוב כדי לקבל תרגום מהטקסט המוסתר.')}</p>}
                 {isOpen && !bleeping && (
                   <div class="cue-acts">

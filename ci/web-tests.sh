@@ -56,6 +56,8 @@ case "${1:?shard}" in
     # The bleep's loudness follows the speech it replaces (the app's BleepLevelTest checks the same vectors): a quiet word a quiet beep, a loud one a louder beep under the cap, nothing clips (pure, no browser).
     node tests/bleep.cjs   # 1
     node tests/cutsrt.cjs   # 1
+    # The mask check warns on under 3% of small edits that keep the bleeped word hidden.
+    node tests/warnrate.cjs   # 1
     node tests/watchdog.cjs   # 1
     # Cutting and masking share one alignment of tokens to words (seeded random cuts, bleeps and text edits).
     node tests/cutfuzz.cjs   # 1

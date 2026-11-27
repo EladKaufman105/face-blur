@@ -192,15 +192,17 @@ export const wordSpan = (w: Word): [number, number] => [w.start, Math.max(w.end,
  * masked text, whose masking was decided on the whole subtitle (what the preview shows), is cut here and never masked again.
  */
 export function dropCutWords(cues: Cue[], cuts: CutMap, words: Word[] = [], textOf?: (c: Cue) => string): Cue[] {
-  if (cuts.empty) return textOf ? cues.map((c) => ({ ...c, text: textOf(c) })) : cues
+  // The text swapped for the masked one keeps what the translation was made from (so it shows only where it can't give a word away).
+  const as = (c: Cue, text: string): Cue => (text === c.text ? c : { ...c, text, trm: c.tr ? (c.trm ?? c.text) : c.trm })
+  if (cuts.empty) return textOf ? cues.map((c) => as(c, textOf(c))) : cues
   const out: Cue[] = []
   for (const c of cues) {
     const full = textOf ? textOf(c) : c.text
     const toks = tokensOf(c.text)
     const r = cutTokens(c, toks.map((x) => x.t), words, cuts)
-    if (r === null) { out.push(full === c.text ? c : { ...c, text: full }); continue }
+    if (r === null) { out.push(as(c, full)); continue }
     const wi = c.wi === undefined ? undefined : cueWi(c).filter((k) => !r.goneWi.has(k))
-    if (r.gone.size === 0) { out.push({ ...c, text: full, wi: r.goneWi.size > 0 ? wi : c.wi }); continue }
+    if (r.gone.size === 0) { out.push({ ...as(c, full), wi: r.goneWi.size > 0 ? wi : c.wi }); continue }
     const shown = tokensOf(full)
     const keep = toks.map((_, i) => i).filter((i) => !r.gone.has(i))
     if (keep.length === 0) continue
@@ -269,7 +271,8 @@ function goneTokens(c: Cue, toks: string[], words: Word[], cuts: CutMap): { gone
     }
   }
   if (of.length > 0) {
-    const al = alignCue(toks, of, words)
+    // (An imported subtitle has no words of its own: only the same text or a prefix form of it is a match, no respelling or stretch.)
+    const al = alignCue(toks, of, words, own)
     // An imported subtitle whose text shares no word (or prefix form of one) with those said may be in another language: kept as it is.
     if (!own && !al.exact && !al.tok.some((q, i) => q >= 0 && !al.weak.has(q))) return none
     of.forEach((k, q) => {
@@ -438,7 +441,7 @@ export interface Align {
  * before a prefix or maqaf form before a near respelling, equal words in the order they come (the first with the first).
  * A stretch where as many tokens as words are left over is a respelling in place (paired in order). A word left with no token is "taken out" by the user, unless a token that no word has looks like it ([Align.near]: uncertain).
  */
-export function alignCue(tokens: string[], of: number[], words: Word[]): Align {
+export function alignCue(tokens: string[], of: number[], words: Word[], loose = true): Align {
   const n = tokens.length, m = of.length
   const tok = new Array<number>(n).fill(-1), word = new Array<number>(m).fill(-1)
   const near = new Map<number, number>()
@@ -451,7 +454,7 @@ export function alignCue(tokens: string[], of: number[], words: Word[]): Align {
   const ti = tokens.map(tokenInfo)
   // f[i][j]: the best total for tokens i.. and words j.. (walked forward from the start, so equal words match first with first).
   const f: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0))
-  const sc: number[][] = Array.from({ length: n }, (_, i) => of.map((_, j) => (wi[j] ? pairScore(ti[i], wi[j]!) : 0)))
+  const sc: number[][] = Array.from({ length: n }, (_, i) => of.map((_, j) => (wi[j] ? (loose ? pairScore(ti[i], wi[j]!) : pairScore(ti[i], wi[j]!) >= 2 ? pairScore(ti[i], wi[j]!) : 0) : 0)))
   for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) f[i][j] = Math.max(f[i + 1][j], f[i][j + 1], sc[i][j] > 0 ? f[i + 1][j + 1] + sc[i][j] : 0)
   for (let i = 0, j = 0; i < n && j < m;) {
     if (sc[i][j] > 0 && f[i][j] === f[i + 1][j + 1] + sc[i][j]) { tok[i] = j; word[j] = i; if (sc[i][j] === 1) weak.add(j); if (sc[i][j] === 2) form.add(j); i++; j++ }
@@ -476,11 +479,11 @@ export function alignCue(tokens: string[], of: number[], words: Word[]): Align {
     const ts: number[] = [], ws_: number[] = []
     for (let i = i0; i < i1; i++) if (tok[i] < 0) ts.push(i)
     for (let j = j0; j < j1; j++) if (word[j] < 0 && wi[j]) ws_.push(j)
-    if (ts.length > 0 && ts.length === ws_.length) ts.forEach((i, x) => { tok[i] = ws_[x]; word[ws_[x]] = i; weak.add(ws_[x]) })
+    if (loose && ts.length > 0 && ts.length === ws_.length) ts.forEach((i, x) => { tok[i] = ws_[x]; word[ws_[x]] = i; weak.add(ws_[x]) })
   }
   const taken = new Set<number>()
   word.forEach((p, q) => {
-    if (p >= 0 || !wi[q]) return
+    if (!loose || p >= 0 || !wi[q]) return
     const i = tok.findIndex((x, i) => x < 0 && !taken.has(i) && !!wi[q]!.norm && ti[i].norm !== '' && pairScore(ti[i], wi[q]!) === 1)
     if (i >= 0) { taken.add(i); near.set(q, i) }
   })
@@ -535,15 +538,16 @@ function analyse(cue: Cue, words: Word[], bleeped: Set<number>, orphans?: number
           if (found < said) warn = true
         }
       }
-      // A token joined with a hyphen or a maqaf that holds a part no word of the subtitle says: that part may be a bleeped word, respelled.
+      // A token joined with a hyphen or a maqaf that holds a part no word of the subtitle says and that looks like a bleeped word: it may be that word, respelled.
+      const bn2 = mine.map((k) => normWord(words[k].text)).filter(Boolean)
       const said = new Set(wi.filter((k) => words[k]).flatMap((k) => forms(normWord(words[k].text))))
       tokens.forEach((x) => {
         const parts = normWord(x.t).split(/[-־]+/).map(normWord).filter(Boolean)
-        if (parts.length > 1 && parts.some((p) => !forms(p).some((f) => said.has(f)) && !said.has(p))) warn = true
+        if (parts.length > 1 && parts.some((p) => !forms(p).some((f) => said.has(f)) && !said.has(p) && bn2.some((w) => looksLike(p, w)))) warn = true
       })
       // A token that looks like a bleeped word but is not hidden (it goes with another word, or is new): it may be that word, moved.
       const bn = mine.map((k) => normWord(words[k].text)).filter(Boolean)
-      tokens.forEach((x, p) => { if (!masked.has(p) && bn.some((w) => looksLike(x.t, w))) warn = true })
+      tokens.forEach((x, p) => { if (!masked.has(p) && !(al.tok[p] >= 0 && !al.weak.has(al.tok[p])) && bn.some((w) => looksLike(x.t, w))) warn = true })
     }
   }
   if (orph.length > 0) {

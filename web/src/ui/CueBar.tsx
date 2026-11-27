@@ -65,7 +65,7 @@ function CueFields(p: FieldsProps & { cls: string; children?: any }) {
           <textarea class="cue-text cue-prop-tr" dir="auto" rows={2} value={c.tr ?? ''} onInput={(e) => p.onTranslation((e.currentTarget as HTMLTextAreaElement).value)} />
         </label>
       )}
-      {p.warn && <p class="small cue-mask-warn" role="alert" style="margin:0;color:var(--primary)">{t('מילה מצופצפת לא נמצאת בטקסט, ולכן הכתובית עלולה להציג אותה. תקן את הטקסט כדי שיופיע בו, או צפצף את המילה שוב.')}</p>}
+      {p.warn && <p class="small cue-mask-warn" role="alert" style="margin:0;color:var(--primary)">{t('מופיעה מילה שאולי היא המילה המצופצפת, ולכן היא עלולה להיראות. בדוק אותה: תקן את הטקסט, או צפצף את המילה שוב.')}</p>}
       {p.trHidden && <p class="small muted cue-tr-hidden" style="margin:0">{t('התרגום לא מוצג בסרטון: הוא עלול להציג מילה מצופצפת. תרגם שוב כדי לקבל תרגום מהטקסט המוסתר.')}</p>}
       <div class="row cue-prop-row">
         {p.speakers > 0 && (

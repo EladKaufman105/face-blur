@@ -1223,7 +1223,15 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     // The masking is the preview's (decided on the whole subtitle); the cut words are taken out of that, and it is never masked again.
     dropCutWords(cues, cutMap, words, masked).map((c) => ({ ...c, text: shownText(c, c.text, subStyle.show, subStyle.maskBleeped !== false) }))
   /** The subtitles whose text was edited so that a bleeped word of theirs may show (see [maskWarning]). */
-  const maskWarned = useMemo(() => (subStyle.maskBleeped === false ? [] : cues.filter((c) => maskWarning(c, words, bleeped, orphans))), [cues, words, bleeped, orphans, subStyle.maskBleeped])
+  // Only the subtitles that changed are checked again (a cue object is replaced when it is edited).
+  const warnCache = useRef<{ key: unknown[]; byCue: WeakMap<Cue, boolean> }>({ key: [], byCue: new WeakMap() })
+  const maskWarned = useMemo(() => {
+    if (subStyle.maskBleeped === false) return []
+    const key = [words, bleeped, orphans.join(',')]
+    if (key.some((k, i) => k !== warnCache.current.key[i])) warnCache.current = { key, byCue: new WeakMap() }
+    const by = warnCache.current.byCue
+    return cues.filter((c) => { let w = by.get(c); if (w === undefined) { w = maskWarning(c, words, bleeped, orphans); by.set(c, w) } return w })
+  }, [cues, words, bleeped, orphans, subStyle.maskBleeped])
   /** The selected subtitle's bar and properties (a tablet with its panel open shows the properties there, as the app's). */
   const cueProps = selCue && !selTrack ? {
     cue: selCue,
@@ -1678,7 +1686,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         )}
         {maskWarned.length > 0 && (
           <div class="mask-warn card confirm" role="alert">
-            <p class="small" style="margin:0">{maskWarned.length === 1 ? t('בכתובית אחת מילה מצופצפת לא נמצאת בטקסט, ולכן הכתובית עלולה להציג אותה. תקן את הטקסט כדי שיופיע בו, או צפצף את המילה שוב.') : t('ב-%d כתוביות מילה מצופצפת לא נמצאת בטקסט, ולכן הן עלולות להציג אותה. תקן את הטקסט, או צפצף את המילה שוב.', maskWarned.length)}</p>
+            <p class="small" style="margin:0">{maskWarned.length === 1 ? t('בכתובית אחת מופיעה מילה שאולי היא המילה המצופצפת, ולכן היא עלולה להיראות. בדוק אותה: תקן את הטקסט, או צפצף את המילה שוב.') : t('ב-%d כתוביות מופיעה מילה שאולי היא המילה המצופצפת, ולכן היא עלולה להיראות. בדוק אותן: תקן את הטקסט, או צפצף את המילה שוב.', maskWarned.length)}</p>
             <div class="row"><button class="btn tonal small-btn mask-warn-go" onClick={() => { const c = [...maskWarned].sort((a, b) => a.start - b.start)[0]; selectCue(c.id); seek(c.start + 0.01) }}>{t('עבור לכתובית')}</button></div>
           </div>
         )}
