@@ -36,13 +36,13 @@ object RerunMerge {
     const val CHOICE_KEY = "rerun.merge"
 
     /** A blur there: its id, whether the user made or changed it, and the boxes it covers. */
-    class Existing(val id: Int, val edited: Boolean, val shown: TreeMap<Int, Box>)
+    class Existing(val id: Int, val edited: Boolean, val shown: TreeMap<Int, Box>, val off: Boolean = false)
 
     /**
      * What to take out (by id), which found faces come in, and which blurs get more frames ([extend]: blur id -> the found
      * frames outside the frames it covers, when a found face is the face of an unedited blur that covers only part of it).
      */
-    class Plan(val removeIds: Set<Int>, val add: List<TreeMap<Int, Box>>, val extend: Map<Int, TreeMap<Int, Box>> = emptyMap())
+    class Plan(val removeIds: Set<Int>, val add: List<TreeMap<Int, Box>>, val extend: Map<Int, TreeMap<Int, Box>> = emptyMap(), val addOff: Set<Int> = emptySet())
 
     /** What a re-run did: blurs added, blurs taken out, blurs given more frames. */
     class Result(val added: Int, val removed: Int, val extended: Int)
@@ -60,24 +60,43 @@ object RerunMerge {
         val keepIds = keep.mapTo(HashSet()) { it.id }
         val remove = existing.filter { it.id !in keepIds }.mapTo(HashSet()) { it.id }
         val add = ArrayList<TreeMap<Int, Box>>()
+        val addOff = HashSet<Int>()
         val extend = HashMap<Int, TreeMap<Int, Box>>()
         // The frames each kept blur covers (grown as found faces extend it).
         val covered = keep.associate { it.id to (if (it.shown.isEmpty()) null else it.shown.firstKey() to it.shown.lastKey()) }.toMutableMap()
         for (f in found) {
             if (f.isEmpty()) continue
-            val same = keep.filter { DetectTuning.sameFace(it.shown, f) }
+            val same = keep.filter { it.shown.isNotEmpty() && DetectTuning.sameFace(it.shown, f) }
             if (same.isEmpty()) { add += f; continue }
-            // The face of an edited blur: that blur is the user's, as it is. Of an unedited one: it gets the found frames it doesn't cover.
-            if (same.any { it.edited }) continue
-            val one = same.first()
-            val range = covered[one.id] ?: continue
-            val extra = TreeMap<Int, Box>()
-            for ((k, b) in f) if (k < range.first || k > range.second) extra[k] = b
-            if (extra.isEmpty()) continue
-            extend.getOrPut(one.id) { TreeMap() }.putAll(extra)
-            covered[one.id] = minOf(range.first, extra.firstKey()) to maxOf(range.second, extra.lastKey())
+            if (same.none { it.edited }) {
+                // Unedited blur(s): the first gets the found frames it doesn't cover.
+                val one = same.first()
+                val range = covered[one.id] ?: continue
+                val extra = TreeMap<Int, Box>()
+                for ((k, b) in f) if (k < range.first || k > range.second) extra[k] = b
+                if (extra.isEmpty()) continue
+                extend.getOrPut(one.id) { TreeMap() }.putAll(extra)
+                covered[one.id] = minOf(range.first, extra.firstKey()) to maxOf(range.second, extra.lastKey())
+                continue
+            }
+            // An edited blur is the user's and stays as it is. The found frames no matching blur covers come in as new automatic
+            // blur(s), one per run of frames; turned off when a matching blur is (the user's choice is respected).
+            val ranges = same.mapNotNull { covered[it.id] }
+            val off = same.any { it.off }
+            var run: TreeMap<Int, Box>? = null
+            var prev = Int.MIN_VALUE
+            for ((k, b) in f) {
+                if (ranges.any { k >= it.first && k <= it.second }) { run = null; continue }
+                if (run == null || k != prev + 1) {
+                    run = TreeMap()
+                    if (off) addOff += add.size
+                    add += run
+                }
+                run[k] = b
+                prev = k
+            }
         }
-        return Plan(remove, add, extend)
+        return Plan(remove, add, extend, addOff)
     }
 
     /** How the faces were found: the mode and the sensitivity (kept with the undo steps, see [EditModel.detection]). */

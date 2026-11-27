@@ -1220,6 +1220,8 @@ class EditorController(
                     // The undo step puts the old detection back with the blurs ([applyDetection] after undo and redo).
                     model.detection = RerunMerge.Detection(now.detect, now.sensitivity)
                     val r = model.rerun(faces, merge, after)
+                    // (With no change in the blurs there is no undo step, and the detection still follows: the model's copy too.)
+                    model.detection = after
                     applyDetection(after)
                     sync()
                     if (before == 0 && model.tracks.isNotEmpty()) playerEpoch++

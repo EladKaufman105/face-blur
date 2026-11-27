@@ -99,9 +99,32 @@ for (let i = 0; i < 400; i++) {
   const e = [track(0, 0, 11, 0.3, 0.3)], f = [track(0, 0, 291, 0.3, 0.3)]
   const r = R.mergeRerun(e, new Set(), f, 'add')
   if (r.tracks.length !== 1 || r.added.length || r.tracks[0].boxes.length !== 291 * 4 || r.tracks[0].first !== 0 || r.tracks[0].id !== 0) fail('a longer found face is not given to the blur')
+  const covered = (tracks) => { const c = new Set(); for (const t of tracks) for (let i = t.first; i < t.first + t.boxes.length / 4; i++) c.add(i); return c }
+  // Example 1: an edited blur on 0-10; the face found on 0-290: the blur as it is, the rest a new blur.
   const e2 = [track(0, 0, 11, 0.3, 0.3, { edited: true })]
   const r2 = R.mergeRerun(e2, new Set(), f, 'add')
-  if (r2.tracks[0] !== e2[0] || r2.added.length || r2.extended.length) fail('an edited blur was extended')
+  if (r2.tracks[0] !== e2[0] || r2.extended.length || r2.added.length !== 1 || r2.added[0].first !== 11 || r2.added[0].boxes.length !== 280 * 4 || r2.added[0].manual || r2.off.size) fail('an edited blur: ' + r2.added.length)
+  if (covered(r2.tracks).size !== 291) fail('frames of the found face unblurred')
+  // Example 2: a blur on 0-60 split at 30 (two edited blurs); the face found on 0-109.
+  const e3 = [track(0, 0, 30, 0.3, 0.3, { edited: true }), track(1, 30, 31, 0.3, 0.3, { edited: true })]
+  const r3b = R.mergeRerun(e3, new Set(), [track(0, 0, 110, 0.3, 0.3)], 'add')
+  if (r3b.tracks[0] !== e3[0] || r3b.tracks[1] !== e3[1] || r3b.added.length !== 1 || covered(r3b.tracks).size !== 110) fail('split blur')
+  // In the middle: both ends come in.
+  const r4 = R.mergeRerun([track(0, 40, 21, 0.3, 0.3, { scale: 1.2 })], new Set(), [track(0, 0, 110, 0.3, 0.3)], 'add')
+  if (r4.added.length !== 2 || covered(r4.tracks).size !== 110) fail('both ends')
+  // A matching blur turned off: the new blur is turned off too, and listed.
+  const e5 = [track(0, 0, 11, 0.3, 0.3)]
+  const r5 = R.mergeRerun(e5, new Set([0]), f, 'add')
+  if (r5.added.length !== 1 || !r5.off.has(0) || !r5.off.has(r5.added[0].id) || r5.tracks.length !== 2) fail('off blur')
+  // Random: Add never leaves a found frame unblurred, unless a matching blur is off.
+  for (let i = 0; i < 300; i++) {
+    const a0 = Math.floor(rnd() * 40), f0 = Math.floor(rnd() * 30)
+    const ex = track(0, a0, 3 + Math.floor(rnd() * 40), 0.3, 0.3, rnd() < 0.5 ? { edited: true } : {})
+    const fd = track(0, f0, 5 + Math.floor(rnd() * 80), 0.3, 0.3)
+    const rr = R.mergeRerun([ex], new Set(), [fd], 'add')
+    const c = covered(rr.tracks)
+    for (let k = fd.first; k < fd.first + fd.boxes.length / 4; k++) if (!c.has(k)) fail('a found frame is unblurred ' + i)
+  }
   // before and after
   const r3 = R.mergeRerun([track(0, 10, 11, 0.3, 0.3)], new Set(), [track(0, 0, 40, 0.3, 0.3)], 'add')
   if (r3.tracks[0].first !== 0 || r3.tracks[0].boxes.length !== 40 * 4) fail('before and after')

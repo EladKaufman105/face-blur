@@ -49,6 +49,37 @@ class EditsRoundTripTest {
     }
 
     @Test
+    fun aFileWithoutTheEditedListReadsAsNoBlurEdited() {
+        val f = File(tmp.root, "edits.bin")
+        ProjectStore.writeEdits(f, state(false, false))
+        // Made into what an app from before the list wrote: the same version 5, without the trailing list (its count, 4 bytes, as none were edited).
+        val raw = GZIPInputStream(f.inputStream()).use { it.readBytes() }
+        assertEquals(5, raw[3].toInt())
+        val old = raw.copyOf(raw.size - 4)
+        val out = ByteArrayOutputStream()
+        GZIPOutputStream(out).use { it.write(old) }
+        f.writeBytes(out.toByteArray())
+        val back = ProjectStore.readEdits(f)
+        assertEquals(2, back.tracks.size)
+        assertTrue(back.tracks.none { it.edited })
+    }
+
+    @Test
+    fun theEditedListIsTrailingDataANewAppWritesAtTheEndOfVersion5() {
+        val f = File(tmp.root, "edits.bin")
+        val st = state(false, false)
+        st.tracks[0].edited = true
+        ProjectStore.writeEdits(f, st)
+        val raw = GZIPInputStream(f.inputStream()).use { it.readBytes() }
+        assertEquals(5, raw[3].toInt())
+        // One id (4 bytes) and its count (4 bytes) at the end: the part an older reader never reaches.
+        val tail = java.nio.ByteBuffer.wrap(raw, raw.size - 8, 8)
+        assertEquals(1, tail.int)
+        assertEquals(st.tracks[0].id, tail.int)
+        assertEquals(listOf(true, false), ProjectStore.readEdits(f).tracks.map { it.edited })
+    }
+
+    @Test
     fun aVersion3FileHasNoOffBlurs() {
         val f = File(tmp.root, "edits.bin")
         ProjectStore.writeEdits(f, state(false, false))

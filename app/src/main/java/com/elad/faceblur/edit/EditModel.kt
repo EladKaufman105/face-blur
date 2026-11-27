@@ -384,7 +384,7 @@ class EditModel(
         val there = tracks.map { t ->
             // (A blur turned off has no shown boxes: its frames are what its path covers.)
             val shown = if (t.off) TreeMap<Int, Box>().also { m -> for (i in max(0, t.start)..min(frameCount - 1, t.end)) rawBox(t, i)?.let { m[i] = it } } else shownBoxes(t)
-            RerunMerge.Existing(t.id, RerunMerge.isEdited(t), shown)
+            RerunMerge.Existing(t.id, RerunMerge.isEdited(t), shown, t.off)
         }
         val plan = RerunMerge.plan(there, found, mode)
         if (plan.add.isEmpty() && plan.removeIds.isEmpty() && plan.extend.isEmpty()) return RerunMerge.Result(0, 0, 0)
@@ -396,7 +396,7 @@ class EditModel(
             t.start = min(t.start, extra.firstKey())
             t.end = max(t.end, extra.lastKey())
         }
-        for (p in plan.add) tracks += EditTrack(nextId++, false, TreeMap(p), p.firstKey(), p.lastKey())
+        plan.add.forEachIndexed { i, p -> tracks += EditTrack(nextId++, false, TreeMap(p), p.firstKey(), p.lastKey(), off = i in plan.addOff) }
         if (after != null) detection = after
         changed()
         return RerunMerge.Result(plan.add.size, plan.removeIds.size, plan.extend.size)

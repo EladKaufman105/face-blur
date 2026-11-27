@@ -50,8 +50,7 @@ function extendWith(t: Track, f: Track): Track | null {
 
 /**
  * The blurs after a re-run. In Add every blur there is untouched except that an unedited one whose face the new run found longer
- * (the same face on more frames) gets those frames too, so no frame the new run found is left unblurred; a face that is one an
- * edited blur has is left to that blur as it is. In Replace the automatic blurs nobody edited go. New blurs get ids above every old id,
+ * (the same face on more frames) gets those frames too, so no frame the new run found is left unblurred; an edited blur is never touched: the found frames no matching blur covers come in as a new blur (off, when a matching one is). In Replace the automatic blurs nobody edited go. New blurs get ids above every old id,
  * so an undo that brings back an old one never clashes.
  */
 export function mergeRerun(existing: Track[], off: ReadonlySet<number>, found: Track[], mode: RerunMode): Merged {
@@ -62,6 +61,7 @@ export function mergeRerun(existing: Track[], off: ReadonlySet<number>, found: T
   const added: Track[] = []
   const from = new Map<number, number>()
   const grown = new Set<number>()
+  const newOff = new Set<number>()
   for (const f of found) {
     const same = work.filter((k) => sameFace(k, f))
     if (same.length === 0) {
@@ -70,15 +70,35 @@ export function mergeRerun(existing: Track[], off: ReadonlySet<number>, found: T
       from.set(tr.id, f.id)
       continue
     }
-    if (same.some((k) => isEdited(k, off))) continue
-    const i = work.indexOf(same[0])
-    const g = extendWith(same[0], f)
-    if (g) { work[i] = g; grown.add(g.id) }
+    if (!same.some((k) => isEdited(k, off))) {
+      const i = work.indexOf(same[0])
+      const g = extendWith(same[0], f)
+      if (g) { work[i] = g; grown.add(g.id) }
+      continue
+    }
+    // An edited blur is the user's and stays as it is. The found frames no matching blur covers come in as new automatic blur(s),
+    // one per run of frames; turned off when a matching blur is (the user's choice is respected).
+    const offToo = same.some((k) => off.has(k.id))
+    let run: number[] = []
+    const flush = () => {
+      if (!run.length) return
+      const first = run[0], n = run.length
+      const tr: Track = { ...f, id: id++, first, boxes: f.boxes.slice((first - f.first) * 4, (first - f.first + n) * 4), best: Math.min(first + n - 1, Math.max(first, f.best)) }
+      added.push(tr)
+      from.set(tr.id, f.id)
+      if (offToo) newOff.add(tr.id)
+      run = []
+    }
+    for (let i = f.first; i <= lastOf(f); i++) {
+      if (same.some((k) => i >= k.first && i <= lastOf(k))) flush()
+      else run.push(i)
+    }
+    flush()
   }
   const gone = new Set(removed.map((t) => t.id))
   return {
     tracks: [...work, ...added],
-    off: new Set([...off].filter((x) => !gone.has(x))),
+    off: new Set([...[...off].filter((x) => !gone.has(x)), ...newOff]),
     added, removed, extended: work.filter((t) => grown.has(t.id)), from,
   }
 }

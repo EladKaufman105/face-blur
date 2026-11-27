@@ -79,7 +79,7 @@ class LoadedProject(val meta: ProjectMeta, val json: JSONObject, val analysis: A
  */
 object ProjectStore {
     private const val ANALYSIS_VERSION = 1
-    private const val EDITS_VERSION = 6
+    private const val EDITS_VERSION = 5
 
     fun root(context: Context) = File(context.filesDir, "projects")
 
@@ -442,7 +442,8 @@ object ProjectStore {
         val trs = e.cues.filter { it.trm != null }
         o.writeInt(trs.size)
         for (c in trs) { o.writeInt(c.id); o.str(c.trm!!) }
-        // Automatic blurs the user changed (by id): a re-run of detection never takes these away.
+        // Automatic blurs the user changed (by id): a re-run of detection never takes these away. Trailing data, after everything
+        // version 5 has: an older app stops reading before it and ignores it; a file without it reads as no blur edited.
         val edited = e.tracks.filter { it.edited }
         o.writeInt(edited.size)
         for (t in edited) o.writeInt(t.id)
@@ -483,9 +484,14 @@ object ProjectStore {
             repeat(i.readInt()) { val id = i.readInt(); trs[id] = i.str() }
             for (c in cues) c.trm = trs[c.id]
         }
-        if (version >= 6) {
+        if (version >= 5) {
             val edited = HashSet<Int>()
-            repeat(i.readInt()) { edited += i.readInt() }
+            try {
+                repeat(i.readInt()) { edited += i.readInt() }
+            } catch (e: java.io.EOFException) {
+                // A file from before the list: no blur edited.
+                edited.clear()
+            }
             for (t in tracks) t.edited = t.id in edited
         }
         EditState(tracks, cues, bleeps, nextId, nextCueId, sfx, removed)

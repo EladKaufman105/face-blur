@@ -171,13 +171,68 @@ class RerunMergeTest {
         assertEquals(11, m.renderTracks()[0].size)
     }
 
+    private fun frames(m: EditModel): Set<Int> = m.renderTracks().flatMap { it.keys }.toSet()
+
     @Test
-    fun anEditedBlurIsNotExtended() {
+    fun anEditedBlurIsNeverTouchedAndTheFoundFramesItMissesComeInAsANewBlur() {
+        // Example 1: a blur on 0-10, nudged on one frame; the face is found on 0-109.
         val m = model(path(0, 10, 0.3f, 0.3f))
-        m.setScale(m.tracks[0].id, 1.3f)
+        val id = m.tracks[0].id
+        m.beginGesture(); m.moveBy(id, 5, 0.001f, 0f)
         val r = m.rerun(listOf(path(0, 109, 0.3f, 0.3f)), RerunMode.ADD)
-        assertEquals(0, r.added + r.extended)
-        assertEquals(10, m.tracks[0].end)
+        assertEquals(1, r.added)
+        assertEquals(10, m.track(id)!!.end)
+        assertEquals(0, m.track(id)!!.start)
+        assertEquals(2, m.tracks.size)
+        assertEquals(11, m.tracks[1].start)
+        assertEquals(109, m.tracks[1].end)
+        assertFalse(m.tracks[1].manual)
+        assertEquals((0..109).toSet(), frames(m))
+        // Example 2: a blur on 0-60, split at 30; the face is found on 0-109.
+        val m2 = model(path(0, 60, 0.3f, 0.3f))
+        val a = m2.tracks[0].id
+        m2.split(a, 30)
+        assertEquals(2, m2.tracks.size)
+        m2.rerun(listOf(path(0, 109, 0.3f, 0.3f)), RerunMode.ADD)
+        assertEquals(3, m2.tracks.size)
+        assertEquals((0..109).toSet(), frames(m2))
+        assertEquals(29, m2.tracks[0].end)
+    }
+
+    @Test
+    fun aFoundFaceInTheMiddleOfAnEditedBlurAddsBothEnds() {
+        val m = model(path(40, 60, 0.3f, 0.3f))
+        m.setScale(m.tracks[0].id, 1.2f)
+        m.rerun(listOf(path(0, 109, 0.3f, 0.3f)), RerunMode.ADD)
+        assertEquals(3, m.tracks.size)
+        assertEquals((0..109).toSet(), frames(m))
+    }
+
+    @Test
+    fun theNewBlurIsTurnedOffWhenTheMatchingBlurIs() {
+        val m = model(path(0, 10, 0.3f, 0.3f))
+        val id = m.tracks[0].id
+        m.toggleOff(id)
+        m.rerun(listOf(path(0, 109, 0.3f, 0.3f)), RerunMode.ADD)
+        assertEquals(2, m.tracks.size)
+        assertTrue(m.track(id)!!.off)
+        assertTrue(m.tracks[1].off)
+        assertEquals(11, m.tracks[1].start)
+        assertTrue(m.renderTracks().isEmpty())
+    }
+
+    @Test
+    fun addNeverBlursFewerFramesThanTheFoundFacesCoverUnlessABlurIsOff() {
+        val r = Random(11)
+        repeat(300) {
+            val a = r.nextInt(0, 40)
+            val m = model(path(a, a + r.nextInt(3, 40), 0.3f, 0.3f))
+            when (r.nextInt(3)) { 0 -> m.setScale(m.tracks[0].id, 1.3f); 1 -> m.split(m.tracks[0].id, m.tracks[0].start + 1); else -> {} }
+            val f = r.nextInt(0, 30)
+            val found = path(f, f + r.nextInt(5, 80), 0.3f, 0.3f)
+            m.rerun(listOf(found), RerunMode.ADD)
+            assertTrue("$a $f", frames(m).containsAll(found.keys))
+        }
     }
 
     @Test
