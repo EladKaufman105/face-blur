@@ -1,0 +1,29 @@
+name: Conflict alert
+
+# After a merge into develop: a comment on each open PR into develop that now conflicts with it, or
+# is behind it (develop's ruleset requires a PR to be up to date before it merges). One comment per
+# PR head and state, so a PR isn't commented again until it changes.
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: conflict-alert
+  cancel-in-progress: true
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Comment on PRs that conflict or are behind
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEVELOP: ${{ github.sha }}
+        run: bash ci/conflict-alert.sh

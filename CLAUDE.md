@@ -22,6 +22,8 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 ## Pull requests
 
 - Every change reaches `develop` or `main` through a PR. No human approval is required.
+- A PR into `develop` must be up to date with `develop` before it merges (ruleset), so nothing merges untested against the latest `develop`. When one is behind or conflicts, merge `origin/develop` into its branch, resolve, and push; the checks run again. Auto-merge, when the user enables it on a PR, then merges it once green.
+- `conflict-alert.yml` comments on open PRs into `develop` that conflict with it or are behind it after each merge.
 - With the repository setting "Automatically delete head branches" on, a feature branch is deleted when its PR is merged (restore it from the PR page). `main` and `develop` are never deleted (default branch and rulesets), nor are the data branches (rulesets). Side-workflow and old CI branches are never PR heads, so merges don't touch them.
 - Required checks (`.github/workflows/pr-guard.yml` runs `source-branch`; `.github/workflows/pr.yml` runs the builds):
   - `source-branch`: PRs into `main` must come from `develop` or `hotfix/*`.
