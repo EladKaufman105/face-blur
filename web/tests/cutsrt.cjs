@@ -10,7 +10,7 @@ const load = (f) => {
   new Function('module', 'exports', 'require', code)(mod, mod.exports, () => ({}))
   return mod.exports
 }
-const { cutCues, dropCutWords, shownText, maskCue, orphansOf } = load('subtitles.ts')
+const { cutCues, dropCutWords, shownText, maskCue, maskWarning, orphansOf } = load('subtitles.ts')
 const { CutMap } = load('cutmap.ts')
 const fail = (m) => { console.error('FAIL', m); process.exit(1) }
 const eq = (name, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) fail(`${name}: ${JSON.stringify(got)} (wanted ${JSON.stringify(want)})`) }
@@ -104,5 +104,30 @@ eq('line break kept in the middle', dropCutWords([br], new CutMap([[3, 3.9]]), w
   dropCutWords(imp, new CutMap(cs), many)
   const ms = Date.now() - t0
   if (ms > 100) fail('1500 imported subtitles took ' + ms + ' ms')
+}
+
+// ---- round 5 review: the export is the preview with the cut words taken out; the warnings; retimed and imported subtitles
+{
+  const exportOf = (cue, w, bl, cut) => dropCutWords([cue], new CutMap([cut]), w, (c) => maskCue(c, w, bl, orphansOf([cue], bl))).map((c) => c.text)
+  eq('export, jhon after um cut', exportOf({ id: 30, start: 0, end: 1, text: 'hey um jhon', wi: [0, 1] }, W([['um', 0, 0.3], ['john', 0.5, 0.8]]), new Set([1]), [0, 0.3]), ['hey ****'])
+  eq('export, דאני after אמ cut', exportOf({ id: 31, start: 0, end: 1, text: 'טוב אמ דאני', wi: [0, 1] }, W([['אמ', 0, 0.3], ['דני', 0.5, 0.8]]), new Set([1]), [0, 0.3]), ['טוב ****'])
+  // A bleeped word that is not its text or a prefix form of it says so (and is hidden where it was found).
+  const warn = (text, w, wiN) => maskWarning({ id: 32, start: 0, end: 2, text, wi: wiN }, w, new Set([1]))
+  const jw = W([['um', 0, 0.3], ['john', 0.5, 0.8], ['said', 1, 1.3], ['hi', 1.5, 1.8]])
+  const dw = W([['אמ', 0, 0.3], ['דני', 0.5, 0.8], ['אמר', 1, 1.3], ['שלום', 1.5, 1.8]])
+  for (const [text, w] of [['Jon said hi', jw], ['דאני אמר שלום', dw], ['אמ אמר שלום ודאני', dw], ['said־דניי', dw], ['so he said yes Dny', W([['so', 0, 0.3], ['dani', 0.5, 0.8], ['said', 1, 1.3], ['yes', 1.5, 1.8]])]]) {
+    if (!warn(text, w, w.map((_, k) => k))) fail('no warning for ' + text)
+  }
+  if (!warn('تعال يا محمود', W([['يا', 0, 0.3], ['محمد', 0.5, 0.8], ['تعال', 1, 1.3]]), [0, 1, 2])) fail('no warning for the Arabic respelling')
+  // Retimed subtitles and a word of no length at the end.
+  const rw = W([['a', 0, 0.5], ['b', 0.6, 1.1], ['secret', 1.2, 1.6]])
+  eq('retimed, last word cut', dropCutWords([{ id: 33, start: 0, end: 1.15, text: 'a b secret', wi: [0, 1, 2] }], new CutMap([[1.2, 1.6]]), rw).map((c) => c.text), ['a b'])
+  const zw = W([['a', 0, 0.5], ['b', 0.6, 1.1], ['umm', 1.2, 1.2]])
+  eq('zero-length last word', dropCutWords([{ id: 34, start: 0, end: 1.2, text: 'a b umm', wi: [0, 1, 2] }], new CutMap([[1.2, 1.28]]), zw).map((c) => c.text), ['a b'])
+  // An imported subtitle in another language than the words: kept as it is.
+  const ew = W([['hello', 0, 0.3], ['my', 0.5, 0.8], ['dear', 1, 1.3], ['friend', 1.5, 1.8]])
+  eq('imported, other language', dropCutWords([{ id: 35, start: 0, end: 2, text: 'שלום לך חבר יקר' }], new CutMap([[0.5, 0.8]]), ew).map((c) => c.text), ['שלום לך חבר יקר'])
+  // A cleared subtitle leaves its cut words out of its list.
+  eq('cleared', dropCutWords([{ id: 36, start: 0, end: 2, text: '', wi: [0, 1, 2, 3] }], new CutMap([[0.5, 0.8]]), ew).map((c) => c.wi), [[0, 2, 3]])
 }
 console.log('cutsrt ok')

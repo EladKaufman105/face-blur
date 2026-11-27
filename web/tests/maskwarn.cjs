@@ -68,8 +68,7 @@ const WORDS = [['שלום', 1, 1.5], ['לכולם', 1.6, 2.5], ['היום', 4, 4
     // Edited so the bleeped word (the first) is gone and the count no longer fits: a warning.
     await select(0)
     await p.waitForSelector('.cue-props .cue-prop-text')
-    // (The bleeped word moved and respelled: it may show, so a warning. Taken out altogether it would be gone, and nothing to warn of.)
-    await p.fill('.cue-props .cue-prop-text', 'ברכה לכולם שלומי')
+    await p.fill('.cue-props .cue-prop-text', 'ברכה לכולם ועוד')
     await p.waitForSelector('.mask-warn', { timeout: 3000 })
     if ((await p.$$('.tl-cue.warn')).length !== 1) fail('the subtitle is not marked on the timeline')
     if (!(await p.$('.cue-props .cue-mask-warn'))) fail('no warning in the subtitle bar')
@@ -78,7 +77,7 @@ const WORDS = [['שלום', 1, 1.5], ['לכולם', 1.6, 2.5], ['היום', 4, 4
     await p.waitForFunction(() => !document.querySelector('.mask-warn'), null, { timeout: 3000 })
     if (!(await cues())[0].text.includes('ברכה ****')) fail('the retyped word is not masked: ' + (await cues())[0].text)
     // The warning again, and the export asks first.
-    await p.fill('.cue-props .cue-prop-text', 'ברכה לכולם שלומי')
+    await p.fill('.cue-props .cue-prop-text', 'ברכה לכולם ועוד')
     await p.waitForSelector('.mask-warn')
     await p.click('.export-bar .btn')
     await p.waitForSelector('.export-go')
