@@ -5,10 +5,10 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 ## Branches
 
 - `main`: releases only. A merge publishes a public GitHub release (APK): the release candidate of the tested beta when `main`'s tree is that beta's ("promote", a few minutes), else once the emulator e2e passes. The web app from `main` is at https://eladkaufman105.github.io/face-blur/.
-- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Beta" (separate app id, installs beside ONIT) once the emulator e2e passes. Merges that change only paths in `EXCLUDES` of `ci/promote-check.sh` (`web/`, `models/`, `docs/`, `.claude/`, the PR template, `parity-hint.yml` and the web app's CI files) make no beta. Merges that change web files run the web tests, then deploy the beta web app. The web app from `develop` is the beta web app, at https://eladkaufman105.github.io/face-blur/beta/.
+- `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Beta" (separate app id, installs beside ONIT) once the emulator e2e passes. Merges that change only paths in `EXCLUDES` of `ci/promote-check.sh` (`web/`, `models/`, `docs/`, `.claude/`, the PR template, `parity-hint.yml`, the conflict alert, the ruleset files and the web app's CI files) make no beta. Merges that change web files run the web tests, then deploy the beta web app. The web app from `develop` is the beta web app, at https://eladkaufman105.github.io/face-blur/beta/.
 - Never push, force-push, rebase or delete `main` or `develop`. Repository rulesets enforce this. Do not try to work around them.
 - `labs` is retired. Do not push to it. It is kept as history.
-- `hotfix/<name>`: branch from `main`, PR into `main`, then a PR `main` -> `develop` (merge commit) to bring the fix back.
+- `hotfix/<name>`: branch from `main`, PR into `main`. Then bring the fix back: branch `hotfix-back/<name>` from `origin/main`, merge `origin/develop` into it (resolve conflicts there), and open a PR into `develop`, merged with a merge commit (it keeps `main`'s history, which versioning reads). Never open a PR from `main` itself into `develop`: `develop` requires PRs to be up to date, which `main` can't be.
 
 ## Starting work
 
@@ -22,6 +22,8 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 ## Pull requests
 
 - Every change reaches `develop` or `main` through a PR. No human approval is required.
+- A PR into `develop` must be up to date with `develop` before it merges (ruleset), so nothing merges untested against the latest `develop`. When one is behind or conflicts, merge `origin/develop` into its branch, resolve, and push; the checks run again. Auto-merge, when the user enables it on a PR, then merges it once green.
+- `conflict-alert.yml` comments on open PRs into `develop` that conflict with it or are behind it after each merge.
 - With the repository setting "Automatically delete head branches" on, a feature branch is deleted when its PR is merged (restore it from the PR page). `main` and `develop` are never deleted (default branch and rulesets), nor are the data branches (rulesets). Side-workflow and old CI branches are never PR heads, so merges don't touch them.
 - Required checks (`.github/workflows/pr-guard.yml` runs `source-branch`; `.github/workflows/pr.yml` runs the builds):
   - `source-branch`: PRs into `main` must come from `develop` or `hotfix/*`.
@@ -48,7 +50,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
    - Add the label `needs-human`.
    - Post a PR comment listing each unresolved finding with the reviewer's view and your view.
    - Tell the user.
-8. If checks are green and no blocking findings remain, you may merge into `develop` yourself. Use squash merge, except a PR from `main` (hotfix merge-back): merge commit.
+8. If checks are green and no blocking findings remain, you may merge into `develop` yourself. Use squash merge, except a `hotfix-back/*` PR (hotfix merge-back): merge commit.
 
 ## Parity
 

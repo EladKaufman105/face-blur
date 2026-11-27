@@ -40,6 +40,9 @@ EXCLUDES=(
   '.claude/**'
   '.github/pull_request_template.md'
   '.github/workflows/parity-hint.yml'
+  '.github/workflows/conflict-alert.yml'
+  'ci/conflict-alert.sh'
+  '.github/rulesets/**'
 )
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
