@@ -88,6 +88,8 @@ case "${1:?shard}" in
     t usernotes.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/usernotes   # 43
     # The speech model's flow with no download: faster / better quality kept, a stuck recognition ends with an error and a retry, Cancel ends the worker, a template asks before downloading.
     t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 38
+    # A subtitles job shows life at once (no model: a stub for the Hub): the model is asked for at the start, beside the sound's reading, and the sound's percent shows with the model's phase.
+    t subsstart.cjs "$U" $S/speech_two.mp4 $R/subsstart strict   # 8
     ;;
   5) # about 210 s
     # A subtitle edited so a bleeped word may show: the alert, the mark on the timeline, the export asking first; a deleted subtitle's bleeps listed.

@@ -56,7 +56,7 @@ export function QualityChoice({ cls, language = null }: { cls?: string; language
 /** What a job says, and how far (null: no percent exists for it). */
 export function speechLine(s: SpeechStatus): { text: string; progress: number | null } {
   switch (s.stage) {
-    case 'audio': return { text: t('מכין את הקול…'), progress: null }
+    case 'audio': return { text: t('מכין את הקול…'), progress: s.progress > 0 ? s.progress : null }
     case 'download': return { text: t('מוריד את המודל…'), progress: s.progress }
     case 'load': return { text: t('טוען את המודל למכשיר…'), progress: null }
     case 'fallback': return { text: s.same ? t('המעבד הגרפי לא הגיב. ממשיך על המעבד עם אותו מודל…') : t('המעבד הגרפי לא הגיב. ממשיך על המעבד עם מודל קטן יותר…'), progress: null }
@@ -90,6 +90,8 @@ export function SpeechProgress({ status, onCancel }: { status: SpeechStatus; onC
         </span>
       </div>
       <div class={'progress' + (line.progress === null ? ' indet' : '')}><div style={line.progress === null ? undefined : { width: `${Math.max(2, (line.progress ?? 0) * 100)}%` }} /></div>
+      {'audio' in status && status.audio !== undefined && <span class="muted small speech-audio" dir="auto">{t('מכין את הקול…')} {Math.floor(status.audio * 100)}%</span>}
+      {status.stage === 'recognize' && status.win && status.win.n > 1 && <span class="muted small speech-win" dir="auto">{t('קטע %d מתוך %d (30 שניות כל אחד)', status.win.i, status.win.n)}</span>}
       {onCancel && <button class="btn tonal speech-cancel" onClick={onCancel}>{t('ביטול')}</button>}
     </div>
   )

@@ -481,7 +481,7 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
     onLost(null)
     const c = new AbortController()
     ctl.current = c
-    setRun({ stage: 'audio' })
+    setRun({ stage: 'audio', progress: 0 })
     try {
       const d = await probeDevice()
       const plan = currentPlan(d, lang)

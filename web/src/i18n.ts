@@ -176,6 +176,7 @@ const EN: Record<string, string> = {
   'בלי כתוביות': 'No subtitles',
   'מוריד את המודל…': 'Downloading the model…',
   'מזהה דיבור…': 'Recognizing speech…',
+  'קטע %d מתוך %d (30 שניות כל אחד)': 'Part %d of %d (30 seconds each)',
   'מכין את הקול…': 'Preparing the sound…',
   'לסרטון אין פס קול.': 'The video has no sound.',
   'הורד SRT': 'Download SRT',
