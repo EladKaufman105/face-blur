@@ -7,6 +7,7 @@
 // have the same feature, so a template can later be exported from one and imported in the other.
 // What only the web has (a logo or background picture as a data URL, the subtitle style's
 // bleep mask, speakers and show choice) goes in extra keys that the app ignores.
+import { roundUp } from './sensitivity'
 import { DEFAULT_LOOK, loadLook, type BlurMode, type Look } from './types'
 import { DEFAULT_SUB_STYLE, normalizeStyle, SUB_EFFECTS, SUB_FONTS, type SubStyle } from './substyle'
 import { NO_BACKGROUND, type Background, type BgFill, type BgKey } from './background'
@@ -23,7 +24,7 @@ export const CATEGORIES: TemplateCategory[] = ['blur', 'subs', 'voice', 'cuts', 
 export type SubLang = 'NONE' | 'ORIGINAL' | 'TRANSLATED' | 'BOTH'
 
 /** Face blur. An undefined field is left as it is; [none]: no face blur at all. */
-export type BlurPart = { none?: boolean; mode?: BlurMode; strength?: number; padding?: number; sensitive?: boolean }
+export type BlurPart = { none?: boolean; mode?: BlurMode; strength?: number; padding?: number; sensitive?: boolean; /** Fast detection ([sensitive] wins). */ fast?: boolean; /** 0..1 (lib/sensitivity.ts). */ sensitivity?: number }
 /** Subtitles. An undefined field is left as it is. [language]: 'he', 'en', 'ar', 'fa' or 'auto'. */
 export type SubsPart = {
   create?: boolean
@@ -74,6 +75,10 @@ export type TemplateSettings = {
   blurOff: boolean
   look: Look
   sensitive: boolean
+  /** Fast detection (5 a second); [sensitive] wins if both are true. */
+  fast: boolean
+  /** 0..1: more faces blurred, never fewer (lib/sensitivity.ts). */
+  sensitivity: number
   createSubs: boolean
   /** The speech's language as Whisper names it (null: it finds it). */
   language: string | null
@@ -109,12 +114,12 @@ export function savedLanguage(hebrewUi: boolean): string | null {
 }
 
 /** Settings as they stand with no template: the last look, subtitle design, watermark and export choices. */
-export function currentSettings(opts: { sensitive: boolean; hebrewUi: boolean; watermark: Watermark; options?: ExportOptions }): TemplateSettings {
+export function currentSettings(opts: { sensitive: boolean; fast?: boolean; sensitivity?: number; hebrewUi: boolean; watermark: Watermark; options?: ExportOptions }): TemplateSettings {
   let style = DEFAULT_SUB_STYLE
   try { style = normalizeStyle(JSON.parse(localStorage.getItem(storageKey('substyle')) ?? 'null')) } catch {}
   const o = opts.options ?? { ...loadExportOptions(), aspect: 'original' as Aspect }
   return {
-    blurOff: false, look: loadLook(), sensitive: opts.sensitive,
+    blurOff: false, look: loadLook(), sensitive: opts.sensitive, fast: !opts.sensitive && !!opts.fast, sensitivity: opts.sensitivity ?? 0,
     createSubs: false, language: savedLanguage(opts.hebrewUi), translate: false, subStyle: style, split: { words: 0, chars: 0 },
     burn: o.burn === false ? 'NONE' : showToBurn(style.show), saveSrt: o.srt,
     voice: 'none', denoise: 0, enhance: false, loud: false,
@@ -159,7 +164,10 @@ export function applyTemplate(t: Template, base: TemplateSettings): TemplateSett
   let s = base
   if (t.blur) {
     const b = t.blur
-    s = { ...s, blurOff: b.none ?? s.blurOff, look: { mode: b.mode ?? s.look.mode, strength: b.strength ?? s.look.strength, padding: b.padding ?? s.look.padding }, sensitive: b.sensitive ?? s.sensitive }
+    s = { ...s, blurOff: b.none ?? s.blurOff, look: { mode: b.mode ?? s.look.mode, strength: b.strength ?? s.look.strength, padding: b.padding ?? s.look.padding } }
+    // The detection mode, when the part sets it (either key): extended wins over fast. Templates from before fast read "sensitive" alone.
+    if (b.sensitive !== undefined || b.fast !== undefined) s = { ...s, sensitive: b.sensitive === true, fast: b.sensitive !== true && b.fast === true }
+    if (b.sensitivity !== undefined) s = { ...s, sensitivity: Math.min(1, Math.max(0, b.sensitivity)) }
   }
   if (t.subs) {
     const p = t.subs
@@ -189,7 +197,7 @@ export function applyTemplate(t: Template, base: TemplateSettings): TemplateSett
 export function templateOf(s: TemplateSettings, id: string, name: string, keep: Set<TemplateCategory>): Template {
   return only({
     id, name, group: 'USER', builtIn: false,
-    blur: { none: s.blurOff, mode: s.look.mode, strength: s.look.strength, padding: s.look.padding, sensitive: s.sensitive },
+    blur: { none: s.blurOff, mode: s.look.mode, strength: s.look.strength, padding: s.look.padding, sensitive: s.sensitive, fast: s.fast && !s.sensitive, sensitivity: s.sensitivity },
     subs: { create: s.createSubs, language: CODE_OF[s.language ?? ''] ?? 'auto', translate: s.translate, style: { ...s.subStyle, show: undefined }, splitWords: s.split.words, splitChars: s.split.chars, burn: s.burn, saveSrt: s.saveSrt },
     voice: { voice: s.voice, denoise: s.denoise, enhance: s.enhance, loud: s.loud },
     cuts: { silences: s.cutSilences, minPauseMs: s.minPauseMs, fillers: s.cutFillers },
@@ -332,6 +340,9 @@ export function templateToJson(t: Template): Record<string, unknown> {
     if (b.strength !== undefined) j.strength = b.strength
     if (b.padding !== undefined) j.padding = b.padding
     if (b.sensitive !== undefined) j.sensitive = b.sensitive
+    // Older versions read "sensitive" alone: a fast template is normal detection there (never weaker).
+    if (b.fast !== undefined) j.fast = b.fast
+    if (b.sensitivity !== undefined) j.sensitivity = b.sensitivity
     o.blur = j
   }
   if (t.subs) {
@@ -372,13 +383,15 @@ export function templateToJson(t: Template): Record<string, unknown> {
 const bool = (v: unknown) => (typeof v === 'boolean' ? v : undefined)
 const int = (v: unknown) => (typeof v === 'number' && isFinite(v) ? Math.round(v) : undefined)
 const float = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : undefined)
+/** The sensitivity: within 0..1, up to the next 5% step (lib/sensitivity.ts). */
+const unit = (v: unknown) => (typeof v === 'number' && isFinite(v) ? roundUp(v) : undefined)
 
 /** A template from its JSON (the app's shape); null if [o] isn't one. */
 export function templateFromJson(o: any): Template | null {
   if (!o || typeof o !== 'object' || typeof o.id !== 'string' || !o.id) return null
   const t: Template = { id: o.id, name: typeof o.name === 'string' ? o.name : '', group: o.group === 'LOOK' ? 'LOOK' : 'USER', builtIn: false }
   if (o.blur && typeof o.blur === 'object') {
-    t.blur = { none: bool(o.blur.none), mode: MODE_IN[o.blur.mode], strength: float(o.blur.strength), padding: float(o.blur.padding), sensitive: bool(o.blur.sensitive) }
+    t.blur = { none: bool(o.blur.none), mode: MODE_IN[o.blur.mode], strength: float(o.blur.strength), padding: float(o.blur.padding), sensitive: bool(o.blur.sensitive), fast: bool(o.blur.fast), sensitivity: unit(o.blur.sensitivity) }
   }
   if (o.subs && typeof o.subs === 'object') {
     const s = o.subs

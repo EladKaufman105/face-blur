@@ -78,10 +78,10 @@ export function decodeYunet(o: YunetLevels, w: number, h: number, threshold: num
  * RetinaFace's faces [rf] and YuNet's [yn] as one list (the app's FaceDetector.detect):
  *  - a RetinaFace face that a YuNet face overlaps (IoU over 0.3) gets the noisy-or of both scores
  *    (YuNet's weighed 0.8);
- *  - a YuNet face of 0.6 or more that no RetinaFace face overlaps is added, at 0.85 of its score;
+ *  - a YuNet face of [yunetOnly] (0.6) or more that no RetinaFace face overlaps is added, at 0.85 of its score;
  *  - then NMS at 0.4. New objects: [rf] and [yn] aren't changed.
  */
-export function fuse(rf: Det[], yn: Det[]): Det[] {
+export function fuse(rf: Det[], yn: Det[], yunetOnly = 0.6): Det[] {
   const fused: Det[] = []
   const used = new Set<number>()
   for (const d of rf) {
@@ -95,7 +95,7 @@ export function fuse(rf: Det[], yn: Det[]): Det[] {
     fused.push({ ...d, score })
   }
   yn.forEach((y, j) => {
-    if (!used.has(j) && y.score >= 0.6 && rf.every((r) => iou(y, r) <= 0.3)) fused.push({ ...y, score: y.score * 0.85 })
+    if (!used.has(j) && y.score >= yunetOnly && rf.every((r) => iou(y, r) <= 0.3)) fused.push({ ...y, score: y.score * 0.85 })
   })
   return nmsIou(fused, 0.4)
 }

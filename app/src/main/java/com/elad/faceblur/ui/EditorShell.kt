@@ -360,6 +360,8 @@ internal fun EditorMessages(ctrl: EditorController, modifier: Modifier = Modifie
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Space.S),
     ) {
+        // Fast detection may have missed a face for a moment: said as long as the editor is open (as the web app's notice).
+        if (ctrl.session.settings.fast && !ctrl.session.subtitlesOnly) FastPill()
         if (ctrl.addMode) {
             Banner(t("הקש על הפנים שצריך לטשטש"), action = t("ביטול")) { ctrl.addMode = false }
         } else if (!ctrl.playing && ctrl.cutHere != null) {
@@ -420,6 +422,20 @@ private fun ProgressPill(text: String, progress: Float?, onStop: () -> Unit) {
             Text(text, style = MaterialTheme.typography.bodyMedium.tnum())
             TextButton(onClick = onStop) { Text(t("עצור")) }
         }
+    }
+}
+
+/** The editor's lasting word after fast detection (the full warning is on the ready and result screens). */
+@Composable
+private fun FastPill() {
+    Surface(shape = RoundedCornerShape(Radius.Panel), color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f), modifier = Modifier.testTag(Tags.FAST_NOTICE)) {
+        Text(
+            t("זיהוי מהיר: פנים קטנות או רחוקות עלולות להתפספס לרגע. כדאי לצפות בתוצאה."),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onTertiaryContainer,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = Space.M, vertical = Space.XS),
+        )
     }
 }
 

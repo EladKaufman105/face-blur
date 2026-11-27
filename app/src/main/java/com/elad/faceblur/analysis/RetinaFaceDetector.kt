@@ -67,8 +67,18 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
      *   every other detection, and not while a big face was seen in the one before. A big face
      *   is the one thing only the coarse pass is for, and the tracker fills the one detection
      *   in between. Never skipped on the CPU, where the fine pass is at most 960 px.
+     * @param pool when not null, also gets each pass's faces at [poolThreshold] (lower), decoded
+     *   from the same run of the model: the candidates of a sensitivity above 0 (see
+     *   [DetectTuning]). What is returned doesn't change with it.
      */
-    fun detect(bgr: Mat, threshold: Float, cpuSide: Int = CPU_FINE_SIDE, coarseMaySkip: Boolean = false): List<Det> {
+    fun detect(
+        bgr: Mat,
+        threshold: Float,
+        cpuSide: Int = CPU_FINE_SIDE,
+        coarseMaySkip: Boolean = false,
+        poolThreshold: Float = threshold,
+        pool: MutableList<Det>? = null,
+    ): List<Det> {
         val w = bgr.cols()
         val h = bgr.rows()
         val out = ArrayList<Det>()
@@ -76,8 +86,9 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
         val ih = max(32, (h / 32f).roundToInt() * 32)
         val fine = if (gpu?.supports(iw, ih) == true) max(w, h) else min(max(w, h), cpuSide)
         lastGpuCallUs = 0L
+        lastPoolUs = 0L
         val t0 = System.nanoTime()
-        run(bgr, fine, threshold, 0f, out)
+        run(bgr, fine, threshold, 0f, out, poolThreshold, pool)
         val t1 = System.nanoTime()
         lastFineUs = (t1 - t0) / 1000
         lastCoarseUs = 0L
@@ -85,21 +96,33 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
         val onGpu = fine == max(w, h) && gpu?.supports(iw, ih) == true
         val skip = coarseMaySkip && onGpu && out.isNotEmpty() && out.none { isBig(it.box, w, h) }
         if (!skip && fine > 800 && max(w, h) > COARSE_SIDE * 1.3f) {
-            run(bgr, COARSE_SIDE, threshold, COARSE_MIN_BOX, out)
+            run(bgr, COARSE_SIDE, threshold, COARSE_MIN_BOX, out, poolThreshold, pool)
             lastCoarseUs = (System.nanoTime() - t1) / 1000
         }
         return out
     }
 
-    /** Single pass on an image as is (used on verification crops). */
-    fun detectPlain(img: Mat, threshold: Float): List<Det> {
+    /**
+     * Single pass on an image as is (used on verification crops). [judge] false: a check that
+     * isn't the default detection's (a sensitivity's extra crops) neither vouches for nor
+     * strikes the GPU or fp16 (their decision stays what the default detection makes it): while
+     * they are still being checked, it runs on the CPU in fp32.
+     */
+    fun detectPlain(img: Mat, threshold: Float, judge: Boolean = true): List<Det> {
         val out = ArrayList<Det>()
-        run(img, max(img.cols(), img.rows()), threshold, 0f, out)
+        run(img, max(img.cols(), img.rows()), threshold, 0f, out, judge = judge)
         return out
     }
 
-    /** @param side long side to run at; @param minBox min box side (px at that size) to keep. */
-    private fun run(bgr: Mat, side: Int, threshold: Float, minBox: Float, out: MutableList<Det>) {
+    /** Of the last [detect], the time decoding the pool's faces (a sensitivity above 0), in microseconds. */
+    var lastPoolUs = 0L
+        private set
+
+    /**
+     * @param side long side to run at; @param minBox min box side (px at that size) to keep.
+     * @param pool when not null, also gets the faces at [poolThreshold] (see [detect]).
+     */
+    private fun run(bgr: Mat, side: Int, threshold: Float, minBox: Float, out: MutableList<Det>, poolThreshold: Float = threshold, pool: MutableList<Det>? = null, judge: Boolean = true) {
         val w = bgr.cols()
         val h = bgr.rows()
         val s = min(1f, side.toFloat() / max(w, h))
@@ -109,13 +132,30 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
             Imgproc.resize(bgr, resized, Size(iw.toDouble(), ih.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
             resized
         }
-        val (loc, conf) = forward(input, iw, ih, threshold, minBox)
+        val (loc, conf) = forward(input, iw, ih, threshold, minBox, judge)
         out += decode(loc, conf, iw, ih, threshold, minBox)
+        if (pool != null) {
+            val p0 = System.nanoTime()
+            pool += decode(loc, conf, iw, ih, poolThreshold, minBox)
+            lastPoolUs += (System.nanoTime() - p0) / 1000
+        }
     }
 
     /** The model's anchor offsets and scores for [input] ([iw] x [ih]): on the GPU when it can, else OpenCV. */
-    private fun forward(input: Mat, iw: Int, ih: Int, threshold: Float, minBox: Float): Pair<FloatArray, FloatArray> {
+    private fun forward(input: Mat, iw: Int, ih: Int, threshold: Float, minBox: Float, judge: Boolean = true): Pair<FloatArray, FloatArray> {
         val g = gpu
+        // Not the default detection's (see [detectPlain]): the trusted way, else the CPU's fp32, nothing judged.
+        if (!judge) {
+            if (g != null && g.supports(iw, ih) && g.active && g.trusted) {
+                val g0 = System.nanoTime()
+                val r = g.run(input, iw, ih)
+                lastGpuCallUs += (System.nanoTime() - g0) / 1000
+                if (r != null) return r
+            }
+            val h = half
+            val n16 = net16
+            return if (h != null && n16 != null && h.active && h.trusted) cpuForward(n16, input, iw, ih) else cpuForward(net, input, iw, ih)
+        }
         if (g != null && g.supports(iw, ih)) {
             val g0 = System.nanoTime()
             val r = g.run(input, iw, ih)

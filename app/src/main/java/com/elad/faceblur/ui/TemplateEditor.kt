@@ -344,7 +344,13 @@ private fun BlurEdit(p: BlurPart, onChange: (BlurPart) -> Unit) {
                 onStrength = { onChange(p.copy(strength = it)) },
                 onPadding = { onChange(p.copy(padding = it)) },
             )
-            SwitchRow(t("זיהוי מורחב"), p.sensitive ?: false) { onChange(p.copy(sensitive = it)) }
+            DetectionControls(
+                p.detect ?: com.elad.faceblur.analysis.DetectMode.NORMAL, p.sensitivity ?: 0f,
+                onDetect = { d ->
+                    onChange(p.copy(sensitive = d == com.elad.faceblur.analysis.DetectMode.EXTENDED, fast = d == com.elad.faceblur.analysis.DetectMode.FAST))
+                },
+                onSensitivity = { onChange(p.copy(sensitivity = it)) },
+            )
         }
     }
 }

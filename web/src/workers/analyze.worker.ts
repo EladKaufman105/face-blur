@@ -1,7 +1,7 @@
 // The analysis pass, off the main thread: decodes every frame (small), finds cuts, detects faces
 // on a regular subset of frames, then builds the face tracks and a thumbnail of each face.
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny'
-import { CPU_SIDE, FaceDetector, GPU_SIDE } from '../lib/detector'
+import { CPU_SIDE, FaceDetector, GPU_SIDE, LOW_SIDE } from '../lib/detector'
 import { DetectGate, FrameRate, Pacer, follow, fullRate, needRate, pace, runSide, type Timing } from '../lib/pace'
 import { CoverageMeter, type Coverage } from '../lib/coverage'
 import { YunetWorker } from '../lib/yunet-worker'
@@ -10,13 +10,14 @@ import { DetectorPool } from '../lib/detector-pool'
 import { CutDetector } from '../lib/cuts'
 import { track } from '../lib/tracker'
 import { lowConfidenceTracks } from '../lib/lowconf'
+import { FAST_RATE, modeOf, quantize, thresholds, widen, type DetectMode } from '../lib/sensitivity'
 import type { Det, Track } from '../lib/types'
 
-export type AnalyzeRequest = { file: File; sensitive: boolean; base: string; backend?: 'webgpu' | 'wasm'; /** How many CPU detectors to run side by side (default: by core count). */ workers?: number; /** For tests on localhost only (the page's ?detect=yunet:0,side:640,rate:5): detection pinned to these settings, no pacing. A tune weaker than the default marks the video reduced, with the thresholds as they are. */ tune?: Tune }
+export type AnalyzeRequest = { file: File; sensitive: boolean; /** Fast detection (5 a second; [sensitive] wins). */ fast?: boolean; /** 0..1: more faces blurred, never fewer (lib/sensitivity.ts). */ sensitivity?: number; base: string; backend?: 'webgpu' | 'wasm'; /** How many CPU detectors to run side by side (default: by core count). */ workers?: number; /** For tests on localhost only (the page's ?detect=yunet:0,side:640,rate:5): detection pinned to these settings, no pacing. A tune weaker than the default marks the video reduced, with the thresholds as they are. */ tune?: Tune }
 export type AnalyzeMessage =
   | { type: 'ready'; backend: string; width: number; height: number; duration: number; fps: number }
   | { type: 'progress'; done: number; total: number; preview?: ImageBitmap; dets?: Det[]; faces: number; backend: string; stats: AnalysisStats }
-  | { type: 'done'; times: Float64Array; width: number; height: number; fps: number; tracks: Track[]; cuts: number[]; lowConfidence: number; /** Detection ran lighter than the app's (see lib/pace.ts). */ reduced: boolean; thumbs: (ImageBitmap | null)[]; backend: string; ms: number }
+  | { type: 'done'; times: Float64Array; width: number; height: number; fps: number; tracks: Track[]; cuts: number[]; lowConfidence: number; /** Detection ran lighter than the app's (see lib/pace.ts). */ reduced: boolean; /** Fast detection ran (its notice, a batch's flag). */ fast: boolean; /** Extended detection ran. */ sensitive: boolean; sensitivity: number; thumbs: (ImageBitmap | null)[]; backend: string; ms: number }
   | { type: 'error'; code: string; message: string }
   | { type: 'log'; message: string }
 
@@ -39,8 +40,12 @@ self.onmessage = async (e: MessageEvent<AnalyzeRequest>) => {
   }
 }
 
-async function analyze({ file, sensitive, base, backend, workers, tune }: AnalyzeRequest) {
+async function analyze({ file, sensitive, fast: fastAsked, sensitivity: sensAsked, base, backend, workers, tune }: AnalyzeRequest) {
   const t0 = performance.now()
+  // Normal, extended or fast (extended wins); the sensitivity on its 5% steps.
+  const mode: DetectMode = modeOf(sensitive, fastAsked)
+  const fast = mode === 'fast'
+  const sensitivity = quantize(sensAsked ?? 0)
   log('start')
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
   const video = await input.getPrimaryVideoTrack()
@@ -84,6 +89,9 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   const ynWorker = !pool && yunet ? await YunetWorker.create(yunet) : null
   const detector = pool ? null : await FaceDetector.create(base + 'models/', backend, undefined, yunet, ynWorker).catch((e) => { ynWorker?.close(); throw e })
   if (tune?.side && detector) detector.side = tune.side
+  // Fast detection on the CPU: the fine pass at 640 px from the start (the app's LOW_SIDE), on frames decoded at 960 (crops see those).
+  else if (fast && detector && detector.backend === 'wasm') detector.side = LOW_SIDE
+  if (sensitivity > 0) detector?.setSensitivity(sensitivity)
   const backendNow = () => detector?.backend ?? 'wasm'
   // Why detection isn't on the GPU, for the stats panel.
   const noGpu = () => detector?.fellBack ?? (backend === 'wasm' ? 'forced with ?backend=wasm' : !gpu ? 'no WebGPU in this browser' : 'no WebGPU adapter')
@@ -93,7 +101,7 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
 
   // Frames are decoded at the detector's starting size (it may lower it later): the app's 1280 px
   // on the GPU, 960 px on the CPU.
-  const startSide = tune?.side ?? detector?.side ?? (cpuOnly ? CPU_SIDE : GPU_SIDE)
+  const startSide = tune?.side ?? (fast && detector?.backend === 'wasm' ? CPU_SIDE : detector?.side) ?? (cpuOnly ? CPU_SIDE : GPU_SIDE)
   const side = Math.min(Math.max(width, height), startSide)
   const s = side / Math.max(width, height)
   const iw = Math.max(32, Math.round(width * s / 32) * 32)
@@ -108,11 +116,14 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   // face. Also when the frames really detected fall short (lib/coverage.ts), whatever the rate.
   // In wide detection the full rate is the frame rate measured as the frames come (the nominal one
   // can be far off, either way): every frame, or the pace's rate under it (see follow()).
-  let maxRate = sensitive ? nominalFps : fullRate(nominalFps)
+  // Fast detection: 5 a second, never fewer (the pace's floor is the full rate then).
+  let maxRate = sensitive ? nominalFps : fast ? FAST_RATE : fullRate(nominalFps)
   let rate = tune?.rate ? Math.min(maxRate, tune.rate) : maxRate
   const frameRate = new FrameRate(nominalFps)
   let all = sensitive && !tune?.rate
-  let fineSide = startSide
+  // The fine pass's long side; fast detection on the CPU starts it at 640 px.
+  const fastCpuSide = () => fast && backendNow() === 'wasm' && !tune?.side
+  let fineSide = fastCpuSide() ? LOW_SIDE : startSide
   // The long side of the frames detection gets: a fine pass set bigger than that changes nothing.
   const frameSide = Math.max(iw, ih)
   let reduced = false
@@ -145,14 +156,17 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   const times: number[] = []
   const cutList: number[] = []
   const dets = new Map<number, Det[]>()
+  // A sensitivity above 0: the faces only the lower thresholds find, per frame (lib/sensitivity.ts).
+  const extraDets = new Map<number, Det[]>()
   let lastPost = 0
   let lastDets: Det[] = []
   // Which frames get a detection: the rate a second on a fixed schedule (lib/pace.ts), and every
   // frame develop's gate (at most 15 a second, or the nominal rate when sensitive) would have taken
   // at that rate; a cut's frame always; every frame in wide detection at its full rate. What that
   // really covered is measured as it goes.
-  const gate = new DetectGate(sensitive ? nominalFps : 15)
-  const meter = new CoverageMeter({ needAt: (f) => needRate(f, sensitive, maxRate) })
+  // Fast detection has no old gate to keep (no detection before it ran at 5 a second): the schedule alone.
+  const gate = new DetectGate(fast ? undefined : sensitive ? nominalFps : 15)
+  const meter = new CoverageMeter({ needAt: (f) => needRate(f, sensitive, maxRate, fast) })
   let cover: Coverage = meter.result()
   // The smallest fine pass that ran (its long side, px), recorded as each detection starts.
   let minSide = Infinity
@@ -160,7 +174,7 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   let found = 0
   let decodeWait = 0, detectMs = 0, cutMs = 0, poolWait = 0
   // Where a detection's result goes (in the pool, in any order), and the pace follows from it.
-  const recordDets = (i: number, got: Det[], tm: Timing, yunetOk = true) => {
+  const recordDets = (i: number, got: Det[], tm: Timing, yunetOk = true, extra: Det[] = []) => {
     const ms = tm.ms
     // YuNet lost on the way (a session that fails to run): from here on it is the reduced mode.
     if (!yunetOk || detector?.yunetMissing) {
@@ -170,18 +184,24 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
     lastDets = got
     detectMs += ms
     dets.set(i, got)
+    if (extra.length > 0) extraDets.set(i, extra)
     found = Math.max(found, got.filter((d) => d.score >= 0.6).length)
     // After the first (warm-up) detections, every 4 detections: the pace that keeps analysis
     // near the video's own speed (see lib/pace.ts). The GPU's check against the CPU is taken out
     // of a detection's time (it runs until faces are seen: on a video with none, all along).
     spent.push(ms)
     if (detector) fineSide = Math.min(fineSide, detector.side)
+    // Fast detection that left the GPU (it falls back at 960): 640 px, as it would have started on the CPU.
+    if (fastCpuSide() && fineSide > LOW_SIDE) {
+      fineSide = LOW_SIDE
+      if (detector) detector.side = LOW_SIDE
+    }
     const w = pacer.add(tm)
     if (!tune && w) {
       const { recentMs: recent, rfMs } = w
       const gpuNow = backendNow() === 'webgpu'
-      const startNow = gpuNow ? GPU_SIDE : CPU_SIDE
-      const p = pace({ ...w, workers: pool?.size ?? 1, maxRate, side: fineSide, startSide: startNow, rate, gpu: gpuNow, frameSide, frameRate: frameRate.fps, nominal: nominalFps })
+      const startNow = gpuNow ? GPU_SIDE : fast ? LOW_SIDE : CPU_SIDE
+      const p = pace({ ...w, workers: pool?.size ?? 1, maxRate, side: fineSide, startSide: startNow, rate, gpu: gpuNow, frameSide, frameRate: frameRate.fps, nominal: nominalFps, sizeRate: fast ? FAST_RATE : undefined })
       rate = p.rate
       if (p.side !== fineSide) {
         fineSide = Math.min(p.side, startNow, startSide)
@@ -202,6 +222,7 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
       backend: backendNow(), precision, noGpu: backendNow() === 'wasm' ? noGpu() : null,
       side: fineSide, rate, workers: pool?.size ?? 1, cores,
       measured: { rate: cover.rate, minWindow: cover.minWindow, need: cover.need, gapFrames: cover.maxGapFrames, gapS: cover.maxGapS, minSide: ranSide(), yunet: yunetOn },
+      mode, sensitivity,
     }
   }
   const statsNow = () => history.add(snapshot())
@@ -235,12 +256,12 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
         const tp = performance.now()
         await pool.free()
         poolWait += performance.now() - tp
-        await pool.detect(canvas, i, recordDets, fineSide, lowThr)
+        await pool.detect(canvas, i, (id, got, tm, ok, extra) => recordDets(id, got, tm, ok, extra), fineSide, lowThr, sensitivity)
       } else {
         const td = performance.now()
         const checkBefore = detector!.stats.check
         const got = await detector!.detect(canvas)
-        recordDets(i, got, { ms: performance.now() - td, ...detector!.last, checkMs: detector!.stats.check - checkBefore })
+        recordDets(i, got, { ms: performance.now() - td, ...detector!.last, checkMs: detector!.stats.check - checkBefore }, true, detector!.lastExtras)
       }
     }
     const now = performance.now()
@@ -268,11 +289,23 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   for (let i = 1; i < n; i++) if (times[i] > times[i - 1]) diffs.push(times[i] - times[i - 1])
   diffs.sort((a, b) => a - b)
   const fps = Math.min(240, Math.max(5, diffs.length ? 1 / diffs[diffs.length >> 1] : nominalFps))
-  const tracks = track(n, dets, cutList, fps, height / width, sensitive)
+  let tracks = track(n, dets, cutList, fps, height / width, sensitive)
+  // A sensitivity above 0: the default tracks as they are, and step by step the faces the lower thresholds add (lib/sensitivity.ts).
+  if (sensitivity > 0 && extraDets.size > 0) {
+    tracks = widen(tracks, sensitivity, (level) => {
+      const thr = thresholds(level)
+      const all = new Map(dets)
+      for (const [i, extra] of extraDets) {
+        const more = extra.filter((d) => d.score >= thr.cut)
+        if (more.length) all.set(i, [...(all.get(i) ?? []), ...more])
+      }
+      return track(n, all, cutList, fps, height / width, sensitive, thr)
+    })
+  }
   // The result, and what detection really covered: D (detections a second within shots, and the
   // fewest in a 2 s window against the need), G (the longest gap within a shot), S (the smallest
   // fine pass that ran, YuNet).
-  log(`result detections ${dets.size}, faces ${faces50}, tracks ${tracks.length}, reduced ${reduced}, yunet ${(pool?.stats() ?? detector!.stats).yunetFaces}; ${coverageText(cover, ranSide(), yunetOn)}`)
+  log(`result detections ${dets.size}, faces ${faces50}, tracks ${tracks.length}, reduced ${reduced}, yunet ${(pool?.stats() ?? detector!.stats).yunetFaces}; ${coverageText(cover, ranSide(), yunetOn)}; mode ${mode}, sensitivity ${sensitivity}, extra ${[...extraDets.values()].reduce((a, e) => a + e.length, 0)}`)
 
   // A square thumbnail of each face, from its clearest frame. The frames are decoded in one
   // pass in time order (each packet at most once): fetching them one by one, each from its
@@ -299,6 +332,6 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
       thumbs[w.i] = out.transferToImageBitmap()
     }
   }
-  const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, cuts: cutList, lowConfidence: lowConfidenceTracks(tracks, dets), reduced, thumbs, backend: backendNow(), ms: performance.now() - t0 }
+  const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, cuts: cutList, lowConfidence: lowConfidenceTracks(tracks, dets), reduced, fast, sensitive: mode === 'extended', sensitivity, thumbs, backend: backendNow(), ms: performance.now() - t0 }
   post(msg, [msg.times.buffer, ...tracks.map((t) => t.boxes.buffer), ...thumbs.filter((b): b is ImageBitmap => !!b)])
 }

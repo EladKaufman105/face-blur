@@ -23,6 +23,9 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
     private val retina = RetinaFaceDetector(retinaPath, gpu, half)
     private var yunet: FaceDetectorYN? = null
     private var yunetSize = Size(0.0, 0.0)
+    // YuNet at the lower pool threshold, for a sensitivity above 0 (made only then).
+    private var yunetPool: FaceDetectorYN? = null
+    private var yunetPoolSize = Size(0.0, 0.0)
     private val faces = Mat()
     private val row = FloatArray(15)
     private val crop = Mat()
@@ -43,6 +46,16 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
         private set
     var lastCrops = 0
         private set
+    /** The last [detect] call's extra detections, for a sensitivity above 0 (see [DetectTuning]); else empty. */
+    var lastExtras: List<Det> = emptyList()
+        private set
+    /**
+     * The last [detect] call's time on a sensitivity's extra work, in microseconds: the pool's
+     * decoding, YuNet's whole run (see [DetectTuning.blockedWithoutExtras]), the pool's fusion and
+     * the extra crops. FaceAnalyzer keeps it out of the pacing.
+     */
+    var lastExtraUs = 0L
+        private set
 
     /**
      * @param lite a slow device: no YuNet, and crops only for uncertain faces.
@@ -51,38 +64,36 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
      * @param cpuSide the fine pass's long side when it runs on the CPU.
      * @param coarseMaySkip the coarse pass may be left out when the GPU's fine pass found only
      *   small faces (see [RetinaFaceDetector.detect]).
+     * @param sensitivity 0..1 (see [DetectTuning]): above 0, the faces that only lower thresholds
+     *   find are left in [lastExtras] (re-checked on a crop too; their time in [lastExtraUs]).
+     *   What is returned is the same whatever it is.
+     *   YuNet runs once either way: above 0 from the pool's threshold, its default faces those
+     *   over 0.4 of them (see [yunetDefault]).
      *
      * Afterwards the time each part took is in the `last...` properties.
      */
-    fun detect(bgr: Mat, lite: Boolean = false, followed: List<Box> = emptyList(), cpuSide: Int = RetinaFaceDetector.CPU_FINE_SIDE, coarseMaySkip: Boolean = false): List<Det> {
+    fun detect(
+        bgr: Mat,
+        lite: Boolean = false,
+        followed: List<Box> = emptyList(),
+        cpuSide: Int = RetinaFaceDetector.CPU_FINE_SIDE,
+        coarseMaySkip: Boolean = false,
+        sensitivity: Float = 0f,
+    ): List<Det> {
         val w = bgr.cols()
         val h = bgr.rows()
-        val rf = retina.detect(bgr, RF_THRESHOLD, cpuSide, coarseMaySkip)
+        val more = sensitivity > 0f
+        val rfPool = if (more) ArrayList<Det>() else null
+        val rf = retina.detect(bgr, RF_THRESHOLD, cpuSide, coarseMaySkip, DetectTuning.POOL_RF, rfPool)
         lastFineUs = retina.lastFineUs
         lastCoarseUs = retina.lastCoarseUs
         lastGpuCallUs = retina.lastGpuCallUs
         val y0 = System.nanoTime()
-        val yn = if (lite) emptyList() else runYunet(bgr, w, h)
+        val ynPool = if (!more || lite) emptyList() else runYunet(bgr, w, h, pool = true)
+        val yn = if (lite) emptyList() else if (more) yunetDefault(ynPool) else runYunet(bgr, w, h)
         lastYunetUs = (System.nanoTime() - y0) / 1000
 
-        val fused = ArrayList<Det>()
-        val usedYn = HashSet<Int>()
-        for (d in rf) {
-            var score = d.score
-            yn.forEachIndexed { j, y ->
-                if (Geometry.iou(d.box, y.box) > 0.3f) {
-                    score = 1f - (1f - score) * (1f - y.score * 0.8f)
-                    usedYn += j
-                }
-            }
-            fused += Det(d.box, score)
-        }
-        yn.forEachIndexed { j, y ->
-            if (j !in usedYn && y.score >= 0.6f && rf.none { Geometry.iou(y.box, it.box) > 0.3f }) {
-                fused += Det(y.box, y.score * 0.85f)
-            }
-        }
-        val kept = Geometry.nmsIou(fused, 0.4f)
+        val kept = DetectTuning.fuse(rf, yn)
         var cropUs = 0L
         var crops = 0
         for (d in kept) {
@@ -94,12 +105,27 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
             cropUs += (System.nanoTime() - c0) / 1000
             crops++
         }
+        // A sensitivity above 0: the pool's faces that aren't one of those, from the cut up, re-checked too (the likeliest first).
+        // Their crops don't vouch for nor strike the GPU or fp16: those decide as at sensitivity 0.
+        val e0 = System.nanoTime()
+        lastExtras = if (rfPool == null) emptyList() else {
+            val pool = DetectTuning.fuse(rfPool, ynPool, DetectTuning.POOL_YUNET_ONLY)
+            DetectTuning.extras(kept, pool, DetectTuning.thresholds(sensitivity).cut).also { extra ->
+                for (d in DetectTuning.extraChecks(extra)) {
+                    val c0 = System.nanoTime()
+                    d.verify = verify(bgr, d.box, judge = false)
+                    cropUs += (System.nanoTime() - c0) / 1000
+                    crops++
+                }
+            }
+        }
+        lastExtraUs = if (rfPool == null) 0L else retina.lastPoolUs + lastYunetUs + (System.nanoTime() - e0) / 1000
         lastCropUs = cropUs
         lastCrops = crops
         return kept
     }
 
-    private fun runYunet(bgr: Mat, fw: Int, fh: Int): List<Det> {
+    private fun runYunet(bgr: Mat, fw: Int, fh: Int, pool: Boolean = false): List<Det> {
         val s = minOf(1f, YUNET_SIDE.toFloat() / max(fw, fh))
         val w = max(16, (fw * s).toInt())
         val h = max(16, (fh * s).toInt())
@@ -108,9 +134,17 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
             yunetInput
         } else bgr
         val size = Size(w.toDouble(), h.toDouble())
-        val net = yunet?.takeIf { yunetSize == size } ?: FaceDetectorYN.create(yunetPath, "", size, 0.4f, 0.3f, 5000).also {
-            yunet = it
-            yunetSize = size
+        val net = if (pool) {
+            // topK above the model's anchors (8,400 at 640 x 640): nothing is cut before the NMS (see [yunetDefault]).
+            yunetPool?.takeIf { yunetPoolSize == size } ?: FaceDetectorYN.create(yunetPath, "", size, DetectTuning.POOL_YUNET, 0.3f, POOL_TOP_K).also {
+                yunetPool = it
+                yunetPoolSize = size
+            }
+        } else {
+            yunet?.takeIf { yunetSize == size } ?: FaceDetectorYN.create(yunetPath, "", size, YUNET_THRESHOLD, 0.3f, 5000).also {
+                yunet = it
+                yunetSize = size
+            }
         }
         net.detect(input, faces)
         val n = if (faces.empty()) 0 else faces.rows()
@@ -125,8 +159,20 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
         return out
     }
 
+    /**
+     * YuNet's default faces (score threshold 0.4) from its faces at the pool's lower threshold, as
+     * if it had run at 0.4: OpenCV's NMSBoxes keeps the candidates over the threshold (strictly),
+     * stable-sorted by score, highest first, and keeps each one that overlaps no face kept
+     * before it. Candidates under 0.4 come after every one over it, so they can't change which of
+     * those are kept, nor their order: the faces over 0.4 of the pool's are the same faces, in the
+     * same order. (The default net's topK of 5000 never cuts: the pool's net has none below the
+     * anchors' number, and over 5000 candidates over 0.4 would be more faces, never fewer.)
+     */
+    private fun yunetDefault(pool: List<Det>): List<Det> = pool.filter { it.score > YUNET_THRESHOLD }
+
     /** Re-detect on a square crop twice the box size, scaled to 192 px. */
-    private fun verify(bgr: Mat, b: Box): Float {
+    /** [judge] false: a sensitivity's extra crop, which leaves the GPU's and fp16's checks alone (see [RetinaFaceDetector.detectPlain]). */
+    private fun verify(bgr: Mat, b: Box, judge: Boolean = true): Float {
         val w = bgr.cols()
         val h = bgr.rows()
         val cx = b.cx * w
@@ -142,7 +188,7 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
         m.release()
         var best = 0f
         val s = VERIFY_SIDE.toFloat()
-        for (d in retina.detectPlain(crop, 0.05f)) {
+        for (d in retina.detectPlain(crop, 0.05f, judge)) {
             if (abs(d.box.cx * s - s / 2) < s * 0.25f && abs(d.box.cy * s - s / 2) < s * 0.25f && d.box.w * s > s * 0.2f) {
                 best = max(best, d.score)
             }
@@ -156,6 +202,7 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
         crop.release()
         yunetInput.release()
         yunet = null
+        yunetPool = null
     }
 
     companion object {
@@ -165,5 +212,7 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
         /** A face this sure counts as strong evidence by itself (see [OfflineTracker]). */
         const val CLEAR = 0.8f
         private const val YUNET_SIDE = 640
+        private const val YUNET_THRESHOLD = 0.4f
+        private const val POOL_TOP_K = 20000
     }
 }

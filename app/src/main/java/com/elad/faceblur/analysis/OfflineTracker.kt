@@ -26,7 +26,13 @@ import kotlin.math.roundToInt
  * Coordinates are "width units": x and w as a fraction of the frame width, y and h scaled by
  * the frame aspect ratio so both axes have the same unit.
  */
-class OfflineTracker(private val fps: Float, private val aspect: Float, private val sensitive: Boolean = false) {
+class OfflineTracker(
+    private val fps: Float,
+    private val aspect: Float,
+    private val sensitive: Boolean = false,
+    /** The score thresholds: the defaults, or lower ones for a sensitivity above 0 (see [DetectTuning]). */
+    private val thr: Thresholds = DetectTuning.DEFAULT,
+) {
 
     private class SDet(val x: Float, val y: Float, val w: Float, val h: Float, val score: Float, val verify: Float)
 
@@ -69,7 +75,7 @@ class OfflineTracker(private val fps: Float, private val aspect: Float, private 
         val active = ArrayList<Tracklet>()
         for (i in s0 until s1) {
             val raw = dets[i] ?: continue
-            val ds = raw.filter { it.score >= DET_THRESHOLD }.map {
+            val ds = raw.filter { it.score >= thr.cut }.map {
                 SDet(it.box.cx - offX[i], it.box.cy * aspect - offY[i], it.box.w, it.box.h * aspect, it.score, it.verify)
             }
             active.removeAll { i - it.last > maxGap }
@@ -107,7 +113,7 @@ class OfflineTracker(private val fps: Float, private val aspect: Float, private 
                 p.t.det[i] = ds[p.di]
             }
             ds.forEachIndexed { di, d ->
-                if (di in usedD || d.score < BIRTH_THRESHOLD) return@forEachIndexed
+                if (di in usedD || d.score < thr.birth) return@forEachIndexed
                 val t = Tracklet(s0, s1)
                 t.det[i] = d
                 out += t
@@ -118,14 +124,14 @@ class OfflineTracker(private val fps: Float, private val aspect: Float, private 
     }
 
     private fun accept(t: Tracklet): Boolean {
-        val strong = t.det.values.count { it.score >= STRONG }
-        val verified = t.det.values.count { it.verify >= VERIFIED }
+        val strong = t.det.values.count { it.score >= thr.strong }
+        val verified = t.det.values.count { it.verify >= thr.verified }
         // Sensitive mode takes weaker evidence: more faces covered, more needless blurs.
         if (sensitive) return strong >= 3 || verified >= 1
         // A very short tracklet needs two crisp crop confirmations: seats of trousers and
         // backs of soldiers walking away fool both detectors for a few frames, but don't
         // verify as cleanly as even tiny real faces.
-        if (t.det.size < SHORT_N) return t.det.values.count { it.verify >= SHORT_VERIFIED } >= 2
+        if (t.det.size < SHORT_N) return t.det.values.count { it.verify >= thr.shortVerified } >= 2
         return strong >= 4 || verified >= 2 || (verified >= 1 && strong >= 2)
     }
 
@@ -278,12 +284,8 @@ class OfflineTracker(private val fps: Float, private val aspect: Float, private 
             return out
         }
 
-        private const val DET_THRESHOLD = 0.4f
-        private const val BIRTH_THRESHOLD = 0.45f
-        private const val STRONG = 0.6f
-        private const val VERIFIED = 0.5f
+        // The score thresholds (0.4 detection, 0.45 birth, 0.6 strong, 0.5 verified, 0.9 short verified) are DetectTuning.DEFAULT.
         private const val SHORT_N = 4
-        private const val SHORT_VERIFIED = 0.9f
         private const val MAX_GAP_S = 0.7f
         private const val GATE = 0.6f
         private const val GATE_PER_S = 1.5f

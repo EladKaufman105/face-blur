@@ -314,6 +314,7 @@ fun MainScreen(vm: MainViewModel) {
                                 icon = AppIcons.Face,
                                 color = Feature.FACES.tint,
                             )
+                            if (s.fast) FastDetectionWarning()
                         }
                         is UiState.AudioDone -> {
                             val context = androidx.compose.ui.platform.LocalContext.current
@@ -603,7 +604,9 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onHome: () -> U
         }
     }
     val actions: @Composable () -> Unit = {
-            Text(
+            if (state.fast) {
+                FastDetectionWarning()
+            } else Text(
                 if (state.subsOnly) {
                     t("כדאי לעבור על הכתוביות לפני פרסום: זיהוי דיבור ותרגום אוטומטיים עלולים לטעות.")
                 } else {

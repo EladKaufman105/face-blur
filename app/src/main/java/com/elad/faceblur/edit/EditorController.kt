@@ -278,7 +278,7 @@ class EditorController(
     fun setBlur(mode: BlurMode = session.settings.mode, strength: Float = session.settings.strength, padding: Float = session.settings.padding) {
         val s = session.settings
         if (mode == s.mode && strength == s.strength && padding == s.padding) return
-        session.settings = Settings(mode, strength, padding, s.sensitive)
+        session.settings = Settings(mode, strength, padding, s.sensitive, s.fast, s.sensitivity)
         rebuildPreview()
         if (!playing) refresher()
     }

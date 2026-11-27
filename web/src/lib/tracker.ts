@@ -10,13 +10,21 @@
 // Coordinates inside are "width units": x and w as a fraction of the width, y and h scaled by
 // the aspect ratio so both axes share the unit.
 import type { Det, Track } from './types'
+// With the extension: tests/fusion.cjs runs it in Node as it is.
+import { DEFAULT_THRESHOLDS, type Thresholds } from './sensitivity.ts'
 
 interface SDet { x: number; y: number; w: number; h: number; score: number; verify: number }
 
 class Tracklet {
   det = new Map<number, SDet>()
   keys: number[] = []
-  constructor(readonly shotStart: number, readonly shotEnd: number) {}
+  readonly shotStart: number
+  readonly shotEnd: number
+  // Plain fields (no parameter properties): tests/fusion.cjs runs this file in Node as it is.
+  constructor(shotStart: number, shotEnd: number) {
+    this.shotStart = shotStart
+    this.shotEnd = shotEnd
+  }
   add(i: number, d: SDet) {
     if (!this.det.has(i)) this.keys.push(i)
     this.det.set(i, d)
@@ -30,12 +38,9 @@ class Tracklet {
 }
 
 /** A detection under this score is no evidence of a face to the tracker (the detector re-checks only faces from here). */
-export const DET_THRESHOLD = 0.4
-const BIRTH_THRESHOLD = 0.45
-const STRONG = 0.6
-const VERIFIED = 0.5
+export const DET_THRESHOLD = DEFAULT_THRESHOLDS.cut
+// The other score thresholds (birth 0.45, strong 0.6, verified 0.5, short verified 0.9) are DEFAULT_THRESHOLDS (lib/sensitivity.ts).
 const SHORT_N = 4
-const SHORT_VERIFIED = 0.9
 const MAX_GAP_S = 0.7
 const GATE = 0.6
 const GATE_PER_S = 1.5
@@ -47,12 +52,13 @@ const EXTEND_S = 0.25
 const SIGMA_POS_S = 0.025
 const SIGMA_SIZE_S = 0.2
 
-export function track(n: number, dets: Map<number, Det[]>, cuts: number[], fps: number, aspect: number, sensitive: boolean): Track[] {
+/** [thr]: the score thresholds, the defaults or lower ones for a sensitivity above 0 (lib/sensitivity.ts). */
+export function track(n: number, dets: Map<number, Det[]>, cuts: number[], fps: number, aspect: number, sensitive: boolean, thr: Readonly<Thresholds> = DEFAULT_THRESHOLDS): Track[] {
   if (n === 0) return []
   const bounds = [0, ...[...new Set(cuts.filter((c) => c > 0 && c < n))].sort((a, b) => a - b), n]
   const all: Tracklet[] = []
-  for (let s = 0; s < bounds.length - 1; s++) all.push(...link(bounds[s], bounds[s + 1], dets, fps, aspect))
-  const accepted = merge(all.filter((t) => accept(t, sensitive)), all, fps)
+  for (let s = 0; s < bounds.length - 1; s++) all.push(...link(bounds[s], bounds[s + 1], dets, fps, aspect, thr))
+  const accepted = merge(all.filter((t) => accept(t, sensitive, thr)), all, fps)
   return accepted.map((t, id) => {
     const filled = fill(t, fps, aspect)
     const keys = [...filled.keys()].sort((a, b) => a - b)
@@ -63,7 +69,7 @@ export function track(n: number, dets: Map<number, Det[]>, cuts: number[], fps: 
   })
 }
 
-function link(s0: number, s1: number, dets: Map<number, Det[]>, fps: number, aspect: number): Tracklet[] {
+function link(s0: number, s1: number, dets: Map<number, Det[]>, fps: number, aspect: number, thr: Readonly<Thresholds>): Tracklet[] {
   const maxGap = Math.round(MAX_GAP_S * fps)
   const predCap = Math.floor(0.3 * fps)
   const out: Tracklet[] = []
@@ -71,7 +77,7 @@ function link(s0: number, s1: number, dets: Map<number, Det[]>, fps: number, asp
   for (let i = s0; i < s1; i++) {
     const raw = dets.get(i)
     if (!raw) continue
-    const ds: SDet[] = raw.filter((d) => d.score >= DET_THRESHOLD).map((d) => ({ x: d.cx, y: d.cy * aspect, w: d.w, h: d.h * aspect, score: d.score, verify: d.verify }))
+    const ds: SDet[] = raw.filter((d) => d.score >= thr.cut).map((d) => ({ x: d.cx, y: d.cy * aspect, w: d.w, h: d.h * aspect, score: d.score, verify: d.verify }))
     active = active.filter((t) => i - t.last <= maxGap)
     const pairs: { cost: number; di: number; t: Tracklet }[] = []
     ds.forEach((d, di) => {
@@ -105,7 +111,7 @@ function link(s0: number, s1: number, dets: Map<number, Det[]>, fps: number, asp
       p.t.add(i, ds[p.di])
     }
     ds.forEach((d, di) => {
-      if (usedD.has(di) || d.score < BIRTH_THRESHOLD) return
+      if (usedD.has(di) || d.score < thr.birth) return
       const t = new Tracklet(s0, s1)
       t.add(i, d)
       out.push(t)
@@ -115,12 +121,12 @@ function link(s0: number, s1: number, dets: Map<number, Det[]>, fps: number, asp
   return out
 }
 
-function accept(t: Tracklet, sensitive: boolean): boolean {
+function accept(t: Tracklet, sensitive: boolean, thr: Readonly<Thresholds>): boolean {
   const v = [...t.det.values()]
-  const strong = v.filter((d) => d.score >= STRONG).length
-  const verified = v.filter((d) => d.verify >= VERIFIED).length
+  const strong = v.filter((d) => d.score >= thr.strong).length
+  const verified = v.filter((d) => d.verify >= thr.verified).length
   if (sensitive) return strong >= 3 || verified >= 1
-  if (v.length < SHORT_N) return v.filter((d) => d.verify >= SHORT_VERIFIED).length >= 2
+  if (v.length < SHORT_N) return v.filter((d) => d.verify >= thr.shortVerified).length >= 2
   return strong >= 4 || verified >= 2 || (verified >= 1 && strong >= 2)
 }
 

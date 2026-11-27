@@ -71,6 +71,8 @@ export interface PaceIn {
    * keeps a bigger frame where that detection took a smaller one and more frames, nor the reverse.
    */
   nominal?: number
+  /** Fast detection: the rate the frame's size is judged against is at most this (5 a second), so the frame isn't shrunk to chase 15. */
+  sizeRate?: number
 }
 
 export interface Pace {
@@ -104,10 +106,11 @@ export const APP_SHARE = 0.97
  * The fewest detections a second, measured (lib/coverage.ts), that still count as full detection
  * where the frames come at [fps] (the frame rate measured, not the nominal one): 80% of the full
  * rate [maxRate] (at most of the frames), and in normal detection no more than 97% of the app's
- * own cadence at [fps]; wide (every frame): 80% of the frames.
+ * own cadence at [fps]; wide (every frame): 80% of the frames; [fast] (maxRate 5 a second): 80% of
+ * that, at most of the frames (4 a second).
  */
-export const needRate = (fps: number, sensitive: boolean, maxRate = sensitive ? fps : fullRate(fps)) =>
-  sensitive ? FULL_SHARE * fps : Math.min(FULL_SHARE * Math.min(maxRate, fps), APP_SHARE * appRate(fps))
+export const needRate = (fps: number, sensitive: boolean, maxRate = sensitive ? fps : fullRate(fps), fast = false) =>
+  sensitive ? FULL_SHARE * fps : fast ? FULL_SHARE * Math.min(maxRate, fps) : Math.min(FULL_SHARE * Math.min(maxRate, fps), APP_SHARE * appRate(fps))
 
 /** How far before its due time a frame still counts as due (s): timestamps rounded to the millisecond (WebM) land up to 0.5 ms early. */
 export const GATE_SLACK_S = 1e-3
@@ -225,7 +228,7 @@ export function oldRate(i: PaceIn): number {
 export function pace(i: PaceIn): Pace {
   const eff = (s: number) => runSide(s, i.frameSide)
   // The rate the frame's size is judged against: no more than the video has frames (a 10 fps clip needs 10 a second, not 15); with the nominal frame rate, as before (see [nominal]).
-  const target = i.nominal !== undefined ? Math.min(SIZE_RATE, i.nominal) : Math.min(i.maxRate, SIZE_RATE, i.frameRate ?? Infinity)
+  const target = Math.min(i.nominal !== undefined ? Math.min(SIZE_RATE, i.nominal) : Math.min(i.maxRate, SIZE_RATE, i.frameRate ?? Infinity), i.sizeRate ?? Infinity)
   const wanted = (BUDGET_MS * i.workers) / Math.max(1, i.recentMs)
   const floor = oldRate(i)
   const out = (rate: number, side = i.side): Pace => {
@@ -254,12 +257,17 @@ export function pace(i: PaceIn): Pace {
   return out(clamp(wanted, Math.min(MIN_RATE, i.maxRate), i.maxRate))
 }
 
-/** A detection's times (ms): whole, RetinaFace's passes (fine + coarse), its fine pass; and the GPU's check against the CPU inside it, if it ran. */
+/**
+ * A detection's times (ms): whole, RetinaFace's passes (fine + coarse), its fine pass; and the GPU's check against the CPU inside
+ * it, if it ran, and a sensitivity's extra work (lib/sensitivity.ts), both left out of the pace: a sensitivity never makes the
+ * default detection lighter.
+ */
 export interface Timing {
   ms: number
   rfMs: number
   fineMs: number
   checkMs?: number
+  extraMs?: number
 }
 
 /**
@@ -282,7 +290,7 @@ export class Pacer {
   /** The means when [t] completes a window, else null. */
   add(t: Timing): { recentMs: number; rfMs: number; fineMs: number } | null {
     if (++this.seen <= this.warmup) return null
-    this.window.push({ ms: Math.max(0, t.ms - (t.checkMs ?? 0)), rfMs: t.rfMs, fineMs: t.fineMs })
+    this.window.push({ ms: Math.max(0, t.ms - (t.checkMs ?? 0) - (t.extraMs ?? 0)), rfMs: t.rfMs, fineMs: t.fineMs })
     if (this.window.length < Pacer.WINDOW) return null
     const mean = (k: 'ms' | 'rfMs' | 'fineMs') => this.window.reduce((a, b) => a + b[k], 0) / this.window.length
     const out = { recentMs: mean('ms'), rfMs: mean('rfMs'), fineMs: mean('fineMs') }

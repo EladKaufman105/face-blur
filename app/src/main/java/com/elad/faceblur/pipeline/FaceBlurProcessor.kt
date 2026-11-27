@@ -78,8 +78,18 @@ class Settings(
     val mode: BlurMode,
     val strength: Float,
     val padding: Float,
+    /** Extended detection. */
     val sensitive: Boolean,
-)
+    /** Fast detection (5 a second); extended wins if both are set. */
+    fast: Boolean = false,
+    /** 0..1: more faces blurred, never fewer (see [com.elad.faceblur.analysis.DetectTuning]). */
+    sensitivity: Float = 0f,
+) {
+    /** How faces are looked for: normal, extended or fast. */
+    val detect: com.elad.faceblur.analysis.DetectMode = com.elad.faceblur.analysis.DetectMode.of(sensitive, fast)
+    val fast: Boolean get() = detect == com.elad.faceblur.analysis.DetectMode.FAST
+    val sensitivity: Float = com.elad.faceblur.analysis.DetectTuning.quantize(sensitivity)
+}
 
 sealed interface Outcome {
     class Saved(
@@ -152,7 +162,7 @@ class FaceBlurProcessor(private val context: Context) {
         onProgress: (Float) -> Unit,
     ): AnalysisResult {
         val analysisFile = temp("analysis")
-        val analyzer = withContext(Dispatchers.IO) { FaceAnalyzer(context, settings.sensitive, info.fps) }
+        val analyzer = withContext(Dispatchers.IO) { FaceAnalyzer(context, settings.detect, info.fps, settings.sensitivity) }
         analyzer.onPreview = onPreview
         try {
             val detect = DetectEffect(
@@ -179,7 +189,9 @@ class FaceBlurProcessor(private val context: Context) {
                 android.util.Log.i("ONIT", "analysis stats: ${snap.summary()}")
                 onStats?.invoke(snap)
             }
-            return withContext(Dispatchers.Default) { analyzer.result() }
+            // Interruptible: a cancelled analysis stops between the sensitivity's tracker steps (an
+            // InterruptedException there becomes the coroutine's CancellationException, a cancel).
+            return kotlinx.coroutines.runInterruptible(Dispatchers.Default) { analyzer.result() }
         } finally {
             analyzer.close()
             analysisFile.delete()
