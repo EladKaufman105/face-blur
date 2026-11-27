@@ -504,6 +504,10 @@ export function transcribeFile(
         // A lack of memory while the model loads with threads gets the same second try: each thread reserves
         // memory of its own, so one thread may fit where several don't.
         // The video's sound could not be read: neither the graphics processor nor the threads are to blame, and nothing else would help.
+        if (code === 'too-long') {
+          end(() => reject(new SpeechError(t('הסאונד של הסרטון ארוך מדי לכתוביות (יותר משלוש שעות).'), 'too-long')))
+          return
+        }
         if (code === 'audio') {
           console.info(`ONIT subs phases (ms): ${timeline.join(' ')} audio-failed@${Date.now() - t0} ${message}`)
           end(() => reject(new SpeechError(t('לא הצלחנו לקרוא את הסאונד של הסרטון, אז אי אפשר ליצור כתוביות.'), 'audio')))
