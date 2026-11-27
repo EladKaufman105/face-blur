@@ -71,6 +71,20 @@ const WORDS = [['שלום', 1, 1.5], ['לכולם', 1.6, 2.5], ['היום', 4, 4
     const full = await download('.srt-ask-yes')
     if (!full.includes('שלום לכולם')) fail('the unmasked SRT lacks the word: ' + full)
     await p.screenshot({ path: `${out}/srt.png` })
+
+    // With the mask off the main action would show the bleeped word: it asks first, as the unmasked choice does, and the
+    // unmasked choice (the same file) is not offered twice.
+    await p.click('.mask-subs .switch')
+    await p.waitForTimeout(300)
+    if (await p.$('.srt-download')) fail('the unmasked choice is offered next to a main action that is unmasked too')
+    let early = false
+    p.once('download', () => { early = true })
+    await p.click('.srt-save')
+    await p.waitForSelector('.srt-ask')
+    await p.waitForTimeout(400)
+    if (early) fail('the SRT with the bleeped words downloaded without asking')
+    const shown = await download('.srt-ask-yes')
+    if (!shown.includes('שלום לכולם')) fail('the confirmed SRT lacks the bleeped word: ' + shown)
     console.log('PASS')
   } catch (e) {
     await p.screenshot({ path: `${out}/failure.png` }).catch(() => {})

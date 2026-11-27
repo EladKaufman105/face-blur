@@ -443,10 +443,12 @@ export function transcribeFile(
     let worker: Worker | null = null
     let timer = 0
     let finished = false
-    let last = Date.now()
+    // Signs of life, apart for the two things that run together at the start: the sound's reading and the model's
+    // download and load (a hung decode is not hidden by the model's messages, nor a stalled download by the sound's).
+    let lastA = Date.now(), lastM = Date.now()
     // A tab put to sleep (or a frozen worker) says nothing: that is not "stuck". Coming back counts from now.
     let lastCheck = Date.now()
-    const alive = () => { last = Date.now(); lastCheck = last }
+    const alive = () => { lastA = lastM = Date.now(); lastCheck = lastM }
     const onVisible = () => { if (document.visibilityState === 'visible') alive() }
     document.addEventListener('visibilitychange', onVisible)
     document.addEventListener('resume', alive)
@@ -545,17 +547,31 @@ export function transcribeFile(
       timer = window.setInterval(() => {
         const now = Date.now()
         // The timer itself was paused (a frozen tab): the quiet is not the job's.
-        if (now - lastCheck > 5000) last = now
+        if (now - lastCheck > 5000) lastA = lastM = now
         lastCheck = now
-        const quiet = now - last
-        if (quiet > limitFor(phase, plan)) {
+        // Each running thing is timed by its own signs: the model by its phase's limit (download, load, recognition),
+        // the sound (while it is not all read) by the audio limit; whichever is quiet too long ends the job.
+        const quietA = now - lastA, quietM = now - lastM
+        const audioRuns = audioP < 1
+        let quiet = 0
+        if (phase === 'audio') quiet = quietA
+        else {
+          if (quietM > limitFor(phase, plan)) quiet = quietM
+          if (audioRuns && phase !== 'recognize' && quietA > limitFor('audio', plan) && quietA > quiet) quiet = quietA
+        }
+        const limit = phase === 'audio' || (quiet === quietA && audioRuns && phase !== 'recognize') ? limitFor('audio', plan) : limitFor(phase, plan)
+        if (quiet > limit) {
           const secs = Math.round(quiet / 1000)
           failOrFallback('stalled', t('הזיהוי נתקע: אין התקדמות כבר %d שניות. אפשר לנסות שוב, או לבחור "מהיר".', secs))
         }
       }, 1000)
       w.onmessage = (e: MessageEvent<SubsMessage>) => {
         const m = e.data
-        last = Date.now()
+        // Whose sign of life it is: the sound's reading, or the model (everything else, and in recognition both).
+        const now = Date.now()
+        if (m.type === 'audio' || (m.type === 'tick' && m.from === 'audio')) lastA = now
+        else if (m.type === 'tick' || m.type === 'load' || m.type === 'download') lastM = now
+        else lastA = lastM = now
         switch (m.type) {
           case 'tick': return
           case 'audio': {
