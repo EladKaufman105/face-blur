@@ -71,7 +71,7 @@ class ModelManager(context: Context) {
     fun requestSpeakerModel(): NetDecision = downloads.request(listOf(PackId.SPEAKERS))
 
     companion object {
-        /** WeSpeaker ResNet34-LM (CC BY 4.0), made fit for OpenCV; see the repo's speaker-model branch. */
+        /** WeSpeaker ResNet34-LM (CC BY 4.0, attribution in the licences screen and THIRD-PARTY-NOTICES.md), made fit for OpenCV; see the repo's speaker-model branch. */
         const val SPEAKER_FILE = "speaker-wespeaker-r34lm-fp16.onnx"
     }
 }

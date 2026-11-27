@@ -86,6 +86,9 @@ class ModelStore private constructor(context: Context) {
     private val manifest = File(dir, "installed.json")
     private val lock = Any()
 
+    /** The user's acceptance of licence terms (packs that require it); cleared with the pack by [delete]. */
+    val consent = LicenceConsent(LicencePrefs(app))
+
     private class Entry(val version: Int, val files: Map<String, Pair<Long, String>>)
 
     private val installed = HashMap<PackId, Entry>()
@@ -233,6 +236,8 @@ class ModelStore private constructor(context: Context) {
             installed.remove(id)
             jobs.remove(id)
             save()
+            // Deleting the pack takes the acceptance with it: downloading it again asks again.
+            consent.clear(id)
         }
         publish()
         return true

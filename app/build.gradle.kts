@@ -87,6 +87,12 @@ android {
 
     buildFeatures { compose = true }
 
+    // The licence texts the web app also serves (shared/assets/licences): one copy, packaged here
+    // as assets/licences/*.txt, so the licence screens work offline.
+    sourceSets {
+        getByName("main") { assets.srcDir("../shared/assets") }
+    }
+
     lint {
         checkReleaseBuilds = false
         abortOnError = false
