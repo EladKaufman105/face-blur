@@ -51,7 +51,7 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'home' })
   // Exporting keeps the editor (and everything in it) underneath, for "back to editing".
   const [job, setJob] = useState<ExportJob | null>(null)
-  // The detection mode (normal, extended, fast) and sensitivity chosen on the ready screen.
+  // The detection mode (normal, extended, fast, selfie) and sensitivity chosen on the ready screen.
   const [detect, setDetect] = useState<DetectChoice>(NORMAL_DETECT)
   const sensitive = detect.mode === 'extended'
   // What was found in a video saved straight away (to open the editor on it afterwards).
@@ -183,6 +183,7 @@ export function App() {
           file={screen.file}
           sensitive={sensitive}
           fast={detect.mode === 'fast'}
+          selfie={detect.mode === 'selfie'}
           sensitivity={detect.sensitivity}
           twoSteps={!!screen.save}
           onCancel={() => setScreen({ name: 'ready', file: screen.file })}
@@ -213,6 +214,7 @@ export function App() {
         <CheckFaces
           reduced={!!screen.analysis.reduced}
           fast={!!screen.analysis.fast}
+          selfie={!!screen.analysis.selfie}
           onEdit={() => setScreen({ name: 'editor', file: screen.file, analysis: screen.analysis, thumbs: screen.thumbs, template: screen.template, tab: 'faces', info: screen.info })}
           onSave={() => saveNow(screen.file, screen.analysis, screen.save, screen.template)}
           onBack={() => setScreen({ name: 'ready', file: screen.file })}
@@ -225,6 +227,7 @@ export function App() {
           sensitive={sensitive}
           reduced={screen.analysis.reduced}
           fast={screen.analysis.fast}
+          selfie={screen.analysis.selfie}
           onEdit={() => setScreen({ name: 'editor', file: screen.file, analysis: screen.analysis, thumbs: [], info: '', tab: 'faces', template: screen.template })}
           onRetry={() => { setDetect({ ...detect, mode: 'extended' }); setScreen({ name: 'analyzing', file: screen.file, save: screen.save, template: screen.template }) }}
           onBack={() => setScreen({ name: 'ready', file: screen.file })}

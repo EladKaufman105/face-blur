@@ -1,6 +1,6 @@
 // The analysis pass, off the main thread: decodes every frame (small), finds cuts, detects faces
 // on a regular subset of frames, then builds the face tracks and a thumbnail of each face.
-import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny'
+import { ALL_FORMATS, BlobSource, CanvasSink, Input, type InputVideoTrack } from 'mediabunny'
 import { CPU_SIDE, FaceDetector, GPU_SIDE, LOW_SIDE } from '../lib/detector'
 import { DetectGate, FrameRate, Pacer, follow, fullRate, needRate, pace, runSide, type Timing } from '../lib/pace'
 import { CoverageMeter, type Coverage } from '../lib/coverage'
@@ -10,14 +10,15 @@ import { DetectorPool } from '../lib/detector-pool'
 import { CutDetector } from '../lib/cuts'
 import { track } from '../lib/tracker'
 import { lowConfidenceTracks } from '../lib/lowconf'
-import { FAST_RATE, modeOf, quantize, thresholds, widen, type DetectMode } from '../lib/sensitivity'
+import { FAST_RATE, modeOf, quantize, selfieThreshold, thresholds, widen, type DetectMode } from '../lib/sensitivity'
+import { BLAZEFACE_MODEL, BlazeFaceDetector } from '../lib/blazeface-detector'
 import type { Det, Track } from '../lib/types'
 
-export type AnalyzeRequest = { file: File; sensitive: boolean; /** Fast detection (5 a second; [sensitive] wins). */ fast?: boolean; /** 0..1: more faces blurred, never fewer (lib/sensitivity.ts). */ sensitivity?: number; base: string; backend?: 'webgpu' | 'wasm'; /** How many CPU detectors to run side by side (default: by core count). */ workers?: number; /** For tests on localhost only (the page's ?detect=yunet:0,side:640,rate:5): detection pinned to these settings, no pacing. A tune weaker than the default marks the video reduced, with the thresholds as they are. */ tune?: Tune }
+export type AnalyzeRequest = { file: File; sensitive: boolean; /** Fast detection (5 a second; [sensitive] wins). */ fast?: boolean; /** Selfie detection (BlazeFace on every frame; [sensitive] and [fast] win). */ selfie?: boolean; /** 0..1: more faces blurred, never fewer (lib/sensitivity.ts). */ sensitivity?: number; base: string; backend?: 'webgpu' | 'wasm'; /** How many CPU detectors to run side by side (default: by core count). */ workers?: number; /** For tests on localhost only (the page's ?detect=yunet:0,side:640,rate:5): detection pinned to these settings, no pacing. A tune weaker than the default marks the video reduced, with the thresholds as they are. */ tune?: Tune }
 export type AnalyzeMessage =
   | { type: 'ready'; backend: string; width: number; height: number; duration: number; fps: number }
   | { type: 'progress'; done: number; total: number; preview?: ImageBitmap; dets?: Det[]; faces: number; backend: string; stats: AnalysisStats }
-  | { type: 'done'; times: Float64Array; width: number; height: number; fps: number; tracks: Track[]; cuts: number[]; lowConfidence: number; /** Detection ran lighter than the app's (see lib/pace.ts). */ reduced: boolean; /** Fast detection ran (its notice, a batch's flag). */ fast: boolean; /** Extended detection ran. */ sensitive: boolean; sensitivity: number; thumbs: (ImageBitmap | null)[]; backend: string; ms: number }
+  | { type: 'done'; times: Float64Array; width: number; height: number; fps: number; tracks: Track[]; cuts: number[]; lowConfidence: number; /** Detection ran lighter than the app's (see lib/pace.ts). */ reduced: boolean; /** Fast detection ran (its notice, a batch's flag). */ fast: boolean; /** Selfie detection ran (its notice, a batch's flag). */ selfie: boolean; /** Extended detection ran. */ sensitive: boolean; sensitivity: number; thumbs: (ImageBitmap | null)[]; backend: string; ms: number }
   | { type: 'error'; code: string; message: string }
   | { type: 'log'; message: string }
 
@@ -40,13 +41,15 @@ self.onmessage = async (e: MessageEvent<AnalyzeRequest>) => {
   }
 }
 
-async function analyze({ file, sensitive, fast: fastAsked, sensitivity: sensAsked, base, backend, workers, tune }: AnalyzeRequest) {
+async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, sensitivity: sensAsked, base, backend, workers, tune }: AnalyzeRequest) {
   const t0 = performance.now()
-  // Normal, extended or fast (extended wins); the sensitivity on its 5% steps.
-  const mode: DetectMode = modeOf(sensitive, fastAsked)
+  // Normal, extended, fast or selfie (extended wins); the sensitivity on its 5% steps.
+  const mode: DetectMode = modeOf(sensitive, fastAsked, selfieAsked)
   const fast = mode === 'fast'
   const sensitivity = quantize(sensAsked ?? 0)
   log('start')
+  // Selfie: BlazeFace alone on every frame, its own (much simpler) pass.
+  if (mode === 'selfie') return analyzeSelfie(file, sensitivity, base, t0)
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
   const video = await input.getPrimaryVideoTrack()
   if (!video) return post({ type: 'error', code: 'no-video', message: 'no video track' })
@@ -307,9 +310,17 @@ async function analyze({ file, sensitive, fast: fastAsked, sensitivity: sensAske
   // fine pass that ran, YuNet).
   log(`result detections ${dets.size}, faces ${faces50}, tracks ${tracks.length}, reduced ${reduced}, yunet ${(pool?.stats() ?? detector!.stats).yunetFaces}; ${coverageText(cover, ranSide(), yunetOn)}; mode ${mode}, sensitivity ${sensitivity}, extra ${[...extraDets.values()].reduce((a, e) => a + e.length, 0)}`)
 
-  // A square thumbnail of each face, from its clearest frame. The frames are decoded in one
-  // pass in time order (each packet at most once): fetching them one by one, each from its
-  // keyframe, kept a crowd's video at the end of the progress bar for seconds.
+  const thumbs = await makeThumbs(video, tracks, times, width, height)
+  const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, cuts: cutList, lowConfidence: lowConfidenceTracks(tracks, dets), reduced, fast, selfie: false, sensitive: mode === 'extended', sensitivity, thumbs, backend: backendNow(), ms: performance.now() - t0 }
+  post(msg, [msg.times.buffer, ...tracks.map((t) => t.boxes.buffer), ...thumbs.filter((b): b is ImageBitmap => !!b)])
+}
+
+/**
+ * A square thumbnail of each face, from its clearest frame. The frames are decoded in one pass in
+ * time order (each packet at most once): fetching them one by one, each from its keyframe, kept a
+ * crowd's video at the end of the progress bar for seconds.
+ */
+async function makeThumbs(video: InputVideoTrack, tracks: Track[], times: number[], width: number, height: number): Promise<(ImageBitmap | null)[]> {
   const thumbs: (ImageBitmap | null)[] = tracks.map(() => null)
   const wanted = tracks.slice(0, 40).map((t, i) => ({ i, f: t.best })).sort((a, b) => a.f - b.f)
   const frameTimes = [...new Set(wanted.map((w) => w.f))]
@@ -332,6 +343,120 @@ async function analyze({ file, sensitive, fast: fastAsked, sensitivity: sensAske
       thumbs[w.i] = out.transferToImageBitmap()
     }
   }
-  const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, cuts: cutList, lowConfidence: lowConfidenceTracks(tracks, dets), reduced, fast, sensitive: mode === 'extended', sensitivity, thumbs, backend: backendNow(), ms: performance.now() - t0 }
+  return thumbs
+}
+
+/** The long side of the frames selfie detection decodes: the model sees 192 px, so more than this is wasted decoding. */
+const SELFIE_FRAME_SIDE = 640
+
+/**
+ * Selfie mode's pass: every frame decoded (small), cuts found, BlazeFace on every frame (one
+ * detector here, WebAssembly: no pace to keep, no second detector, nothing to adapt), then the
+ * same tracks and thumbnails. The app's selfie pass is the same (FaceAnalyzer, BlazeFaceDetector).
+ */
+async function analyzeSelfie(file: File, sensitivity: number, base: string, t0: number) {
+  const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
+  const video = await input.getPrimaryVideoTrack()
+  if (!video) return post({ type: 'error', code: 'no-video', message: 'no video track' })
+  if (!(await video.canDecode())) return post({ type: 'error', code: 'codec', message: `can't decode ${video.codec}` })
+  const width = video.displayWidth, height = video.displayHeight
+  const duration = await input.computeDuration()
+  log(`video ${width}x${height} ${duration}s ${video.codec}`)
+  const stats = await video.computePacketStats(120)
+  const nominalFps = stats.averagePacketRate > 0 ? stats.averagePacketRate : 30
+  const total = Math.max(1, Math.round(duration * nominalFps))
+  const r = await fetch(base + 'models/' + BLAZEFACE_MODEL)
+  if (!r.ok) return post({ type: 'error', code: 'model', message: `${BLAZEFACE_MODEL}: ${r.status}` })
+  const detector = await BlazeFaceDetector.create(new Uint8Array(await r.arrayBuffer()), sensitivity)
+  log(`detector blazeface wasm ${(performance.now() - t0).toFixed(0)} ms`)
+  post({ type: 'ready', backend: 'wasm', width, height, duration, fps: nominalFps })
+
+  const side = Math.min(Math.max(width, height), SELFIE_FRAME_SIDE)
+  const s = side / Math.max(width, height)
+  const iw = Math.max(32, Math.round(width * s / 32) * 32)
+  const ih = Math.max(32, Math.round(height * s / 32) * 32)
+  const sink = new CanvasSink(video, { width: iw, height: ih, fit: 'fill', poolSize: 3 })
+  const cuts = new CutDetector()
+  const times: number[] = []
+  const cutList: number[] = []
+  const dets = new Map<number, Det[]>()
+  // A sensitivity above 0: the faces only the lower threshold finds, per frame (lib/sensitivity.ts).
+  const extraDets = new Map<number, Det[]>()
+  let lastPost = 0
+  let lastDets: Det[] = []
+  let found = 0, withFace = 0
+  let decodeWait = 0, detectMs = 0, cutMs = 0
+  const history = new StatsHistory()
+  const loopStart = performance.now()
+  const snapshot = (): StatsSnapshot => {
+    const now = performance.now()
+    const n = detector.stats.detections
+    return {
+      atMs: now, frames: times.length, frameMs: Math.max(0, now - loopStart - decodeWait), waitMs: 0, decodeWaitMs: decodeWait, cutMs,
+      detections: n, detectMs, partDetections: n, pre: detector.stats.pre, inf: detector.stats.inf, dec: detector.stats.dec, coarse: 0, coarseRuns: 0, check: 0, verify: 0, merge: 0,
+      backend: 'wasm', precision: 'fp32', noGpu: 'selfie mode runs on the CPU',
+      side: 192, rate: times.length / Math.max(1e-3, (times[times.length - 1] ?? 0) + 1e-3), workers: 1, cores: self.navigator?.hardwareConcurrency ?? 2,
+      measured: { rate: times.length / Math.max(1e-3, (times[times.length - 1] ?? 0) + 1e-3), minWindow: null, need: 0, gapFrames: 0, gapS: 0, minSide: 192, yunet: false },
+      mode: 'selfie', sensitivity,
+    }
+  }
+  const frames = sink.canvases()
+  let next = frames.next()
+  while (true) {
+    const tw = performance.now()
+    const rr = await next
+    decodeWait += performance.now() - tw
+    if (rr.done) break
+    next = frames.next()
+    const wc = rr.value
+    const canvas = wc.canvas as OffscreenCanvas
+    const i = times.length
+    times.push(wc.timestamp)
+    const tc = performance.now()
+    if (cuts.isCut(canvas)) cutList.push(i)
+    cutMs += performance.now() - tc
+    const td = performance.now()
+    const got = await detector.detect(canvas)
+    detectMs += performance.now() - td
+    lastDets = got
+    dets.set(i, got)
+    if (detector.lastExtras.length > 0) extraDets.set(i, detector.lastExtras)
+    if (got.length > 0) withFace++
+    found = Math.max(found, got.length)
+    const now = performance.now()
+    if (now - lastPost > 250) {
+      lastPost = now
+      const ps = Math.min(1, 480 / Math.max(iw, ih))
+      const preview = await createImageBitmap(canvas, { resizeWidth: Math.round(iw * ps), resizeHeight: Math.round(ih * ps) })
+      post({ type: 'progress', done: i + 1, total: Math.max(total, i + 1), preview, dets: lastDets, faces: found, backend: 'wasm', stats: history.add(snapshot()) }, [preview])
+    }
+  }
+  detector.release()
+  const n = times.length
+  const diffs: number[] = []
+  for (let i = 1; i < n; i++) if (times[i] > times[i - 1]) diffs.push(times[i] - times[i - 1])
+  diffs.sort((a, b) => a - b)
+  const fps = Math.min(240, Math.max(5, diffs.length ? 1 / diffs[diffs.length >> 1] : nominalFps))
+  let tracks = track(n, dets, cutList, fps, height / width, false)
+  // A sensitivity above 0: the default tracks as they are, and step by step the faces the lower thresholds add (lib/sensitivity.ts).
+  if (sensitivity > 0 && extraDets.size > 0) {
+    tracks = widen(tracks, sensitivity, (level) => {
+      const thr = thresholds(level)
+      // BlazeFace's extras come from a fixed pool: each step takes those over its own threshold.
+      const min = selfieThreshold(level)
+      const all = new Map(dets)
+      for (const [i, extra] of extraDets) {
+        const more = extra.filter((d) => d.score >= min)
+        if (more.length) all.set(i, [...(all.get(i) ?? []), ...more])
+      }
+      return track(n, all, cutList, fps, height / width, false, thr)
+    })
+  }
+  const rate = n / Math.max(1e-3, (times[n - 1] ?? 0) - (times[0] ?? 0) + 1 / fps)
+  log(`selfie frames ${n}, with a face ${withFace}, most faces on a frame ${found}, detect avg ${(detectMs / Math.max(1, n)).toFixed(1)} ms, decode wait ${decodeWait.toFixed(0)} ms`)
+  log(`stats ${summary(history.add(snapshot()))}`)
+  log(`result detections ${dets.size}, faces ${[...dets.values()].reduce((a, d) => a + d.length, 0)}, tracks ${tracks.length}, reduced false, yunet 0; D ${rate.toFixed(2)}/s, S 192 px; mode selfie, sensitivity ${sensitivity}, extra ${[...extraDets.values()].reduce((a, e) => a + e.length, 0)}`)
+  const thumbs = await makeThumbs(video, tracks, times, width, height)
+  const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, cuts: cutList, lowConfidence: lowConfidenceTracks(tracks, dets), reduced: false, fast: false, selfie: true, sensitive: false, sensitivity, thumbs, backend: 'wasm', ms: performance.now() - t0 }
   post(msg, [msg.times.buffer, ...tracks.map((t) => t.boxes.buffer), ...thumbs.filter((b): b is ImageBitmap => !!b)])
 }

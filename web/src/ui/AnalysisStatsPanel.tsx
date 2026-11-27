@@ -60,7 +60,7 @@ const info = (c: CellId): string => ({
   measured: t('כמה פריימים באמת עברו זיהוי בכל שנייה של וידאו, ובחלון של 2 שניות עם הכי מעט.'),
   gap: t('הרווח הארוך ביותר בין שני זיהויים באותה סצנה, בפריימים ובשניות.'),
   strength: t('הגודל הקטן ביותר שבו רץ המעבר המפורט, והאם YuNet רץ.'),
-  mode: t('רגיל, מורחב (כל פריים) או מהיר (5 בשנייה), והרגישות שנבחרה.'),
+  mode: t('רגיל, מורחב (כל פריים), מהיר (5 בשנייה) או סלפי, והרגישות שנבחרה.'),
 })[c]
 
 /** The cell's value as [number, unit] parts, left to right; [word] is a small text before or after. */
@@ -88,7 +88,7 @@ function value(c: CellId, a: AnalysisStats): { num: string; unit?: string; after
     case 'gap': return { num: String(l.measured.gapFrames), unit: t('פריימים'), after: `${l.measured.gapS.toFixed(2)} ${t('שנ׳')}` }
     case 'strength': return { num: String(l.measured.minSide), unit: 'px', after: l.measured.yunet ? 'YuNet' : t('בלי YuNet') }
     case 'mode': {
-      const name = l.mode === 'fast' ? t('מהיר') : l.mode === 'extended' ? t('מורחב') : t('רגיל')
+      const name = l.mode === 'fast' ? t('מהיר') : l.mode === 'selfie' ? t('סלפי') : l.mode === 'extended' ? t('מורחב') : t('רגיל')
       const pct = Math.round((l.sensitivity ?? 0) * 100)
       return pct > 0 ? { num: name, after: `${pct}%` } : { num: name }
     }

@@ -1,5 +1,5 @@
-"""Makes the Kotlin test fixture (BlazeFaceFixture.kt's frames) from three test clips.
-Usage: python3 scripts/blazeface_fixture.py blaze_face_full_range.tflite MEDIA_DIR > frames.txt
+"""Makes the test fixture of the Kotlin and web decoders (BlazeFaceFixture.kt's frames, web/tests/blazeface-fixture.json) from three test clips.
+Usage: python3 scripts/blazeface_fixture.py blaze_face_full_range.tflite MEDIA_DIR [json] > frames.txt
 (MEDIA_DIR has headpose.mp4, classroom.mp4 and portrait_rot90.mp4, see ci/fetch-test-media.sh)."""
 import os, sys, numpy as np, cv2
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -22,6 +22,10 @@ for name,frame in (('headpose.mp4',30),('classroom.mp4',60),('portrait_rot90.mp4
     out.append(dict(name=name.split('.')[0],w=w,h=h,
        anchors=[(int(i),float(lg[i,0]),*[float(v) for v in reg[i,:4]]) for i in keep],
        e05=norm(0.5), e03=norm(0.3), n05=len(norm(0.5)), n03=len(norm(0.3))))
+if len(sys.argv) > 3 and sys.argv[3] == 'json':
+    import json
+    print(json.dumps([dict(name=o['name'], w=o['w'], h=o['h'], anchors=[[i, l, a, b, c, d] for i, l, a, b, c, d in o['anchors']], at05=[list(map(float, d)) for d in o['e05']], at03=[list(map(float, d)) for d in o['e03']]) for o in out]))
+    sys.exit(0)
 def f(v): return repr(float(np.float32(v)))
 lines=[]
 for fr in out:

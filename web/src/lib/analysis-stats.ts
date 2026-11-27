@@ -45,7 +45,7 @@ export interface StatsSnapshot {
   cores: number
   /** What detection really covered so far (lib/coverage.ts). */
   measured: Measured
-  /** The detection mode ('normal', 'extended', 'fast') and the sensitivity (0..1, lib/sensitivity.ts). */
+  /** The detection mode ('normal', 'extended', 'fast', 'selfie') and the sensitivity (0..1, lib/sensitivity.ts). */
   mode?: string
   sensitivity?: number
 }

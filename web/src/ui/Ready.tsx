@@ -35,8 +35,8 @@ type Props = {
  * change in the editor too); wider detection is the one choice to make before detection runs.
  */
 export function Ready({ file, detect, onDetect, onBlur, onBlurAndSave, onReplace, onBack }: Props) {
-  const asSettings = (d: DetectChoice) => ({ sensitive: d.mode === 'extended', fast: d.mode === 'fast', sensitivity: d.sensitivity })
-  const choiceOf = (s: { sensitive: boolean; fast: boolean; sensitivity: number }): DetectChoice => ({ mode: modeOf(s.sensitive, s.fast), sensitivity: s.sensitivity })
+  const asSettings = (d: DetectChoice) => ({ sensitive: d.mode === 'extended', fast: d.mode === 'fast', selfie: d.mode === 'selfie', sensitivity: d.sensitivity })
+  const choiceOf = (s: { sensitive: boolean; fast: boolean; selfie: boolean; sensitivity: number }): DetectChoice => ({ mode: modeOf(s.sensitive, s.fast, s.selfie), sensitivity: s.sensitivity })
   const url = useMemo(() => URL.createObjectURL(file), [file])
   useEffect(() => () => URL.revokeObjectURL(url), [url])
   const [meta, setMeta] = useState<{ w: number; h: number; dur: number } | null>(null)
@@ -157,6 +157,7 @@ export function Ready({ file, detect, onDetect, onBlur, onBlurAndSave, onReplace
           </button>
           {/* Fast detection's warning stays in view with the settings folded (open, it is under the choice). */}
           {!open && detect.mode === 'fast' && <p class="small fast-warning fast-warning-folded" role="note">{t('זיהוי מהיר בודק פחות פריימים, ולכן מהיר יותר. הוא עלול לפספס לרגע פנים קטנות, רחוקות או בקצה המסך. כדאי לצפות בתוצאה לפני שמשתפים.')}</p>}
+          {!open && detect.mode === 'selfie' && <p class="small fast-warning fast-warning-folded selfie-warning selfie-warning-folded" role="note">{t('מצב סלפי מהיר מאוד, אבל מיועד לאדם אחד קרוב למצלמה. פנים קטנות או רחוקות ברקע עלולות לא להיטשטש. צפו בתוצאה לפני שמשתפים.')}</p>}
           {open && (
             <div class="fold-body">
               <p class="small muted" style="margin:0">{t('אפשר לשנות את המראה גם אחר כך, בעורך.')}</p>
@@ -212,7 +213,7 @@ export function Ready({ file, detect, onDetect, onBlur, onBlurAndSave, onReplace
  * No faces were found, as the app's: small, distant or partly hidden faces may need wider
  * detection, or a blur marked by hand (when there's an editor to open).
  */
-export function NoFaces({ file, canEdit, sensitive, reduced, fast, onEdit, onRetry, onBack }: { file: File; canEdit: boolean; sensitive: boolean; reduced?: boolean; fast?: boolean; onEdit: () => void; onRetry: () => void; onBack: () => void }) {
+export function NoFaces({ file, canEdit, sensitive, reduced, fast, selfie, onEdit, onRetry, onBack }: { file: File; canEdit: boolean; sensitive: boolean; reduced?: boolean; fast?: boolean; selfie?: boolean; onEdit: () => void; onRetry: () => void; onBack: () => void }) {
   return (
     <main class="ready no-faces">
       <section class="card video-card">
@@ -226,6 +227,7 @@ export function NoFaces({ file, canEdit, sensitive, reduced, fast, onEdit, onRet
         </div>
         {reduced && <DetectionNotice />}
         {fast && <DetectionNotice fast />}
+        {selfie && <DetectionNotice selfie />}
         <p class="small muted" style="margin:0">{t('אם יש בסרטון פנים קטנות, רחוקות או מוסתרות חלקית, נסה שוב עם זיהוי מורחב, או סמן אותן ידנית.')}</p>
         <div class="actions">
           {canEdit && <button class="btn primary mark-by-hand" onClick={onEdit}>{t('סמן טשטוש ידנית')}</button>}
@@ -242,7 +244,7 @@ export function NoFaces({ file, canEdit, sensitive, reduced, fast, onEdit, onRet
  * app's on this device, or some face has no clear detection behind it): nothing is saved until the
  * user says so. The editor is the primary way on.
  */
-export function CheckFaces({ reduced, fast, onEdit, onSave, onBack }: { reduced: boolean; fast?: boolean; onEdit: () => void; onSave: () => void; onBack: () => void }) {
+export function CheckFaces({ reduced, fast, selfie, onEdit, onSave, onBack }: { reduced: boolean; fast?: boolean; selfie?: boolean; onEdit: () => void; onSave: () => void; onBack: () => void }) {
   return (
     <main class="ready check-faces">
       <section class="card message-card">
@@ -252,6 +254,7 @@ export function CheckFaces({ reduced, fast, onEdit, onSave, onBack }: { reduced:
         </div>
         {reduced && <DetectionNotice />}
         {fast && <DetectionNotice fast />}
+        {selfie && <DetectionNotice selfie />}
         <p class="small muted" style="margin:0">{t('כדאי לבדוק את הפנים בעורך.')}</p>
         <div class="actions">
           <button class="btn primary check-edit" onClick={onEdit}>{t('פתח בעורך')}</button>
