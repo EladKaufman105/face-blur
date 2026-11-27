@@ -149,7 +149,13 @@ jobs:
           bash ci/fetch-whisper.sh
           bash ci/fetch-opencv.sh
           chmod +x gradlew
-          ./gradlew assembleDebug compileDebugAndroidTestKotlin testDebugUnitTest --configuration-cache --stacktrace
+          set -o pipefail
+          ./gradlew assembleDebug compileDebugAndroidTestKotlin testDebugUnitTest --configuration-cache --stacktrace --continue 2>&1 | tee /tmp/gradle.log
+
+      # The errors as annotations, readable on the run page without signing in.
+      - name: Build errors
+        if: failure()
+        run: bash ci/gradle-annotate.sh /tmp/gradle.log
 
       - name: ccache stats
         if: always()
