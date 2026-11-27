@@ -110,6 +110,12 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --tags --force
+          if [ "$TEST_ONLY" != true ] && [ "$GITHUB_REF" = refs/heads/develop ]; then
+            V=$(bash ci/version.sh beta)
+            # A re-run of a run whose commit is in a beta already (its own, or a newer commit's
+            # that took over) stops here: no second beta of the same change.
+            bash ci/release-guard.sh beta "$V"
+          fi
           {
             if [ "$TEST_ONLY" = true ]; then
               echo "mode=test"; echo "version=0.0.0-dev"; echo 'kinds=["dev"]'; echo "e2e_full=true"
@@ -117,7 +123,7 @@ jobs:
               echo "e2e_full=false"
               case "$GITHUB_REF" in
                 refs/heads/main) bash ci/promote-check.sh plan HEAD; echo 'kinds=["release"]' ;;
-                refs/heads/develop) V=$(bash ci/version.sh beta); echo "mode=full"; echo "version=$V"; echo 'kinds=["beta","rc"]' ;;
+                refs/heads/develop) echo "mode=full"; echo "version=$V"; echo 'kinds=["beta","rc"]' ;;
                 *) echo "mode=full"; echo "version=0.0.0-dev"; echo 'kinds=["dev"]' ;;
               esac
             fi
@@ -186,6 +192,12 @@ jobs:
     env:
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
+      # ci/release-guard.sh
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: ci
+          persist-credentials: false
+
       - uses: actions/download-artifact@v7
         with:
           name: release-candidate
@@ -202,9 +214,19 @@ jobs:
           [ "$(ls out)" = "ONIT-$VERSION.apk" ]
           echo "$SHA  out/ONIT-$VERSION.apk" | sha256sum -c -
 
+      # A re-run of only this job skips plan's "already released" check: the tag must still be free.
+      - name: The version is still this run's
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ci/release-guard.sh new "v$VERSION"
+
+      # GitHub has refused a create for a moment ("Resource not accessible by integration"): a
+      # failed first try gets one more, a minute later (see "Try again" below).
       - name: Publish release
+        id: try1
+        continue-on-error: true
         uses: softprops/action-gh-release@v3
-        with:
+        with: &promote-release
           tag_name: v${{ env.VERSION }}
           target_commitish: ${{ github.sha }}
           name: ONIT ${{ env.VERSION }}
@@ -212,6 +234,19 @@ jobs:
           files: out/*.apk
           make_latest: true
           generate_release_notes: true
+
+      - name: Wait, then check the tag again
+        if: steps.try1.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sleep 60
+          bash ci/release-guard.sh retry "v$VERSION"
+
+      - name: Publish release (second try)
+        if: steps.try1.outcome == 'failure'
+        uses: softprops/action-gh-release@v3
+        with: *promote-release
 
   # The shipped APKs: arm64, minified, signed. Start at once, don't wait for the emulator.
   # beta: -Plabs ("ONIT Beta"); rc: the next release's APK (develop); release: main's full path.
@@ -632,15 +667,34 @@ jobs:
     env:
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
+      # ci/release-guard.sh
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: ci
+          persist-credentials: false
+
       - uses: actions/download-artifact@v7
         with:
           name: release-apk
           path: out
 
+      # The version plan computed may have been taken since: by a newer run that queued behind this
+      # one, when this run's publish failed and only it is re-run ("Re-run failed jobs" skips plan's
+      # checks). Then this run publishes nothing and fails, and never updates the other's release.
+      - name: The version is still this run's
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ci/release-guard.sh new "v$VERSION"
+
+      # GitHub has refused a create for a moment ("Resource not accessible by integration", run
+      # 45919424342): a failed first try gets one more, a minute later, only while the tag is free
+      # or the first try's own.
       - name: Publish release
+        id: release1
         if: github.ref == 'refs/heads/main'
+        continue-on-error: true
         uses: softprops/action-gh-release@v3
-        with:
+        with: &release
           tag_name: v${{ env.VERSION }}
           target_commitish: ${{ github.sha }}
           name: ONIT ${{ env.VERSION }}
@@ -648,6 +702,19 @@ jobs:
           files: out/*.apk
           make_latest: true
           generate_release_notes: true
+
+      - name: Wait, then check the tag again
+        if: steps.release1.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sleep 60
+          bash ci/release-guard.sh retry "v$VERSION"
+
+      - name: Publish release (second try)
+        if: steps.release1.outcome == 'failure'
+        uses: softprops/action-gh-release@v3
+        with: *release
 
       # The beta's release names its RC (this run, its hash): main's plan job reads both.
       - uses: actions/download-artifact@v7
@@ -666,9 +733,11 @@ jobs:
           echo "sha256=$(sha256sum rc/*.apk | cut -d' ' -f1)" | tee -a "$GITHUB_OUTPUT"
 
       - name: Publish beta
+        id: beta1
         if: github.ref == 'refs/heads/develop'
+        continue-on-error: true
         uses: softprops/action-gh-release@v3
-        with:
+        with: &beta
           tag_name: v${{ env.VERSION }}
           target_commitish: ${{ github.sha }}
           name: ONIT Beta ${{ env.VERSION }}
@@ -680,3 +749,16 @@ jobs:
           files: out/*.apk
           prerelease: true
           make_latest: false
+
+      - name: Wait, then check the tag again
+        if: steps.beta1.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sleep 60
+          bash ci/release-guard.sh retry "v$VERSION"
+
+      - name: Publish beta (second try)
+        if: steps.beta1.outcome == 'failure'
+        uses: softprops/action-gh-release@v3
+        with: *beta

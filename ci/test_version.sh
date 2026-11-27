@@ -306,6 +306,40 @@ if bash "$PC" lint > /dev/null 2>&1; then bad "lint: a path missing from paths-i
 git checkout -q .github/workflows/build.yml
 cd "$TMP"
 
+# --- ci/release-guard.sh: a superseded or re-run build.yml run publishes nothing.
+RG="$CI/release-guard.sh"
+git init -q -b develop "$TMP/rg"
+cd "$TMP/rg"
+commit "a"; A=$(git rev-parse HEAD); git tag v2.1.0-beta.1
+commit "b"; B=$(git rev-parse HEAD)
+commit "c"; C=$(git rev-parse HEAD); git tag -a -m "annotated" v2.1.0-beta.2
+# guard_expect <what> <0|1> <args...>
+guard_expect() {
+  local what=$1 want=$2 got=0
+  shift 2
+  bash "$RG" "$@" > "$TMP/out" 2>&1 || got=$?
+  if [ "$got" = "$want" ]; then ok "release-guard, $what: exit $got $(tail -n 1 "$TMP/out")"; else bad "release-guard, $what: exit $got, wanted $want ($(cat "$TMP/out"))"; fi
+}
+commit "d"
+guard_expect "a new commit" 0 beta 2.1.0-beta.3 HEAD
+guard_expect "a re-run of a published beta" 1 beta 2.1.0-beta.2 "$C"
+guard_expect "an older commit a newer beta has" 1 beta 2.1.0-beta.3 "$B"
+guard_expect "an old run after a release (the line before's beta)" 1 beta 2.2.0-beta.1 "$A"
+guard_expect "not a beta version" 2 beta 2.1.0 HEAD
+export RELEASE_GUARD_REMOTE="$TMP/rg"
+guard_expect "a free tag" 0 new v2.1.0-beta.3
+guard_expect "a taken tag" 1 new v2.1.0-beta.1
+GITHUB_SHA=$A guard_expect "a tag an earlier attempt made" 1 new v2.1.0-beta.1
+guard_expect "a free tag, again" 0 retry v2.1.0-beta.3
+GITHUB_SHA=$A guard_expect "the first try's own tag" 0 retry v2.1.0-beta.1
+GITHUB_SHA=$B guard_expect "another run's tag" 1 retry v2.1.0-beta.1
+GITHUB_SHA=$C guard_expect "an annotated tag, this commit" 0 retry v2.1.0-beta.2
+GITHUB_SHA=$B guard_expect "an annotated tag, another commit" 1 retry v2.1.0-beta.2
+guard_expect "a prefix isn't the tag" 0 new v2.1.0-beta
+RELEASE_GUARD_REMOTE="$TMP/no-such-repo" guard_expect "an unreadable remote" 2 new v2.1.0-beta.3
+unset RELEASE_GUARD_REMOTE
+cd "$TMP"
+
 # --- ci/verify-rc.sh, with fake aapt2 and apksigner.
 VR="$CI/verify-rc.sh"
 CERT=d8a7cc0dab1725c83d419e49e064e6aedca969c7896524ffc0d07625d0dc83fd
