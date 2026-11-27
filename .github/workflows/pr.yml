@@ -43,6 +43,11 @@ jobs:
       - name: build.yml's paths-ignore is EXCLUDES in ci/promote-check.sh
         run: bash ci/promote-check.sh lint
 
+      # app/.../gen/ and web/src/gen/ are made from shared/ by ci/shared_gen.py and committed: they
+      # must match it (a stale or hand-edited one fails both required checks, as this job does).
+      - name: Generated code matches shared/
+        run: python3 ci/shared_gen.py --check
+
       - uses: dorny/paths-filter@v3
         id: f
         with:
@@ -61,12 +66,18 @@ jobs:
               - 'gradlew'
               - 'gradlew.bat'
               - 'version.properties'
+              # Definitions the app's generated code (app/.../gen/) is made from.
+              - 'shared/**'
             web:
               - '.github/workflows/**'
               - '.github/actions/**'
               - 'ci/web-tests.sh'
               - 'ci/web_i18n_check.py'
+              - 'ci/shared_gen.py'
+              - 'ci/perf_check.py'
               - 'web/**'
+              # Definitions web/src/gen/ is made from, and the size baseline.
+              - 'shared/**'
               # What web/scripts/copy-assets.mjs takes from the Android app.
               - 'models/**'
               - 'app/src/main/assets/fonts/**'

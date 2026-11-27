@@ -20,6 +20,10 @@ on:
       - '.github/workflows/web-tests.yml'
       - 'ci/web-tests.sh'
       - 'ci/web_i18n_check.py'
+      - 'ci/shared_gen.py'
+      - 'ci/perf_check.py'
+      # Definitions web/src/gen/ is made from, and the size baseline.
+      - 'shared/**'
       - 'ci/publish-pages.sh'
       - 'ci/pages-build.sh'
       - '.github/actions/**'
