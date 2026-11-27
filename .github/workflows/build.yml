@@ -92,7 +92,7 @@ jobs:
       rc_sha256: ${{ steps.plan.outputs.rc_sha256 }}
       rc_version_code: ${{ steps.plan.outputs.rc_version_code }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # History and tags for ci/version.sh; blob:none skips the big data branches' files.
           fetch-depth: 0
@@ -127,7 +127,7 @@ jobs:
         id: rc
         if: steps.plan.outputs.mode == 'promote'
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: release-candidate
           path: rc
@@ -186,7 +186,7 @@ jobs:
     env:
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: release-candidate
           path: out
@@ -203,7 +203,7 @@ jobs:
           echo "$SHA  out/ONIT-$VERSION.apk" | sha256sum -c -
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ env.VERSION }}
           target_commitish: ${{ github.sha }}
@@ -228,7 +228,7 @@ jobs:
       VERSION: ${{ needs.plan.outputs.version }}
       KIND: ${{ matrix.kind }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Version and name
         shell: bash
@@ -244,12 +244,12 @@ jobs:
           esac
           { echo "APK_VERSION=$VERSION"; echo "APK_NAME=$NAME"; echo "LABS=$LABS"; } | tee -a "$GITHUB_ENV"
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: ${{ env.SAVE_CACHES != 'true' || matrix.kind == 'rc' }}
           cache-cleanup: on-success
@@ -261,7 +261,7 @@ jobs:
       - name: Restore the ccache
         id: ccache-restore
         if: steps.ccache.outputs.ok == 'true'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.ccache
           key: ccache-release-arm64-${{ hashFiles('ci/fetch-whisper.sh', 'app/build.gradle.kts', 'app/src/main/cpp/*.*', 'app/src/main/cpp/lame/**') }}-${{ steps.ccache.outputs.week }}
@@ -283,7 +283,7 @@ jobs:
         run: bash ci/ccache.sh stats
       - name: Save the ccache
         if: success() && steps.ccache.outputs.ok == 'true' && steps.ccache-restore.outputs.cache-hit != 'true' && env.SAVE_CACHES == 'true' && matrix.kind != 'rc'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ~/.ccache
           key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
@@ -297,7 +297,7 @@ jobs:
 
       # The beta and release APKs are kept a week, in case the release asset's upload fails. The RC is kept 90 days, until main
       # promotes it.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.kind == 'rc' && 'release-candidate' || 'release-apk' }}
           path: out/*.apk
@@ -307,7 +307,7 @@ jobs:
 
       - name: Upload the build log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: build-log-release-${{ matrix.kind }}
           path: build.log
@@ -321,7 +321,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Every string has its English
         run: python3 ci/i18n_check.py
@@ -330,7 +330,7 @@ jobs:
       # doesn't change; fetch-models.sh skips the files already here and checked.
       - name: Restore the test models
         id: models-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           # The registry's files only (ggml-tiny.bin is downloaded each run by fetch-test-media.sh).
           path: |
@@ -348,12 +348,12 @@ jobs:
           ( { bash ci/fetch-test-media.sh && bash ci/fetch-models.sh; } > fetch-test-media.log 2>&1; echo $? > fetch-test-media.status ) &
           bash ci/fetch-whisper.sh
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: ${{ env.SAVE_CACHES != 'true' }}
           cache-cleanup: on-success
@@ -365,7 +365,7 @@ jobs:
       - name: Restore the ccache
         id: ccache-restore
         if: steps.ccache.outputs.ok == 'true'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.ccache
           key: ccache-test-x86_64-${{ hashFiles('ci/fetch-whisper.sh', 'app/build.gradle.kts', 'app/src/main/cpp/*.*', 'app/src/main/cpp/lame/**') }}-${{ steps.ccache.outputs.week }}
@@ -382,7 +382,7 @@ jobs:
 
       - name: Save the test models
         if: steps.models-restore.outputs.cache-hit != 'true' && env.SAVE_CACHES == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: |
             app/src/androidTest/assets/models/*.onnx
@@ -402,12 +402,12 @@ jobs:
         run: bash ci/ccache.sh stats
       - name: Save the ccache
         if: success() && steps.ccache.outputs.ok == 'true' && steps.ccache-restore.outputs.cache-hit != 'true' && env.SAVE_CACHES == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ~/.ccache
           key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: test-apks
           path: |
@@ -420,7 +420,7 @@ jobs:
 
       - name: Upload the build log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: build-log-test
           path: |
@@ -445,7 +445,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.android/avd/*
@@ -477,14 +477,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: true
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
@@ -495,7 +495,7 @@ jobs:
       - name: Restore the ccache
         id: ccache-restore
         if: steps.ccache.outputs.ok == 'true'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.ccache
           key: ccache-debug-arm64-${{ hashFiles('ci/fetch-whisper.sh', 'app/build.gradle.kts', 'app/src/main/cpp/*.*', 'app/src/main/cpp/lame/**') }}-${{ steps.ccache.outputs.week }}
@@ -516,14 +516,14 @@ jobs:
         run: bash ci/ccache.sh stats
       - name: Save the ccache
         if: success() && steps.ccache.outputs.ok == 'true' && steps.ccache-restore.outputs.cache-hit != 'true' && env.SAVE_CACHES == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ~/.ccache
           key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
 
       - name: Upload the unit test report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: unit-test-report
           path: app/build/reports/tests
@@ -568,9 +568,9 @@ jobs:
             selftest: 0
     name: e2e (shard ${{ matrix.shard }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: test-apks
           path: app/build/outputs/apk
@@ -584,7 +584,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v5
         with:
           path: |
             ~/.android/avd/*
@@ -613,7 +613,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: e2e-results-${{ matrix.shard }}
           path: e2e-results
@@ -632,14 +632,14 @@ jobs:
     env:
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: release-apk
           path: out
 
       - name: Publish release
         if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ env.VERSION }}
           target_commitish: ${{ github.sha }}
@@ -650,7 +650,7 @@ jobs:
           generate_release_notes: true
 
       # The beta's release names its RC (this run, its hash): main's plan job reads both.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         if: github.ref == 'refs/heads/develop'
         with:
           name: release-candidate
@@ -667,7 +667,7 @@ jobs:
 
       - name: Publish beta
         if: github.ref == 'refs/heads/develop'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ env.VERSION }}
           target_commitish: ${{ github.sha }}
