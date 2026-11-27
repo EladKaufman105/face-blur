@@ -312,11 +312,13 @@ async function processOne(b: Batch, item: BatchItem) {
     item.detail = undefined
     const exportFrom = item.progress
     let thumb: string | null = null
-    const r = await exportVideo(jobOf(item.file, s, p), (pr) => { item.progress = exportFrom + pr * (1 - exportFrom); bump() }, (bm) => { thumb = thumbOf(bm); bm.close() }, item.controller.signal)
+    const job = jobOf(item.file, s, p)
+    const r = await exportVideo(job, (pr) => { item.progress = exportFrom + pr * (1 - exportFrom); bump() }, (bm) => { thumb = thumbOf(bm); bm.close() }, item.controller.signal)
     mark('export')
     const base = item.name.replace(/\.[^.]+$/, '') + '-onit'
     const url = URL.createObjectURL(r.blob)
-    const srt = s.saveSrt && p.cues.length ? new Blob([toSrt(cutCues(p.cues, new CutMap(p.cuts), p.words))], { type: 'application/x-subrip' }) : null
+    // (The same cues the video burns in: the cut words taken out, then what shows.)
+    const srt = s.saveSrt && p.cues.length ? new Blob([toSrt(cutCues(job.cues, new CutMap(p.cuts)))], { type: 'application/x-subrip' }) : null
     item.output = { name: base + '.mp4', blob: r.blob, url, srt: srt ? { name: base + '.srt', url: URL.createObjectURL(srt) } : null }
     if (id && thumb) saveProject(id, { thumb }, state).catch(() => {})
     // A video saved on its own (a template's "save straight") whose faces are to be checked isn't downloaded unasked: it waits in the list, flagged.

@@ -121,7 +121,8 @@ export class CutMap {
   /** How much of [s, e) is kept. */
   kept(s: number, e: number): number {
     let k = e - s
-    for (let i = 0; i < this.a.length; i++) k -= Math.max(0, Math.min(this.b[i], e) - Math.max(this.a[i], s))
+    // From the cut at or before [s] on (the cuts are in order and apart), up to the first one after [e].
+    for (let i = Math.max(0, this.at(s)); i < this.a.length && this.a[i] < e; i++) k -= Math.max(0, Math.min(this.b[i], e) - Math.max(this.a[i], s))
     return Math.max(0, k)
   }
 

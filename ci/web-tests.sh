@@ -57,6 +57,8 @@ case "${1:?shard}" in
     node tests/bleep.cjs   # 1
     node tests/cutsrt.cjs   # 1
     node tests/watchdog.cjs   # 1
+    # Cutting and masking share one alignment of tokens to words (seeded random cuts, bleeps and text edits).
+    node tests/cutfuzz.cjs   # 1
     ;;
   1) # about 187 s
     # Face detection with YuNet: RetinaFace + YuNet at 960 px (in the detector workers, and as one detector with YuNet in its own worker) finds no fewer faces than the old web detector (RetinaFace alone, 640 px) on the same frames of the stress clip and the classroom.

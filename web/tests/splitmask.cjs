@@ -10,7 +10,7 @@ const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/lib
 const mod = { exports: {} }
 new Function('module', 'exports', 'require', code)(mod, mod.exports, () => ({}))
 const S = mod.exports
-const { splitCue, splitCueAtTime, maskCue, maskWarning, mergeCues, retimeCue, cueRoom, wordsToCues, migrateCues, normWord, shownText, trVisible, cueWi, orphansOf, unownedIn } = S
+const { splitCue, splitCueAtTime, maskCue, maskWarning, mergeCues, retimeCue, cueRoom, wordsToCues, migrateCues, normWord, shownText, trVisible, cueWi, orphansOf, unownedIn, alignCue } = S
 const W = (list) => list.map(([text, start, end]) => ({ text: ' ' + text, start, end: end ?? start + 0.2 }))
 const fail = (m) => { console.error('FAIL', m); process.exit(1) }
 const eq = (name, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) fail(`${name}: ${JSON.stringify(got)} (wanted ${JSON.stringify(want)})`) }
@@ -47,7 +47,8 @@ const toks = (s) => s.match(/\S+/g) ?? []
   const w = W([['what', 0], ['the', 0.5], ['fork', 1]])
   eq('1 edited text', maskCue({ id: 1, start: 0, end: 2, text: 'what the fuck', wi: [0, 1, 2] }, w, new Set([2])), 'what the ****')
   const w2 = W([['כלב', 0], ['רע', 0.5]]), b = new Set([0])
-  for (const t of ['הכלב רע', 'כלבים רע', 'כֶּלֶב רע', 'כלב׳ רע', 'כ​לב רע', 'כלב־־רע', 'ו״כלב רע', 'כלב/רע', 'ש־הכלב רע', 'וכשהכלב רע', 'כלב רע רע רע', 'רע']) {
+  for (const t of ['הכלב רע', 'כלבים רע', 'כֶּלֶב רע', 'כלב׳ רע', 'כ​לב רע', 'כלב־־רע', 'ו״כלב רע', 'כלב/רע', 'ש־הכלב רע', 'וכשהכלב רע', 'כלב רע רע רע']) {
+    // (The word taken out of the text altogether, 'רע' alone, is gone: nothing shows it.)
     const c = { id: 1, start: 0, end: 2, text: t, wi: [0, 1] }
     const m = maskCue(c, w2, b)
     if (!m.includes('****') && !maskWarning(c, w2, b)) fail(`1b ${t}: shows the word and says nothing: ${m}`)
@@ -82,7 +83,7 @@ const toks = (s) => s.match(/\S+/g) ?? []
   const fits = { id: 1, start: 0, end: 2, text: 'a worse c', wi: [0, 1, 2] }
   eq('renamed word, same count', [maskCue(fits, w, new Set([1])), maskWarning(fits, w, new Set([1]))], ['a **** c', false])
   const lost = { id: 1, start: 0, end: 2, text: 'a worse c d', wi: [0, 1, 2] }
-  eq('renamed word, other count', [maskCue(lost, w, new Set([1])), maskWarning(lost, w, new Set([1]))], ['a worse c d', true])
+  eq('renamed word, other count', [maskCue(lost, w, new Set([1])), maskWarning(lost, w, new Set([1]))], ['a **** c d', false])  // (aligned: the one token between a and c stands where "bad" was, so it is hidden)
   if (maskWarning({ ...lost, text: 'a bad c d' }, w, new Set([1]))) fail('a warning with the word in the text')
   if (maskWarning(lost, w, new Set())) fail('a warning with nothing bleeped')
 }
@@ -115,11 +116,12 @@ const toks = (s) => s.match(/\S+/g) ?? []
   eq('orig', [maskCue(c, w, b), maskWarning(c, w, b)], ['so **** said yes', false])
   eq('respelled in place', [maskCue({ ...c, text: 'so Danny said yes' }, w, b), maskWarning({ ...c, text: 'so Danny said yes' }, w, b)], ['so **** said yes', false])
   const moved = { ...c, text: 'Danny said yes, okay' }
-  eq('respelled and moved', [maskCue(moved, w, b), maskWarning(moved, w, b)], ['Danny **** yes, okay', true])
-  eq('moved, other text', maskWarning({ ...c, text: 'Today I met Danny' }, w, b), true)
+  eq('respelled and moved', [maskCue(moved, w, b), maskWarning(moved, w, b)], ['**** said yes, okay', false])  // (aligned by text: "Danny" is the near respelling of Dani, so it is the one hidden)
+  // ("Danny" is the near respelling of Dani: it is aligned to it and hidden, with nothing to warn of.)
+  eq('moved, other text', maskCue({ ...c, text: 'Today I met Danny' }, w, b), 'Today I met ****')
   const w2 = W([['I', 1], ['can', 1.2], ['not', 1.4], ['tell', 1.6], ['Dani', 1.8]]), b2 = new Set([4])
   const c2 = wordsToCues(w2)[0]
-  eq('cannot', maskWarning({ ...c2, text: 'I cannot tell Danny, ok' }, w2, b2), true)
+  eq('cannot', maskCue({ ...c2, text: 'I cannot tell Danny, ok' }, w2, b2), 'I cannot tell ****, ok')
 }
 // ---- a subtitle made by hand over a bleeped word whose subtitle was deleted
 {
@@ -194,7 +196,9 @@ const toks = (s) => s.match(/\S+/g) ?? []
       else if (!warn) {
         const keys = new Set(mine.map((k) => normWord(words[k].text)).filter(Boolean))
         if (mine.length) mt.forEach((t, p) => { if (keys.has(normWord(t))) bad.push(`token ${t}`) })
-        if (tk.length === wi.length) wi.forEach((k, p) => { if (b.has(k) && !mt[p].includes('****')) bad.push(`place ${p}`) })
+        // the token aligned to a bleeped word (by text, in order) is hidden
+        const al = alignCue(tk, wi, words)
+        wi.forEach((k, q) => { if (b.has(k) && al.word[q] >= 0 && !mt[al.word[q]].includes('****')) bad.push(`aligned ${q}`) })
       }
       // the translation: shown only when it was made from this masked text, or nothing is masked
       const shown = shownText(x, m, 'both')

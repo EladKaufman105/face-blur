@@ -1219,7 +1219,12 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   /** What the video shows of a subtitle: its masked text, and its translation where that can't give a masked word away. */
   const shown = (c: Cue) => shownText(c, masked(c), subStyle.show, subStyle.maskBleeped !== false)
   /** The subtitles as the video and the .srt file have them: the words cut out of the video taken out first (a translation goes with them), then what shows. */
-  const exportedCues = () => dropCutWords(cues, cutMap, words).map((c) => ({ ...c, text: shown(c) }))
+  const exportedCues = () => {
+    const kept = dropCutWords(cues, cutMap, words)
+    // (A bleeped word cut out of a subtitle is still said inside its time: what says it there is hidden too.)
+    const orph = orphansOf(kept, bleeped)
+    return kept.map((c) => ({ ...c, text: shownText(c, subStyle.maskBleeped === false ? c.text : maskCue(c, words, bleeped, orph), subStyle.show, subStyle.maskBleeped !== false) }))
+  }
   /** The subtitles whose text was edited so that a bleeped word of theirs may show (see [maskWarning]). */
   const maskWarned = useMemo(() => (subStyle.maskBleeped === false ? [] : cues.filter((c) => maskWarning(c, words, bleeped, orphans))), [cues, words, bleeped, orphans, subStyle.maskBleeped])
   /** The selected subtitle's bar and properties (a tablet with its panel open shows the properties there, as the app's). */
