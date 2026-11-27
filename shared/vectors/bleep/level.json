@@ -1,0 +1,49 @@
+{
+ "about": "bleepLevel(rms) -> peak level; the app's BleepLevel.level and the web's lib/voice.ts bleepLevel must give these (shared/audio/bleep.json). Checked by app BleepLevelTest and web/tests/bleep.cjs.",
+ "cases": [
+  {
+   "rms": 0,
+   "level": 0.02
+  },
+  {
+   "rms": 0.001,
+   "level": 0.02
+  },
+  {
+   "rms": 0.01,
+   "level": 0.02
+  },
+  {
+   "rms": 0.02,
+   "level": 0.02
+  },
+  {
+   "rms": 0.035,
+   "level": 0.035
+  },
+  {
+   "rms": 0.05,
+   "level": 0.05
+  },
+  {
+   "rms": 0.1,
+   "level": 0.1
+  },
+  {
+   "rms": 0.2,
+   "level": 0.2
+  },
+  {
+   "rms": 0.32,
+   "level": 0.32
+  },
+  {
+   "rms": 0.5,
+   "level": 0.32
+  },
+  {
+   "rms": 1.0,
+   "level": 0.32
+  }
+ ]
+}

@@ -33,6 +33,8 @@ case "${1:?shard}" in
     node tests/blazeface.cjs   # 1
     # The remembered choices (what may be remembered, the settings list) and the merge of a second detection into the blurs ("Run detection again": Add never fewer, Replace keeps manual and edited blurs, the flags never weaker with Add) (pure, no browser).
     node tests/choices.cjs   # 1
+    # The bleep's loudness follows the speech it replaces (the app's BleepLevelTest checks the same vectors): a quiet word a quiet beep, a loud one a louder beep under the cap, nothing clips (pure, no browser).
+    node tests/bleep.cjs   # 1
     ;;
   1) # about 190 s
     # Face detection with YuNet: RetinaFace + YuNet at 960 px (in the detector workers, and as one detector with YuNet in its own worker) finds no fewer faces than the old web detector (RetinaFace alone, 640 px) on the same frames of the stress clip and the classroom.
@@ -90,10 +92,14 @@ case "${1:?shard}" in
     t usernotes.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/usernotes   # 43
     # The speech model's flow with no download: faster / better quality kept, a stuck recognition ends with an error and a retry, Cancel ends the worker, a template asks before downloading.
     t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 38
+    # A subtitles job shows life at once (no model: a stub for the Hub): the model is asked for at the start, beside the sound's reading, and the sound's percent shows with the model's phase.
+    t subsstart.cjs "$U" $S/speech_two.mp4 $R/subsstart strict   # 8
     ;;
   5) # about 210 s
     # A subtitle edited so a bleeped word may show: the alert, the mark on the timeline, the export asking first; a deleted subtitle's bleeps listed.
     t maskwarn.cjs "$U" $S/speech_two.mp4 $R/maskwarn   # 37
+    # SRT is no switch in the export sheet: "Save subtitles (SRT)" in the subtitles panel writes the masked file; the unmasked one (for editing) asks first.
+    t srtsave.cjs "$U" $S/speech_two.mp4 $R/srtsave   # 12
     # The landing page (/home/): it loads whole, its parts work, its links lead to the editor.
     t home.cjs "http://localhost:4173/" $R/home   # 32
     # The watermark's logo kept between visits and a template's logo shown; the template editor asking before it drops changes, and "Edit" for the chosen template (ready screen, batch); the safe zone's switch, chooser and mock (9:16 only, never in the export); the thin scrubber over a phone's panel; the low-confidence rule.

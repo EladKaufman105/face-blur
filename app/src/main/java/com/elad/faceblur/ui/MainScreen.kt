@@ -1,5 +1,6 @@
 package com.elad.faceblur.ui
 
+import com.elad.faceblur.edit.EditorController
 import com.elad.faceblur.i18n.t
 import android.content.Intent
 import android.net.Uri
@@ -304,6 +305,7 @@ fun MainScreen(vm: MainViewModel) {
                             s,
                             wide = wide,
                             onEdit = if (s.canEdit) vm::edit else null,
+                            srtCtrl = if (s.canEdit) vm.doneEditor() else null,
                             onHome = vm::reset,
                             onNew = { vm.reset(); pick() },
                         )
@@ -577,7 +579,7 @@ private fun LiveFrame(frame: android.graphics.Bitmap?, faces: List<com.elad.face
 }
 
 @Composable
-private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onHome: () -> Unit, onNew: () -> Unit, wide: Boolean = false) {
+private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, srtCtrl: EditorController?, onHome: () -> Unit, onNew: () -> Unit, wide: Boolean = false) {
     val context = LocalContext.current
     val uri = state.result.uri
     val header: @Composable () -> Unit = {
@@ -648,6 +650,17 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, onHome: () -> U
                     modifier = Modifier.weight(1f),
                     icon = Icons.Filled.PlayArrow,
                     accent = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            // The subtitles as .srt files (the hidden words as in the video, the times of the cut video): always offered when there are subtitles.
+            if (srtCtrl != null && srtCtrl.model.cues.isNotEmpty()) {
+                val saveSrt = rememberSrtSave(srtCtrl)
+                AccentOutlinedButton(
+                    t("שמור כתוביות (SRT)"),
+                    saveSrt,
+                    Modifier.fillMaxWidth().testTag(Tags.SRT_SAVE_DONE),
+                    icon = AppIcons.Download,
+                    accent = Feature.SUBTITLES.tint,
                 )
             }
             if (onEdit != null) {

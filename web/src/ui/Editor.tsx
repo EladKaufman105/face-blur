@@ -33,7 +33,7 @@ import { cleanupOn, type Cleanup } from '../lib/cleanup'
 import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
 import { Analyzing } from './Analyzing'
 import { ChipTabs, PANEL_ID, STYLE_PARTS, subsOf, useNarrow, useTablet } from './panels'
-import { bleepRanges, cueAt, cueRoom, cueWi, maskCue, maskWarning, mergeCues, migrateCues, orphansOf, retimeCue, shownText, splitCueAtTime, trVisible, type Cue, type SubStyle, type Word } from '../lib/subtitles'
+import { bleepRanges, cutCues, cueAt, cueRoom, cueWi, maskCue, maskWarning, mergeCues, migrateCues, orphansOf, retimeCue, shownText, splitCueAtTime, trVisible, type Cue, type SubStyle, type Word } from '../lib/subtitles'
 import { DEFAULT_SUB_STYLE, loadSubFont, normalizeStyle } from '../lib/substyle'
 import { cueWordTimes, drawCue } from '../lib/subrender'
 import { getFont } from '../lib/projects'
@@ -1517,6 +1517,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         {(tab === 'subs' || subsSeen.current) && (
           <div class="subs-keep" hidden={tab !== 'subs'}>
           <SubtitlesTab
+            srtCues={() => cutCues(cues.map((c) => ({ ...c, text: shown(c) })), cutMap)}
             onBusy={setSubsBusy}
             onLost={setLost}
             onAttention={() => { setSubsAlert(true); setSubTab((s) => ({ ...s, subs: 'make' })) }}

@@ -23,12 +23,13 @@ export type SubsRequest = {
 export type SubsMessage =
   /** Still working (no news): resets the page's watchdog. */
   | { type: 'tick' }
-  /** Reading the sound out of the video. */
-  | { type: 'audio' }
+  /** Reading the sound out of the video (it runs beside the model's download and load): how far (0..1; 1 = done); `only`: nothing else is going on, the model is ready and this is what is waited for. */
+  | { type: 'audio'; progress: number; only?: boolean }
   /** Loading the model into memory (its files are here): no percent exists for this phase. */
   | { type: 'load' }
   | { type: 'download'; progress: number; loaded: number; total: number }
-  | { type: 'transcribe'; progress: number }
+  /** [win]: the 30-second window being recognized (1-based) and how many there are about. */
+  | { type: 'transcribe'; progress: number; win?: { i: number; n: number } }
   | { type: 'done'; words: Word[]; device: string; /** Milliseconds: loading the model (or finding it kept), and recognizing. */ ms: { load: number; recognize: number; /** Where recognition went: up to the first token (the audio's features and the encoder), the other tokens, what follows (the word timings), and the token count. */ first: number; decode: number; after: number; tokens: number } }
   | { type: 'error'; code: string; message: string }
 
@@ -46,11 +47,14 @@ self.onmessage = async (e: MessageEvent<SubsRequest>) => {
 }
 
 /** The sound, mono at 16 kHz (what Whisper takes). */
-async function audio16k(file: File): Promise<Float32Array | null> {
+async function audio16k(file: File, onProgress: (p: number) => void): Promise<Float32Array | null> {
   let seen = 0
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
   const track = await input.getPrimaryAudioTrack()
   if (!track || !(await track.canDecode())) return null
+  // The length from the file's header (fast); without one the bar stays empty until the end.
+  const dur = (await track.getDurationFromMetadata().catch(() => null)) ?? 0
+  let lastP = 0
   const parts: Float32Array[] = []
   let total = 0
   let pending: number[] = []
@@ -58,6 +62,10 @@ async function audio16k(file: File): Promise<Float32Array | null> {
   let acc = 0, accN = 0, pos = 0
   for await (const sample of new AudioSampleSink(track).samples()) {
     if (++seen % 50 === 0) post({ type: 'tick' })
+    if (dur > 0) {
+      const now = Date.now()
+      if (now - lastP > 150) { lastP = now; onProgress(Math.max(0, Math.min(0.99, sample.timestamp / dur))) }
+    }
     ratio = sample.sampleRate / RATE
     const ch = sample.numberOfChannels, n = sample.numberOfFrames
     const planes: Float32Array[] = []
@@ -120,9 +128,19 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 let loaded: { key: string; asr: any } | null = null
 
 async function run({ file, language, repo, revision, device, encDtype, dtype, threads }: SubsRequest) {
-  post({ type: 'audio' })
-  const x = await audio16k(file)
-  if (!x || x.length < RATE / 2) return post({ type: 'error', code: 'no-audio', message: 'no sound' })
+  // The sound is read at once and beside the model's download and load (before: first, alone, with
+  // the model not even asked for yet, so a long video sat at 0% for as long as its sound took).
+  let failed = false
+  let audioDone = false
+  post({ type: 'audio', progress: 0 })
+  const audioJob = audio16k(file, (progress) => { if (!failed) post({ type: 'audio', progress }) }).then((x) => {
+    audioDone = true
+    if (!failed) post({ type: 'audio', progress: 1 })
+    if ((!x || x.length < RATE / 2) && !failed) { failed = true; post({ type: 'error', code: 'no-audio', message: 'no sound' }) }
+    return x
+  })
+  // (Looked at below; if the model fails first, nobody waits for this one.)
+  audioJob.catch(() => {})
 
   env.allowLocalModels = false
   const wasm: any = (env.backends as any).onnx?.wasm
@@ -192,6 +210,14 @@ async function run({ file, language, repo, revision, device, encDtype, dtype, th
   // Loaded: a "loading" still pending from the last download message must not come after the recognition starts.
   clearTimeout(loadTimer)
   loading = true
+  // The sound may still be being read: the wait is its own phase, with its own bar.
+  const keepAlive = setInterval(() => post({ type: 'tick' }), 1000)
+  let x: Float32Array | null
+  try {
+    if (!audioDone) post({ type: 'audio', progress: 0, only: true })
+    x = await audioJob
+  } finally { clearInterval(keepAlive) }
+  if (!x || x.length < RATE / 2) return
 
   try {
     const words: Word[] = []
@@ -200,12 +226,16 @@ async function run({ file, language, repo, revision, device, encDtype, dtype, th
     // Timestamp tokens say how far into the window the speech has got: the progress between windows.
     const gc = asr.model?.generation_config
     const tsBegin: number = (typeof gc?.no_timestamps_token_id === 'number' ? gc.no_timestamps_token_id : 50363) + 1
-    post({ type: 'transcribe', progress: 0 })
+    const windows = Math.max(1, Math.ceil(x.length / (30 * RATE)))
+    let win = { i: 1, n: windows }
+    post({ type: 'transcribe', progress: 0, win })
     // The bar only moves forward (a restarted window would take it back a little).
     let shown = 0
-    const progress = (v: number) => { shown = Math.max(shown, v); post({ type: 'transcribe', progress: shown }) }
+    const progress = (v: number) => { shown = Math.max(shown, v); post({ type: 'transcribe', progress: shown, win }) }
     for (let from = 0; from < x.length;) {
       const to = cutPoint(x, from)
+      win = { i: Math.min(windows, Math.floor(from / (30 * RATE)) + 1), n: windows }
+      progress(shown)
       const winSec = (to - from) / RATE
       const base = from / x.length, span = (to - from) / x.length
       if (!silent(x, from, to)) {

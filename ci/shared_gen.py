@@ -167,6 +167,14 @@ def gen_detect():
     return {"kotlin": {"DetectConst.kt": kt}, "ts": {"detect.ts": ts}}
 
 
+def gen_bleep():
+    rel = "shared/audio/bleep.json"
+    d = load(rel)
+    keys_exactly(rel, d, ["about", "consts"])
+    kt, ts = emit_consts(rel, check_text(rel, "about", d["about"]), "BleepConst", const_list(rel, d["consts"]))
+    return {"kotlin": {"BleepConst.kt": kt}, "ts": {"bleep.ts": ts}}
+
+
 def gen_safezones():
     """Each platform's four margins, as <ID>_TOP, _BOTTOM, _LEFT, _RIGHT. {"px": n} is n pixels of
     the measuring frame: top and bottom over its height, left and right over its width."""
@@ -260,7 +268,7 @@ def gen_choices():
     return {"kotlin": {"RememberedKeys.kt": "".join(kt)}, "ts": {"choices.ts": "".join(ts)}}
 
 
-GENERATORS = [gen_detect, gen_safezones, gen_choices]
+GENERATORS = [gen_detect, gen_bleep, gen_safezones, gen_choices]
 
 
 def main():

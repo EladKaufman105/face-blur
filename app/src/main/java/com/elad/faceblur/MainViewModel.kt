@@ -221,6 +221,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private var job: Job? = null
     private var editor: EditorController? = null
+    /** The editor behind the done screen (for "Save subtitles (SRT)"), null when it is gone. */
+    fun doneEditor(): EditorController? = editor
 
     /** Saved projects, last edited first. */
     var projects by mutableStateOf<List<ProjectMeta>>(emptyList())
@@ -1067,8 +1069,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!auto) livePreview = null
         state = UiState.Working(s.info, 2, 0f, subsOnly, auto)
         saveProject(ctrl)
+        // An export from the editor does not save .srt files by itself (there is no switch): "Save subtitles (SRT)"
+        // is an action of the subtitles panel and of the done screen. A template's run (auto) keeps its own choice.
+        val export = if (auto) exportOptions else exportOptions.copy(saveSrt = false)
         val saved = FaceBlurProcessor(getApplication()).render(
-            s.info, s.settings, s.analysis, s.model, s.analysisMs, exportOptions, subtitleStyle, ctrl.audio,
+            s.info, s.settings, s.analysis, s.model, s.analysisMs, export, subtitleStyle, ctrl.audio,
             ctrl.background, s.masks,
             stabilizer = ctrl.stabilizer,
             onPreview = { frame -> showLive(frame, emptyList()) },

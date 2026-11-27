@@ -84,8 +84,7 @@ const [, , url, video, out] = process.argv
     if (!(cut > 0.05)) throw new Error('cut by the text')
     await p.screenshot({ path: `${out}/cut_by_text.png` })
     await p.click('.export-bar .btn')
-    // The subtitles as an SRT file too.
-    await p.click('.export-sheet .switch')
+    // The subtitles as an SRT file too (no switch: the done screen always offers it).
     await p.click('.export-go')
     await p.waitForSelector('.result video, .card.error', { timeout: 900000 })
     const srtHref = await p.getAttribute('.srt-link', 'href')
