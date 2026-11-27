@@ -969,4 +969,5 @@ internal val English: Map<String, String> = mapOf(
     "כשתסמנו \"זכור את הבחירה שלי\" בחלון, הבחירה תופיע כאן, ואפשר יהיה לנקות אותה." to "When you tick \"Remember my choice\" in a dialog, the choice shows up here, and you can clear it.",
     "בחירות שנשמרו כדי שלא נשאל שוב. ניקוי מחזיר את השאלה." to "Choices kept so we do not ask again. Clearing brings the question back.",
     "נקה הכל" to "Clear all",
+    "הטשטושים הוארכו: %d" to "Extended %d blurs",
 )

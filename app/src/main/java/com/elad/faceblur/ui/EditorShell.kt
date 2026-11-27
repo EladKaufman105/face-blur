@@ -385,7 +385,7 @@ internal fun EditorMessages(ctrl: EditorController, modifier: Modifier = Modifie
         // "Run detection again" came in: what it did, with Undo, for as long as nothing else is edited.
         ctrl.rerunToast?.let { toast ->
             @Suppress("UNUSED_VARIABLE") val v = ctrl.version
-            if (ctrl.model.undoDepth == toast.depth && !ctrl.model.canRedo) {
+            if (ctrl.model.version == toast.token) {
                 LaunchedEffect(toast) {
                     delay(6000)
                     if (ctrl.rerunToast === toast) ctrl.rerunToast = null

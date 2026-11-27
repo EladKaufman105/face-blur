@@ -154,9 +154,9 @@ case "${1:?shard}" in
     # finding extra detections and no fewer faces (classroom).
     t selfie.cjs "$U" $S/headpose.mp4 $S/portrait_rot90.mp4 $S/classroom.mp4 $R/selfie   # ~60 (measured locally)
     ;;
-  8) # about 100 s (CI)
+  8) # about 150 s
     # Run detection again: the sheet, the question (Add / Replace, Remember my choice), Add and Replace each one undo step, no question once remembered, Settings > Remembered choices (Clear, Clear all, the empty state, in English), Stop leaving the blurs as they were, a Fast run's notice kept by Add.
-    t rerun.cjs "$U" $S/walk.mp4 $R/rerun   # ~160 (measured locally)
+    t rerun.cjs "$U" $S/walk.mp4 $R/rerun   # ~150
     ;;
   subs) # Whisper's model downloads from Hugging Face: its own job, only when subtitle code changes. The small one (whisper-base, 77 MB on the CPU) is forced: the phone path, and quick. The page is isolated here (threads), as on the site.
     t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base" $S/speech_en.mp4 $R/subs   # 60

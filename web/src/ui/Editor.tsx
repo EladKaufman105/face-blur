@@ -80,7 +80,7 @@ const GROUPS: [EditorTab, string, (p: { size?: number }) => any, string][] = [
 ]
 
 /** What undo and redo move between: the blurs and the ones turned off, the sounds, the subtitles, the cuts. */
-type Snap = { off: Set<number>; sfx: SfxClip[]; cues: Cue[]; words: Word[]; bleeped: Set<number>; tracks: Track[]; cuts: Range[] }
+type Snap = { an: Analysis; off: Set<number>; sfx: SfxClip[]; cues: Cue[]; words: Word[]; bleeped: Set<number>; tracks: Track[]; cuts: Range[] }
 
 /** A key for frame [k]'s mask of [m] (a new pass gives new keys): the renderer uploads a mask once. */
 const maskGens = new WeakMap<PeopleMasks, number>()
@@ -123,7 +123,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [rerunSheet, setRerunSheet] = useState(false)
   const [rerunAsk, setRerunAsk] = useState<DetectChoice | null>(null)
   const [rerunProgress, setRerunProgress] = useState<number | null>(null)
-  const [rerunToast, setRerunToast] = useState<{ text: string; step: number } | null>(null)
+  const [rerunToast, setRerunToast] = useState<{ text: string; token: number } | null>(null)
   const rerunAbort = useRef<AbortController | null>(null)
   useEffect(() => () => rerunAbort.current?.abort(), [])
   useEffect(() => {
@@ -813,9 +813,12 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const future = useRef<Snap[]>([])
   const lastChange = useRef(0)
   const [, setHistoryVersion] = useState(0)
-  const snap = (): Snap => ({ off: state.current.off, sfx: state.current.sfx, cues: state.current.cues, words: state.current.words, bleeped: state.current.bleeped, tracks: state.current.tracks, cuts: state.current.cuts })
+  const snap = (): Snap => ({ an: anRef.current, off: state.current.off, sfx: state.current.sfx, cues: state.current.cues, words: state.current.words, bleeped: state.current.bleeped, tracks: state.current.tracks, cuts: state.current.cuts })
   /** Before a change: a new undo step, or ([merge]) the same one as a change just before it. */
+  /** Counts every change to the history (record, undo, redo): the re-run's Undo toast stays only while it is what it was. */
+  const histCount = useRef(0)
   const record = (merge = true) => {
+    histCount.current++
     const now = performance.now()
     const burst = merge && now - lastChange.current < 800
     lastChange.current = merge ? now : 0
@@ -827,6 +830,9 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     setHistoryVersion((n) => n + 1)
   }
   const put = (s: Snap) => {
+    histCount.current++
+    // (The detection's flags come back with the blurs: undoing a re-run is the project as it was, notices included.)
+    setAn(s.an)
     setOff(s.off)
     setSfx(s.sfx)
     setCues(s.cues)
@@ -919,7 +925,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     const flags = mergeFlags(old, fresh, mode)
     const nextAn: Analysis = same ? { ...old, ...flags } : { ...fresh, ...flags }
     const info = t('זמן עיבוד: %s', duration(res.ms / 1000)) + ' · ' + t('הזיהוי רץ על %s', res.backend === 'webgpu' ? t('המעבד הגרפי') : t('המעבד'))
-    if (m.added.length === 0 && m.removed.length === 0) {
+    if (m.added.length === 0 && m.removed.length === 0 && m.extended.length === 0) {
       // Nothing changes in the blurs (no undo step); the flags still follow, so a weaker run never hides a notice.
       if (!same) setTracks(cur)
       setAn(nextAn)
@@ -938,9 +944,9 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     setDetectInfo(info)
     const n = m.added.length
     const text = mode === 'add'
-      ? (n === 1 ? t('נמצאו פנים נוספים: אחד') : t('נמצאו %d פנים נוספים', n))
+      ? (n === 0 ? t('הטשטושים הוארכו: %d', m.extended.length) : n === 1 ? t('נמצאו פנים נוספים: אחד') : t('נמצאו %d פנים נוספים', n))
       : (n === 0 ? t('הוחלף: לא נמצאו פנים') : n === 1 ? t('הוחלף: פנים אחד') : t('הוחלף: %d פנים', n))
-    setRerunToast({ text, step: past.current.length })
+    setRerunToast({ text, token: histCount.current })
   }
 
   const updateSfx = (id: number, patch: Partial<SfxClip>) => setSfxH((list) => list.map((c) => (c.id === id ? { ...c, ...patch } : c)).sort((a, b) => a.at - b.at))
@@ -1378,7 +1384,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       class="btn primary"
       // Not while a template is still being applied or the sound is being processed: the
       // export would go out without the voice change (anonymity), the cleanup or the cuts.
-      disabled={!!following || tplBusy || soundBlocked}
+      disabled={!!following || tplBusy || soundBlocked || rerunProgress !== null}
       onClick={() => {
         video.current?.pause()
         setExportOpen(true)
@@ -1621,7 +1627,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
               <div class="progress"><div style={{ width: `${Math.max(2, Math.min(99, Math.floor(rerunProgress * 100)))}%` }} /></div>
             </div>
           )}
-          {rerunToast && rerunProgress === null && past.current.length === rerunToast.step && future.current.length === 0 && (
+          {rerunToast && rerunProgress === null && histCount.current === rerunToast.token && (
             <div class="toast with-action rerun-toast" role="status" onPointerDown={(e) => e.stopPropagation()}>
               <span>{rerunToast.text}</span>
               <button class="rerun-undo" onClick={() => { setRerunToast(null); undo() }}>{t('בטל')}</button>

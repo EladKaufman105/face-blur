@@ -47,12 +47,14 @@ const track = (id, first, n, cx, cy, extra = {}) => {
 }
 const same = (a, b) => a.first === b.first && a.boxes.length === b.boxes.length && a.boxes.every((v, i) => v === b.boxes[i])
 const existing = [track(0, 0, 50, 0.2, 0.3), track(1, 10, 30, 0.7, 0.3, { manual: true }), track(2, 0, 40, 0.5, 0.7, { edited: true }), track(3, 5, 20, 0.85, 0.85, { scale: 1.4 }), track(4, 60, 20, 0.4, 0.4)]
-const found = [track(0, 0, 50, 0.21, 0.31), track(1, 0, 60, 0.9, 0.1), track(2, 12, 25, 0.5, 0.71), track(3, 70, 10, 0.1, 0.9)]
+const found = [track(0, 0, 51, 0.21, 0.31), track(1, 0, 60, 0.9, 0.1), track(2, 12, 25, 0.5, 0.71), track(3, 70, 10, 0.1, 0.9)]
 const off = new Set([4])
 // Add: every old track as it was (the same objects), new faces appended, a face that is one there not added.
 let a = R.mergeRerun(existing, off, found, 'add')
 if (a.removed.length) fail('add removed')
-existing.forEach((e, i) => { if (a.tracks[i] !== e) fail('add changed track ' + e.id) })
+// (found 0 is track 0's face on one more frame: track 0 is unedited, so it gets that frame; the others are the same objects.)
+existing.forEach((e, i) => { if (e.id !== 0 && a.tracks[i] !== e) fail('add changed track ' + e.id) })
+if (a.extended.length !== 1 || a.extended[0].id !== 0 || a.tracks[0].boxes.length !== 51 * 4 || a.tracks[0].first !== 0) fail('add extended track 0: ' + a.extended.length)
 if (a.added.length !== 2) fail('add added ' + a.added.length)
 if (a.tracks.length !== existing.length + 2) fail('add count')
 if (new Set(a.tracks.map((t) => t.id)).size !== a.tracks.length) fail('add ids clash')
@@ -79,11 +81,30 @@ for (let i = 0; i < 400; i++) {
   const offs = new Set(old.filter(() => rnd() < 0.2).map((t) => t.id))
   const ad = R.mergeRerun(old, offs, fnd, 'add')
   if (ad.tracks.length < old.length) fail('add fewer ' + i)
-  old.forEach((o, k) => { if (ad.tracks[k] !== o) fail('add changed ' + i) })
+  // An unedited blur may only gain frames: each frame it had is there with the same box.
+  old.forEach((o, k) => {
+    const n = ad.tracks[k]
+    if (n.id !== o.id) fail('add reordered ' + i)
+    for (let f = o.first; f < o.first + o.boxes.length / 4; f++) for (let c = 0; c < 4; c++) if (n.boxes[(f - n.first) * 4 + c] !== o.boxes[(f - o.first) * 4 + c]) fail('add changed a box ' + i)
+    if (R.isEdited(o, offs) && n !== o) fail('add changed an edited blur ' + i)
+  })
   const rp = R.mergeRerun(old, offs, fnd, 'replace')
   for (const o of old) if (R.isEdited(o, offs) && !rp.tracks.includes(o)) fail('replace lost an edited track ' + i)
   if (new Set(rp.tracks.map((t) => t.id)).size !== rp.tracks.length) fail('replace ids clash ' + i)
   if (rp.tracks.some((t) => !t.manual && !t.edited && t.scale === undefined && !offs.has(t.id) && old.includes(t))) fail('replace kept an untouched auto track ' + i)
+}
+
+// The example that matters: a blur on frames 0-10, the same face found on 0-290: Add leaves every found frame blurred.
+{
+  const e = [track(0, 0, 11, 0.3, 0.3)], f = [track(0, 0, 291, 0.3, 0.3)]
+  const r = R.mergeRerun(e, new Set(), f, 'add')
+  if (r.tracks.length !== 1 || r.added.length || r.tracks[0].boxes.length !== 291 * 4 || r.tracks[0].first !== 0 || r.tracks[0].id !== 0) fail('a longer found face is not given to the blur')
+  const e2 = [track(0, 0, 11, 0.3, 0.3, { edited: true })]
+  const r2 = R.mergeRerun(e2, new Set(), f, 'add')
+  if (r2.tracks[0] !== e2[0] || r2.added.length || r2.extended.length) fail('an edited blur was extended')
+  // before and after
+  const r3 = R.mergeRerun([track(0, 10, 11, 0.3, 0.3)], new Set(), [track(0, 0, 40, 0.3, 0.3)], 'add')
+  if (r3.tracks[0].first !== 0 || r3.tracks[0].boxes.length !== 40 * 4) fail('before and after')
 }
 
 // ---- the flags

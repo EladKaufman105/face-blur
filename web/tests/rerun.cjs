@@ -252,6 +252,19 @@ const [, , url, video, out] = process.argv
     await idle()
     await p.waitForTimeout(500)
     if (await p.$('.detect-fast')) fail('Replace with Normal kept a Fast notice')
+    // Undoing that Replace brings the project back as it was: the Fast notice with the blurs.
+    await p.waitForSelector('.rerun-toast')
+    await p.click('.rerun-undo')
+    await p.waitForTimeout(400)
+    if (!(await p.$('.detect-fast'))) fail('undo of a Replace left the Fast notice off')
+    // Export is not possible while a re-run goes on.
+    await run('normal')
+    await p.waitForSelector('.rerun-ask')
+    await p.click('.rerun-ask-go')
+    await p.waitForSelector('.rerun-progress')
+    if (!(await p.evaluate(() => document.querySelector('.export-bar .btn.primary, .exp-label')?.closest('button')?.disabled))) fail('export is enabled during a re-run')
+    await p.click('.rerun-stop')
+    await idle()
 
     const errors = logs.filter((l) => l.startsWith('[pageerror]'))
     if (errors.length) fail('page errors: ' + errors.join('; '))

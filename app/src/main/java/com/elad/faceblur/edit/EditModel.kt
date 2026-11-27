@@ -31,11 +31,13 @@ class EditTrack(
     val keys: TreeMap<Int, FloatArray> = TreeMap(),
     /** Turned off by the user: the face stays in the list but is not blurred (not shown, not exported). */
     var off: Boolean = false,
+    /** The user changed this automatic blur (moved, resized, followed again, start or end, split): "Run detection again" never takes it away. */
+    var edited: Boolean = false,
 ) {
     fun copy() = EditTrack(
         id, manual, TreeMap(path), start, end, scale,
         TreeMap<Int, FloatArray>().also { m -> keys.forEach { (k, v) -> m[k] = v.copyOf() } },
-        off,
+        off, edited,
     )
 }
 
@@ -219,7 +221,7 @@ class EditModel(
     private var nextSfxId = 1
     /** Stretches cut out of the video: start ms -> end ms (see [CutMap]). */
     val removed = TreeMap<Long, Long>()
-    private class Snap(val tracks: List<EditTrack>, val cues: List<Cue>, val bleeps: Map<Long, Long>, val sfx: List<SfxClip>, val removed: Map<Long, Long>)
+    private class Snap(val tracks: List<EditTrack>, val cues: List<Cue>, val bleeps: Map<Long, Long>, val sfx: List<SfxClip>, val removed: Map<Long, Long>, val detection: RerunMerge.Detection?)
     private val undo = ArrayDeque<Snap>()
     /** Undone changes, to redo (cleared by any new change). */
     private val redo = ArrayDeque<Snap>()
@@ -378,19 +380,26 @@ class EditModel(
      * "Run detection again": the faces [found] (on this model's frames) come in as one undo step, by [RerunMerge]'s rules. A blur
      * turned off still counts as there, so a face found again is not added beside it. Returns how many blurs came in and went out.
      */
-    fun rerun(found: List<TreeMap<Int, Box>>, mode: RerunMode): Pair<Int, Int> {
+    fun rerun(found: List<TreeMap<Int, Box>>, mode: RerunMode, after: RerunMerge.Detection? = null): RerunMerge.Result {
         val there = tracks.map { t ->
             // (A blur turned off has no shown boxes: its frames are what its path covers.)
             val shown = if (t.off) TreeMap<Int, Box>().also { m -> for (i in max(0, t.start)..min(frameCount - 1, t.end)) rawBox(t, i)?.let { m[i] = it } } else shownBoxes(t)
             RerunMerge.Existing(t.id, RerunMerge.isEdited(t), shown)
         }
         val plan = RerunMerge.plan(there, found, mode)
-        if (plan.add.isEmpty() && plan.removeIds.isEmpty()) return 0 to 0
+        if (plan.add.isEmpty() && plan.removeIds.isEmpty() && plan.extend.isEmpty()) return RerunMerge.Result(0, 0, 0)
         snapshot()
         tracks.removeAll { it.id in plan.removeIds }
+        for ((id, extra) in plan.extend) {
+            val t = track(id) ?: continue
+            t.path.putAll(extra)
+            t.start = min(t.start, extra.firstKey())
+            t.end = max(t.end, extra.lastKey())
+        }
         for (p in plan.add) tracks += EditTrack(nextId++, false, TreeMap(p), p.firstKey(), p.lastKey())
+        if (after != null) detection = after
         changed()
-        return plan.add.size to plan.removeIds.size
+        return RerunMerge.Result(plan.add.size, plan.removeIds.size, plan.extend.size)
     }
 
     /** How many undo steps there are (a message with "Undo" stays only while this is what it was). */
@@ -398,7 +407,13 @@ class EditModel(
 
     // ------------------------------------------------------------------ edits
 
-    private fun current() = Snap(tracks.map { it.copy() }, cues.map { it.copy() }, TreeMap(bleeps), sfx.map { it.copy() }, TreeMap(removed))
+    /**
+     * How the faces were found (mode and sensitivity), kept with the undo steps: a re-run changes it, and undoing the re-run puts
+     * the old one back with the blurs (the editor copies it to the project's settings). Null until a re-run sets it.
+     */
+    var detection: RerunMerge.Detection? = null
+
+    private fun current() = Snap(tracks.map { it.copy() }, cues.map { it.copy() }, TreeMap(bleeps), sfx.map { it.copy() }, TreeMap(removed), detection)
 
     private fun snapshot() {
         undo.addLast(current())
@@ -463,6 +478,7 @@ class EditModel(
         sfx += u.sfx
         removed.clear()
         removed.putAll(u.removed)
+        if (u.detection != null) detection = u.detection
         changed()
     }
 
@@ -1050,8 +1066,9 @@ class EditModel(
         val t = track(id) ?: return null
         if (frame <= t.start || frame > t.end) return null
         snapshot()
-        val b = t.copy().let { EditTrack(nextId++, it.manual, it.path, frame, it.end, it.scale, it.keys, it.off) }
+        val b = t.copy().let { EditTrack(nextId++, it.manual, it.path, frame, it.end, it.scale, it.keys, it.off, true) }
         t.end = frame - 1
+        t.edited = true
         tracks.add(tracks.indexOf(t) + 1, b)
         changed()
         return b.id
@@ -1061,6 +1078,7 @@ class EditModel(
         val t = track(id) ?: return
         if (undoable) snapshot()
         t.start = frame.coerceIn(0, t.end)
+        t.edited = true
         changed()
     }
 
@@ -1068,6 +1086,7 @@ class EditModel(
         val t = track(id) ?: return
         if (undoable) snapshot()
         t.end = frame.coerceIn(t.start, frameCount - 1)
+        t.edited = true
         changed()
     }
 
@@ -1094,6 +1113,7 @@ class EditModel(
     fun moveBy(id: Int, frame: Int, dx: Float, dy: Float) {
         val t = track(id) ?: return
         if (frame < t.start || frame > t.end) return
+        t.edited = true
         val c = correction(t, frame) ?: floatArrayOf(0f, 0f)
         t.keys[frame] = floatArrayOf(c[0] + dx, c[1] + dy)
         changed()
@@ -1103,6 +1123,7 @@ class EditModel(
     fun setScale(id: Int, scale: Float) {
         val t = track(id) ?: return
         t.scale = scale.coerceIn(MIN_SCALE, MAX_SCALE)
+        t.edited = true
         changed()
     }
 
@@ -1128,6 +1149,7 @@ class EditModel(
         if (result.isEmpty()) return
         if (undoable) snapshot()
         bake(t)
+        if (!fresh) t.edited = true
         t.path.putAll(result)
         if (fresh) {
             t.start = result.firstKey()

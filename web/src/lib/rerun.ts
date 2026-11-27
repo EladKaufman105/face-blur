@@ -26,28 +26,61 @@ export type Merged = {
   added: Track[]
   /** The old blurs that went out (Replace). */
   removed: Track[]
+  /** Unedited blurs that were given the frames of the same face the new run found beyond theirs (the new versions; same ids). */
+  extended: Track[]
   /** A new blur's id -> the id it had in the new run (to find its picture). */
   from: Map<number, number>
 }
 
+const lastOf = (t: Track) => t.first + t.boxes.length / 4 - 1
+
+/** [t] with the frames of [f] outside its own frames added (before and after; both are contiguous and share frames). */
+function extendWith(t: Track, f: Track): Track | null {
+  const first = Math.min(t.first, f.first), last = Math.max(lastOf(t), lastOf(f))
+  if (first === t.first && last === lastOf(t)) return null
+  const boxes = new Float32Array((last - first + 1) * 4)
+  for (let i = first; i <= last; i++) {
+    const inT = i >= t.first && i <= lastOf(t)
+    const src = inT ? t : f
+    const k = i - src.first
+    boxes.set(src.boxes.subarray(k * 4, k * 4 + 4), (i - first) * 4)
+  }
+  return { ...t, first, boxes }
+}
+
 /**
- * The blurs after a re-run. [existing] are untouched in Add; in Replace the automatic ones nobody
- * edited go. New blurs get ids above every old id, so an undo that brings back an old one never clashes.
+ * The blurs after a re-run. In Add every blur there is untouched except that an unedited one whose face the new run found longer
+ * (the same face on more frames) gets those frames too, so no frame the new run found is left unblurred; a face that is one an
+ * edited blur has is left to that blur as it is. In Replace the automatic blurs nobody edited go. New blurs get ids above every old id,
+ * so an undo that brings back an old one never clashes.
  */
 export function mergeRerun(existing: Track[], off: ReadonlySet<number>, found: Track[], mode: RerunMode): Merged {
   const keep = mode === 'add' ? existing : existing.filter((t) => isEdited(t, off))
   const removed = existing.filter((t) => !keep.includes(t))
   let id = existing.reduce((m, t) => Math.max(m, t.id), -1) + 1
+  const work = keep.slice()
   const added: Track[] = []
   const from = new Map<number, number>()
+  const grown = new Set<number>()
   for (const f of found) {
-    if (keep.some((k) => sameFace(k, f))) continue
-    const tr = { ...f, id: id++ }
-    added.push(tr)
-    from.set(tr.id, f.id)
+    const same = work.filter((k) => sameFace(k, f))
+    if (same.length === 0) {
+      const tr = { ...f, id: id++ }
+      added.push(tr)
+      from.set(tr.id, f.id)
+      continue
+    }
+    if (same.some((k) => isEdited(k, off))) continue
+    const i = work.indexOf(same[0])
+    const g = extendWith(same[0], f)
+    if (g) { work[i] = g; grown.add(g.id) }
   }
   const gone = new Set(removed.map((t) => t.id))
-  return { tracks: [...keep, ...added], off: new Set([...off].filter((x) => !gone.has(x))), added, removed, from }
+  return {
+    tracks: [...work, ...added],
+    off: new Set([...off].filter((x) => !gone.has(x))),
+    added, removed, extended: work.filter((t) => grown.has(t.id)), from,
+  }
 }
 
 /**

@@ -79,7 +79,7 @@ class LoadedProject(val meta: ProjectMeta, val json: JSONObject, val analysis: A
  */
 object ProjectStore {
     private const val ANALYSIS_VERSION = 1
-    private const val EDITS_VERSION = 5
+    private const val EDITS_VERSION = 6
 
     fun root(context: Context) = File(context.filesDir, "projects")
 
@@ -442,6 +442,10 @@ object ProjectStore {
         val trs = e.cues.filter { it.trm != null }
         o.writeInt(trs.size)
         for (c in trs) { o.writeInt(c.id); o.str(c.trm!!) }
+        // Automatic blurs the user changed (by id): a re-run of detection never takes these away.
+        val edited = e.tracks.filter { it.edited }
+        o.writeInt(edited.size)
+        for (t in edited) o.writeInt(t.id)
     }
 
     fun readEdits(f: File): EditState = input(f).use { i ->
@@ -478,6 +482,11 @@ object ProjectStore {
             val trs = HashMap<Int, String>()
             repeat(i.readInt()) { val id = i.readInt(); trs[id] = i.str() }
             for (c in cues) c.trm = trs[c.id]
+        }
+        if (version >= 6) {
+            val edited = HashSet<Int>()
+            repeat(i.readInt()) { edited += i.readInt() }
+            for (t in tracks) t.edited = t.id in edited
         }
         EditState(tracks, cues, bleeps, nextId, nextCueId, sfx, removed)
     }

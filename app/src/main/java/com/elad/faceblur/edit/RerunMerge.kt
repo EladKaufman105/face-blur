@@ -38,24 +38,50 @@ object RerunMerge {
     /** A blur there: its id, whether the user made or changed it, and the boxes it covers. */
     class Existing(val id: Int, val edited: Boolean, val shown: TreeMap<Int, Box>)
 
-    /** What to take out (by id) and which found faces come in. */
-    class Plan(val removeIds: Set<Int>, val add: List<TreeMap<Int, Box>>)
+    /**
+     * What to take out (by id), which found faces come in, and which blurs get more frames ([extend]: blur id -> the found
+     * frames outside the frames it covers, when a found face is the face of an unedited blur that covers only part of it).
+     */
+    class Plan(val removeIds: Set<Int>, val add: List<TreeMap<Int, Box>>, val extend: Map<Int, TreeMap<Int, Box>> = emptyMap())
+
+    /** What a re-run did: blurs added, blurs taken out, blurs given more frames. */
+    class Result(val added: Int, val removed: Int, val extended: Int)
 
     /**
      * A blur the user made or changed: manual, turned off, resized, moved by hand, or shortened, lengthened or split (its start and
      * end are no longer where the detector's path begins and ends). A re-run never takes it away.
      */
     fun isEdited(t: EditTrack): Boolean =
-        t.manual || t.off || t.scale != 1f || t.keys.isNotEmpty() || t.path.isEmpty() ||
+        t.manual || t.off || t.edited || t.scale != 1f || t.keys.isNotEmpty() || t.path.isEmpty() ||
             t.start != t.path.firstKey() || t.end != t.path.lastKey()
 
     fun plan(existing: List<Existing>, found: List<TreeMap<Int, Box>>, mode: RerunMode): Plan {
         val keep = if (mode == RerunMode.ADD) existing else existing.filter { it.edited }
         val keepIds = keep.mapTo(HashSet()) { it.id }
         val remove = existing.filter { it.id !in keepIds }.mapTo(HashSet()) { it.id }
-        val add = found.filter { f -> f.isNotEmpty() && keep.none { DetectTuning.sameFace(it.shown, f) } }
-        return Plan(remove, add)
+        val add = ArrayList<TreeMap<Int, Box>>()
+        val extend = HashMap<Int, TreeMap<Int, Box>>()
+        // The frames each kept blur covers (grown as found faces extend it).
+        val covered = keep.associate { it.id to (if (it.shown.isEmpty()) null else it.shown.firstKey() to it.shown.lastKey()) }.toMutableMap()
+        for (f in found) {
+            if (f.isEmpty()) continue
+            val same = keep.filter { DetectTuning.sameFace(it.shown, f) }
+            if (same.isEmpty()) { add += f; continue }
+            // The face of an edited blur: that blur is the user's, as it is. Of an unedited one: it gets the found frames it doesn't cover.
+            if (same.any { it.edited }) continue
+            val one = same.first()
+            val range = covered[one.id] ?: continue
+            val extra = TreeMap<Int, Box>()
+            for ((k, b) in f) if (k < range.first || k > range.second) extra[k] = b
+            if (extra.isEmpty()) continue
+            extend.getOrPut(one.id) { TreeMap() }.putAll(extra)
+            covered[one.id] = minOf(range.first, extra.firstKey()) to maxOf(range.second, extra.lastKey())
+        }
+        return Plan(remove, add, extend)
     }
+
+    /** How the faces were found: the mode and the sensitivity (kept with the undo steps, see [EditModel.detection]). */
+    class Detection(val mode: DetectMode, val sensitivity: Float)
 
     /**
      * The detection mode kept for the project after a run of [now] over one that was [before]. Replace: the new run's own.

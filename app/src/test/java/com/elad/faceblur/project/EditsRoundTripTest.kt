@@ -40,6 +40,15 @@ class EditsRoundTripTest {
     }
 
     @Test
+    fun editedBlursAreSavedAndReadBack() {
+        val f = File(tmp.root, "edits.bin")
+        val st = state(false, false, false)
+        st.tracks[1].edited = true
+        ProjectStore.writeEdits(f, st)
+        assertEquals(listOf(false, true, false), ProjectStore.readEdits(f).tracks.map { it.edited })
+    }
+
+    @Test
     fun aVersion3FileHasNoOffBlurs() {
         val f = File(tmp.root, "edits.bin")
         ProjectStore.writeEdits(f, state(false, false))

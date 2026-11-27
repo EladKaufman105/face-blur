@@ -698,6 +698,7 @@ const EN: Record<string, string> = {
   'נמצאו פנים נוספים: אחד': 'Found 1 more face',
   'נמצאו %d פנים נוספים': 'Found %d more faces',
   'לא נמצאו פנים נוספים': 'No more faces found',
+  'הטשטושים הוארכו: %d': 'Extended %d blurs',
   'הוחלף: לא נמצאו פנים': 'Replaced: no faces found',
   'הוחלף: פנים אחד': 'Replaced: 1 face',
   'הוחלף: %d פנים': 'Replaced: %d faces',

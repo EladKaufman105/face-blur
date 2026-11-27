@@ -460,12 +460,14 @@ class EditorController(
     fun undo() {
         if (trackingProgress != null) return
         model.undo()
+        model.detection?.let { applyDetection(it) }
         sync()
     }
 
     fun redo() {
         if (trackingProgress != null) return
         model.redo()
+        model.detection?.let { applyDetection(it) }
         sync()
     }
 
@@ -1167,8 +1169,8 @@ class EditorController(
     /** The remembered choices (null in a session made without preferences, as in tests). */
     val choices get() = prefs?.choices
 
-    /** The message after "Run detection again": its text, and how many undo steps there were when it came (it goes when anything else is edited). */
-    class RerunToast(val text: String, val depth: Int)
+    /** The message after "Run detection again": its text, and the model's version when it came (it goes when anything else changes: undo, redo or an edit). */
+    class RerunToast(val text: String, val token: Int)
 
     var rerunToast by mutableStateOf<RerunToast?>(null)
 
@@ -1212,19 +1214,19 @@ class EditorController(
                     // The blurs are read as they are now (what was edited while it ran stays), on this model's frames.
                     val before = model.tracks.size
                     val faces = found.tracks.map { RerunMerge.remap(it, found.times, model.times) }
-                    val (added, removed) = model.rerun(faces, merge)
                     val now = session.settings
                     val kept = RerunMerge.detectAfter(now.detect, detect, merge)
-                    session.settings = Settings(
-                        now.mode, now.strength, now.padding, kept == DetectMode.EXTENDED, kept == DetectMode.FAST,
-                        RerunMerge.sensitivityAfter(now.sensitivity, sensitivity, merge), kept == DetectMode.SELFIE,
-                    )
+                    val after = RerunMerge.Detection(kept, RerunMerge.sensitivityAfter(now.sensitivity, sensitivity, merge))
+                    // The undo step puts the old detection back with the blurs ([applyDetection] after undo and redo).
+                    model.detection = RerunMerge.Detection(now.detect, now.sensitivity)
+                    val r = model.rerun(faces, merge, after)
+                    applyDetection(after)
                     sync()
                     if (before == 0 && model.tracks.isNotEmpty()) playerEpoch++
-                    if (added == 0 && removed == 0) {
+                    if (r.added == 0 && r.removed == 0 && r.extended == 0) {
                         notice = t("לא נמצאו פנים נוספים")
                     } else {
-                        rerunToast = RerunToast(rerunText(merge, added), model.undoDepth)
+                        rerunToast = RerunToast(rerunText(merge, r), model.version)
                     }
                 } finally {
                     found.close()
@@ -1232,7 +1234,7 @@ class EditorController(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: com.elad.faceblur.models.ModelMissing) {
-                notice = t("כדי לטשטש פנים צריך את מודל זיהוי הפנים")
+                notice = if (detect == DetectMode.SELFIE) t("כדי להשתמש במצב סלפי צריך את מודל הסלפי") else t("כדי לטשטש פנים צריך את מודל זיהוי הפנים")
             } catch (e: Exception) {
                 android.util.Log.w("ONIT", "running detection again failed", e)
                 notice = t("זיהוי הפנים נכשל")
@@ -1242,11 +1244,18 @@ class EditorController(
         }
     }
 
-    private fun rerunText(merge: RerunMode, added: Int): String = when {
-        merge == RerunMode.ADD -> if (added == 1) t("נמצאו פנים נוספים: אחד") else t("נמצאו %d פנים נוספים").format(added)
-        added == 0 -> t("הוחלף: לא נמצאו פנים")
-        added == 1 -> t("הוחלף: פנים אחד")
-        else -> t("הוחלף: %d פנים").format(added)
+    /** The project's detection set to [d] (extended, fast and selfie are flags in [Settings]). */
+    private fun applyDetection(d: RerunMerge.Detection) {
+        val now = session.settings
+        session.settings = Settings(now.mode, now.strength, now.padding, d.mode == DetectMode.EXTENDED, d.mode == DetectMode.FAST, d.sensitivity, d.mode == DetectMode.SELFIE)
+    }
+
+    private fun rerunText(merge: RerunMode, r: RerunMerge.Result): String = when {
+        merge == RerunMode.ADD && r.added == 0 -> t("הטשטושים הוארכו: %d").format(r.extended)
+        merge == RerunMode.ADD -> if (r.added == 1) t("נמצאו פנים נוספים: אחד") else t("נמצאו %d פנים נוספים").format(r.added)
+        r.added == 0 -> t("הוחלף: לא נמצאו פנים")
+        r.added == 1 -> t("הוחלף: פנים אחד")
+        else -> t("הוחלף: %d פנים").format(r.added)
     }
 
     /** Turns a face's blur off or back on (one undo step). */

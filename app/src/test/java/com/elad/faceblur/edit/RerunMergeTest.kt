@@ -33,8 +33,8 @@ class RerunMergeTest {
         val before = m.tracks.map { it.id to (it.start to it.end) }
         // The same face again (a little moved), another face, the face of the turned-off blur, and one of the manual blur.
         val found = listOf(path(0, 49, 0.21f, 0.31f), path(0, 59, 0.9f, 0.1f), path(60, 79, 0.4f, 0.41f), path(10, 40, 0.7f, 0.3f))
-        val (added, removed) = m.rerun(found, RerunMode.ADD)
-        assertEquals(1 to 0, added to removed)
+        val r = m.rerun(found, RerunMode.ADD)
+        assertEquals(1 to 0, r.added to r.removed)
         assertEquals(before, m.tracks.take(before.size).map { it.id to (it.start to it.end) })
         assertEquals(before.size + 1, m.tracks.size)
         assertTrue(m.track(manualId)!!.manual)
@@ -57,7 +57,9 @@ class RerunMergeTest {
         m.toggleOff(off)
         m.setEnd(trimmed, 90)
         val found = listOf(path(0, 49, 0.21f, 0.31f), path(0, 49, 0.5f, 0.71f), path(60, 79, 0.9f, 0.9f))
-        val (added, removed) = m.rerun(found, RerunMode.REPLACE)
+        val r2 = m.rerun(found, RerunMode.REPLACE)
+        val added = r2.added
+        val removed = r2.removed
         // Only the untouched one went; of the found faces, the one on the moved blur is not added twice.
         assertEquals(setOf(moved, scaled, off, trimmed, manual), m.tracks.map { it.id }.filter { it in setOf(moved, scaled, off, trimmed, manual) }.toSet())
         assertNull(m.track(untouched))
@@ -88,7 +90,8 @@ class RerunMergeTest {
         val m = model(path(0, 49, 0.2f, 0.3f))
         val depth = m.undoDepth
         val v = m.version
-        assertEquals(0 to 0, m.rerun(listOf(path(0, 49, 0.2f, 0.3f)), RerunMode.ADD))
+        val none = m.rerun(listOf(path(0, 49, 0.2f, 0.3f)), RerunMode.ADD)
+        assertEquals(0, none.added + none.removed + none.extended)
         assertEquals(depth, m.undoDepth)
         assertEquals(v, m.version)
     }
@@ -105,7 +108,8 @@ class RerunMergeTest {
             m.rerun(any(r.nextInt(0, 6)), RerunMode.ADD)
             assertTrue(m.tracks.size >= old.size)
             old.forEachIndexed { k, t -> assertSame(t, m.tracks[k]) }
-            assertEquals(paths, old.map { it.id to it.path.toSortedMap().toMap() })
+            // (An unedited blur may only gain frames: every frame it had is still there, the same box.)
+            for ((id, was) in paths) for ((f, b) in was) assertSame(b, m.track(id)!!.path[f])
             val m2 = model(*any(3).toTypedArray())
             val manual = m2.add(5, 0.5f, 0.5f, 0.1f, 0.12f)
             m2.rerun(any(4), RerunMode.REPLACE)
@@ -146,6 +150,68 @@ class RerunMergeTest {
         // The same frames: the very same path.
         val p = path(1, 5, 0.1f, 0.1f)
         assertSame(p, RerunMerge.remap(p, from, from.copyOf()))
+    }
+
+    @Test
+    fun aFoundFaceLongerThanAnUneditedBlurGivesItTheMissingFrames() {
+        // The blur is on frames 0-10, the new run found the same face on 0-109: Add must not leave 11 of 110 frames blurred.
+        val m = model(path(0, 10, 0.3f, 0.3f))
+        val id = m.tracks[0].id
+        val depth = m.undoDepth
+        val r = m.rerun(listOf(path(0, 109, 0.3f, 0.3f)), RerunMode.ADD)
+        assertEquals(0, r.added)
+        assertEquals(1, r.extended)
+        assertEquals(1, m.tracks.size)
+        assertEquals(0, m.track(id)!!.start)
+        assertEquals(109, m.track(id)!!.end)
+        assertEquals(110, m.renderTracks()[0].size)
+        assertEquals(depth + 1, m.undoDepth)
+        assertTrue(m.undo())
+        assertEquals(10, m.track(id)!!.end)
+        assertEquals(11, m.renderTracks()[0].size)
+    }
+
+    @Test
+    fun anEditedBlurIsNotExtended() {
+        val m = model(path(0, 10, 0.3f, 0.3f))
+        m.setScale(m.tracks[0].id, 1.3f)
+        val r = m.rerun(listOf(path(0, 109, 0.3f, 0.3f)), RerunMode.ADD)
+        assertEquals(0, r.added + r.extended)
+        assertEquals(10, m.tracks[0].end)
+    }
+
+    @Test
+    fun aBlurMovedByHandAndFollowedAgainStaysEditedSoReplaceKeepsIt() {
+        val m = model(path(0, 49, 0.2f, 0.3f), path(0, 49, 0.6f, 0.6f))
+        val a = m.tracks[0].id
+        val b = m.tracks[1].id
+        assertFalse(RerunMerge.isEdited(m.tracks[0]))
+        m.moveBy(a, 10, 0.02f, 0f)
+        m.applyTracking(a, path(5, 40, 0.25f, 0.3f), fresh = false)
+        assertTrue(m.track(a)!!.keys.isEmpty())
+        assertTrue(RerunMerge.isEdited(m.track(a)!!))
+        m.rerun(listOf(path(0, 49, 0.9f, 0.9f)), RerunMode.REPLACE)
+        assertNotNull(m.track(a))
+        assertNull(m.track(b))
+        // Split and start/end count too.
+        val m2 = model(path(0, 49, 0.2f, 0.3f), path(0, 49, 0.6f, 0.6f))
+        val c = m2.tracks[0].id
+        m2.setEnd(c, 30)
+        assertTrue(RerunMerge.isEdited(m2.track(c)!!))
+    }
+
+    @Test
+    fun undoingARerunPutsTheDetectionBack() {
+        val m = model(path(0, 49, 0.2f, 0.3f))
+        val fast = RerunMerge.Detection(DetectMode.FAST, 0f)
+        m.detection = RerunMerge.Detection(DetectMode.NORMAL, 0.2f)
+        m.rerun(listOf(path(0, 49, 0.8f, 0.8f)), RerunMode.REPLACE, fast)
+        assertEquals(DetectMode.FAST, m.detection!!.mode)
+        assertTrue(m.undo())
+        assertEquals(DetectMode.NORMAL, m.detection!!.mode)
+        assertEquals(0.2f, m.detection!!.sensitivity)
+        assertTrue(m.redo())
+        assertEquals(DetectMode.FAST, m.detection!!.mode)
     }
 
     @Test
