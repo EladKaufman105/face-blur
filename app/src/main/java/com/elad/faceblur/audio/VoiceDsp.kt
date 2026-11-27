@@ -1,7 +1,9 @@
 package com.elad.faceblur.audio
 
+import com.elad.faceblur.gen.BleepConst
 import java.nio.ByteBuffer
 import kotlin.math.PI
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
@@ -52,6 +54,11 @@ class VoiceDsp(
     private val gain: Float = 1f,
     /** Stretches cut out of the video (ms): silent in the player, which jumps over them. */
     cuts: List<LongArray> = emptyList(),
+    /**
+     * The beep's peak level for each of [bleeps] (see [BleepLevel.levels]): as loud as the speech it
+     * replaces. null (not measured yet) or the wrong size: [BleepConst.BLEEP_FALLBACK_LEVEL] for all.
+     */
+    bleepLevels: FloatArray? = null,
 ) {
     private val mute = fx == VoiceFx.MUTE
     private val beepHz = BEEP_HZ / pitchAfter
@@ -59,6 +66,7 @@ class VoiceDsp(
 
     private val starts = LongArray(bleeps.size) { bleeps[it][0] * 1000 }
     private val ends = LongArray(bleeps.size) { bleeps[it][1] * 1000 }
+    private val levels = FloatArray(bleeps.size) { bleepLevels?.takeIf { l -> l.size == bleeps.size }?.get(it) ?: BleepConst.BLEEP_FALLBACK_LEVEL }
     private val cutStarts = LongArray(cuts.size) { cuts[it][0] * 1000 }
     private val cutEnds = LongArray(cuts.size) { cuts[it][1] * 1000 }
 
@@ -160,6 +168,25 @@ class VoiceDsp(
         return g
     }
 
+    /** The beep's level at [us]: that of the bleep that keeps least of the original sound there (the louder of two that overlap). */
+    private fun levelAt(us: Long, from: Int): Float {
+        var g = 1f
+        var level = BleepConst.BLEEP_FALLBACK_LEVEL
+        var i = from
+        while (i < starts.size && starts[i] - FADE_US <= us) {
+            if (us < ends[i] + FADE_US) {
+                val d = when {
+                    us < starts[i] -> (starts[i] - us).toFloat() / FADE_US
+                    us > ends[i] -> (us - ends[i]).toFloat() / FADE_US
+                    else -> 0f
+                }.coerceIn(0f, 1f)
+                if (d < g) { g = d; level = levels[i] } else if (d == g) level = max(level, levels[i])
+            }
+            i++
+        }
+        return level
+    }
+
     /** First bleep that may reach [us]. */
     private fun firstFrom(us: Long, ends: LongArray = this.ends): Int {
         var lo = 0
@@ -200,7 +227,7 @@ class VoiceDsp(
                 g = keep(us, bi)
             }
             val ring = if (fx.ringMix > 0f) (1f - fx.ringMix) + fx.ringMix * sin(2 * PI * ringHz * t).toFloat() else 1f
-            val beep = if (tone && g < 1f) (1f - g) * BEEP_LEVEL * sin(2 * PI * beepHz * t).toFloat() else 0f
+            val beep = if (tone && g < 1f) (1f - g) * levelAt(us, bi) * sin(2 * PI * beepHz * t).toFloat() else 0f
             val add = beep + if (playing.isEmpty()) 0f else sfxAt(us, playing)
             var cg = 1f
             if (anyCut) {
@@ -219,6 +246,5 @@ class VoiceDsp(
     companion object {
         private const val FADE_US = 8_000L
         private const val BEEP_HZ = 1000.0
-        private const val BEEP_LEVEL = 0.32f
     }
 }
