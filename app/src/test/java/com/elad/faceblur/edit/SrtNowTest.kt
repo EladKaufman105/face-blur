@@ -54,6 +54,10 @@ class SrtNowTest {
         assertTrue(m.automaticSrtDiffers(maskWords = false))
         assertFalse(m.automaticSrtDiffers(maskWords = true))
         assertFalse(model(bleep = false).automaticSrtDiffers(maskWords = false))
+        // A bleeped word that is cut out of the video is in no file: nothing differs.
+        val cutOut = model(bleep = true)
+        cutOut.cut(0, 3000)
+        assertFalse(cutOut.automaticSrtDiffers(maskWords = false))
     }
 
     @Test
