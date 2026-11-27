@@ -10,6 +10,21 @@ const [, , base, out] = process.argv
 const url = new URL('home/', base).href
 const fail = (m) => { console.error('FAIL', m); process.exit(1) }
 
+// playedFor(page, selector, seconds): how much of the video plays, waiting up to 15 s for that much (a loop
+// back to the start isn't counted).
+const playedFor = (page, sel, want) => page.evaluate(([sel, want]) => new Promise((res) => {
+  const v = document.querySelector(sel), t0 = performance.now()
+  let last = v.currentTime, played = 0
+  const tick = () => {
+    const t = v.currentTime
+    if (t > last) played += t - last
+    last = t
+    if (played > want || performance.now() - t0 > 15000) res({ played, paused: v.paused, readyState: v.readyState, waited: Math.round(performance.now() - t0) })
+    else setTimeout(tick, 100)
+  }
+  tick()
+}), [sel, want])
+
 ;(async () => {
   fs.mkdirSync(out, { recursive: true })
   const b = await chromium.launch()
@@ -24,17 +39,24 @@ const fail = (m) => { console.error('FAIL', m); process.exit(1) }
       await p.goto(url, { waitUntil: 'networkidle' })
 
       if (!(await p.textContent('h1')).includes('עורך וידאו שלם')) fail('the Hebrew headline')
-      // The hero's recording runs.
-      const t1 = await p.evaluate(() => document.querySelector('.hero-browser video').currentTime)
-      await p.waitForTimeout(1500)
-      const t2 = await p.evaluate(() => document.querySelector('.hero-browser video').currentTime)
-      if (!(t2 > t1 + 0.5)) fail(`${name}: the hero's recording doesn't play (${t1} -> ${t2})`)
+      // The hero's recording runs: half a second of it plays (within 15 s: a busy machine may
+      // start or decode it late; a loop back to the start isn't counted).
+      const hero = await playedFor(p, '.hero-browser video', 0.5)
+      if (!(hero.played > 0.5)) fail(`${name}: the hero's recording doesn't play (${JSON.stringify(hero)})`)
       if ((await p.getAttribute('html', 'dir')) !== 'rtl') fail('Hebrew is right to left')
 
-      // Down the page (the pictures load lazily and parts appear as they come into view).
-      await p.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 500) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 120)) } })
+      // Down the page (the pictures load lazily and parts appear as they come into view). Each step
+      // lands at once (the page scrolls smoothly, which a busy machine animates late, skipping
+      // past parts) and waits for a frame drawn there, so every part comes into view at least once
+      // (the steps are shorter than the screen) and must then be shown.
+      await p.evaluate(async () => {
+        const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+        for (let y = 0; y < document.body.scrollHeight; y += 500) { scrollTo({ top: y, behavior: 'instant' }); await frame(); await new Promise((r) => setTimeout(r, 120)) }
+      })
       await p.waitForLoadState('networkidle')
       await p.waitForTimeout(1500)
+      // (Up to 15 s more for the last pictures and fade-ins on a busy machine; then the same checks.)
+      await p.waitForFunction(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0) && [...document.querySelectorAll('.reveal')].every((e) => +getComputedStyle(e).opacity >= 0.9), null, { timeout: 15000 }).catch(() => {})
       const broken = await p.evaluate(() => [...document.images].filter((i) => !i.complete || i.naturalWidth === 0).map((i) => i.getAttribute('src')))
       if (broken.length) fail(`${name}: pictures that didn't load: ${broken.join(', ')}`)
       const hidden = await p.evaluate(() => [...document.querySelectorAll('.reveal')].filter((e) => +getComputedStyle(e).opacity < 0.9).length)
@@ -45,7 +67,8 @@ const fail = (m) => { console.error('FAIL', m); process.exit(1) }
       // The tour: a tool picked plays its recording.
       await p.evaluate(() => document.querySelector('.tour').scrollIntoView({ block: 'center' }))
       await p.locator('.tour-list [role=tab]').nth(2).click()
-      await p.waitForTimeout(1500)
+      // (It loads when picked: up to 15 s on a busy machine, then the same check.)
+      await p.waitForFunction(() => { const v = document.querySelector('.shots video.on'); return v && v.dataset.name === 'web-subs' && !v.paused && v.currentTime > 0.3 }, null, { timeout: 15000 }).catch(() => {})
       const tour = await p.evaluate(() => { const v = document.querySelector('.shots video.on'); return [v.dataset.name, v.paused, v.currentTime] })
       if (tour[0] !== 'web-subs' || tour[1] || !(tour[2] > 0.3)) fail(`${name}: the subtitles recording (${tour})`)
 

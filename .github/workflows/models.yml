@@ -30,7 +30,7 @@ jobs:
       WHISPER_TAG: v1.9.5
       MODEL_TAG: models-1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mirror multilingual Whisper
         if: inputs.model == 'multilingual'
@@ -81,7 +81,7 @@ jobs:
           done
 
       - name: Publish model
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.MODEL_TAG }}
           name: Subtitle models
