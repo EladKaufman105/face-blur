@@ -70,6 +70,8 @@ export const doneCount = (b: Batch) => b.items.filter(isDone).length
 export const savedCount = (b: Batch) => b.items.filter((i) => !!i.output).length
 export const failedCount = (b: Batch) => b.items.filter((i) => i.status === 'failed').length
 /** Worth a look: no faces found, a step that didn't work out, or failed. */
+/** A video saved on its own (a template's "save straight") whose faces are to be checked: not downloaded unasked, it waits in the list. */
+export const held = (b: Pick<Batch, 'autoDownload' | 'folder'>, i: BatchItem) => i.status === 'saved' && b.autoDownload && !b.folder && !!i.lowConfidence
 export const needsCheck = (i: BatchItem) => i.status === 'failed' || i.status === 'nofaces' || (i.status !== 'skipped' && (i.notes.length > 0 || !!i.lowConfidence))
 export const checkCount = (b: Batch) => b.items.filter(needsCheck).length
 export const progressOf = (b: Batch) => (b.items.length ? b.items.reduce((s, i) => s + (isDone(i) ? 1 : i.progress), 0) / b.items.length : 1)

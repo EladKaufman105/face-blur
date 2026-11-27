@@ -624,6 +624,7 @@ const EN: Record<string, string> = {
   'זיהוי לא בטוח': 'Uncertain detection',
   'כדאי לבדוק את הפנים בעורך.': 'Worth checking the faces in the editor.',
   'שמור בכל זאת': 'Save anyway',
+  'ממתין: בדיקת פנים': 'Waiting: check faces',
   'הזיהוי הופחת במכשיר הזה; כדאי לבדוק את הפנים.': 'Detection reduced on this device; check faces.',
   'לשמור את השינויים?': 'Save the changes?',
   'עשית שינויים בתבנית שלא נשמרו.': "You made changes to the template that aren't saved.",

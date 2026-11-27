@@ -2,7 +2,7 @@
 // on a regular subset of frames, then builds the face tracks and a thumbnail of each face.
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny'
 import { CPU_SIDE, FaceDetector, GPU_SIDE } from '../lib/detector'
-import { pace } from '../lib/pace'
+import { baseStride, pace, strideFor } from '../lib/pace'
 import { StatsHistory, summary, type AnalysisStats, type StatsSnapshot } from '../lib/analysis-stats'
 import { DetectorPool } from '../lib/detector-pool'
 import { CutDetector } from '../lib/cuts'
@@ -89,12 +89,17 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   // tracker fills the frames between. A device that can't keep that up gets lighter detection,
   // stepwise (see lib/pace.ts): a smaller frame first, then fewer detections per second. That
   // is never silent: the video is marked `reduced` (the editor says so, a batch flags it) and
-  // detection gets lower score thresholds, so a doubtful face is blurred rather than missed.
-  const maxRate = sensitive ? nominalFps : 15
-  let rate = tune?.rate ? Math.min(maxRate, tune.rate) : maxRate
+  // detection gets lower score thresholds (a weak face the other detector agrees with can then reach the tracker's 0.4).
+  // Detections fall on whole frames: a stride (a detection every N frames), as the app's.
+  const baseEvery = baseStride(nominalFps, sensitive)
+  let stride = tune?.rate ? Math.max(baseEvery, strideFor(nominalFps, tune.rate)) : baseEvery
+  const rate = () => nominalFps / stride
+  // Where the fine pass starts, and what the video allows (a small video isn't "reduced" for not being upscaled).
+  const srcSide = Math.max(width, height)
+  const startFor = (gpu: boolean) => Math.min(gpu ? GPU_SIDE : CPU_SIDE, srcSide)
   let fineSide = startSide
   let reduced = false
-  // `reduced`: lighter than the app's (the notice, the flag). Then the score thresholds drop too (a doubtful face is blurred rather than missed), except in a test's pinned tune.
+  // `reduced`: lighter than the app's (the notice, the flag). Then the score thresholds drop too (a weak face the other detector agrees with can reach the tracker's 0.4), except in a test's pinned tune.
   let lowThr = false
   const reduce = (why: string) => {
     if (!reduced) log(`detection reduced: ${why}`)
@@ -108,7 +113,7 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   if (detector?.yunetMissing || (pool && !pool.yunet)) reduce('no YuNet')
   if (tune?.reduced) reduce('forced for a test')
   // A pinned tune weaker than the default is a reduced detection like any other.
-  if (tune && ((tune.side ?? startSide) < (cpuOnly ? CPU_SIDE : GPU_SIDE) || (tune.rate ?? maxRate) < maxRate)) reduce('a weaker tune')
+  if (tune && ((tune.side ?? startSide) < startFor(!cpuOnly) || stride > baseEvery)) reduce('a weaker tune')
   const spent: number[] = []
   let sinceStep: number[] = []
 
@@ -124,6 +129,7 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   let decodeWait = 0, detectMs = 0, cutMs = 0, poolWait = 0
   // Where a detection's result goes (in the pool, in any order), and the pace follows from it.
   let seen = 0
+  let skipTimings = 0
   const recordDets = (i: number, got: Det[], ms: number, skip = false, yunetOk = true) => {
     // YuNet lost on the way (a session that fails to run): from here on it is the reduced mode.
     if (!yunetOk || detector?.yunetMissing) reduce('YuNet failed')
@@ -136,20 +142,23 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
     spent.push(ms)
     seen++
     // The first detections (warm-up: the shaders compile, the WebAssembly heap grows) and the GPU's check against the CPU aren't the device's pace.
-    if (!skip && seen > (pool?.size ?? 1) + 2) sinceStep.push(ms)
+    if (skipTimings > 0) skipTimings--
+    else if (!skip && seen > (pool?.size ?? 1) + 2) sinceStep.push(ms)
     if (detector) fineSide = Math.min(fineSide, detector.side)
     if (!tune && sinceStep.length >= 4) {
       const recent = sinceStep.slice(-4).reduce((a, b) => a + b, 0) / 4
       sinceStep = []
       const gpuNow = backendNow() === 'webgpu'
-      const startNow = gpuNow ? GPU_SIDE : CPU_SIDE
-      const p = pace({ recentMs: recent, workers: pool?.size ?? 1, maxRate, side: fineSide, startSide: startNow, rate, gpu: gpuNow })
-      rate = p.rate
+      const startNow = startFor(gpuNow)
+      const p = pace({ recentMs: recent, workers: pool?.size ?? 1, fps: nominalFps, sensitive, side: fineSide, startSide: startNow, stride, gpu: gpuNow })
+      stride = p.stride
       if (p.side !== fineSide) {
         fineSide = Math.min(p.side, startNow, startSide)
         if (detector) detector.side = fineSide
+        // Detections already in flight at the old size would show the old pace: the next P - 1 timings are dropped.
+        skipTimings = (pool?.size ?? 1) - 1
       }
-      if (p.reduced) reduce(`${recent.toFixed(0)} ms a detection: ${fineSide} px, ${rate.toFixed(1)}/s`)
+      if (p.reduced) reduce(`${recent.toFixed(0)} ms a detection: ${fineSide} px, a detection every ${stride} frames`)
     }
   }
   // The counters for the stats panel; the history makes the per-second values of them.
@@ -162,7 +171,7 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
       atMs: now, frames: times.length, frameMs: Math.max(0, now - loopStart - decodeWait - poolWait), waitMs: poolWait, decodeWaitMs: decodeWait, cutMs,
       detections: spent.length, detectMs, partDetections: d.detections, pre: d.pre, inf: d.inf, dec: d.dec, coarse: d.coarse, coarseRuns: d.coarseRuns, check: d.check, verify: d.verify, merge: d.nms,
       backend: backendNow(), precision, noGpu: backendNow() === 'wasm' ? noGpu() : null,
-      side: fineSide, rate, workers: pool?.size ?? 1, cores,
+      side: fineSide, rate: rate(), workers: pool?.size ?? 1, cores,
     }
   }
   const statsNow = () => history.add(snapshot())
@@ -183,8 +192,8 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
     const cut = cuts.isCut(canvas)
     cutMs += performance.now() - tc
     if (cut) cutList.push(i)
-    if (cut || wc.timestamp - lastDetect >= 1 / rate - 1e-3) {
-      lastDetect = wc.timestamp
+    if (cut || i - lastDetect >= stride) {
+      lastDetect = i
       if (pool) {
         // Wait for a free detector (the decoder keeps going meanwhile), then pass the frame on.
         const tp = performance.now()
@@ -211,7 +220,7 @@ async function analyze({ file, sensitive, base, backend, workers, tune }: Analyz
   } finally {
     pool?.close()
   }
-  log(`frames ${times.length}, detections ${spent.length}, detect avg ${(detectMs / Math.max(1, spent.length)).toFixed(0)} ms, decode wait ${decodeWait.toFixed(0)} ms, side ${fineSide}, rate ${rate.toFixed(1)}, reduced ${reduced}`)
+  log(`frames ${times.length}, detections ${spent.length}, detect avg ${(detectMs / Math.max(1, spent.length)).toFixed(0)} ms, decode wait ${decodeWait.toFixed(0)} ms, side ${fineSide}, rate ${rate().toFixed(1)}, reduced ${reduced}`)
   log(`stats ${summary(statsNow())}`)
   let faces50 = 0
   for (const ds of dets.values()) faces50 += ds.filter((d) => d.score >= 0.5).length

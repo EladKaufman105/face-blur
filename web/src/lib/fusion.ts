@@ -20,7 +20,7 @@ export function nmsIou(dets: Det[], thr: number): Det[] {
   return keep
 }
 
-/** RetinaFace's score threshold (as the app's RF_THRESHOLD) and the lower one of the reduced mode. */
+/** RetinaFace's score threshold (as the app's RF_THRESHOLD) and the lower one of the reduced mode (it only widens what the first pass lets through: the tracker still takes 0.4 and up, so it matters for the boxes the fusion and NMS see, and for YuNet's noisy-or). */
 export const RF_THRESHOLD = 0.35
 export const RF_THRESHOLD_REDUCED = 0.25
 /** YuNet's score threshold (as the app's FaceDetectorYN.create) and the lower one of the reduced mode. */
@@ -32,6 +32,17 @@ export const YUNET_NMS = 0.3
 export const YUNET_SIDE = 640
 /** A face this sure counts as strong evidence by itself (the app's FaceDetector.CLEAR). */
 export const CLEAR = 0.8
+/** The tracker takes no detection under this score (tracker.ts DET_THRESHOLD): a lower one needs no re-check (and must not use up a re-check slot of a face that does). */
+export const TRACK_MIN = 0.4
+
+/**
+ * The faces to re-check on a crop (up to [max]): the ones the tracker could take (0.4 or more) that
+ * aren't clear yet, the least sure first. A weaker one (the reduced mode lets some through) would
+ * only use up a slot of a face that needs it.
+ */
+export function recheckList(kept: Det[], max = 12): Det[] {
+  return kept.filter((d) => d.score >= TRACK_MIN && d.score < CLEAR).sort((a, b) => a.score - b.score).slice(0, max)
+}
 
 const STRIDES = [8, 16, 32]
 

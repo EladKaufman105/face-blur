@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { duration, lang, t } from '../i18n'
 import {
-  cancelAll, checkCount, current, dismiss, doneCount, downloadAll, estimateText, failedCount, isDone, loadSpeeds, MAX_VIDEOS, needsCheck, progressOf, remainingMs, remainingText,
+  cancelAll, checkCount, current, dismiss, doneCount, downloadAll, estimateText, failedCount, isDone, loadSpeeds, MAX_VIDEOS, held, needsCheck, progressOf, remainingMs, remainingText,
   savedCount, skip, startBatch, storageCheck, totalMs, version, videoDuration, type BatchItem,
 } from '../lib/batch'
 import { applyTemplate, currentSettings, type TemplateSettings } from '../lib/template'
@@ -246,7 +246,7 @@ export function BatchQueue({ onHome, onCheck }: { onHome: () => void; onCheck: (
               {saved > 1 && <button class="btn primary batch-save-all" onClick={() => downloadAll(b)}><SaveIcon /> {t('שמור הכל')}</button>}
               <button class="btn tonal batch-home" onClick={() => { dismiss(); onHome() }}>{t('חזרה לדף הבית')}</button>
             </div>
-            {b.autoDownload && saved > 0 && <p class="small muted" style="margin:6px 0 0">{t('אם הדפדפן חסם את ההורדות האוטומטיות, אפשר לשמור כל סרטון מהרשימה.')}</p>}
+            {b.autoDownload && b.items.some((i) => i.status === 'saved' && !held(b, i)) && <p class="small muted" style="margin:6px 0 0">{t('אם הדפדפן חסם את ההורדות האוטומטיות, אפשר לשמור כל סרטון מהרשימה.')}</p>}
           </>
         )}
       </section>
@@ -259,8 +259,8 @@ export function BatchQueue({ onHome, onCheck }: { onHome: () => void; onCheck: (
               <div class="grow">
                 <strong class="ready-name"><bdi>{i.name}</bdi></strong>
                 <div class="small batch-status">
-                  {i.status === 'saved' ? <span class="ok"><CheckIcon size={14} /> </span> : null}
-                  {statusText(i)}
+                  {i.status === 'saved' && !held(b, i) ? <span class="ok"><CheckIcon size={14} /> </span> : null}
+                  {held(b, i) ? t('ממתין: בדיקת פנים') : statusText(i)}
                   {!isDone(i) && i.status !== 'waiting' ? ` · ${Math.floor(i.progress * 100)}%` : ''}
                 </div>
               </div>

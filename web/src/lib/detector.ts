@@ -4,7 +4,7 @@
 // a 230 KB model, on WebAssembly).
 import * as ort from 'onnxruntime-web/webgpu'
 import type { Det } from './types'
-import { CLEAR, RF_THRESHOLD, RF_THRESHOLD_REDUCED, YUNET_SIDE, YUNET_THRESHOLD, YUNET_THRESHOLD_REDUCED, decodeYunet, fuse, iou, nmsIou } from './fusion'
+import { recheckList, RF_THRESHOLD, RF_THRESHOLD_REDUCED, YUNET_SIDE, YUNET_THRESHOLD, YUNET_THRESHOLD_REDUCED, decodeYunet, fuse, iou, nmsIou } from './fusion'
 
 export { RF_THRESHOLD, iou, nmsIou }
 
@@ -76,7 +76,9 @@ export class FaceDetector {
 
   /**
    * The reduced mode (the device is too slow for the app's full detection): lower score
-   * thresholds, so a doubtful face is blurred rather than missed (the tracker and the
+   * thresholds for what the first passes let into the fusion. That is modest: the tracker still
+   * takes nothing under 0.4, so a weak face (RetinaFace 0.25 to 0.35, YuNet 0.3 to 0.4) only
+   * counts where the other detector agrees and the noisy-or lifts it to 0.4 or more (the tracker and the
    * re-check of uncertain faces judge the extra ones).
    */
   setReduced(on: boolean) {
@@ -231,7 +233,7 @@ export class FaceDetector {
     // Re-check the uncertain ones (up to 12, all crops in one run); confident faces count as
     // strong evidence in the tracker without it.
     t = performance.now()
-    await this.verify(src, kept.filter((d) => d.score < CLEAR).sort((a, b) => a.score - b.score).slice(0, 12))
+    await this.verify(src, recheckList(kept))
     st.verify += performance.now() - t
     return kept
   }

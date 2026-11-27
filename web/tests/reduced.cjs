@@ -37,7 +37,7 @@ const EN = 'Detection reduced on this device; check faces.'
     if ((await notice(p)) !== null) fail('a full detection shows the reduced notice')
     console.log('full: no notice')
     // A pinned tune weaker than the default (no YuNet, a smaller frame, fewer detections) is reduced too: the notice shows.
-    for (const weak of ['yunet:0', 'side:640', 'rate:2']) {
+    for (const weak of ['yunet:0', 'side:320', 'rate:2']) {
       p = await open('he-IL', weak, bars, '.no-faces')
       if ((await notice(p)) !== HE) fail(`a weaker tune (${weak}) without the notice`)
     }
