@@ -42,4 +42,29 @@ eq('all cut', burn([{ id: 2, start: 1, end: 1.9, text: 'b', wi: [1] }], 'src', n
 eq('cutCues without words', cutCues([cue], cm).map((c) => c.text), ['a b c d'])
 // With words given, cutCues does both (raw cues, as the batch's file).
 eq('cutCues with words', cutCues([cue], cm, words).map((c) => c.text), ['a c d'])
+
+// ---- the review's repros
+const W = (list) => list.map(([t, a, b]) => ({ text: ' ' + t, start: a, end: b }))
+const ws = W([['a', 0, 0.5], ['b', 0.6, 1.1], ['c', 1.2, 1.7], ['d', 1.8, 2.3]])
+// An edited subtitle "well a bad c dog" (its words a b c d): the cut word is found by its text, the others stay.
+const ed = { id: 5, start: 0, end: 2.3, text: 'well a bad c dog', wi: [0, 1, 2, 3] }
+eq('edited, a cut', dropCutWords([ed], new CutMap([[0, 0.5]]), ws).map((c) => [c.text, c.wi]), [['well bad c dog', [1, 2, 3]]])
+// A cut word that is nowhere in the edited text: the whole subtitle goes rather than keep it.
+eq('edited, cut word gone from the text', dropCutWords([{ ...ed, text: 'well x bad c dog' }], new CutMap([[0, 0.5]]), ws), [])
+// An imported subtitle with no words, nothing recognized there: the time is spread over the words; only a word wholly cut goes.
+eq('imported, spread', dropCutWords([{ id: 6, start: 0, end: 1.5, text: 'hello there friend' }], new CutMap([[0, 0.5]]), []).map((c) => c.text), ['there friend'])
+// A silence cut across the middle of an imported subtitle: no word is wholly inside it, nothing goes.
+eq('imported, silence', dropCutWords([{ id: 7, start: 0, end: 4, text: 'Hello everyone, welcome back' }], new CutMap([[1.2, 2.8]]), []).map((c) => c.text), ['Hello everyone, welcome back'])
+// With words recognized there, those cut are found by text; a cut in a pause leaves the subtitle as it is.
+const rec = W([['hello', 0, 0.5], ['everyone', 0.6, 1.2], ['welcome', 2.8, 3.3], ['back', 3.4, 3.9]])
+const imp = { id: 8, start: 0, end: 4, text: 'Hello everyone, welcome back' }
+eq('imported, pause', dropCutWords([imp], new CutMap([[1.3, 2.7]]), rec), [imp])
+eq('imported, a recognized word cut', dropCutWords([imp], new CutMap([[0.55, 1.25]]), rec).map((c) => c.text), ['Hello welcome back'])
+// Most of a word's span, not its middle: 60 % cut goes, 40 % stays.
+eq('most of the span', dropCutWords([cue], new CutMap([[1, 1.6]]), words).map((c) => c.text), ['a c d'])
+eq('less than half', dropCutWords([cue], new CutMap([[1, 1.3]]), words).map((c) => c.text), ['a b c d'])
+// Line breaks the user typed stay.
+const br = { id: 9, start: 0, end: 3.9, text: 'a b\nc d', wi: [0, 1, 2, 3] }
+eq('line break', dropCutWords([br], new CutMap([[0, 0.9]]), words).map((c) => c.text), ['b\nc d'])
+eq('line break kept in the middle', dropCutWords([br], new CutMap([[3, 3.9]]), words).map((c) => c.text), ['a b\nc'])
 console.log('cutsrt ok')

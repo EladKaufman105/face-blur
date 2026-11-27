@@ -338,6 +338,7 @@ const EN: Record<string, string> = {
   'מעקב אוטומטי לא זמין לסרטון הזה': 'Automatic tracking isn\'t available for this video',
   'כדי לפצל, הזז את הסמן לתוך טווח הטשטוש': 'To split, move the playhead inside the blur',
   'אין סאונד בסרטון': 'The video has no sound',
+  'הסאונד של הסרטון ארוך מדי לכתוביות (יותר משלוש שעות).': "The video's sound is too long for subtitles (over three hours).",
   'לא הצלחנו לקרוא את הסאונד של הסרטון, אז אי אפשר ליצור כתוביות.': "Couldn't read this video's sound, so subtitles can't be made.",
   'לא נמצאו שתיקות ארוכות': 'No long silences found',
   'נחתכו %d שתיקות · %s שנ׳': 'Cut %d silences · %s s',
