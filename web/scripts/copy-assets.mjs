@@ -86,3 +86,8 @@ for (const f of readdirSync(join(assets, 'sfx'))) {
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', join(assets, 'sfx', f), '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart', out])
 }
 copy(join(assets, 'sfx', 'CREDITS.txt'), join(pub, 'sfx', 'CREDITS.txt'))
+// Licence texts and the licence data (offline, as the app's): the texts in shared/assets/licences (one copy, also packaged into the
+// APK), the libraries' and fonts' list beside them, the model registry (its per-file licence entries are the models' list), and the
+// fonts' own OFL files (copied above). The "Open-source licences" screen reads these (src/lib/licences.ts).
+copy(join(web, '..', 'shared', 'assets', 'licences'), join(pub, 'licences'))
+copy(join(assets, 'model-registry.json'), join(pub, 'licences', 'model-registry.json'))

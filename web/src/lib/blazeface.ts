@@ -1,3 +1,7 @@
+// Adapted from MediaPipe (https://github.com/google-ai-edge/mediapipe, Apache License 2.0; text in
+// shared/assets/licences/Apache-2.0.txt, see THIRD-PARTY-NOTICES.md): the anchors, box decoding and
+// weighted NMS follow its calculators; no MediaPipe code is shipped.
+//
 // MediaPipe's BlazeFace full-range face detector (Apache-2.0), the post-processing as MediaPipe's
 // own calculators do it (SsdAnchorsCalculator, TensorsToDetectionsCalculator,
 // NonMaxSuppressionCalculator with the weighted algorithm), as the app's BlazeFace.kt. Pure (no

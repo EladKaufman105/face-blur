@@ -9,8 +9,12 @@
   },
   "web": {
     "note": "web/dist/assets of the release build (npm run build), hashes stripped; gzip at level 9",
-    "reason": "compact top bar, export stats, floating safe-zone chooser",
+    "reason": "licences screen",
     "chunks": {
+      "Licences.js": {
+        "raw": 5197,
+        "gzip": 2005
+      },
       "analyze.worker.js": {
         "raw": 559704,
         "gzip": 154127
@@ -24,20 +28,20 @@
         "gzip": 42675
       },
       "export.worker.js": {
-        "raw": 1137444,
-        "gzip": 288140
+        "raw": 1136368,
+        "gzip": 287718
       },
       "follow.worker.js": {
         "raw": 403701,
         "gzip": 104163
       },
       "index.css": {
-        "raw": 64247,
-        "gzip": 13119
+        "raw": 62842,
+        "gzip": 12871
       },
       "index.js": {
-        "raw": 444171,
-        "gzip": 147244
+        "raw": 433339,
+        "gzip": 143152
       },
       "ort-wasm-simd-threaded.asyncify.wasm": {
         "raw": 28747738,
