@@ -47,8 +47,8 @@ const playedFor = (page, sel, want) => page.evaluate(([sel, want]) => new Promis
 
       // Down the page (the pictures load lazily and parts appear as they come into view). Each step
       // lands at once (the page scrolls smoothly, which a busy machine animates late, skipping
-      // past parts) and waits for a frame drawn there: a part scrolled past between two frames is
-      // never seen, and stays hidden, as it should.
+      // past parts) and waits for a frame drawn there, so every part comes into view at least once
+      // (the steps are shorter than the screen) and must then be shown.
       await p.evaluate(async () => {
         const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
         for (let y = 0; y < document.body.scrollHeight; y += 500) { scrollTo({ top: y, behavior: 'instant' }); await frame(); await new Promise((r) => setTimeout(r, 120)) }

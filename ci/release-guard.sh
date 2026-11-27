@@ -23,11 +23,14 @@ stop() { echo "::error::$*"; exit 1; }
 # remote_sha <tag>: the commit the tag names on the remote, empty if there is none.
 remote_sha() {
   local remote=${RELEASE_GUARD_REMOTE:-https://github.com/${GITHUB_REPOSITORY:?}.git} out
-  local auth=()
+  # The token goes through the environment, not the command line (where any process could read it).
   if [ -n "${GH_TOKEN:-}" ] && [ -z "${RELEASE_GUARD_REMOTE:-}" ]; then
-    auth=(-c "http.extraHeader=Authorization: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)")
+    out=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraHeader \
+      GIT_CONFIG_VALUE_0="Authorization: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" \
+      git ls-remote --tags "$remote" "refs/tags/$1" "refs/tags/$1^{}") || die "can't read the tags of $remote"
+  else
+    out=$(git ls-remote --tags "$remote" "refs/tags/$1" "refs/tags/$1^{}") || die "can't read the tags of $remote"
   fi
-  out=$(git "${auth[@]}" ls-remote --tags "$remote" "refs/tags/$1" "refs/tags/$1^{}") || die "can't read the tags of $remote"
   # An annotated tag's commit is on its ^{} line.
   printf '%s\n' "$out" | awk -v t="refs/tags/$1" '$2 == t "^{}" { c = $1 } $2 == t && c == "" { c = $1 } END { print c }'
 }
@@ -39,7 +42,7 @@ case "${1:-}" in
     sha=$(git rev-parse -q --verify "$ref^{commit}") || die "no such commit: $ref"
     [[ "$version" =~ -beta\.[0-9]+$ ]] || die "not a beta version: $version"
     # Any line's beta: a commit an older line's beta has is an old run's too.
-    have=$(git tag -l 'v*-beta.*' --contains "$sha" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n || true)
+    have=$(git tag -l 'v*-beta.*' --contains "$sha" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' | sort -V || true)
     if [ -n "$have" ]; then
       first=$(printf '%s\n' "$have" | head -n 1)
       stop "Superseded: ${sha:0:7} is already in beta $first ($(git rev-parse --short "$first^{commit}")). Nothing to publish: a re-run makes no second beta of the same change. The newest beta has it."
