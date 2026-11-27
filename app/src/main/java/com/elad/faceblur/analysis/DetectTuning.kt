@@ -107,13 +107,6 @@ object DetectTuning {
     /** Selfie mode above sensitivity 0: BlazeFace's candidates are taken once from this fixed, lower pool (its threshold at 1), beside the default ones. */
     const val SELFIE_POOL = SELFIE_MOST
 
-    /** Selfie mode's BlazeFace score threshold at sensitivity 0 (MediaPipe's own), and at 1. */
-    const val SELFIE_THRESHOLD = 0.5f
-    const val SELFIE_MOST = 0.3f
-
-    /** Selfie mode above sensitivity 0: BlazeFace's candidates are taken once from this fixed, lower pool (its threshold at 1), beside the default ones. */
-    const val SELFIE_POOL = SELFIE_MOST
-
     /** Extra detections a frame gets the crop re-check on (the most likely first). */
     const val MAX_EXTRA_CHECKS = DetectConst.MAX_EXTRA_CHECKS
 
