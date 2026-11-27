@@ -40,10 +40,17 @@ object Tags {
     const val MODELS_LATER = "models.later"
     const val MODELS_SETTINGS = "settings.models"
     const val MODELS_SCREEN = "models.screen"
+    const val LICENCE_CONSENT = "licence.consent"
+    const val LICENCE_ACCEPT = "licence.accept"
+    const val LICENCE_CANCEL = "licence.cancel"
+    const val LICENCE_VIEWER = "licence.viewer"
+    const val LICENCES_SCREEN = "licences.screen"
+    const val LICENCES_SETTINGS = "settings.licences"
 
     /** A feature's "download to use" card for a model pack, and its download button. */
     fun modelCard(id: com.elad.faceblur.models.PackId) = "models.card." + id.key
     fun modelDownload(id: com.elad.faceblur.models.PackId) = "models.download." + id.key
+    fun modelLicence(id: com.elad.faceblur.models.PackId) = "models.licence." + id.key
     const val PLAY = "editor.play"
     const val UNDO = "editor.undo"
     const val SAFE_ZONE = "editor.safeZone"

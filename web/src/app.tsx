@@ -29,6 +29,7 @@ import { videoSize as sizeOf } from './lib/templaterun'
 import './ui/templates-en'
 import { SpeechAsk } from './ui/SpeechUi'
 import { CrashDialog, ErrorDetails } from './ui/ErrorReport'
+import { Licences } from './ui/Licences'
 
 /** A tool from the home screen: a group of the editor, or straight to an MP3. */
 type Tool = EditorTab | 'mp3'
@@ -51,6 +52,7 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'home' })
   // Exporting keeps the editor (and everything in it) underneath, for "back to editing".
   const [job, setJob] = useState<ExportJob | null>(null)
+  const [licences, setLicences] = useState(false)
   // The detection mode (normal, extended, fast, selfie) and sensitivity chosen on the ready screen.
   const [detect, setDetect] = useState<DetectChoice>(NORMAL_DETECT)
   const sensitive = detect.mode === 'extended'
@@ -257,8 +259,9 @@ export function App() {
         />
       )}
       <footer class="footer">
-        {t('גרסת ווב')} <bdi dir="ltr" class="num">2.0 ({__BUILD__})</bdi> · <a href={RELEASES} target="_blank" rel="noopener">{t('האפליקציה המלאה לאנדרואיד')}</a> · <a href="home/">{t('על ONIT')}</a>
+        {t('גרסת ווב')} <bdi dir="ltr" class="num">2.0 ({__BUILD__})</bdi> · <a href={RELEASES} target="_blank" rel="noopener">{t('האפליקציה המלאה לאנדרואיד')}</a> · <a href="home/">{t('על ONIT')}</a> · <button class="link-btn licences-link" onClick={() => setLicences(true)}>{t('רישיונות קוד פתוח')}</button>
       </footer>
+      {licences && <Licences onClose={() => setLicences(false)} />}
     </div>
   )
 }

@@ -359,6 +359,7 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit, onTemplates: (() ->
         Column(
             Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = Space.XL)
                 .padding(bottom = Space.XL)
                 .navigationBarsPadding(),
@@ -432,6 +433,13 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit, onTemplates: (() ->
                     ActionRow(AppIcons.Download, t("מודלים"), t("מה במכשיר, הורדה ומחיקה, והורדות בסלולרי"), onClick = onModels)
                 }
             }
+            // The models', libraries' and fonts' licences (LicencesUi.kt).
+            var licences by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+            HorizontalDivider()
+            Box(Modifier.testTag(Tags.LICENCES_SETTINGS)) {
+                ActionRow(AppIcons.Info, t("רישיונות קוד פתוח"), t("המודלים, הספריות והגופנים ש-ONIT בנוי מהם"), onClick = { licences = true })
+            }
+            if (licences) OpenSourceLicencesSheet { licences = false }
         }
     }
 }

@@ -27,6 +27,12 @@ class Det(val box: Box, val score: Float, var verify: Float = 0f)
 /**
  * RetinaFace with a MobileNetV2 backbone (yakhyo/retinaface-pytorch, MIT; trained on WIDER
  * FACE) through OpenCV DNN.
+ *
+ * The anchors ([priors]: steps, sizes) and the box decoding ([decode]: variances 0.1 and 0.2) are
+ * adapted from the reference implementation's PriorBox and decode, biubug6/Pytorch_Retinaface
+ * (https://github.com/biubug6/Pytorch_Retinaface, MIT License, "Copyright (c) 2019"), which
+ * yakhyo/retinaface-pytorch follows (MIT, Copyright (c) 2024 Yakhyokhuja Valikhujaev). Licence
+ * texts: shared/assets/licences/MIT.txt, see THIRD-PARTY-NOTICES.md.
  */
 class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null, private val half: HalfPrecision? = null) : Closeable {
 
