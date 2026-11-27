@@ -54,25 +54,26 @@ class TrackerBench {
                 val base = OfflineTracker(fps, aspect).run(n, dets, motion, cuts)
                 sum(DetectTuning.widen(base, 0.5f) { lv -> OfflineTracker(fps, aspect, false, DetectTuning.thresholds(lv)).run(n, dets, motion, cuts) })
             },
+            // FUSE_PASSES passes over the video, as bench.cjs: one is too short to time steadily.
             "fuse" to {
                 var c = 0
                 var s = 0.0
-                for ((k, rf) in dets) for (d in DetectTuning.fuse(rf, yn.getValue(k))) { c++; s += d.score }
-                "{\"dets\":$c,\"sum\":${Math.round(s * 1e3) / 1e3}}"
+                repeat(FUSE_PASSES) { for ((k, rf) in dets) for (d in DetectTuning.fuse(rf, yn.getValue(k))) { c++; s += d.score } }
+                "{\"dets\":${c / FUSE_PASSES},\"sum\":${Math.round(s / FUSE_PASSES * 1e3) / 1e3}}"
             },
         )
-        val iters = System.getenv("ONIT_BENCH_ITERS")?.toIntOrNull() ?: 15
+        val iters = System.getenv("ONIT_BENCH_ITERS")?.toIntOrNull() ?: 25
         val ms = LinkedHashMap<String, Double>()
         val out = LinkedHashMap<String, String>()
         for ((name, fn) in parts) {
-            repeat(5) { out[name] = fn() }
+            repeat(10) { out[name] = fn() }
             val t = DoubleArray(iters) {
                 val a = System.nanoTime()
                 fn()
                 (System.nanoTime() - a) / 1e6
             }
             t.sort()
-            ms[name] = Math.round(t[iters / 2] / seconds * 1e4) / 1e4
+            ms[name] = Math.round(t[iters / 2] / seconds / (if (name == "fuse") FUSE_PASSES else 1) * 1e4) / 1e4
         }
         val json = "{\"ms\":{" + ms.entries.joinToString(",") { "\"${it.key}\":${it.value}" } + "},\"out\":{" +
             out.entries.joinToString(",") { "\"${it.key}\":${it.value}" } + "},\"iters\":$iters,\"units\":\"ms per second of video\",\"java\":\"${System.getProperty("java.version")}\"}"
@@ -80,6 +81,10 @@ class TrackerBench {
         file.parentFile?.mkdirs()
         file.writeText(json + "\n")
         println("TRACKER_BENCH $json")
+    }
+
+    private companion object {
+        const val FUSE_PASSES = 20
     }
 
     /** shared/vectors/tracker/bench.json, from the module's directory (Gradle's) or the repository's. */

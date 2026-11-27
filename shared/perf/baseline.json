@@ -80,11 +80,11 @@
     "tree": "develop 4e974ce",
     "runs": 7,
     "ms": {
-      "cutmap": 15.252,
-      "fuse": 0.012,
-      "srt": 2.189,
-      "track_s0": 0.203,
-      "track_s50": 2.229
+      "cutmap": 15.0951,
+      "fuse": 0.0099,
+      "srt": 2.2192,
+      "track_s0": 0.2217,
+      "track_s50": 2.4652
     },
     "out": {
       "track_s0": {
@@ -120,15 +120,15 @@
     },
     "tree": "develop 4e974ce",
     "runs": 7,
-    "median_ms": 10519.4,
-    "min_ms": 9995.5
+    "median_ms": 11825.3,
+    "min_ms": 11309.4
   },
   "jvmBench": {
     "note": "TrackerBench.kt (ONIT_BENCH=1): median ms per second of video (machine-dependent)",
     "ms": {
-      "track_s0": 0.4598,
-      "track_s50": 3.8304,
-      "fuse": 0.0231
+      "track_s0": 0.3585,
+      "track_s50": 3.7477,
+      "fuse": 0.0041
     },
     "out": {
       "track_s0": {
@@ -146,8 +146,11 @@
         "sum": 6090.317
       }
     },
-    "iters": 15,
+    "runs": 7,
+    "iters": 40,
     "units": "ms per second of video",
-    "java": "21.0.13.0.3"
+    "java": "21.0.13.0.3",
+    "tree": "develop 4e974ce",
+    "how": "ONIT_BENCH=1 ONIT_BENCH_ITERS=40, median of 7 forked JVMs (the A/B harness alternating base and head)"
   }
 }

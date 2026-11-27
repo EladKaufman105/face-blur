@@ -172,8 +172,8 @@ def bench(a):
         h = statistics.median(r["ms"][k] for r in runs["head"])
         ratio = h / b if b > 0 else 1.0
         worst = max(worst, ratio)
-        res[k] = {"base": round(b, 3), "head": round(h, 3), "ratio": round(ratio, 4)}
-        print(f"{k:16} {b:10.2f} {h:10.2f} {ratio:10.3f}")
+        res[k] = {"base": round(b, 5), "head": round(h, 5), "ratio": round(ratio, 4)}
+        print(f"{k:16} {b:10.4f} {h:10.4f} {ratio:10.3f}")
     same = all(r["out"] == runs["base"][0]["out"] for r in runs["base"] + runs["head"])
     print(f"outputs identical between base and head: {same}")
     if a.json:
@@ -222,7 +222,7 @@ def record(a):
         "machine": machine(),
         "tree": a.label or "this tree",
         "runs": a.runs,
-        "ms": {k: round(statistics.median(r["ms"][k] for r in runs), 3) for k in sorted(runs[0]["ms"])},
+        "ms": {k: round(statistics.median(r["ms"][k] for r in runs), 5) for k in sorted(runs[0]["ms"])},
         "out": runs[0]["out"],
     }
     b["fusionCjs"] = {"note": "wall time of `node web/tests/fusion.cjs` (machine-dependent)", "machine": machine(), "tree": a.label or "this tree", **fusion_time(a.runs, tree)}

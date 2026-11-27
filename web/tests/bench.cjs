@@ -2,7 +2,7 @@
 // TrackerBench.kt times too (shared/vectors/tracker/bench.json, ci/make_bench_vectors.py):
 //   track_s0   the tracker at sensitivity 0 (ms per second of video)
 //   track_s50  the tracks at sensitivity 0.5: the default ones widened step by step (ms per second of video)
-//   fuse       RetinaFace + YuNet fusion of every frame's detections (ms per second of video)
+//   fuse       RetinaFace + YuNet fusion of every frame's detections (ms per second of video; timed over 20 passes)
 //   cutmap     10^6 CutMap.out over 200 cuts (ms)
 //   srt        a 2,000-cue SRT written and read back (ms)
 // Prints one JSON line: {"ms": {...medians...}, "out": {...what was computed...}}. "out" lets an A/B run
@@ -33,6 +33,7 @@ const yn = new Map([...dets].map(([k, l]) => [k, l.filter((_, i) => i % 2 === 0)
 const cutRanges = Array.from({ length: 200 }, (_, i) => [i * 0.5 + 0.1, i * 0.5 + 0.3])
 const cues = Array.from({ length: 2000 }, (_, i) => ({ id: i + 1, start: i * 1.5 + 0.0005, end: i * 1.5 + 1.2345, text: 'שלום עולם hello ' + i }))
 
+const FUSE_PASSES = 20
 const sumTracks = (ts) => { let s = 0, f = 0; for (const t of ts) { f += t.boxes.length / 4; for (const b of t.boxes) s += b } return { tracks: ts.length, frames: f, sum: Math.round(s * 1e3) / 1e3 } }
 const parts = {
   track_s0: () => sumTracks(T.track(v.n, dets, v.cuts, v.fps, v.aspect, false)),
@@ -40,7 +41,8 @@ const parts = {
     const base = T.track(v.n, dets, v.cuts, v.fps, v.aspect, false)
     return sumTracks(S.widen(base, 0.5, (lv) => T.track(v.n, dets, v.cuts, v.fps, v.aspect, false, S.thresholds(lv))))
   },
-  fuse: () => { let n = 0, s = 0; for (const [k, rf] of dets) { const f = F.fuse(rf, yn.get(k)); n += f.length; for (const d of f) s += d.score } return { dets: n, sum: Math.round(s * 1e3) / 1e3 } },
+  // FUSE_PASSES passes over the video: one is too short (about 1 ms) to time steadily.
+  fuse: () => { let n = 0, s = 0; for (let p = 0; p < FUSE_PASSES; p++) for (const [k, rf] of dets) { const f = F.fuse(rf, yn.get(k)); n += f.length; for (const d of f) s += d.score } return { dets: n / FUSE_PASSES, sum: Math.round(s / FUSE_PASSES * 1e3) / 1e3 } },
   cutmap: () => { const cm = new CM.CutMap(cutRanges); let s = 0; for (let i = 0; i < 1e6; i++) s += cm.out((i % 100000) * 0.001); return { sum: Math.round(s) } },
   srt: () => { if (!Sub) return null; const back = Sub.parseSrt(Sub.toSrt(cues)); return { cues: back.length, last: back[back.length - 1].end } },
 }
@@ -53,7 +55,7 @@ for (const [name, fn] of Object.entries(parts)) {
   for (let i = 0; i < ${iters}; i++) { const a = performance.now(); fn(); t.push(performance.now() - a) }
   t.sort((a, b) => a - b)
   const med = t[Math.floor(t.length / 2)]
-  ms[name] = Math.round((perVideoSecond[name] ? med / seconds : med) * 1e4) / 1e4
+  ms[name] = Math.round((perVideoSecond[name] ? med / seconds / (name === 'fuse' ? FUSE_PASSES : 1) : med) * 1e4) / 1e4
 }
 console.log(JSON.stringify({ ms, out, iters: ${iters}, units: 'track_s0, track_s50, fuse: ms per second of video; cutmap, srt: ms' }))`
 const r = execFileSync(process.execPath, ['--experimental-strip-types', '--no-warnings', '--input-type=module', '-e', script], { cwd: path.join(__dirname, '..'), maxBuffer: 1 << 26 }).toString().trim().split('\n').pop()
