@@ -70,7 +70,7 @@ const [, , url, video, out] = process.argv
       await p.waitForFunction(() => document.querySelector('.stats-copy')?.textContent.trim().length > 0 && document.querySelector('.stats-copy svg path')?.getAttribute('d')?.startsWith('M9 16.17'), null, { timeout: 8000 })
       const text = await p.evaluate(() => navigator.clipboard.readText())
       fs.writeFileSync(`${out}/${name}_report.txt`, text)
-      for (const k of ['# ONIT face detection stats', 'app: ONIT Web', 'browser: ', 'device: ', 'webgpu_adapter: ', 'elapsed: ', 'backend: ', 'sampling_detections_per_s: now', 'resolution_px: ', 'detect_ms: now ', 'wait_ms_per_frame: now', 'frame_ms: now', 'workers: ', 'measured_detections_per_s: ', 'measured_max_gap: ', 'measured_strength: ', 'per_detection_ms: fine', 'per_frame_ms: decode_wait'])
+      for (const k of ['# ONIT face detection stats', 'app: ONIT Web', 'browser: ', 'device: ', 'webgpu_adapter: ', 'elapsed: ', 'backend: ', 'sampling_detections_per_s: now', 'resolution_px: ', 'detect_ms: now ', 'wait_ms_per_frame: now', 'frame_ms: now', 'workers: ', 'measured_detections_per_s: ', 'measured_max_gap: ', 'measured_strength: ', 'per_detection_ms: fine', 'per_frame_ms: decode_wait', 'webgpu: ', 'wasm: 1 thread', 'cross_origin_isolated: ', 'detector_pool: '])
         if (!text.includes(k)) throw new Error(`${name}: the report lacks "${k}":\n${text}`)
       if (!/\nvideo: \d+x\d+, [\d.]+ fps, \d+:\d\d\n/.test(text)) throw new Error(`${name}: video line:\n${text}`)
       if (!/detect_ms: now [\d.]+, avg [\d.]+, min [\d.]+, max [\d.]+/.test(text)) throw new Error(`${name}: detect_ms line:\n${text}`)

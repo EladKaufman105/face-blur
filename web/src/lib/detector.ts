@@ -11,8 +11,10 @@ import { Yunet } from './yunet'
 // The values: shared/detect/detect.json, shared with the app (generated).
 import { COARSE_MIN_BOX, COARSE_SIDE, CPU_SIDE, GPU_SIDE, LOW_SIDE, VERIFY_SIDE } from '../gen/detect'
 import type { YunetWorker } from './yunet-worker'
+import { adapterText, capturePlacement, isSoftwareAdapter, placementCounts, type GpuDiag } from './devicediag'
 
 export { RF_THRESHOLD, iou, nmsIou }
+export type { GpuDiag }
 
 const STEPS = [8, 16, 32]
 const MIN_SIZES = [[16, 32], [64, 128], [256, 512]]
@@ -61,6 +63,8 @@ export class FaceDetector {
   // The GPU's results are compared with the CPU's on the first frames with faces.
   private checking: boolean
   private agreed = 0
+  /** Runs of the check that counted for the timing (warm ones only). */
+  private timed = 0
   private gpuMs = 0
   private cpuMs = 0
   /** Long side the fine pass runs at (lowered when the device is slow). */
@@ -69,11 +73,27 @@ export class FaceDetector {
   fellBack: string | null = null
   /** YuNet couldn't be loaded: RetinaFace alone (weaker than the app's detection). */
   yunetMissing = false
+  /** What the GPU path found (null: no WebGPU in this browser, or none tried). */
+  gpuDiag: GpuDiag | null = null
+  /**
+   * CPU detectors that would run side by side if detection moves to the CPU (the analysis' worker pool): the GPU-vs-CPU check
+   * compares the GPU with that many CPUs, not one (a 16-core CPU beats a weak GPU that a single core doesn't).
+   */
+  cpuLanes = 1
+  /** Shapes each session has run (a WebGPU session compiles its shaders for each new one: that run isn't the device's pace). */
+  private shapes = new Set<string>()
+  /** The latest detection ran a shape for the first time on the GPU (its time includes the shaders compiling). */
+  private cold = false
   /** The latest detection's RetinaFace passes (ms): the fine one, and fine + coarse (the pacing's inputs, see lib/pace.ts). */
-  readonly last = { fineMs: 0, rfMs: 0, extraMs: 0 }
+  readonly last: { fineMs: number; rfMs: number; extraMs: number; cold: boolean } = { fineMs: 0, rfMs: 0, extraMs: 0, cold: false }
   /** Time this detection spent on a sensitivity's extra work (the pool's decoding, fusion and crops), kept out of the pace's timings. */
   private extraMs = 0
   readonly stats: DetectStats = { detections: 0, pre: 0, inf: 0, dec: 0, coarse: 0, coarseRuns: 0, check: 0, verify: 0, nms: 0, yunetFaces: 0 }
+
+  /** The float32 model's bytes (the analysis' CPU workers start from them when detection moves off the GPU). */
+  get fp32Bytes(): Uint8Array {
+    return this.model32
+  }
 
   private constructor(private gpu: Session | null, private model32: Uint8Array, public precision: 'fp16' | 'fp32', yunet: Uint8Array | null) {
     this.checking = gpu !== null
@@ -120,23 +140,39 @@ export class FaceDetector {
     // yunet === null: the caller tried and failed. Without it detection goes on (RetinaFace alone) and says so.
     const ynBytes = yunet !== undefined ? yunet : await load('yunet.onnx').catch((e) => { console.warn('ONIT: no YuNet', e); return null })
     const gpuApi = (navigator as any).gpu
+    let diag: GpuDiag | null = null
+    let why: string | null = null
     if (gpuApi && force !== 'wasm') {
       try {
         const adapter = await gpuApi.requestAdapter()
         if (adapter) {
           // Half precision where the GPU has it: about twice the speed on phones and tablets.
           const half = adapter.features?.has?.('shader-f16') === true
-          const model = half ? await load('retinaface_fp16.onnx') : model32
-          const s = await ort.InferenceSession.create(model, { executionProviders: ['webgpu'], graphOptimizationLevel: 'all' })
-          const g = new FaceDetector(s, model32, half ? 'fp16' : 'fp32', ynBytes)
-          await g.startYunet(ynWorker)
-          return g
+          diag = { adapter: adapterText(adapter), f16: half, software: isSoftwareAdapter(adapter), nodesGpu: null, nodesCpu: null, model: half ? 'fp16' : 'fp32', firstRunMs: null }
+          // A software adapter (the browser's WebGPU on the CPU, e.g. SwiftShader): measured 785 ms against the CPU's 273 ms for one
+          // frame, and it keeps the CPU workers from starting. Never used: the CPU's own path is the faster one.
+          if (diag.software) why = 'software WebGPU adapter (a slower CPU path)'
+          else {
+            const model = half ? await load('retinaface_fp16.onnx') : model32
+            const seen: string[] = []
+            // The runtime logs where each node went when the session is made (verbose); only that log is kept (see capturePlacement).
+            const s = await capturePlacement(seen, () => ort.InferenceSession.create(model, { executionProviders: ['webgpu'], graphOptimizationLevel: 'all', logSeverityLevel: 0, logVerbosityLevel: 0 }))
+            const n = placementCounts(seen)
+            diag.nodesGpu = n.gpu
+            diag.nodesCpu = n.cpu
+            const g = new FaceDetector(s, model32, half ? 'fp16' : 'fp32', ynBytes)
+            g.gpuDiag = diag
+            await g.startYunet(ynWorker)
+            return g
+          }
         }
       } catch (e) {
         console.warn('ONIT: no WebGPU face detection', e)
       }
     }
     const d = new FaceDetector(null, model32, 'fp32', ynBytes)
+    d.gpuDiag = diag
+    if (why) d.fellBack = why
     await d.cpuSession()
     await d.startYunet(ynWorker)
     return d
@@ -190,6 +226,8 @@ export class FaceDetector {
     this.fellBack = why
     this.gpu = null
     this.checking = false
+    // The model that runs from now on is the float32 one (the stats said "CPU fp16" for a run that had left the half-precision GPU).
+    this.precision = 'fp32'
     this.side = Math.min(this.side, CPU_SIDE)
   }
 
@@ -203,6 +241,7 @@ export class FaceDetector {
     const src = Math.max(frame.width, frame.height) > this.side * 1.05 ? this.resize(frame, this.side) : frame
     const st = this.stats
     st.detections++
+    this.cold = false
     // YuNet in its worker starts first, on a copy of the frame, and works while RetinaFace does.
     const ynWorker = this.ynWorker
     // A sensitivity above 0: YuNet's candidates from the pool's lower threshold; the default ones are those from its own up
@@ -239,6 +278,7 @@ export class FaceDetector {
     }
     this.last.fineMs = fineMs
     this.last.rfMs = fineMs + coarseMs
+    this.last.cold = this.cold
     t = performance.now()
     const rf = nmsIou(out, 0.4)
     // YuNet adds the faces RetinaFace misses and raises the score where both agree; the wait for it and the fusion count as the merge.
@@ -299,7 +339,11 @@ export class FaceDetector {
   /** Compares the GPU's faces with the CPU's; on disagreement, detection moves to the CPU. */
   private async check(frame: OffscreenCanvas) {
     const t0 = performance.now()
+    const was = this.cold
+    this.cold = false
     const gpu = await this.run(frame, RF_THRESHOLD, 0)
+    const coldRun = this.cold
+    this.cold = this.cold || was
     const t1 = performance.now()
     if (!this.gpu) return
     const cpu = await this.runOn(await this.cpuSession(), frame, RF_THRESHOLD, 0)
@@ -308,14 +352,18 @@ export class FaceDetector {
     const same = gpu.length === cpu.length && cpu.every((c) => gpu.some((g) => iou(g, c) > 0.8 && Math.abs(g.score - c.score) < 0.08))
     if (!same) return this.leaveGpu('results differ from the CPU')
     // Timing after the first (the GPU compiles its shaders then): a weak GPU can be slower
-    // than the CPU.
-    if (this.agreed > 0) {
+    // than the CPU. Only runs of a shape both sessions have run before count (a first run of either is warm-up, not pace).
+    if (this.agreed > 0 && !coldRun) {
       this.gpuMs += t1 - t0
       this.cpuMs += t2 - t1
+      this.timed++
     }
-    if (++this.agreed >= 3) {
+    if (++this.agreed >= 3 && this.timed >= 2) {
       this.checking = false
-      if (this.cpuMs < this.gpuMs * 0.9) this.leaveGpu(`the CPU is faster here (${this.cpuMs.toFixed(0)} vs ${this.gpuMs.toFixed(0)} ms)`)
+      // The CPU's side is what the analysis would run there: its detectors side by side (the workers), each at 75% of a lone one's speed.
+      const lanes = Math.max(1, this.cpuLanes * (this.cpuLanes > 1 ? 0.75 : 1))
+      const cpuEff = this.cpuMs / lanes
+      if (cpuEff < this.gpuMs * 0.9) this.leaveGpu(`the CPU is faster here (${(this.cpuMs / this.timed).toFixed(0)} ms${this.cpuLanes > 1 ? ` x${this.cpuLanes} detectors` : ''} vs ${(this.gpuMs / this.timed).toFixed(0)} ms)`)
     }
   }
 
@@ -398,6 +446,20 @@ export class FaceDetector {
 
   private async inferOn(session: Session, input: Float32Array, dims: number[]): Promise<[Float32Array, Float32Array]> {
     const t = new ort.Tensor('float32', input, dims)
+    // A WebGPU session compiles its shaders for each shape it sees: that first run is far slower than the next ones.
+    if (session === this.gpu) {
+      const key = dims.join('x')
+      if (!this.shapes.has(key)) {
+        this.shapes.add(key)
+        this.cold = true
+        const t0 = performance.now()
+        const res = await session.run({ input: t }, ['loc', 'conf'])
+        if (this.gpuDiag && this.gpuDiag.firstRunMs === null) this.gpuDiag.firstRunMs = performance.now() - t0
+        const out: [Float32Array, Float32Array] = [res.loc.data as Float32Array, res.conf.data as Float32Array]
+        t.dispose()
+        return out
+      }
+    }
     const res = await session.run({ input: t }, ['loc', 'conf'])
     const out: [Float32Array, Float32Array] = [res.loc.data as Float32Array, res.conf.data as Float32Array]
     t.dispose()

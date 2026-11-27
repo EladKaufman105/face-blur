@@ -31,6 +31,8 @@ case "${1:?shard}" in
     node tests/fusion.cjs   # 1
     # Selfie detection's pure parts: BlazeFace's anchors, decoding, weighted NMS and letterbox against MediaPipe's own results (the Android app's BlazeFaceTest checks the same fixture), the sensitivity's threshold (0.5 at 0 exactly, 0.3 at 1), the choice of mode (pure, no browser).
     node tests/blazeface.cjs   # 1
+    # The device report's pure parts and the rules that use the cores: how many CPU detectors run side by side (cores, memory, phones; never fewer than before), a software WebGPU adapter never used, the runtime's node placement read as counts, the pace not counting a detection that compiled shaders (pure, no browser).
+    node tests/devdiag.cjs   # 1
     ;;
   1) # about 187 s
     # Face detection with YuNet: RetinaFace + YuNet at 960 px (in the detector workers, and as one detector with YuNet in its own worker) finds no fewer faces than the old web detector (RetinaFace alone, 640 px) on the same frames of the stress clip and the classroom.
@@ -125,7 +127,7 @@ case "${1:?shard}" in
     t project.cjs "$U" $S/speech_two.mp4 $R/project   # 15
     # Which speech model the subtitles tab offers (no download): ivrit.ai's for Hebrew, with its size; Whisper for the other languages.
     t subsplan.cjs "$U" $S/speech_two.mp4 $R/subsplan   # 15
-    # The analysis stats panel: tiles and charts that update, more details, an (i), Copy (the report).
+    # The analysis stats panel: tiles and charts that update, more details, an (i), Copy details (the report, with the GPU, node placement, threads, isolation and detector pool).
     t stats.cjs "$U" $S/walk.mp4 $R/stats   # 14
     # Subtitles on the timeline, as the app's: a tap selects, the bar's Start / End here, split, merge, delete and text, the edges dragged, all undone; bleeps follow their words. Desktop and a phone.
     t cues.cjs "$U" $S/speech_two.mp4 $R/cues   # 13

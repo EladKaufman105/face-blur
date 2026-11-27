@@ -1,12 +1,13 @@
 // The analysis pass, off the main thread: decodes every frame (small), finds cuts, detects faces
 // on a regular subset of frames, then builds the face tracks and a thumbnail of each face.
 import { ALL_FORMATS, BlobSource, CanvasSink, Input, type InputVideoTrack } from 'mediabunny'
-import { CPU_SIDE, FaceDetector, GPU_SIDE, LOW_SIDE } from '../lib/detector'
+import { CPU_SIDE, FaceDetector, GPU_SIDE, LOW_SIDE, type DetectStats } from '../lib/detector'
 import { DetectGate, FrameRate, Pacer, follow, fullRate, needRate, pace, runSide, type Timing } from '../lib/pace'
 import { CoverageMeter, type Coverage } from '../lib/coverage'
 import { YunetWorker } from '../lib/yunet-worker'
 import { SELFIE_NO_GPU, StatsHistory, summary, type AnalysisStats, type StatsSnapshot } from '../lib/analysis-stats'
 import { DetectorPool } from '../lib/detector-pool'
+import { poolSize as wantedPool, wasmSimd, type DeviceDiag, type GpuDiag } from '../lib/devicediag'
 import { CutDetector } from '../lib/cuts'
 import { track } from '../lib/tracker'
 import { lowConfidenceTracks } from '../lib/lowconf'
@@ -65,13 +66,12 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
   // On the GPU one detector in this thread. On the CPU, where a detection is a long single-thread
   // WebAssembly run, a few detectors in workers of their own, each with a frame at a time.
   const cores = (self.navigator?.hardwareConcurrency ?? 2)
-  // Two even on two cores (measured: about 30% less time); up to four, half the cores, beyond.
-  // Each worker holds its own model and WebAssembly heap: more than two only where the browser
-  // says there is 8 GB (Firefox and Safari don't say, so they get two).
+  // Detectors side by side on the CPU: one per core but two (see devicediag.ts' poolSize: memory, phones).
   const memory = (self.navigator as any)?.deviceMemory as number | undefined
-  const most = memory !== undefined && memory >= 8 ? 4 : 2
+  const mobile = /Android|iPhone|iPad|Mobile/i.test(self.navigator?.userAgent ?? '') || (self.navigator as any)?.userAgentData?.mobile === true
+  const poolWanted = wantedPool(cores, memory, mobile)
   const asked = workers !== undefined ? Math.min(8, Math.max(1, Math.round(workers))) : undefined
-  const poolSize = asked ?? (cores > 1 ? Math.min(most, Math.max(2, Math.floor(cores / 2))) : 1)
+  const poolSize = asked ?? poolWanted
   // No GPU also where the browser has WebGPU but no adapter for it (common on Android and Linux).
   const gpu = (self.navigator as any)?.gpu
   const cpuOnly = backend === 'wasm' || !gpu || !(await gpu.requestAdapter().catch(() => null))
@@ -79,32 +79,65 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
   const yunet = tune?.yunet === false ? null : await fetch(base + 'models/yunet.onnx').then(async (r) => (r.ok ? new Uint8Array(await r.arrayBuffer()) : null)).catch(() => null)
   // If the workers can't start (memory, a module that won't load), one detector here, as before.
   let pool: DetectorPool | null = null
-  if (cpuOnly && poolSize > 1) {
+  const fp32 = async () => new Uint8Array(await (await fetch(base + 'models/retinaface_fp32.onnx')).arrayBuffer())
+  const startPool = async (model: Uint8Array) => {
     try {
-      pool = await DetectorPool.create(new Uint8Array(await (await fetch(base + 'models/retinaface_fp32.onnx')).arrayBuffer()), yunet, poolSize)
+      return await DetectorPool.create(model, yunet, poolSize)
     } catch (err) {
       log(`detector pool failed, one detector: ${String((err as Error)?.message ?? err)}`)
+      return null
     }
   }
+  if (cpuOnly && poolSize > 1) pool = await startPool(await fp32())
   // One detector here (the GPU's, or one on the CPU): YuNet in a worker of its own, so that it runs
   // while RetinaFace does (else, or if that worker fails, in this thread, after it). The pool's
   // detectors (all the cores busy already) run it in theirs.
-  const ynWorker = !pool && yunet ? await YunetWorker.create(yunet) : null
-  const detector = pool ? null : await FaceDetector.create(base + 'models/', backend, undefined, yunet, ynWorker).catch((e) => { ynWorker?.close(); throw e })
+  let ynWorker = !pool && yunet ? await YunetWorker.create(yunet) : null
+  let detector: FaceDetector | null = pool ? null : await FaceDetector.create(base + 'models/', backend, undefined, yunet, ynWorker).catch((e) => { ynWorker?.close(); throw e })
+  // The GPU-vs-CPU check compares the GPU with the detectors the CPU would run side by side.
+  if (detector) detector.cpuLanes = poolSize
+  // Why detection isn't on the GPU after it left it (the detector is gone once the workers took over).
+  let leftGpu: string | null = null
+  // The stats of the detector that ran before the workers took over (so the counters never go back).
+  let retired: DetectStats | null = null
+  let gpuDiag: GpuDiag | null = null
+  let precision = pool?.precision ?? detector?.precision ?? 'fp32'
+  // The detections' times, in windows (the first ones, warm-up, left out).
+  let pacer = new Pacer((pool?.size ?? 1) + 2)
+  /**
+   * Detection moves to the CPU (the GPU is slower than the CPU here, is a software adapter, or failed) on a device with cores
+   * to spare: the workers start, as if there had been no GPU; one detector on one core would waste the others (a software
+   * adapter's device measured "waves 1/16": one detector, 15 idle cores).
+   */
+  const toPool = async () => {
+    if (!detector || detector.backend !== 'wasm' || pool || poolSize <= 1) return
+    const p = await startPool(detector.fp32Bytes)
+    if (!p) return
+    leftGpu = detector.fellBack
+    gpuDiag = detector.gpuDiag
+    retired = { ...detector.stats }
+    pool = p
+    ynWorker?.close()
+    ynWorker = null
+    detector = null
+    precision = p.precision
+    pacer = new Pacer(p.size + 2)
+    log(`detection moved to the CPU workers x${p.size}: ${leftGpu ?? ''}`)
+  }
+  await toPool()
   if (tune?.side && detector) detector.side = tune.side
   // Fast detection on the CPU: the fine pass at 640 px from the start (the app's LOW_SIDE), on frames decoded at 960 (crops see those).
   else if (fast && detector && detector.backend === 'wasm') detector.side = LOW_SIDE
   if (sensitivity > 0) detector?.setSensitivity(sensitivity)
   const backendNow = () => detector?.backend ?? 'wasm'
   // Why detection isn't on the GPU, for the stats panel.
-  const noGpu = () => detector?.fellBack ?? (backend === 'wasm' ? 'forced with ?backend=wasm' : !gpu ? 'no WebGPU in this browser' : 'no WebGPU adapter')
-  const precision = pool?.precision ?? detector!.precision
+  const noGpu = () => detector?.fellBack ?? leftGpu ?? (backend === 'wasm' ? 'forced with ?backend=wasm' : !gpu ? 'no WebGPU in this browser' : 'no WebGPU adapter')
   log(`detector ${backendNow()} ${precision}${pool ? ' x' + pool.size : ''}${ynWorker ? ', YuNet in a worker' : ''} ${(performance.now() - t0).toFixed(0)} ms`)
   post({ type: 'ready', backend: backendNow(), width, height, duration, fps: nominalFps })
 
   // Frames are decoded at the detector's starting size (it may lower it later): the app's 1280 px
   // on the GPU, 960 px on the CPU.
-  const startSide = tune?.side ?? (fast && detector?.backend === 'wasm' ? CPU_SIDE : detector?.side) ?? (cpuOnly ? CPU_SIDE : GPU_SIDE)
+  const startSide = tune?.side ?? (fast && detector?.backend === 'wasm' ? CPU_SIDE : detector?.side) ?? (cpuOnly || pool ? CPU_SIDE : GPU_SIDE)
   const side = Math.min(Math.max(width, height), startSide)
   const s = side / Math.max(width, height)
   const iw = Math.max(32, Math.round(width * s / 32) * 32)
@@ -149,10 +182,8 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
   if (tune?.reduced) reduce('forced for a test')
   // A pinned tune weaker than the default is a reduced detection like any other (a size that changes nothing for this video isn't).
   const long = Math.max(width, height)
-  if (tune && (Math.min(long, tune.side ?? startSide) < Math.min(long, cpuOnly ? CPU_SIDE : GPU_SIDE) || (tune.rate ?? maxRate) < Math.min(maxRate, nominalFps))) reduce('a weaker tune')
+  if (tune && (Math.min(long, tune.side ?? startSide) < Math.min(long, cpuOnly || pool ? CPU_SIDE : GPU_SIDE) || (tune.rate ?? maxRate) < Math.min(maxRate, nominalFps))) reduce('a weaker tune')
   const spent: number[] = []
-  // The detections' times, in windows (the first ones, warm-up, left out).
-  const pacer = new Pacer((pool?.size ?? 1) + 2)
 
   const sink = new CanvasSink(video, { width: iw, height: ih, fit: 'fill', poolSize: 3 })
   const cuts = new CutDetector()
@@ -213,11 +244,24 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
       if (p.reduced) reduce(`${recent.toFixed(0)} ms a detection (RetinaFace ${rfMs.toFixed(0)}): ${runSide(fineSide, frameSide)} px, ${rate.toFixed(1)}/s`)
     }
   }
+  // The detectors' counters (the workers', or the one detector's, with those of the one that ran before the workers took over).
+  const allStats = (): DetectStats => {
+    const now = pool?.stats() ?? detector!.stats
+    if (!retired) return now
+    const sum = { ...now }
+    for (const k of Object.keys(sum) as (keyof DetectStats)[]) sum[k] += retired[k]
+    return sum
+  }
+  // What the device report says (lib/devicediag.ts): the GPU's find, the threads, the isolation, the workers.
+  const diag = (): DeviceDiag => ({
+    gpu: detector?.gpuDiag ?? gpuDiag, threads: 1, simd: wasmSimd(), isolated: !!(self as any).crossOriginIsolated,
+    pool: pool?.size ?? 1, poolWanted, cores, memoryGB: memory ?? null,
+  })
   // The counters for the stats panel; the history makes the per-second values of them.
   const history = new StatsHistory()
   const loopStart = performance.now()
   const snapshot = (): StatsSnapshot => {
-    const d = pool?.stats() ?? detector!.stats
+    const d = allStats()
     const now = performance.now()
     return {
       atMs: now, frames: times.length, frameMs: Math.max(0, now - loopStart - decodeWait - poolWait), waitMs: poolWait, decodeWaitMs: decodeWait, cutMs,
@@ -225,7 +269,7 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
       backend: backendNow(), precision, noGpu: backendNow() === 'wasm' ? noGpu() : null,
       side: fineSide, rate, workers: pool?.size ?? 1, cores,
       measured: { rate: cover.rate, minWindow: cover.minWindow, need: cover.need, gapFrames: cover.maxGapFrames, gapS: cover.maxGapS, minSide: ranSide(), yunet: yunetOn },
-      mode, sensitivity,
+      mode, sensitivity, diag: diag(),
     }
   }
   const statsNow = () => history.add(snapshot())
@@ -265,6 +309,8 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
         const checkBefore = detector!.stats.check
         const got = await detector!.detect(canvas)
         recordDets(i, got, { ms: performance.now() - td, ...detector!.last, checkMs: detector!.stats.check - checkBefore }, true, detector!.lastExtras)
+        // The GPU was left (slower than the CPU, or failed) on a device with cores to spare: the workers take over from the next frame.
+        await toPool()
       }
     }
     const now = performance.now()
@@ -308,7 +354,7 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
   // The result, and what detection really covered: D (detections a second within shots, and the
   // fewest in a 2 s window against the need), G (the longest gap within a shot), S (the smallest
   // fine pass that ran, YuNet).
-  log(`result detections ${dets.size}, faces ${faces50}, tracks ${tracks.length}, reduced ${reduced}, yunet ${(pool?.stats() ?? detector!.stats).yunetFaces}; ${coverageText(cover, ranSide(), yunetOn)}; mode ${mode}, sensitivity ${sensitivity}, extra ${[...extraDets.values()].reduce((a, e) => a + e.length, 0)}`)
+  log(`result detections ${dets.size}, faces ${faces50}, tracks ${tracks.length}, reduced ${reduced}, yunet ${allStats().yunetFaces}; ${coverageText(cover, ranSide(), yunetOn)}; mode ${mode}, sensitivity ${sensitivity}, extra ${[...extraDets.values()].reduce((a, e) => a + e.length, 0)}`)
 
   const thumbs = await makeThumbs(video, tracks, times, width, height)
   const msg: AnalyzeMessage = { type: 'done', times: Float64Array.from(times), width, height, fps, tracks, cuts: cutList, lowConfidence: lowConfidenceTracks(tracks, dets), reduced, fast, selfie: false, sensitive: mode === 'extended', sensitivity, thumbs, backend: backendNow(), ms: performance.now() - t0 }

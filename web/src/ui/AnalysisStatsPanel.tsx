@@ -250,7 +250,7 @@ export function AnalysisStatsPanel({ open, stats, video, percent, elapsed }: { o
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">{copied
                 ? <path d="M9 16.17 5.53 12.7a.996.996 0 1 0-1.41 1.41l4.18 4.18c.39.39 1.02.39 1.41 0L20.29 7.71a.996.996 0 1 0-1.41-1.41L9 16.17z" />
                 : <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />}</svg>
-              {copied ? t('הנתונים הועתקו') : t('העתק')}
+              {copied ? t('הנתונים הועתקו') : t('העתק פרטים')}
             </button>
           </div>
           <div class={`sfold${more ? ' open' : ''}`} inert={!more}>
