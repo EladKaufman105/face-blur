@@ -1,6 +1,5 @@
 package com.elad.faceblur.analysis
 
-import android.content.Context
 import android.util.Log
 import org.opencv.core.Core
 import org.opencv.core.CvType
@@ -234,22 +233,23 @@ class GpuFaceNet private constructor(private val models: Map<Pair<Int, Int>, Fil
         /** Frames that may disagree with OpenCV before the GPU is turned off. */
         const val MAX_STRIKES = 2
 
-        /** Fine-pass sizes with a GPU model, and the file each one is in (see ModelManager). */
+        /** Fine-pass sizes with a GPU model, and the file each one is in (part of the face pack). */
         val SIZES = listOf(1280 to 736, 736 to 1280)
 
-        fun file(context: Context, w: Int, h: Int) = File(File(context.filesDir, "models"), "retinaface-mv2-${w}x$h.tflite")
+        fun fileName(w: Int, h: Int) = "retinaface-mv2-${w}x$h.tflite"
 
         /** Why the last [create] gave no GPU detector (for the stats panel). */
         @Volatile var unavailable = ""
             private set
 
         /**
-         * The GPU detector if this phone can run it and the models are downloaded, else null.
+         * The GPU detector if this phone can run it, else null. [pack]: the face pack's files, by
+         * name, already checked (the GPU models are always in it).
          */
-        fun create(context: Context): GpuFaceNet? {
-            val files = SIZES.associateWith { (w, h) -> file(context, w, h) }.filterValues { it.length() > 1_000_000L }
-            if (files.isEmpty()) {
-                unavailable = "no GPU models yet"
+        fun create(pack: Map<String, File>): GpuFaceNet? {
+            val files = SIZES.mapNotNull { (w, h) -> pack[fileName(w, h)]?.let { (w to h) to it } }.toMap()
+            if (files.size != SIZES.size) {
+                unavailable = "no GPU models"
                 return null
             }
             // Emulators' GPUs can't run it reliably (and can't check it): CPU there.

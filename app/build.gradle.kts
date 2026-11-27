@@ -95,16 +95,20 @@ android {
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
         jniLibs {
-            useLegacyPackaging = false
+            // Compressed in the APK (about 43 -> 18 MB to download; the installer extracts them,
+            // ~18 MB more on the device). The models aren't in the APK at all: see models/.
+            useLegacyPackaging = true
             // The minimal OpenCV replaces the package's full library and the shared C++ runtime
             // only that one needed (the minimal one has it built in).
             if (minimalOpenCv) excludes += listOf("**/libopencv_java4.so", "**/libc++_shared.so")
         }
+        // The dex compressed too (about 7 -> 3 MB).
+        dex { useLegacyPackaging = true }
     }
 
     androidResources {
-        // Read straight from the APK (models by OpenCV, sounds by MediaExtractor).
-        noCompress += listOf("onnx", "ogg", "tflite")
+        // Read straight from the APK (sounds by MediaExtractor).
+        noCompress += listOf("ogg")
     }
 }
 

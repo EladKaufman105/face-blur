@@ -128,6 +128,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** On-device speech models for subtitles. */
     val models = ModelManager(app)
 
+    /** Every downloadable model, checked; and their downloads (only ever after a tap). */
+    val modelStore = com.elad.faceblur.models.ModelStore.get(app)
+    val downloads = com.elad.faceblur.models.ModelDownloads.get(app)
+
+    /** The pack is installed and usable (reads the screens' state, so composables recompose). */
+    fun packReady(id: com.elad.faceblur.models.PackId): Boolean = modelStore.statuses[id]?.usable == true
+
     /** The user's templates (and the built-in looks, in [BuiltInTemplates]). */
     val templates = TemplateStore(app)
 
@@ -244,12 +251,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshProjects()
-        // Face detection on the GPU and background removal's second model need files (12 + 13
-        // MB, once): fetch them quietly.
-        viewModelScope.launch {
-            if (!models.gpuFaceReady) runCatching { models.downloadGpuFaceModels() }
-            if (!models.segReady) runCatching { models.downloadSegModels() }
-        }
+        // Nothing is downloaded here: every model comes after the user's tap (first-launch sheet,
+        // a feature's "download to use" card, or Settings › Models).
     }
 
     // Only the newest listing is shown: an older one finishing late (say, from before a rename)
@@ -282,11 +285,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
     /** Short notices from the chosen template (a font or picture that's gone). */
     var batchNotes by mutableStateOf<List<String>>(emptyList())
-        private set
-    var batchDownloadError by mutableStateOf<String?>(null)
-        private set
-    /** The speech model download for the next single video's template failed. */
-    var templateDownloadError by mutableStateOf<String?>(null)
         private set
 
     private fun idsOf(choice: TemplateChoice): List<String> = listOfNotNull(choice.id)
@@ -368,35 +366,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return BatchMath.Speeds(prefs.analysisRatio, prefs.renderRatio, models.speed(models.file(m).path))
     }
 
-    /** Downloads the speech model the batch's template needs (before anything starts). */
-    fun downloadBatchModel() = downloadModel(batchSettings.speechModel, forBatch = true)
+    /** The packs the batch needs and doesn't have (it doesn't start without them). */
+    val batchMissingPacks: List<com.elad.faceblur.models.PackId> get() = batchSettings.neededPacks.filter { !packReady(it) }
 
-    /** Downloads the speech model the template chosen for the next video needs. */
-    fun downloadTemplateModel() = downloadModel(templateSettings?.speechModel ?: SpeechModel.HEBREW, forBatch = false)
+    /**
+     * The packs the next video needs and doesn't have: the faces unless the template has no face
+     * blur, and what the template's processing needs (people background, subtitles).
+     */
+    val missingPacks: List<com.elad.faceblur.models.PackId>
+        get() = (templateSettings?.neededPacks ?: listOf(com.elad.faceblur.models.PackId.FACES)).filter { !packReady(it) }
 
-    /** The next video's template creates subtitles and the model for them isn't on the phone. */
-    val templateNeedsModel: Boolean get() = templateSettings?.let { it.needsSpeechModel && !models.isReady(it.speechModel) } == true
+    /** The next video's template needs a model that isn't on the phone beside the faces (subtitles, people). */
+    val templateNeedsModel: Boolean get() = missingPacks.any { it != com.elad.faceblur.models.PackId.FACES }
 
-    private fun downloadModel(m: SpeechModel, forBatch: Boolean) {
-        if (models.downloading != null || models.isReady(m)) return
-        if (forBatch) batchDownloadError = null else templateDownloadError = null
-        viewModelScope.launch {
-            try {
-                models.download(m)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                val msg = t("הורדת המודל נכשלה: %s").format(e.message ?: e.javaClass.simpleName)
-                if (forBatch) batchDownloadError = msg else templateDownloadError = msg
-            }
-        }
-    }
+    /** Face blur can't run: its pack is missing (and the template, if any, blurs faces). */
+    val facesMissing: Boolean get() = templateSettings?.blurOff != true && !packReady(com.elad.faceblur.models.PackId.FACES)
 
     /** Starts the batch in a foreground service (it goes on with the screen off) and shows its queue. */
     fun startBatch() {
         val setup = state as? UiState.BatchSetup ?: return
         if (blockedByBatch()) return
-        if (batchSettings.needsSpeechModel && !models.isReady(batchSettings.speechModel)) return
+        // Never a batch with face blur but no face model (it would fail on every video), or without a model it needs.
+        if (batchSettings.neededPacks.any { !modelStore.isUsable(it) }) return
         val items = setup.videos.mapIndexed { i, v ->
             val thumb = v.thumbnail?.let { b ->
                 val k = 320f / maxOf(b.width, b.height, 1)
@@ -859,6 +850,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val info = currentInfo() ?: return
         if (blockedByBatch()) return
         val tpl = templateSettings
+        // Face blur never starts without the whole face pack (the Ready screen offers the download).
+        if (tpl?.blurOff != true && !modelStore.isUsable(com.elad.faceblur.models.PackId.FACES)) {
+            android.widget.Toast.makeText(getApplication(), t("כדי לטשטש פנים צריך את מודל זיהוי הפנים"), android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
         // A template with no face blur: the editor's frames without face detection; with the editor
         // off ("save straight") the video is saved from there, not opened for editing.
         val route = com.elad.faceblur.template.StartRoute.of(tpl?.blurOff == true, save = !review)

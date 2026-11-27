@@ -85,14 +85,13 @@ internal fun BatchSetupContent(vm: MainViewModel, s: UiState.BatchSetup, onAddMo
     val models = vm.models
     val modelNeeded = settings.needsSpeechModel
     val modelReady = !modelNeeded || models.isReady(settings.speechModel)
+    // Every model the batch needs (the faces unless it has no blur, the people, the speech model): none is skipped on the way.
+    val missingPacks = vm.batchMissingPacks
     val estimate = BatchMath.totalMs(s.videos.map { it.durationMs }, settings, vm.batchSpeeds())
     val need = BatchMath.neededBytes(s.videos, settings.export) + (if (modelReady) 0L else settings.speechModel.approxBytes)
     val free = freeBytes()
     val roomOk = free >= need
-    // Any download holds the start back; the model row below shows only the one this template needs.
-    val anyDownloading = models.downloading != null
-    val downloading = models.downloading == settings.speechModel
-    val canStart = modelReady && roomOk && !anyDownloading
+    val canStart = missingPacks.isEmpty() && roomOk
 
     val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.startBatch() }
     val start = {
@@ -145,19 +144,12 @@ internal fun BatchSetupContent(vm: MainViewModel, s: UiState.BatchSetup, onAddMo
                         PlanRow(
                             t("מודל זיהוי דיבור"),
                             if (modelReady) t("מוכן במכשיר")
-                            else if (downloading) t("מוריד… %d%%").format((models.progress * 100).roundToInt())
                             else t("צריך להוריד פעם אחת (%s)").format(bytesText(settings.speechModel.approxBytes)),
                             modelReady,
                         )
-                        if (!modelReady && !anyDownloading) {
-                            AccentOutlinedButton(
-                                t("הורד את המודל עכשיו"), vm::downloadBatchModel, Modifier.fillMaxWidth(),
-                                accent = Feature.SUBTITLES.tint, height = 44.dp,
-                            )
-                        }
-                        if (downloading) LinearProgressIndicator(progress = { models.progress }, modifier = Modifier.fillMaxWidth())
-                        vm.batchDownloadError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                     }
+                    // A card for each missing model: the batch doesn't start without it.
+                    for (id in missingPacks) ModelCard(id)
                     for (n in vm.batchNotes) Text(n, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (!roomOk) {
                         Text(t("אין מספיק מקום. אפשר להסיר סרטונים או לפנות מקום במכשיר."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)

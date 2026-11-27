@@ -2,7 +2,9 @@ package com.elad.faceblur.analysis
 
 import android.content.Context
 import android.util.Log
-import com.elad.faceblur.subs.ModelManager
+import com.elad.faceblur.models.ModelMissing
+import com.elad.faceblur.models.ModelStore
+import com.elad.faceblur.models.PackId
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -13,6 +15,7 @@ import org.opencv.dnn.Dnn
 import org.opencv.dnn.Net
 import org.opencv.imgproc.Imgproc
 import java.io.Closeable
+import java.io.File
 import java.nio.ByteBuffer
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -23,8 +26,7 @@ import kotlin.math.roundToInt
  * overlapping square tiles, blended with feathered edges: people aren't squeezed and are seen
  * bigger.
  *
- * When downloaded, a second model, LR-ASPP (see [ModelManager.SEG_FILES]), looks at the whole
- * frame too, and a pixel is a person's if either model says so. On hard footage (rubble, seen
+ * A second model, LR-ASPP (in the same "people" pack), looks at the whole frame too, and a pixel is a person's if either model says so. On hard footage (rubble, seen
  * from above) the two found mostly different people: together they covered nearly twice as much.
  *
  * The model looks at each frame on its own, so its masks shimmer from frame to frame even when
@@ -37,7 +39,14 @@ import kotlin.math.roundToInt
  * @param times analysis frame times (µs), to file each mask under its frame.
  * @param cuts first frames of shots (smoothing doesn't cross a cut).
  */
-class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, private val store: MaskStore) : Closeable {
+class Segmenter private constructor(
+    context: Context,
+    private val times: LongArray,
+    cuts: IntArray,
+    private val store: MaskStore,
+    // The people pack (both models), checked right before (see invoke()); held until close().
+    private val pack: Map<String, File>,
+) : Closeable {
     private val net: Net
     private val cutSet = cuts.toHashSet()
     private var rgba = Mat()
@@ -60,8 +69,9 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
     private val tileBig = Mat()
     private var acc = Mat()
     private var wsum = Mat()
-    // The second model, loaded for the first frame's orientation (null: not downloaded or failed).
-    private val context = context.applicationContext
+    private val modelStore = ModelStore.get(context)
+    private var packHeld = true
+    // The second model, loaded for the first frame's orientation (null: it failed to load).
     private var lr: Net? = null
     private var lrLandscape: Boolean? = null
     private val lrSmall = Mat()
@@ -79,7 +89,7 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
 
     init {
         OpenCv.ensureLoaded()
-        net = Dnn.readNetFromONNX(FaceAnalyzer.asset(context, MODEL))
+        net = Dnn.readNetFromONNX((pack[MODEL] ?: throw ModelMissing(PackId.PEOPLE)).path)
     }
 
     /** One frame from the grab pass: RGBA, top row first; [rotation] makes it upright. */
@@ -236,7 +246,7 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
         if (lrLandscape == landscape) return lr
         lr = null
         lrLandscape = landscape
-        val file = ModelManager.segFile(context, landscape) ?: return null
+        val file = pack[if (landscape) LR_LANDSCAPE else LR_PORTRAIT] ?: return null
         lr = try {
             Dnn.readNetFromONNX(file.path)
         } catch (t: Throwable) {
@@ -344,6 +354,8 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
 
     @Synchronized
     override fun close() {
+        if (packHeld) modelStore.release(PackId.PEOPLE)
+        packHeld = false
         rgba.release()
         rotated.release()
         rgb.release()
@@ -365,7 +377,22 @@ class Segmenter(context: Context, private val times: LongArray, cuts: IntArray, 
     }
 
     companion object {
+        /** A segmenter on the people pack, checked now (or [ModelMissing]); let go if making it fails. */
+        operator fun invoke(context: Context, times: LongArray, cuts: IntArray, store: MaskStore): Segmenter {
+            val models = ModelStore.get(context)
+            val files = models.acquire(PackId.PEOPLE)
+            try {
+                return Segmenter(context, times, cuts, store, files)
+            } catch (t: Throwable) {
+                models.release(PackId.PEOPLE)
+                throw t
+            }
+        }
+
         const val MODEL = "human_segmentation_pphumanseg_2023mar.onnx"
+        /** LR-ASPP MobileNetV3 (torchvision, BSD-3), one per frame orientation (made by ml/export_seg.py). */
+        const val LR_LANDSCAPE = "lraspp_mbv3_512x288_fp16.onnx"
+        const val LR_PORTRAIT = "lraspp_mbv3_288x512_fp16.onnx"
         /** The model's input side. */
         private const val IN = 192
         /** Long side of the frame the tiles are cut from. */

@@ -128,6 +128,9 @@ fun MainScreen(vm: MainViewModel) {
     // The manager was open when a template was opened for editing: it comes back after.
     var backToManager by remember { mutableStateOf(false) }
 
+    // "Download on mobile data?" and "model ready", over every screen (the editor's too).
+    ModelQuestionHost()
+
     val view = LocalView.current
     DisposableEffect(working) {
         view.keepScreenOn = working
@@ -201,7 +204,22 @@ fun MainScreen(vm: MainViewModel) {
         return
     }
     var showSettings by remember { mutableStateOf(false) }
-    if (showSettings) AppSettingsSheet(vm.prefs, { showSettings = false }, onTemplates = { showSettings = false; showTemplates = true })
+    var showModels by remember { mutableStateOf(false) }
+    if (showSettings) {
+        AppSettingsSheet(
+            vm.prefs, { showSettings = false },
+            onTemplates = { showSettings = false; showTemplates = true },
+            onModels = { showSettings = false; showModels = true },
+        )
+    }
+    if (showModels) ModelsSettingsSheet(onDismiss = { showModels = false })
+    // First launch: "ONIT's models", once (after older versions' files were checked, so it marks
+    // what's already there), on the home screen; not when every model is already on the device.
+    var introClosed by rememberSaveable { mutableStateOf(false) }
+    val everythingThere = vm.modelStore.statuses.values.all { it.usable || it.installed == com.elad.faceblur.models.Installed.PENDING }
+    if (!introClosed && !vm.downloads.prefs.introSeen && vm.modelStore.migrated && state is UiState.Empty && !everythingThere) {
+        ModelsIntroSheet(onDismiss = { introClosed = true })
+    }
     if (showTemplates) {
         TemplateManagerSheet(
             vm.templates,

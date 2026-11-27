@@ -29,6 +29,10 @@ import java.io.File
  */
 @RunWith(AndroidJUnit4::class)
 class BatchTest {
+    /** The model packs, from the test assets (ci/fetch-models.sh), installed as the app installs a download. */
+    @org.junit.Before
+    fun seedModels() = com.elad.faceblur.models.ModelSeed.install()
+
     @Test
     fun batchOfTwoWithAFailureInTheMiddle() {
         val inst = InstrumentationRegistry.getInstrumentation()
@@ -76,13 +80,33 @@ class BatchTest {
         }
     }
 
-    /** The speech model of a test: whisper's tiny one from the test assets, put where the app looks for [SpeechModel.MULTILINGUAL]. */
+    /**
+     * The speech model of a test: whisper's tiny one from the test assets, standing in for
+     * [SpeechModel.MULTILINGUAL]'s pack (with its own size and SHA-256) and installed through the
+     * store, as a download would be.
+     */
     private fun installTinyModel(): File {
         val inst = InstrumentationRegistry.getInstrumentation()
-        val file = ModelManager(inst.targetContext).file(SpeechModel.MULTILINGUAL)
-        file.parentFile?.mkdirs()
-        inst.context.assets.open("models/ggml-tiny.bin").use { i -> file.outputStream().use { i.copyTo(it) } }
-        return file
+        val ctx = inst.targetContext
+        val tiny = File(ctx.cacheDir, "ggml-tiny-seed.bin")
+        inst.context.assets.open("models/ggml-tiny.bin").use { i -> tiny.outputStream().use { i.copyTo(it) } }
+        val store = com.elad.faceblur.models.ModelStore.get(ctx)
+        store.replacePackForTest(
+            com.elad.faceblur.models.Pack(
+                com.elad.faceblur.models.PackId.SPEECH_ANY, 1, 1, false,
+                listOf(com.elad.faceblur.models.ModelFile(SpeechModel.MULTILINGUAL.fileName, "https://example.invalid/tiny", tiny.length(), com.elad.faceblur.models.Hashing.sha256(tiny))),
+            ),
+        )
+        assertTrue("tiny model installed", store.install(com.elad.faceblur.models.PackId.SPEECH_ANY) { tiny })
+        tiny.delete()
+        return ModelManager(ctx).file(SpeechModel.MULTILINGUAL)
+    }
+
+    /** Takes the stand-in speech model away again. */
+    private fun removeTinyModel() {
+        val store = com.elad.faceblur.models.ModelStore.get(InstrumentationRegistry.getInstrumentation().targetContext)
+        store.delete(com.elad.faceblur.models.PackId.SPEECH_ANY)
+        store.restoreRegistryForTest()
     }
 
     private fun runBatch(items: List<BatchItem>, settings: TemplateSettings): Batch {
@@ -128,7 +152,8 @@ class BatchTest {
             assertEquals(batch.id, meta.batchId)
         } finally {
             projectId?.let { ProjectStore.delete(ctx, it) }
-            if (backup != null) backup.copyTo(model, overwrite = true) else model.delete()
+            removeTinyModel()
+            if (backup != null) backup.copyTo(model, overwrite = true)
             inst.runOnMainSync { BatchState.current = null }
         }
     }
@@ -138,8 +163,7 @@ class BatchTest {
     fun aMissingSpeechModelIsFlaggedOnTheVideo() {
         val inst = InstrumentationRegistry.getInstrumentation()
         val ctx = inst.targetContext
-        val model = ModelManager(ctx).file(SpeechModel.HEBREW)
-        org.junit.Assume.assumeFalse("the Hebrew model is on this device", model.exists())
+        org.junit.Assume.assumeFalse("the Hebrew model is on this device", ModelManager(ctx).isReady(SpeechModel.HEBREW))
         val clip = File(ctx.cacheDir, "speech_en_batch2.mp4")
         inst.context.assets.open("samples/speech_en.mp4").use { i -> clip.outputStream().use { i.copyTo(it) } }
         val settings = applyAll(TemplateSettings(), listOf(BuiltInTemplates.CLEAN)).copy(blurOff = true)

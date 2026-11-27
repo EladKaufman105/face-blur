@@ -225,6 +225,14 @@ data class TemplateSettings(
 
     /** The speech model is needed (subtitles are created). */
     val needsSpeechModel: Boolean get() = createSubs
+
+    /** The model packs it needs: the faces (face blur), the people (a people background), the speech model (subtitles). */
+    val neededPacks: List<com.elad.faceblur.models.PackId>
+        get() = buildList {
+            if (!blurOff) add(com.elad.faceblur.models.PackId.FACES)
+            if (background.active && background.key == com.elad.faceblur.effects.BgKey.PERSON) add(com.elad.faceblur.models.PackId.PEOPLE)
+            if (createSubs) add(speechModel.pack)
+        }
 }
 
 /**

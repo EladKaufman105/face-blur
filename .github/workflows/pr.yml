@@ -68,9 +68,7 @@ jobs:
               - 'ci/web_i18n_check.py'
               - 'web/**'
               # What web/scripts/copy-assets.mjs takes from the Android app.
-              - 'app/src/main/assets/retinaface_mv2.onnx'
-              - 'app/src/main/assets/face_detection_yunet_2023mar.onnx'
-              - 'app/src/main/assets/human_segmentation_pphumanseg_2023mar.onnx'
+              - 'models/**'
               - 'app/src/main/assets/fonts/**'
               - 'app/src/main/assets/sfx/**'
             subtitles:
@@ -151,7 +149,13 @@ jobs:
           bash ci/fetch-whisper.sh
           bash ci/fetch-opencv.sh
           chmod +x gradlew
-          ./gradlew assembleDebug compileDebugAndroidTestKotlin testDebugUnitTest --configuration-cache --stacktrace
+          set -o pipefail
+          ./gradlew assembleDebug compileDebugAndroidTestKotlin testDebugUnitTest --configuration-cache --stacktrace --continue 2>&1 | tee /tmp/gradle.log
+
+      # The errors as annotations, readable on the run page without signing in.
+      - name: Build errors
+        if: failure()
+        run: bash ci/gradle-annotate.sh /tmp/gradle.log
 
       - name: ccache stats
         if: always()

@@ -35,6 +35,7 @@ EXCLUDES=(
   'ci/publish-pages.sh'
   'ci/pages-build.sh'
   'web/**'
+  'models/**'
   'docs/**'
   '.claude/**'
   '.github/pull_request_template.md'

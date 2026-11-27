@@ -75,6 +75,10 @@ import kotlin.math.abs
  */
 @RunWith(AndroidJUnit4::class)
 class EditorScreenTest {
+    /** The model packs, from the test assets (ci/fetch-models.sh), installed as the app installs a download. */
+    @org.junit.Before
+    fun seedModels() = com.elad.faceblur.models.ModelSeed.install()
+
 
     @get:Rule
     val rule = createComposeRule()
