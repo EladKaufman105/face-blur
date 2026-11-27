@@ -79,17 +79,24 @@ Two owner devices both ended at 640 px and 4 detections a second. One was a Chro
 here (273 vs 785 ms)", then one detector on 16 cores: "waves 1/16"). What was found and changed
 (`web/src/lib/devicediag.ts`, `detector.ts`, `workers/analyze.worker.ts`; the numbers are in the PR that made it):
 
-- A software WebGPU adapter (`adapter.info.isFallbackAdapter`, or one that names itself SwiftShader or llvmpipe) is never used:
-  it is WebGPU on the CPU, several times slower than the CPU's own WebAssembly with the workers.
+- A software WebGPU adapter (`adapter.info.isFallbackAdapter`, or one that names itself SwiftShader, llvmpipe, WARP / "Microsoft
+  Basic Render Driver", VMware or VirtualBox) is never used: it is WebGPU on the CPU, several times slower than the CPU's own
+  WebAssembly with the workers. When the workers will take over, the detector builds no CPU session or YuNet worker of its own.
+  A GPU whose session can't be created reads "GPU failed: ..." (not "no WebGPU adapter").
 - When detection leaves the GPU (software adapter, the check finding the CPU faster, a GPU that fails) on a device with 4 or
   more cores, the CPU workers start then, as they do with no GPU. It used to carry on with one detector on one core. On two
   or three cores it still does: one detector with YuNet in a worker of its own overlaps the two, which two workers (each
   runs YuNet after RetinaFace) didn't beat in the runs made.
 - The workers: one per core but two (`poolSize`), no more than the memory allows (8 GB reported: up to 6, about 2 GB of heaps; 4 GB: 3; else 2) and
-  four on a phone or tablet. Never fewer than before. Each runs one WebAssembly thread: the frames are the parallel work, which
+  four on a phone or tablet (a touch-primary device counts as one even when its browser asks for the desktop site). Never fewer than before. Each runs one WebAssembly thread: the frames are the parallel work, which
   needs no synchronising between threads.
-- The GPU-vs-CPU check compares the GPU with the CPU workers that would run side by side (each counted at 75%), not with
-  one core, and only counts runs after the GPU has run that shape once.
+- The GPU-vs-CPU check compares the GPU with the CPU workers that would run side by side (each counted at 75%: 2 workers on 2
+  cores measured 7.28/s against 4.74), YuNet's time included (it runs after RetinaFace in each worker), not with one core, and
+  only counts runs after the GPU has run that shape once. A GPU that holds the fine pass at 1280 px under the slow limit
+  (`GPU_SLOW_MS`, 80 ms) is never left for speed: the frame would drop from 1280 to 960 px for nothing. When a working GPU is left
+  because the CPU is faster, the pace keeps the GPU's size (1280) as its baseline, so the lower CPU size is flagged `reduced` (its
+  notice, the batch's flag) instead of looking like the CPU's normal. The workers start before the GPU is left; if they can't, the
+  comparison is against one detector (YuNet overlapping) or the GPU stays.
 - A detection that ran a shape on the GPU for the first time (shaders compile: seconds on a weak GPU) is left out of the pace
   (`Timing.cold`). Each size step of the pace is a new shape; its compile read as a slow device and shrank the frame again.
   Nothing becomes lighter because of this: a device that is slow in steady state is still paced down as before.
@@ -97,6 +104,8 @@ here (273 vs 785 ms)", then one detector on 16 cores: "waves 1/16"). What was fo
 - The stats panel's "Copy details" report lists what we can't see from here: the GPU adapter and shader-f16, how many
   nodes ONNX Runtime put on the GPU and on the CPU, the first run's time (shader compiling), the WebAssembly threads and
   SIMD, cross-origin isolation (the page's, through its service worker) and the detector pool (running, wanted, cores, memory).
+  The node placement is measured only when the stats panel is opened (a verbose session in a worker of its own, so the runtime's
+  log stays out of the console), never in a normal analysis or during the GPU check.
 
 ## What was really detected
 
