@@ -29,7 +29,7 @@ jobs:
     outputs:
       shards: ${{ steps.shards.outputs.shards }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # The shards are the numbered cases of ci/web-tests.sh ("  1)", "  2)", ...).
       - name: Test shards
         id: shards
@@ -39,12 +39,12 @@ jobs:
           SHARDS=$(grep -oE '^  [0-9]+\)' ci/web-tests.sh | tr -dc '0-9\n' | jq -Rsc 'split("\n") | map(select(length > 0) | tonumber)')
           [ "$SHARDS" != "[]" ] || { echo "::error::no numbered shards in ci/web-tests.sh"; exit 1; }
           echo "shards=$SHARDS" | tee -a "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
@@ -71,7 +71,7 @@ jobs:
       - name: Build the beta
         working-directory: web
         run: ONIT_CHANNEL=beta npx vite build --outDir dist-beta --emptyOutDir --logLevel warn
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: web-dist
           path: web/dist
@@ -89,7 +89,7 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.build.outputs.shards) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/web-test-env
       - name: Chromium tests
         # Under the job's limit: a hang fails this step (the results still upload) instead of cancelling the job.
@@ -97,7 +97,7 @@ jobs:
         env:
           FULL: ${{ inputs.full && '1' || '' }}
         run: bash ci/web-tests.sh ${{ matrix.shard }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:
           name: web-results-${{ matrix.shard }}
@@ -112,14 +112,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/web-test-env
       - name: Test subtitles in Chromium (Whisper, the model from Hugging Face)
         timeout-minutes: 50
         env:
           FULL: ${{ inputs.full && '1' || '' }}
         run: bash ci/web-tests.sh subs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:
           name: web-results-subtitles
