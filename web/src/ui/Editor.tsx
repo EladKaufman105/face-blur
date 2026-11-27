@@ -231,7 +231,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const logo = useRef<HTMLImageElement | null>(null)
   const scheduler = useMemo(() => new SfxScheduler(), [])
   const orphans = useMemo(() => orphansOf(cues, bleeped), [cues, bleeped])
-  const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, orphans, voiceBuf: null as AudioBuffer | null, tracks, selected, cuts, cutMap, fps: an.fps, times, steadied, crop, framePath, masks: null as PeopleMasks | null, background, safeOn: false, safeMirror: false, blurView: true })
+  const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, orphans, voiceBuf: null as AudioBuffer | null, tracks, selected, cuts, cutMap, fps: an.fps, times, steadied, crop, framePath, masks: null as PeopleMasks | null, background, safeOn: false, safeMirror: false, safePill: true, blurView: true })
   // (The drawing runs in callbacks made once: it reads the frame times from here, as they can
   // arrive later, from a search for faces or a first blur by hand.)
   state.current.times = times
@@ -242,6 +242,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   state.current.background = background
   state.current.safeOn = safeOn && safeAvailable
   state.current.safeMirror = safeMirror
+  // The pill is only there while it is shown (not behind an open phone panel, not on a short screen): the mock's top makes room for it then.
+  state.current.safePill = !(phone && panelOpen)
   state.current.blurView = blurView
   state.current.tracks = tracks
   state.current.selected = selected
@@ -407,7 +409,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       }
       tc.restore()
       // The safe zone's mock of a platform's screens, over everything and only here (never in the export).
-      if (state.current.safeOn && fw >= 2 && fh >= 2) drawSafeZone(tc, safe.current.platform, zoneNow(), fx, fy, fw, fh, Math.max(0, SAFE_PILL_RESERVED * (W / (viewBox.current?.clientWidth || W)) - fy), state.current.safeMirror)
+      if (state.current.safeOn && fw >= 2 && fh >= 2) drawSafeZone(tc, safe.current.platform, zoneNow(), fx, fy, fw, fh, state.current.safePill && !matchMedia('(max-height: 479px)').matches ? Math.max(0, SAFE_PILL_RESERVED * (W / (viewBox.current?.clientWidth || W)) - fy) : 0, state.current.safeMirror)
     }
   }
 
@@ -496,7 +498,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   // Redraw the paused frame when the look, the faces or the watermark change.
   useEffect(() => {
     if (video.current?.paused) draw()
-  }, [off, look, mark, cues, subStyle, tracks, selected, background, picture, steadied, framePath, crop, bleeped, words, safeOn, safeMirror, safeAvailable, blurView])
+  }, [off, look, mark, cues, subStyle, tracks, selected, background, picture, steadied, framePath, crop, bleeped, words, safeOn, safeMirror, safeAvailable, blurView, phone, panelOpen])
 
   // The background's picture, loaded once for the preview.
   useEffect(() => {

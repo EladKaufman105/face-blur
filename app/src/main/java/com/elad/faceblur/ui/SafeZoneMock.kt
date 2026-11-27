@@ -67,8 +67,7 @@ private object Mock {
     val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xF2FFFFFF.toInt() }
 }
 
-/** The button column's centre, from the frame's right edge, and the most its caption gives way to it (as fractions of the width). */
-private const val RAIL_X = 0.085f
+/** The most the caption gives way to the button column (as a fraction of the width). The column itself is centred in the zone's right margin. */
 private const val RAIL_MAX = 0.19f
 
 private val INK = Color.White.copy(alpha = 0.92f)
@@ -166,9 +165,8 @@ internal fun DrawScope.drawSafeZone(platform: Platform, zone: SafeZone, origin: 
     val botH = h * zone.bottom
     val leftW = w * zone.left
     val rightW = w * zone.right
-    // The platform's button column is the same distance from the frame's edge on all three (the zone's right
-    // margin also holds the margin beside it, so it is not the column's own width), and its caption stops short of it.
-    val colX = w - w * RAIL_X
+    // The button column is centred in the platform's right margin (mirrored: the left one, the canvas is flipped), and its caption stops short of it.
+    val colX = w - rightW / 2f
     val railW = minOf(rightW, w * RAIL_MAX)
     Mock.flipped = mirrored
     withTransform({

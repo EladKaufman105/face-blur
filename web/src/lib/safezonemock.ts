@@ -17,8 +17,7 @@ const G = {
   SEARCH: 'M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
 }
 
-/** The button column's centre, from the frame's right edge, and the most its caption gives way to it (as fractions of the width). */
-const RAIL_X = 0.085
+/** The most the caption gives way to the button column (as a fraction of the width). The column itself is centred in the zone's right margin. */
 const RAIL_MAX = 0.19
 
 const paths = new Map<string, Path2D>()
@@ -103,9 +102,8 @@ export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y:
   const dp = Math.max(1, w / 360)
   const topH = h * zone.top, botH = h * zone.bottom
   const leftW = w * zone.left, rightW = w * zone.right
-  // The platform's button column is the same distance from the frame's edge on all three (the zone's right
-  // margin also holds the margin beside it, so it is not the column's own width), and its caption stops short of it.
-  const colX = w - w * RAIL_X
+  // The button column is centred in the platform's right margin (mirrored: the left one, the canvas is flipped), and its caption stops short of it.
+  const colX = w - rightW / 2
   const railW = Math.min(rightW, w * RAIL_MAX)
   c.save()
   c.beginPath(); c.rect(x, y, w, h); c.clip()

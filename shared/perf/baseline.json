@@ -9,67 +9,67 @@
   },
   "web": {
     "note": "web/dist/assets of the release build (npm run build), hashes stripped; gzip at level 9",
-    "reason": "licences screen",
+    "reason": "compact top bar, export stats, floating safe-zone chooser",
     "chunks": {
       "Licences.js": {
         "raw": 5197,
-        "gzip": 2005
+        "gzip": 2006
       },
       "analyze.worker.js": {
         "raw": 559704,
-        "gzip": 154127
+        "gzip": 154774
       },
       "audio.worker.js": {
-        "raw": 372705,
-        "gzip": 96137
+        "raw": 373045,
+        "gzip": 96613
       },
       "detect.worker.js": {
         "raw": 131620,
-        "gzip": 42675
+        "gzip": 42932
       },
       "export.worker.js": {
-        "raw": 1136368,
-        "gzip": 287718
+        "raw": 1137444,
+        "gzip": 289088
       },
       "follow.worker.js": {
         "raw": 403701,
-        "gzip": 104163
-      },
-      "index.css": {
-        "raw": 62842,
-        "gzip": 12871
+        "gzip": 104579
       },
       "index.js": {
-        "raw": 433339,
-        "gzip": 143152
+        "raw": 450144,
+        "gzip": 149654
+      },
+      "index.css": {
+        "raw": 65883,
+        "gzip": 13456
       },
       "ort-wasm-simd-threaded.asyncify.wasm": {
         "raw": 28747738,
-        "gzip": 7101248
+        "gzip": 7113512
       },
       "ort-wasm-simd-threaded.asyncify.mjs": {
         "raw": 53457,
-        "gzip": 19380
+        "gzip": 19465
       },
       "picture.worker.js": {
         "raw": 526397,
-        "gzip": 143119
+        "gzip": 143774
       },
       "speakers.worker.js": {
         "raw": 488309,
-        "gzip": 132139
+        "gzip": 132727
       },
       "subs.worker.js": {
-        "raw": 918867,
-        "gzip": 250254
+        "raw": 919407,
+        "gzip": 251666
       },
       "thumbs.worker.js": {
         "raw": 396894,
-        "gzip": 101350
+        "gzip": 101764
       },
       "yunet.worker.js": {
         "raw": 122842,
-        "gzip": 39731
+        "gzip": 39980
       }
     }
   },

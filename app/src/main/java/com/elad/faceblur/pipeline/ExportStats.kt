@@ -93,7 +93,7 @@ class ExportHistory(private val keep: Int = 60, private val stepMs: Long = 1000L
     /** Null until the export's facts are known. */
     fun add(s: ExportSnapshot): ExportStats? {
         val facts = s.facts ?: return null
-        val f = first ?: s.also { first = it }
+        if (first == null) first = s
         val b = base
         if (b == null || s.frames < b.frames) {
             // The first snapshot, or the export started over (the HDR fallback): from here on.

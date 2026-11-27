@@ -682,18 +682,26 @@ private fun VideoWithOverlay(
             update = { if (it.player !== player) it.player = player },
             modifier = Modifier.fillMaxSize(),
         )
-        Overlay(ctrl, subs, style, frameShape, watermark, Modifier.fillMaxSize())
+        Overlay(ctrl, subs, style, frameShape, watermark, Modifier.fillMaxSize(), pill = chooser && ctrl.safeZoneOn)
         // The safe zone's platform chooser floats over the video's top (the video keeps its whole size); it is the video's own
         // overlay, so a dark glass pill with light icons whatever the theme. The zone stays on without it.
         if (chooser && ctrl.safeZoneOn && SafeZone.appliesTo(frameShape, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)) {
-            // The pill stays centred; the small mirror switch sits beside it (a spacer of the same width on the other side),
-            // all of it inside the row, so every touch target is within what is drawn.
+            // The pill and the small mirror switch beside it are one group, centred; the pill gives up width before the switch
+            // does (down to 84 dp), so the switch is always on the video, also on a narrow one.
             BoxWithConstraints(Modifier.align(Alignment.TopCenter).padding(top = SafeChooserTop).fillMaxWidth()) {
-                val pillW = minOf(SafeChooserMaxWidth, maxWidth * 0.9f)
-                Row(Modifier.align(Alignment.TopCenter), verticalAlignment = Alignment.Top) {
-                    Spacer(Modifier.width(SafeMirrorSlot))
-                    PlatformChooser(ctrl.safePlatform, { ctrl.chooseSafePlatform(it) }, Modifier.width(pillW).testTag(Tags.SAFE_ZONE + ".chooser"))
-                    Box(Modifier.width(SafeMirrorSlot).padding(start = 6.dp).padding(top = 1.dp)) {
+                val pillW = (maxWidth - SafeMirrorSlot).coerceIn(84.dp, SafeChooserMaxWidth)
+                val pillMod = Modifier.width(pillW).testTag(Tags.SAFE_ZONE + ".chooser")
+                if (maxWidth >= pillW + SafeMirrorSlot - 6.dp) {
+                    Row(Modifier.align(Alignment.TopCenter), verticalAlignment = Alignment.Top) {
+                        PlatformChooser(ctrl.safePlatform, { ctrl.chooseSafePlatform(it) }, pillMod)
+                        Spacer(Modifier.width(6.dp))
+                        SafeMirrorButton(ctrl.safeMirrored, { ctrl.safeMirrored = it }, Modifier.padding(top = 1.dp))
+                    }
+                } else {
+                    // Too narrow for both side by side: the switch goes under the pill, still on the video.
+                    Column(Modifier.align(Alignment.TopCenter), horizontalAlignment = Alignment.CenterHorizontally) {
+                        PlatformChooser(ctrl.safePlatform, { ctrl.chooseSafePlatform(it) }, pillMod)
+                        Spacer(Modifier.height(4.dp))
                         SafeMirrorButton(ctrl.safeMirrored, { ctrl.safeMirrored = it })
                     }
                 }
@@ -867,7 +875,7 @@ private class PlayerSync(
 }
 
 @Composable
-private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle, aspect: ExportAspect, watermark: Watermark, modifier: Modifier) {
+private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle, aspect: ExportAspect, watermark: Watermark, modifier: Modifier, pill: Boolean = false) {
     val context = LocalContext.current
     val renderer = SubtitleRenderer.get(context)
     // The watermark as it will be burned in, drawn once per size.
@@ -949,7 +957,7 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
         }
         if (ctrl.safeZoneOn && fw >= 2f && fh >= 2f && SafeZone.appliesTo(aspect, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)) {
             // The mock's own top row starts below the chooser's pill, which floats over the video's top.
-            drawSafeZone(ctrl.safePlatform, safeZone(), Offset(fl, ft), Size(fw, fh), reserved = ((SafeChooserTop + SafeChooserHeight).toPx() - ft).coerceAtLeast(0f), mirrored = ctrl.safeMirrored)
+            drawSafeZone(ctrl.safePlatform, safeZone(), Offset(fl, ft), Size(fw, fh), reserved = if (pill) ((SafeChooserTop + SafeChooserHeight).toPx() - ft).coerceAtLeast(0f) else 0f, mirrored = ctrl.safeMirrored)
         }
         if (live && ctrl.playing) return@Canvas
         val shapes = ctrl.model.shapesAt(ctrl.shownFrame, ctrl.padding)
@@ -1847,8 +1855,8 @@ private fun PropActions(content: @Composable () -> Unit) {
 private val SafeChooserTop: Dp = 4.dp
 private val SafeChooserHeight: Dp = 34.dp
 private val SafeChooserMaxWidth: Dp = 122.dp
-/** The room each side of the pill: the mirror switch (32 dp) and its gap. */
-private val SafeMirrorSlot: Dp = 38.dp
+/** The room the mirror switch takes beside the pill: its 32 dp and the gap, plus a little air at the video's edge. */
+private val SafeMirrorSlot: Dp = 44.dp
 
 /** The chooser's visible segments and the gap between them. */
 private val SegmentHeight: Dp = 30.dp

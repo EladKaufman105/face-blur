@@ -281,16 +281,18 @@ function png(w, h, [r, g, b, a]) {
       // The pill is a small one over the top of the video (inside its box, near its top edge, centred on it), three icon buttons (a logo each, no text).
       const geo = await p.evaluate(() => {
         const r = (s) => document.querySelector(s).getBoundingClientRect()
-        const view = r('.screen .view'), pill = r('.safe-pill')
+        const view = r('.screen .view'), pill = r('.safe-pill'), mir = r('.safe-mirror')
         const segs = [...document.querySelectorAll('.safe-seg')].map((e) => ({ svg: !!e.querySelector('svg path'), text: e.textContent.trim(), h: e.getBoundingClientRect().height, label: e.getAttribute('aria-label') }))
         const hi = r('.safe-hi'), chosen = r('.safe-seg.on')
-        return { view: [view.left, view.top, view.right, view.bottom], pill: [pill.left, pill.top, pill.right, pill.bottom], pillW: pill.width, segs, hiX: hi.left + hi.width / 2, onX: chosen.left + chosen.width / 2, stripGone: !document.querySelector('.safe-strip') }
+        return { mir: [mir.left, mir.top, mir.right, mir.bottom], view: [view.left, view.top, view.right, view.bottom], pill: [pill.left, pill.top, pill.right, pill.bottom], pillW: pill.width, segs, hiX: hi.left + hi.width / 2, onX: chosen.left + chosen.width / 2, stripGone: !document.querySelector('.safe-strip') }
       })
       console.log('geometry:', JSON.stringify(geo))
       if (!geo.stripGone) fail('the old strip is still there')
       if (geo.pill[0] < geo.view[0] - 1 || geo.pill[2] > geo.view[2] + 1 || geo.pill[1] < geo.view[1] - 1 || geo.pill[3] > geo.view[1] + 60) fail('the pill is not over the top of the video: ' + JSON.stringify([geo.pill, geo.view]))
       if (geo.pillW > 123 || geo.pillW < 90) fail('the pill is not small: ' + geo.pillW)
-      if (Math.abs((geo.pill[0] + geo.pill[2]) / 2 - (geo.view[0] + geo.view[2]) / 2) > 2) fail('the pill is not centred on the video')
+      // The pill and the mirror switch beside it are one group, centred on the video; the switch is on the video too.
+      if (geo.mir[0] < geo.view[0] - 1 || geo.mir[2] > geo.view[2] + 1) fail('the mirror switch is outside the video: ' + JSON.stringify([geo.mir, geo.view]))
+      if (Math.abs((Math.min(geo.pill[0], geo.mir[0]) + Math.max(geo.pill[2], geo.mir[2])) / 2 - (geo.view[0] + geo.view[2]) / 2) > 2) fail('the pill and its switch are not centred on the video')
       if (geo.segs.length !== 3 || geo.segs.some((s) => !s.svg || s.text !== '' || !s.label)) fail('the chooser buttons are not three bare logos: ' + JSON.stringify(geo.segs))
       if (Math.abs(geo.hiX - geo.onX) > 2) fail('the highlight is not under the chosen logo')
       // A tap on the pill does not play or select on the video under it.
@@ -395,6 +397,23 @@ function png(w, h, [r, g, b, a]) {
       await p.tap('.safe-seg[data-platform=shorts]')
       await p.waitForTimeout(400)
       await p.screenshot({ path: `${out}/4_phone_safe.png` })
+      // A narrow phone (360 x 640): the video is narrow too, and the mirror switch is still on it and can be tapped.
+      await p.setViewportSize({ width: 360, height: 640 })
+      await p.waitForTimeout(500)
+      const nar = await p.evaluate(() => {
+        const r = (q) => document.querySelector(q)?.getBoundingClientRect()
+        const v = r('.screen .view'), m = r('.safe-mirror'), pl = r('.safe-pill')
+        return { view: [v.left, v.right], mir: [m.left, m.right, m.top, m.bottom], pill: [pl.left, pl.right], pillB: pl.bottom, w: v.width, hit: document.elementFromPoint((m.left + m.right) / 2, (m.top + m.bottom) / 2)?.closest('.safe-mirror') !== null }
+      })
+      console.log('narrow phone', JSON.stringify(nar))
+      if (nar.mir[0] < nar.view[0] - 1 || nar.mir[1] > nar.view[1] + 1) fail('the mirror switch is cut off on a narrow video: ' + JSON.stringify(nar))
+      if (nar.pill[0] < nar.mir[1] - 1 && nar.mir[0] < nar.pill[1] - 1 && nar.mir[2] < nar.pillB - 1) fail('the pill and the mirror switch overlap: ' + JSON.stringify(nar))
+      if (!nar.hit) fail('something covers the mirror switch on a narrow video')
+      await p.tap('.safe-mirror')
+      if ((await p.getAttribute('.safe-mirror', 'aria-pressed')) !== 'true') fail('the mirror switch did not take the tap on a narrow phone')
+      await p.tap('.safe-mirror')
+      await p.setViewportSize({ width: 393, height: 852 })
+      await p.waitForTimeout(400)
       // A panel open in the timeline's place: the chooser is hidden, the zone stays on (for the platform chosen last) and the switch still says so.
       await p.tap('.tabs button[data-g=sound]')
       await p.waitForFunction(() => getComputedStyle(document.querySelector('.safe-float')).display === 'none')
