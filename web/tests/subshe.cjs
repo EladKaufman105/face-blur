@@ -12,8 +12,11 @@ const PIN = 'c71eadaca74c0923a06632bdaeb7413ff9cff4cf'
 
 ;(async () => {
   fs.mkdirSync(out, { recursive: true })
-  const b = await chromium.launch(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {})
-  const ctx = await b.newContext({ viewport: { width: 1366, height: 860 }, locale: 'he-IL' })
+  // A browser profile on disk, not a throwaway context: a throwaway one keeps its storage in memory with a small
+  // quota, which can't hold a 760 MB model (the browser's cache would refuse it, and "cached" could never be seen).
+  const profile = fs.mkdtempSync(require('os').tmpdir() + '/subshe-profile-')
+  const ctx = await chromium.launchPersistentContext(profile, { ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}), viewport: { width: 1366, height: 860 }, locale: 'he-IL' })
+  const b = ctx
   const logs = []
   const hub = []
   let offline = false
@@ -45,7 +48,7 @@ const PIN = 'c71eadaca74c0923a06632bdaeb7413ff9cff4cf'
     // Whether the model is already here is asked of the browser's cache a moment after the page shows: wait for it.
     let note = await readNote()
     for (let i = 0; i < 40 && label === 'offline' && !note.includes('כבר במכשיר'); i++) { await p.waitForTimeout(250); note = await readNote() }
-    console.log(label, 'note:', note.trim())
+    console.log(label, 'note:', note.trim(), JSON.stringify(await p.evaluate(async () => { const e = await navigator.storage.estimate(); const c = await caches.keys(); return { quotaMB: Math.round((e.quota ?? 0) / 1e6), usageMB: Math.round((e.usage ?? 0) / 1e6), caches: c } })))
     if (!note.includes('ivrit.ai')) fail('the Hebrew model is not offered: ' + note)
     if (label === 'first' && !note.includes('763 MB')) fail('its size is not shown: ' + note)
     // The second time the model is in the browser: no download is offered.
@@ -109,7 +112,8 @@ const PIN = 'c71eadaca74c0923a06632bdaeb7413ff9cff4cf'
   } finally {
     fs.writeFileSync(`${out}/console.txt`, logs.join('\n'))
     fs.writeFileSync(`${out}/hub.txt`, hub.join('\n'))
-    await b.close()
+    await ctx.close()
+    fs.rmSync(profile, { recursive: true, force: true })
   }
 })().catch((e) => {
   console.error('FAIL', e.message)
