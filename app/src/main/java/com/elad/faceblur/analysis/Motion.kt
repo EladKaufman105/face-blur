@@ -1,5 +1,6 @@
 package com.elad.faceblur.analysis
 
+import com.elad.faceblur.gen.DetectConst
 import org.opencv.core.Mat
 import org.opencv.core.MatOfByte
 import org.opencv.core.MatOfFloat
@@ -137,7 +138,7 @@ class CutDetector : Closeable {
         for (i in th.indices) diff += abs(th[i] - pt[i])
         diff /= th.size
         val corr = correlation(hist, ph)
-        return (diff > 25f && corr < 0.75f) || diff > 45f
+        return (diff > DetectConst.CUT_DIFF && corr < DetectConst.CUT_CORR) || diff > DetectConst.CUT_DIFF_HARD
     }
 
     private fun correlation(a: FloatArray, b: FloatArray): Float {

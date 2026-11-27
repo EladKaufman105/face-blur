@@ -1,5 +1,6 @@
 package com.elad.faceblur.analysis
 
+import com.elad.faceblur.gen.DetectConst
 import java.util.TreeMap
 import kotlin.math.exp
 import kotlin.math.hypot
@@ -285,16 +286,17 @@ class OfflineTracker(
         }
 
         // The score thresholds (0.4 detection, 0.45 birth, 0.6 strong, 0.5 verified, 0.9 short verified) are DetectTuning.DEFAULT.
-        private const val SHORT_N = 4
-        private const val MAX_GAP_S = 0.7f
-        private const val GATE = 0.6f
-        private const val GATE_PER_S = 1.5f
-        private const val SIZE_RATIO = 1.7f
-        private const val LINK_GAP_S = 1.2f
-        private const val ABSORB_GAP_S = 0.7f
-        private const val ABSORB_DIST = 1.0f
-        private const val EXTEND_S = 0.25f
-        private const val SIGMA_POS_S = 0.025f
-        private const val SIGMA_SIZE_S = 0.2f
+        // The values are in shared/detect/detect.json, shared with the web's lib/tracker.ts.
+        private const val SHORT_N = DetectConst.TRACK_SHORT_N
+        private const val MAX_GAP_S = DetectConst.TRACK_MAX_GAP_S
+        private const val GATE = DetectConst.TRACK_GATE
+        private const val GATE_PER_S = DetectConst.TRACK_GATE_PER_S
+        private const val SIZE_RATIO = DetectConst.TRACK_SIZE_RATIO
+        private const val LINK_GAP_S = DetectConst.TRACK_LINK_GAP_S
+        private const val ABSORB_GAP_S = DetectConst.TRACK_ABSORB_GAP_S
+        private const val ABSORB_DIST = DetectConst.TRACK_ABSORB_DIST
+        private const val EXTEND_S = DetectConst.TRACK_EXTEND_S
+        private const val SIGMA_POS_S = DetectConst.TRACK_SIGMA_POS_S
+        private const val SIGMA_SIZE_S = DetectConst.TRACK_SIGMA_SIZE_S
     }
 }

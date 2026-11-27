@@ -24,6 +24,23 @@ const det = (cx, cy, w, h, score, verify = 0) => ({ cx, cy, w, h, score, verify 
 if (F.RF_THRESHOLD !== 0.35 || F.YUNET_THRESHOLD !== 0.4 || F.YUNET_NMS !== 0.3 || F.YUNET_SIDE !== 640 || F.CLEAR !== 0.8) fail('the app\\'s constants')
 if (!(F.RF_THRESHOLD_REDUCED < F.RF_THRESHOLD && F.YUNET_THRESHOLD_REDUCED < F.YUNET_THRESHOLD)) fail('reduced thresholds are not lower')
 
+// ---- the modules use the constants shared with the app (shared/detect/detect.json, generated into src/gen/detect.ts)
+{
+  const G = await import('./src/gen/detect.ts')
+  const D = S.DEFAULT_THRESHOLDS, M = S.MOST
+  const pairs = [[F.RF_THRESHOLD, G.RF_THRESHOLD], [F.YUNET_THRESHOLD, G.YUNET_THRESHOLD], [F.YUNET_NMS, G.YUNET_NMS], [F.YUNET_SIDE, G.YUNET_SIDE], [F.CLEAR, G.CLEAR],
+    [D.cut, G.DEFAULT_CUT], [D.birth, G.DEFAULT_BIRTH], [D.strong, G.DEFAULT_STRONG], [D.verified, G.DEFAULT_VERIFIED], [D.shortVerified, G.DEFAULT_SHORT_VERIFIED],
+    [M.cut, G.MOST_CUT], [M.birth, G.MOST_BIRTH], [M.strong, G.MOST_STRONG], [M.verified, G.MOST_VERIFIED], [M.shortVerified, G.MOST_SHORT_VERIFIED],
+    [S.POOL_RF, G.POOL_RF], [S.POOL_YUNET, G.POOL_YUNET], [S.POOL_YUNET_ONLY, G.POOL_YUNET_ONLY], [S.MAX_EXTRA_CHECKS, G.MAX_EXTRA_CHECKS], [S.SAME_FACE_IOU, G.SAME_FACE_IOU], [S.FAST_RATE, G.FAST_RATE],
+    [P.RATE, G.RATE], [P.MIN_RATE, G.MIN_RATE], [P.LOW_SIDE, G.LOW_SIDE], [P.MID_SIDE, G.CPU_SIDE], [P.GPU_SLOW_MS, G.GPU_SLOW_MS], [T.DET_THRESHOLD, G.DEFAULT_CUT]]
+  const bad = pairs.findIndex(([a, b]) => a !== b || typeof a !== 'number')
+  if (bad >= 0) fail('a module does not use the shared constant: pair ' + bad)
+  // The app's values, as they were before shared/ (a change there is deliberate and changes this test too).
+  if (G.FUSE_IOU !== 0.3 || G.FUSE_YUNET_WEIGHT !== 0.8 || G.FUSE_YUNET_ONLY !== 0.6 || G.FUSE_YUNET_ONLY_SCALE !== 0.85 || G.FUSE_NMS !== 0.4) fail('the fusion constants')
+  if (D.cut !== 0.4 || D.birth !== 0.45 || D.strong !== 0.6 || D.verified !== 0.5 || D.shortVerified !== 0.9 || M.cut !== 0.25 || M.birth !== 0.3 || M.strong !== 0.45 || M.verified !== 0.3 || M.shortVerified !== 0.7) fail('the thresholds')
+  if (G.GPU_SIDE !== 1280 || G.CPU_SIDE !== 960 || G.LOW_SIDE !== 640 || G.COARSE_SIDE !== 480 || G.VERIFY_SIDE !== 192 || G.RATE !== 15 || G.MIN_RATE !== 8 || G.FAST_RATE !== 5) fail('the sides and rates')
+}
+
 // ---- iou and nms
 if (!near(F.iou(det(.5, .5, .2, .2, 1), det(.5, .5, .2, .2, 1)), 1) || F.iou(det(.2, .2, .1, .1, 1), det(.8, .8, .1, .1, 1)) !== 0) fail('iou')
 if (!near(F.iou(det(.5, .5, .2, .2, 1), det(.6, .5, .2, .2, 1)), 1 / 3)) fail('iou half overlap')

@@ -102,7 +102,12 @@ class Const:
         return " / ".join(p + "f" for p in self.parts)
 
     def ts(self):
-        return " / ".join(self.parts)
+        """A fraction as its value: the double JavaScript computes for a / b (Python's division of two
+        doubles is the same IEEE operation, and repr() reads back as that double), so the bundler
+        can inline it like any literal. The division stays in a comment."""
+        if len(self.parts) == 1:
+            return self.parts[0]
+        return f"{float(self.parts[0]) / float(self.parts[1])!r} // {self.parts[0]} / {self.parts[1]}"
 
 
 def const_list(rel, items):
@@ -187,7 +192,7 @@ def gen_safezones():
     return {"kotlin": {"SafeZones.kt": kt}, "ts": {"safezones.ts": ts}}
 
 
-GENERATORS = [gen_safezones]
+GENERATORS = [gen_detect, gen_safezones]
 
 
 def main():

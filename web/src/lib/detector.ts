@@ -8,6 +8,8 @@ import { CLEAR, RF_THRESHOLD, RF_THRESHOLD_REDUCED, YUNET_THRESHOLD, YUNET_THRES
 import { DET_THRESHOLD } from './tracker'
 import { MAX_EXTRA_CHECKS, POOL_RF, POOL_YUNET, POOL_YUNET_ONLY, extras, quantize, thresholds } from './sensitivity'
 import { Yunet } from './yunet'
+// The values: shared/detect/detect.json, shared with the app (generated).
+import { COARSE_MIN_BOX, COARSE_SIDE, CPU_SIDE, GPU_SIDE, LOW_SIDE, VERIFY_SIDE } from '../gen/detect'
 import type { YunetWorker } from './yunet-worker'
 
 export { RF_THRESHOLD, iou, nmsIou }
@@ -15,13 +17,8 @@ export { RF_THRESHOLD, iou, nmsIou }
 const STEPS = [8, 16, 32]
 const MIN_SIZES = [[16, 32], [64, 128], [256, 512]]
 const MEAN_B = 104, MEAN_G = 117, MEAN_R = 123
-const COARSE_SIDE = 480
-const COARSE_MIN_BOX = 64
-const VERIFY_SIDE = 192
 /** The long side the fine pass runs at: on the GPU, on the CPU, and on a device too slow for those (as the app's 1280 / 960 / 640). */
-export const GPU_SIDE = 1280
-export const CPU_SIDE = 960
-export const LOW_SIDE = 640
+export { GPU_SIDE, CPU_SIDE, LOW_SIDE }
 
 export type Backend = 'webgpu' | 'wasm'
 

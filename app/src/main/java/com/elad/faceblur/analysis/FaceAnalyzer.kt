@@ -3,6 +3,7 @@ package com.elad.faceblur.analysis
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
+import com.elad.faceblur.gen.DetectConst
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -77,7 +78,7 @@ class FaceAnalyzer private constructor(
     }
 
     /** Long side of the frames handed to [onFrame]: small/distant faces need the resolution. */
-    val maxSide = 1280
+    val maxSide = DetectConst.GPU_SIDE
 
     @Volatile private var packHeld = true
     private val retinaPath = packFile(RetinaFaceDetector.MODEL)
@@ -580,9 +581,9 @@ class FaceAnalyzer private constructor(
 
         // Detections per second of video, and the fewest a slow device goes down to: DetectTuning.cadence.
         /** The fine pass's long side on the CPU when the device can't keep up. */
-        private const val LOW_SIDE = 640
+        private const val LOW_SIDE = DetectConst.LOW_SIDE
         /** A GPU slower than this per frame, when detection holds the pass back, gives way to the CPU. */
-        private const val GPU_SLOW_MS = 80f
+        private const val GPU_SLOW_MS = DetectConst.GPU_SLOW_MS
         /** Detections in a row after which a clear face isn't re-checked on a crop. */
         private const val FOLLOWED_AFTER = 4
 

@@ -27,6 +27,11 @@
 import type { Det, Track } from './types'
 // With the extension: tests/fusion.cjs runs it in Node as it is.
 import { iou } from './fusion.ts'
+// The values: shared/detect/detect.json, shared with the app (generated).
+import {
+  DEFAULT_BIRTH, DEFAULT_CUT, DEFAULT_SHORT_VERIFIED, DEFAULT_STRONG, DEFAULT_VERIFIED, FAST_RATE, MAX_EXTRA_CHECKS, MOST_BIRTH, MOST_CUT, MOST_SHORT_VERIFIED,
+  MOST_STRONG, MOST_VERIFIED, POOL_RF, POOL_YUNET, POOL_YUNET_ONLY, SAME_FACE_IOU, SENSITIVITY_STEPS as STEPS,
+} from '../gen/detect.ts'
 
 export type DetectMode = 'normal' | 'extended' | 'fast'
 
@@ -34,7 +39,7 @@ export type DetectMode = 'normal' | 'extended' | 'fast'
 export const modeOf = (sensitive: boolean, fast = false): DetectMode => (sensitive ? 'extended' : fast ? 'fast' : 'normal')
 
 /** Fast detection's rate (detections a second of video): also its floor. */
-export const FAST_RATE = 5
+export { FAST_RATE }
 
 export interface Thresholds {
   /** A detection under this is no evidence of a face (the tracker's DET_THRESHOLD). */
@@ -49,18 +54,15 @@ export interface Thresholds {
   shortVerified: number
 }
 
-export const DEFAULT_THRESHOLDS: Readonly<Thresholds> = Object.freeze({ cut: 0.4, birth: 0.45, strong: 0.6, verified: 0.5, shortVerified: 0.9 })
-export const MOST: Readonly<Thresholds> = Object.freeze({ cut: 0.25, birth: 0.3, strong: 0.45, verified: 0.3, shortVerified: 0.7 })
+export const DEFAULT_THRESHOLDS: Readonly<Thresholds> = Object.freeze({ cut: DEFAULT_CUT, birth: DEFAULT_BIRTH, strong: DEFAULT_STRONG, verified: DEFAULT_VERIFIED, shortVerified: DEFAULT_SHORT_VERIFIED })
+export const MOST: Readonly<Thresholds> = Object.freeze({ cut: MOST_CUT, birth: MOST_BIRTH, strong: MOST_STRONG, verified: MOST_VERIFIED, shortVerified: MOST_SHORT_VERIFIED })
 
 /** The candidate pool above sensitivity 0: RetinaFace's and YuNet's score thresholds, and a face YuNet alone finds. */
-export const POOL_RF = 0.2
-export const POOL_YUNET = 0.25
-export const POOL_YUNET_ONLY = 0.45
+export { POOL_RF, POOL_YUNET, POOL_YUNET_ONLY }
 /** Extra detections a frame gets the crop re-check on (the likeliest first). */
-export const MAX_EXTRA_CHECKS = 12
+export { MAX_EXTRA_CHECKS }
 /** An extra detection overlapping a default one this much (IoU) is that face: not extra. */
-export const SAME_FACE_IOU = 0.3
-const STEPS = 20
+export { SAME_FACE_IOU }
 
 /** [s] within 0..1 (anything else: 0). */
 export const clamp = (s: unknown): number => (typeof s === 'number' && Number.isFinite(s) ? Math.min(1, Math.max(0, s)) : 0)
