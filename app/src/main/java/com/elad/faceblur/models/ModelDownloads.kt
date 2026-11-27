@@ -82,6 +82,14 @@ class ModelDownloads private constructor(context: Context) {
     var question by mutableStateOf<MeteredQuestion?>(null)
         private set
 
+    /**
+     * Packs a tap asked for whose licence terms aren't accepted yet: the screen shows the consent
+     * ([LicenceConsentHost]) and answers with [acceptConsent] or [declineConsent]. Nothing of the
+     * tap is queued before that.
+     */
+    var consentAsk by mutableStateOf<ConsentAsk?>(null)
+        private set
+
     /** The last pack that became ready (the screen says so once), or null. */
     var justReady by mutableStateOf<PackId?>(null)
 
@@ -164,6 +172,14 @@ class ModelDownloads private constructor(context: Context) {
         val withTranslation = translation && TranslationPacks.state != TranslationPacks.State.READY &&
             TranslationPacks.state != TranslationPacks.State.DOWNLOADING && TranslationPacks.state != TranslationPacks.State.WAITING_WIFI
         if (want.isEmpty() && !withTranslation) return NetDecision.START
+        // Terms that need accepting come first, for every pack of the tap in one question. START is
+        // returned while the consent is pending (nothing is queued, so no "waits for a connection"
+        // toast); acceptConsent() asks again and returns the real decision.
+        val unaccepted = store.consent.needed(want.map { store.registry[it] })
+        if (unaccepted.isNotEmpty()) {
+            consentAsk = ConsentAsk(unaccepted, want, withTranslation)
+            return NetDecision.START
+        }
         val bytes = want.sumOf { bytesLeft(it) } + (if (withTranslation) TranslationPacks.APPROX_BYTES else 0L)
         val d = NetworkPolicy.decide(prefs.rule, net, bytes, mobileOk = false, asking = true)
         if (d == NetDecision.ASK) {
@@ -178,6 +194,23 @@ class ModelDownloads private constructor(context: Context) {
         }
         enqueue(want, waitForWifi = false, mobile = false)
         return d
+    }
+
+    /**
+     * "Accept & download": the terms are recorded, and the tap goes on as it was (the network rule
+     * still applies).
+     * @return what [request] decides now ([NetDecision.WAIT_NETWORK]: the screen says it starts when online).
+     */
+    fun acceptConsent(): NetDecision {
+        val a = consentAsk ?: return NetDecision.START
+        consentAsk = null
+        store.consent.accept(a.needed)
+        return request(a.ids, a.translation)
+    }
+
+    /** The consent was cancelled: nothing is queued and nothing is recorded. */
+    fun declineConsent() {
+        consentAsk = null
     }
 
     /**

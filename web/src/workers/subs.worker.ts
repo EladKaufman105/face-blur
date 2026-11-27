@@ -21,8 +21,8 @@ export type SubsRequest = {
   threads: number
 }
 export type SubsMessage =
-  /** Still working (no news): resets the page's watchdog. */
-  | { type: 'tick' }
+  /** Still working (no news): resets the page's watchdog for [from] (the sound's reading, or the model; default the model). */
+  | { type: 'tick'; from?: 'audio' | 'model' }
   /** Reading the sound out of the video (it runs beside the model's download and load): how far (0..1; 1 = done); `only`: nothing else is going on, the model is ready and this is what is waited for. */
   | { type: 'audio'; progress: number; only?: boolean }
   /** Loading the model into memory (its files are here): no percent exists for this phase. */
@@ -46,7 +46,7 @@ self.onmessage = async (e: MessageEvent<SubsRequest>) => {
   }
 }
 
-/** The sound, mono at 16 kHz (what Whisper takes). */
+/** The sound, mono at 16 kHz (what Whisper takes). Written straight into one buffer sized from the file's length (no list of parts to join at the end: half the peak memory). */
 async function audio16k(file: File, onProgress: (p: number) => void): Promise<Float32Array | null> {
   let seen = 0
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS })
@@ -55,50 +55,40 @@ async function audio16k(file: File, onProgress: (p: number) => void): Promise<Fl
   // The length from the file's header (fast); without one the bar stays empty until the end.
   const dur = (await track.getDurationFromMetadata().catch(() => null)) ?? 0
   let lastP = 0
-  const parts: Float32Array[] = []
-  let total = 0
-  let pending: number[] = []
+  let buf = new Float32Array(dur > 0 ? Math.ceil(dur * RATE) + RATE : RATE * 60)
+  let n = 0
   let ratio = 1
   let acc = 0, accN = 0, pos = 0
   for await (const sample of new AudioSampleSink(track).samples()) {
-    if (++seen % 50 === 0) post({ type: 'tick' })
+    if (++seen % 50 === 0) post({ type: 'tick', from: 'audio' })
     if (dur > 0) {
       const now = Date.now()
       if (now - lastP > 150) { lastP = now; onProgress(Math.max(0, Math.min(0.99, sample.timestamp / dur))) }
     }
     ratio = sample.sampleRate / RATE
-    const ch = sample.numberOfChannels, n = sample.numberOfFrames
+    const ch = sample.numberOfChannels, len = sample.numberOfFrames
     const planes: Float32Array[] = []
     for (let c = 0; c < ch; c++) {
-      const p = new Float32Array(n)
+      const p = new Float32Array(len)
       sample.copyTo(p, { planeIndex: c, format: 'f32-planar' })
       planes.push(p)
     }
     sample.close()
     // Mono, then the average over each output sample's span (a box filter against aliasing).
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < len; i++) {
       let v = 0
       for (const p of planes) v += p[i]
       acc += v / ch
       accN++
       pos++
       if (pos >= ratio) {
-        pending.push(acc / accN)
+        if (n === buf.length) { const bigger = new Float32Array(Math.ceil(buf.length * 1.5)); bigger.set(buf); buf = bigger }
+        buf[n++] = acc / accN
         acc = 0; accN = 0; pos -= ratio
       }
     }
-    if (pending.length > RATE * 10) {
-      parts.push(Float32Array.from(pending))
-      total += pending.length
-      pending = []
-    }
   }
-  parts.push(Float32Array.from(pending))
-  total += pending.length
-  const out = new Float32Array(total)
-  let o = 0
-  for (const p of parts) { out.set(p, o); o += p.length }
-  return out
+  return buf.subarray(0, n)
 }
 
 /** Where to cut the next window: the quietest 100 ms between 24 and 30 s after [from]. */
@@ -132,15 +122,19 @@ async function run({ file, language, repo, revision, device, encDtype, dtype, th
   // the model not even asked for yet, so a long video sat at 0% for as long as its sound took).
   let failed = false
   let audioDone = false
+  let audioP = 0
   post({ type: 'audio', progress: 0 })
-  const audioJob = audio16k(file, (progress) => { if (!failed) post({ type: 'audio', progress }) }).then((x) => {
+  // A failure of the sound is said at once (not when the model has loaded): the page ends this worker on it.
+  const audioJob = audio16k(file, (progress) => { audioP = progress; if (!failed) post({ type: 'audio', progress }) }).then((x) => {
     audioDone = true
     if (!failed) post({ type: 'audio', progress: 1 })
     if ((!x || x.length < RATE / 2) && !failed) { failed = true; post({ type: 'error', code: 'no-audio', message: 'no sound' }) }
     return x
+  }, (err) => {
+    audioDone = true
+    if (!failed) { failed = true; post({ type: 'error', code: isMemoryError(err) ? 'memory' : 'failed', message: String((err as Error)?.message ?? err) }) }
+    return null
   })
-  // (Looked at below; if the model fails first, nobody waits for this one.)
-  audioJob.catch(() => {})
 
   env.allowLocalModels = false
   const wasm: any = (env.backends as any).onnx?.wasm
@@ -210,13 +204,10 @@ async function run({ file, language, repo, revision, device, encDtype, dtype, th
   // Loaded: a "loading" still pending from the last download message must not come after the recognition starts.
   clearTimeout(loadTimer)
   loading = true
-  // The sound may still be being read: the wait is its own phase, with its own bar.
-  const keepAlive = setInterval(() => post({ type: 'tick' }), 1000)
-  let x: Float32Array | null
-  try {
-    if (!audioDone) post({ type: 'audio', progress: 0, only: true })
-    x = await audioJob
-  } finally { clearInterval(keepAlive) }
+  // The sound may still be being read: the wait is its own phase, with its own bar. Only its own progress
+  // keeps the page's watchdog quiet for it (a hung decode is not hidden by anything else).
+  if (!audioDone) post({ type: 'audio', progress: audioP, only: true })
+  const x = await audioJob
   if (!x || x.length < RATE / 2) return
 
   try {

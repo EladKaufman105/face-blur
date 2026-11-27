@@ -275,6 +275,7 @@ button { cursor: pointer; }
 
 .footer { margin-top: auto; padding-top: 24px; text-align: center; font-size: 12px; color: var(--muted); }
 .footer a { color: inherit; }
+.footer .licences-link { border: 0; background: none; padding: 0; font: inherit; color: inherit; text-decoration: underline; cursor: pointer; }
 
 /* Analyzing */
 .stage { position: relative; border-radius: var(--radius); overflow: hidden; background: #000; aspect-ratio: 16 / 9; max-height: 56dvh; margin: 0 auto; width: 100%; }
@@ -764,7 +765,7 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
   .swatch { min-width: 36px; min-height: 36px; }
   .check { min-height: 44px; }
   .check input { width: 22px; height: 22px; }
-  .footer a { display: inline-block; padding: 14px 4px; }
+  .footer a, .footer .licences-link { display: inline-block; padding: 14px 4px; }
   .cue-text { font-size: 16px; padding: 10px; min-height: 44px; box-sizing: border-box; }
 }
 @media (max-width: 600px) {
@@ -1057,3 +1058,13 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .detect-desc { margin: 0; }
 .fast-warning { margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-control); background: color-mix(in srgb, var(--amber) 22%, transparent); color: var(--text); font-weight: 600; }
 .fast-warning-folded { margin: 0 var(--space-4) var(--space-3); }
+
+/* Open-source licences (ui/Licences.tsx) */
+.licence-row { display: grid; gap: 2px; text-align: start; width: 100%; min-height: 48px; padding: var(--space-2) var(--space-1); border: 0; border-bottom: 1px solid var(--outline-soft); background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+.licence-row:hover { background: var(--surface-2); }
+.licence-title { font-weight: 600; }
+.licence-detail { display: grid; gap: var(--space-2); }
+.licence-name { margin: 0; font: var(--text-heading); }
+.licence-notice, .licence-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; }
+.licence-text { max-height: 50vh; overflow-y: auto; background: var(--surface-2); border-radius: var(--radius-card); padding: var(--space-2); user-select: text; }
+.licence-missing { color: var(--danger-text); }

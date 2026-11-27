@@ -17,9 +17,29 @@ R=/tmp/web-results
 FULL="${FULL:-0}"
 export FULL
 # A script that fails is run once more (a timing flake shows as a warning); two failures fail the shard.
+# The failure's own lines (FAIL ..., the error and its first call frames), as an annotation anyone can read
+# on the run page (the log itself needs sign-in). A GitHub annotation is one line: newlines are %0A.
+note() {
+  local level=$1 title=$2 log=$3 text
+  text=$(grep -v '^\s*at .*node_modules' "$log" | grep -E -A12 'FAIL|Error|error:|Timeout|expect' | head -40)
+  [ -n "$text" ] || text=$(tail -25 "$log")
+  text=${text//'%'/'%25'}; text=${text//$'\r'/}; text=${text//$'\n'/'%0A'}
+  echo "::$level title=$title::$text"
+}
 t() {
   echo "::group::$*"
-  node "tests/$1" "${@:2}" || { echo "::warning::tests/$1 failed once, running it again"; node "tests/$1" "${@:2}"; }
+  local log
+  log=$(mktemp)
+  if ! node "tests/$1" "${@:2}" 2>&1 | tee "$log"; then
+    note warning "tests/$1 failed once, running it again" "$log"
+    if ! node "tests/$1" "${@:2}" 2>&1 | tee "$log"; then
+      echo "::endgroup::"
+      note error "tests/$1 failed" "$log"
+      rm -f "$log"
+      return 1
+    fi
+  fi
+  rm -f "$log"
   echo "::endgroup::"
 }
 
@@ -35,6 +55,7 @@ case "${1:?shard}" in
     node tests/devdiag.cjs   # 1
     # The bleep's loudness follows the speech it replaces (the app's BleepLevelTest checks the same vectors): a quiet word a quiet beep, a loud one a louder beep under the cap, nothing clips (pure, no browser).
     node tests/bleep.cjs   # 1
+    node tests/cutsrt.cjs   # 1
     ;;
   1) # about 187 s
     # Face detection with YuNet: RetinaFace + YuNet at 960 px (in the detector workers, and as one detector with YuNet in its own worker) finds no fewer faces than the old web detector (RetinaFace alone, 640 px) on the same frames of the stress clip and the classroom.
@@ -52,6 +73,8 @@ case "${1:?shard}" in
     t pinch.cjs "$U" $S/walk.mp4 $R/pinch   # 8
     # The keyboard: groups by number, play / pause, a frame step, undo and redo.
     t keys.cjs "$U" $S/walk.mp4 $R/keys.png   # 6
+    # Open-source licences (the footer's link): the models, libraries and fonts the web app is made of, each with its notice and full text, served by the site itself (no request leaves it).
+    t licences.cjs "$U" $R/licences   # 3
     ;;
   2) # about 189 s
     # The editor's panels on a phone (390 px), as the app's, part 1: each group one compact panel of a bounded height with its tools as chips, the video in view, nothing sideways, no empty "more options" (he and en, four phone sizes); no detection; jobs that outlive a group switch.

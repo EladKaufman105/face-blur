@@ -37,6 +37,13 @@ data class ExportOptions(
     /** A logo or text in a corner. */
     val watermark: Watermark = Watermark(),
 ) {
+    /**
+     * The options for an export from the editor. There is no "also save .srt" switch there ("Save subtitles (SRT)" is an action
+     * of the subtitles panel and the done screen), so the user's own default does not save files by itself; a template's (or a
+     * project's own) options are its choice and keep [saveSrt].
+     */
+    fun forEditorExport(ownedBySession: Boolean): ExportOptions = if (ownedBySession) this else copy(saveSrt = false)
+
     /** The crop for [aspect] as fractions of the frame (1, 1 for as shot). */
     fun crop(info: VideoInfo): Pair<Float, Float> = Reframer.cropFraction(info.displayWidth, info.displayHeight, aspect.ratio)
 

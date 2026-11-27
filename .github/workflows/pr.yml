@@ -49,6 +49,11 @@ jobs:
         run: |
           python3 ci/shared_gen.py --check || { echo '::error::generated shared files are stale: run python3 ci/shared_gen.py'; exit 1; }
 
+      # Every model file has its licence entry and a bundled text; THIRD-PARTY-NOTICES.md is made from the same data.
+      - name: Licence data is complete
+        run: |
+          python3 ci/licences_check.py || { echo '::error::model licence data: fix what is listed (python3 ci/licences_check.py --write rewrites THIRD-PARTY-NOTICES.md)'; exit 1; }
+
       - uses: dorny/paths-filter@v4
         id: f
         with:

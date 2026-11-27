@@ -9,8 +9,12 @@
   },
   "web": {
     "note": "web/dist/assets of the release build (npm run build), hashes stripped; gzip at level 9",
-    "reason": "Selfie mode (BlazeFace detector and its UI) added to analyze.worker and index",
+    "reason": "licences screen",
     "chunks": {
+      "Licences.js": {
+        "raw": 5197,
+        "gzip": 2005
+      },
       "analyze.worker.js": {
         "raw": 559704,
         "gzip": 154127
@@ -32,12 +36,12 @@
         "gzip": 104163
       },
       "index.css": {
-        "raw": 61924,
-        "gzip": 12698
+        "raw": 62842,
+        "gzip": 12871
       },
       "index.js": {
-        "raw": 431411,
-        "gzip": 142355
+        "raw": 433339,
+        "gzip": 143152
       },
       "ort-wasm-simd-threaded.asyncify.wasm": {
         "raw": 28747738,

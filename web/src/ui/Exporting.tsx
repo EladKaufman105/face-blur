@@ -60,9 +60,10 @@ export function Exporting({ job, onBack, onNew, onEdit }: { job: ExportJob; onBa
   // The subtitles as SRT, at their times after the cuts, as the export shows them (the bleeped words hidden): always offered when there are subtitles.
   const srt = useMemo(() => {
     if (mp3 || job.cues.length === 0) return null
-    return URL.createObjectURL(new Blob([toSrt(cutCues(job.cues, new CutMap(job.cuts)))], { type: 'application/x-subrip' }))
+    return URL.createObjectURL(new Blob([toSrt(cutCues(job.cues, new CutMap(job.cuts), job.words))], { type: 'application/x-subrip' }))
   }, [job])
   useEffect(() => () => { if (srt) URL.revokeObjectURL(srt) }, [srt])
+  const [srtAsk, setSrtAsk] = useState(false)
   const canShare = !!file && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })
 
   if (error) {
@@ -128,7 +129,22 @@ export function Exporting({ job, onBack, onNew, onEdit }: { job: ExportJob; onBa
           <button class="btn tonal" onClick={() => navigator.share({ files: [file!], title: name }).catch(() => {})}><ShareIcon /> {t('שתף')}</button>
         )}
       </div>
-      {srt && <a class="btn tonal srt-link" href={srt} download={base + '.srt'} style="text-decoration:none"><SubtitlesIcon /> {t('שמור כתוביות (SRT)')}</a>}
+      {srt && !job.showsBleeps && <a class="btn tonal srt-link" href={srt} download={base + '.srt'} style="text-decoration:none"><SubtitlesIcon /> {t('שמור כתוביות (SRT)')}</a>}
+      {/* Hiding the bleeped words is off: the file would show them, so it asks first (as the subtitles panel). */}
+      {srt && job.showsBleeps && (
+        <>
+          <button class="btn tonal srt-link srt-shows" onClick={() => setSrtAsk(true)} title={t('ההסתרה כבויה: הקובץ יכלול את המילים המצופצפות כפי שהן')}><SubtitlesIcon /> {t('שמור כתוביות (SRT, בלי הסתרה)')}</button>
+          {srtAsk && (
+            <div class="confirm srt-ask" role="alertdialog" aria-label={t('לשמור SRT בלי הסתרה?')}>
+              <span class="small">{t('קובץ ה-SRT יכלול את המילים המצופצפות כפי שהן. אל תפרסם אותו.')}</span>
+              <div class="row">
+                <a class="btn small-btn danger-btn srt-ask-yes" href={srt} download={base + '.srt'} style="text-decoration:none" onClick={() => setSrtAsk(false)}>{t('שמור')}</a>
+                <button class="btn ghost small-btn srt-ask-no" onClick={() => setSrtAsk(false)}>{t('ביטול')}</button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
       <div class="actions">
         {!job.standalone && <button class="btn ghost" onClick={onBack}><span class="flip"><BackIcon /></span> {t('חזרה לעריכה')}</button>}
         {onEdit && <button class="btn ghost edit-saved" onClick={onEdit}>{t('ערוך')}</button>}

@@ -1,3 +1,8 @@
+// The anchors and the box decoding (steps, sizes, variances 0.1 and 0.2) are adapted from the reference
+// implementation's PriorBox and decode: biubug6/Pytorch_Retinaface (https://github.com/biubug6/Pytorch_Retinaface,
+// MIT License, "Copyright (c) 2019"), which yakhyo/retinaface-pytorch follows (MIT, Copyright (c) 2024
+// Yakhyokhuja Valikhujaev). Licence text: shared/assets/licences/MIT.txt, see THIRD-PARTY-NOTICES.md.
+//
 // RetinaFace (MobileNetV2 backbone, yakhyo/retinaface-pytorch, MIT; trained on WIDER FACE) fused
 // with YuNet (OpenCV Zoo, 2023mar), the same models, decoding and fusion as the Android app, run
 // with ONNX Runtime Web (RetinaFace on WebGPU when the browser has it, else WebAssembly; YuNet,
