@@ -10,8 +10,11 @@ runs:
     - id: key
       shell: bash
       run: |
+        # The runner's own: the cache restores as the runner, and tar can't set the time or mode of a
+        # folder root owns (it exits 2, "Failed to restore", and nothing is restored).
         sudo mkdir -p /tmp/apt-debs/partial
-        sudo chmod -R a+rwX /tmp/apt-debs
+        sudo chown -R "$(id -u):$(id -g)" /tmp/apt-debs
+        chmod -R a+rwX /tmp/apt-debs
         echo "key=apt-$(. /etc/os-release; echo "$VERSION_ID")-$(echo "${{ inputs.packages }}" | tr ' ' '-')" >> "$GITHUB_OUTPUT"
 
     - uses: actions/cache@v5
