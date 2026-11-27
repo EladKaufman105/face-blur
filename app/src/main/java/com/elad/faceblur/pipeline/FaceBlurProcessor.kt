@@ -338,6 +338,8 @@ class FaceBlurProcessor(private val context: Context) {
         stabilizer: Stabilizer? = null,
         /** Now and then, a small copy of the finished frame being saved. */
         onPreview: ((android.graphics.Bitmap) -> Unit)? = null,
+        /** Counted while it runs, for the progress screen's stats panel. */
+        counters: ExportCounters? = null,
         onProgress: (Float) -> Unit,
     ): Outcome.Saved {
         // No caller may save without a people background that is set: it would silently be left out.
@@ -351,7 +353,7 @@ class FaceBlurProcessor(private val context: Context) {
         )
         val out = temp("render")
         out.delete()
-        val blur = BlurEffect(timeline, settings.mode, settings.strength)
+        val blur = BlurEffect(timeline, settings.mode, settings.strength, counters)
         // Blur at full resolution first, then resize / drop frames for the chosen output.
         val cues = model.exportCues(audio.maskWords)
         val burn = cues.mapNotNull { c ->
@@ -397,6 +399,27 @@ class FaceBlurProcessor(private val context: Context) {
             )
             .build()
         val bitrate = export.videoBitrate(info)
+        if (counters != null) {
+            val (ow, oh) = export.outputSize(info)
+            val outMime = export.mimeType() ?: info.videoMime.ifEmpty { MimeTypes.VIDEO_H264 }
+            val enc = likelyEncoder(outMime)
+            counters.facts = ExportFacts(
+                srcWidth = info.displayWidth, srcHeight = info.displayHeight, width = ow, height = oh,
+                mime = outMime, encoder = enc?.first, hardware = enc?.second, bitrate = bitrate,
+                fps = info.fps, outFps = export.outputFps(info), totalFrames = analysis.frameCount,
+                audio = buildList {
+                    if (removeAudio) {
+                        add(AudioStep.MUTED)
+                    } else {
+                        if (audioFx.any { it is SonicAudioProcessor }) add(AudioStep.PITCH)
+                        if (audioFx.any { it is VoiceAudioProcessor }) add(AudioStep.VOICE)
+                        if (sfx.isNotEmpty()) add(AudioStep.SFX)
+                        if (audioFx.any { it is CutAudioProcessor }) add(AudioStep.CUTS)
+                        if (isEmpty()) add(AudioStep.COPY)
+                    }
+                },
+            )
+        }
         val modes = when {
             !info.isHdr -> listOf(Composition.HDR_MODE_KEEP_HDR)
             export.canKeepHdr(info) -> listOf(Composition.HDR_MODE_KEEP_HDR, Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
@@ -409,6 +432,7 @@ class FaceBlurProcessor(private val context: Context) {
         val saved = try {
             runWithHdrFallback(modes) { hdrMode ->
                 keptHdr = info.isHdr && hdrMode == Composition.HDR_MODE_KEEP_HDR
+                counters?.reset()
                 // A video without sound still gets one for its sound effects.
                 export(composition(item, hdrMode, forceAudio = sfx.isNotEmpty()), out, bitrate, mime = export.mimeType(), onProgress)
             }

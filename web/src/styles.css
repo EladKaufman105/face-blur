@@ -815,6 +815,9 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .stat[data-cell='frame'] { --stat-c: var(--coral-tint); }
 .stat[data-cell='resolution'] { --stat-c: var(--amber-tint); }
 .stat[data-cell='sampling'] { --stat-c: var(--primary); }
+.stat[data-cell='fps'] { --stat-c: var(--cyan-tint); }
+.stat[data-cell='blur'] { --stat-c: var(--coral-tint); }
+.stat[data-cell='audio'] .stat-value, .stat[data-cell='size'] .stat-value { white-space: normal; overflow-wrap: anywhere; }
 .stats-actions { display: flex; align-items: center; gap: var(--space-2); }
 .stats-actions .btn { display: inline-flex; align-items: center; gap: var(--space-1); }
 .stats-actions .chev { transition: transform var(--motion-state) ease; }
@@ -1024,19 +1027,44 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 @media (max-width: 600px) { .cue-bar .cue-bar-times { display: none; } .cue-bar .cue-name { min-width: 0; } .cue-bar .ctx-act { min-width: 48px; padding-inline: 1px; } }
 .tpl-leave { padding: var(--space-3); border: 1px solid var(--outline-soft); border-radius: var(--radius-card); background: var(--surface-2); }
 
-/* The safe zone's chooser: a strip of its own above the video, a pill of three equal logos with a highlight that slides. */
+/* The desktop editor's one compact top row (ui/EditorBrand.tsx): the site header gives way to it, so the video gets its height. */
+.app:has(.editor.compact-top) { padding-top: 8px; max-width: 1600px; }
+.app:has(.editor.compact-top) .top { display: none; }
+.editor.compact-top .player > .top-row { min-height: 44px; gap: 8px; flex-wrap: nowrap; }
+.editor.compact-top .top-row .detect-info { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor.compact-top .screen { --screen-h: calc(100dvh - 296px); }
+.brand-mini { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; margin-inline-start: 4px; }
+.brand-mini .logo { width: 28px; height: 28px; border-radius: 8px; flex: none; }
+.brand-mini .logo.light { display: none; }
+:root[data-theme='light'] .brand-mini .logo.light { display: block; }
+:root[data-theme='light'] .brand-mini .logo.dark { display: none; }
+@media (prefers-color-scheme: light) {
+  :root[data-theme='system'] .brand-mini .logo.light { display: block; }
+  :root[data-theme='system'] .brand-mini .logo.dark { display: none; }
+}
+.brand-mini .brand-name { font-size: 18px; line-height: 1; font-weight: 800; letter-spacing: 0.02em; font-variation-settings: 'ROND' 100, 'opsz' 32; white-space: nowrap; }
+.brand-mini .beta-name { font-size: 0.55em; font-weight: 500; letter-spacing: 0.04em; }
+.brand-mini .beta-mini { flex: none; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--outline); color: var(--muted); font-size: 10px; line-height: 14px; font-weight: 600; letter-spacing: 0.6px; direction: ltr; }
+.brand-mini .info-btn { width: 36px; height: 36px; color: var(--muted); }
+.info-pop { position: absolute; z-index: 20; top: calc(100% + 6px); inset-inline-start: 0; width: max-content; max-width: min(340px, 90vw); background: var(--surface-3); border: 1px solid var(--outline-soft); border-radius: var(--radius-card); padding: 10px 12px; box-shadow: var(--shadow); display: grid; gap: 6px; }
+.info-pop p { margin: 0; }
+.info-pop .tag { font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 6px; }
+.info-pop .beta-note { margin: 0; }
+.info-pop .beta-note a { color: inherit; }
+/* The safe zone's chooser: a small pill floating over the top of the video (the video keeps its size), three logos with a highlight that slides. */
 .safe-toggle.on, .blur-view.on { color: var(--primary); }
-.safe-strip { flex: none; height: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; transition: height var(--motion-panel) ease; }
-.safe-strip.open { height: 48px; }
-.safe-pill { position: relative; box-sizing: border-box; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; width: clamp(240px, var(--w, 240px), calc(100% - 24px)); padding: 2px; border-radius: 999px; background: var(--surface-3); border: 1px solid var(--outline-soft); --seg: calc((100% - 12px) / 3); }
-.safe-hi { position: absolute; top: 2px; height: 30px; width: var(--seg); inset-inline-start: calc(2px + var(--at, 0) * (var(--seg) + 4px)); border-radius: 999px; background: var(--text); transition: inset-inline-start 250ms cubic-bezier(0.3, 1.35, 0.5, 1); pointer-events: none; }
-.safe-seg { position: relative; z-index: 1; height: 30px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: color 250ms ease; }
+.safe-float { position: absolute; z-index: 3; top: 4px; inset-inline: 0; display: flex; justify-content: center; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity var(--motion-content) ease, visibility 0s linear var(--motion-content); }
+.safe-float.open { opacity: 1; visibility: visible; transition: opacity var(--motion-content) ease, visibility 0s; }
+.safe-pill { position: relative; box-sizing: border-box; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; width: clamp(96px, var(--w, 122px), 122px); padding: 2px; border-radius: 999px; background: rgb(0 0 0 / 0.55); border: 1px solid rgb(255 255 255 / 0.22); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); pointer-events: auto; --seg: calc((100% - 12px) / 3); }
+.safe-hi { position: absolute; top: 2px; height: 30px; width: var(--seg); inset-inline-start: calc(2px + var(--at, 0) * (var(--seg) + 4px)); border-radius: 999px; background: #fff; transition: inset-inline-start 250ms cubic-bezier(0.3, 1.35, 0.5, 1); pointer-events: none; }
+.safe-seg { position: relative; z-index: 1; height: 30px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: rgb(255 255 255 / 0.85); display: grid; place-items: center; cursor: pointer; transition: color 250ms ease; }
 .safe-seg::after { content: ''; position: absolute; inset: -9px 0; }
-.safe-seg.on { color: var(--bg); }
-@media (prefers-reduced-motion: reduce) { .safe-hi, .safe-seg, .safe-strip { transition: none; } }
-/* On a phone the strip gives way while a panel is open in the timeline's place, and on a screen under 480 px tall; the overlay still shows. */
-.editor.narrow.panel-open .safe-strip { display: none; }
-@media (max-height: 479px) { .safe-strip { display: none; } }
+.safe-seg.on { color: #111; }
+.safe-seg:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { .safe-hi, .safe-seg, .safe-float, .safe-float.open { transition: none; } }
+/* On a phone the chooser gives way while a panel is open (the video is small then), and on a screen this short (a phone on its side): the zone itself stays on. */
+.editor.narrow.panel-open .safe-float { display: none; }
+@media (max-height: 479px) { .safe-float { display: none; } }
 
 /* A phone's panel keeps a thin scrubber over it (as the app's), so the video can be moved through with the panel open. */
 .mini-scrubber { flex: none; width: calc(100% - 16px); height: 24px; margin: 0 8px; accent-color: var(--primary); touch-action: none; }

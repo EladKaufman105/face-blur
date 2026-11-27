@@ -3,11 +3,11 @@ package com.elad.faceblur.gen
 
 /** Where each short-video platform's own screens cover a vertical frame, as fractions of it, measured on a 1080x1920 frame from the platforms' published templates and guides (sources: docs/specs/safe-zones.md). The app's template/SafeZone.kt and the web's lib/safezone.ts read these. */
 object SafeZones {
-    // TikTok: top 240 px, bottom 660 px, left 120 px, right 180 px (its button column).
+    // TikTok: top 240 px, bottom 660 px, left 120 px, right 300 px (120 px margin plus its 180 px button column; the margin is 120 px above y=840).
     const val TIKTOK_TOP = 240f / 1920f
     const val TIKTOK_BOTTOM = 660f / 1920f
     const val TIKTOK_LEFT = 120f / 1080f
-    const val TIKTOK_RIGHT = 180f / 1080f
+    const val TIKTOK_RIGHT = 300f / 1080f
 
     // Reels: 14% top, 35% bottom, 6% at the sides.
     const val REELS_TOP = 0.14f

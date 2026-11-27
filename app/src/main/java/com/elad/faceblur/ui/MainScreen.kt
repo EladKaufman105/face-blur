@@ -262,7 +262,7 @@ fun MainScreen(vm: MainViewModel) {
             ) { s ->
                 if (s is UiState.Working) {
                     // Fills the screen: the video as it's processed, the progress under it.
-                    WorkingScreen(s, vm.livePreview, renderRatio = vm.prefs.renderRatio, onCancel = vm::cancel, wide = wide)
+                    WorkingScreen(s, vm.livePreview, vm.exportStats, renderRatio = vm.prefs.renderRatio, onCancel = vm::cancel, wide = wide)
                     return@AnimatedContent
                 }
                 Column(
@@ -375,7 +375,7 @@ private fun SectionCard(modifier: Modifier = Modifier, content: @Composable () -
  * the time left.
  */
 @Composable
-private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRatio: Float, onCancel: () -> Unit, wide: Boolean = false) {
+private fun WorkingScreen(state: UiState.Working, live: LivePreview?, exportStats: com.elad.faceblur.pipeline.ExportStats?, renderRatio: Float, onCancel: () -> Unit, wide: Boolean = false) {
     val eta = rememberEta()
     val ratio = renderRatio.coerceIn(0.2f, 5f)
     val rem = eta.remainingMs(state.stage, state.progress)
@@ -444,6 +444,13 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, renderRati
                     info = state.info,
                     percent = (overall * 100).roundToInt(),
                     elapsedMs = { android.os.SystemClock.elapsedRealtime() - eta.startedAt },
+                )
+                ExportStatsPanel(
+                    visible = showStats && exporting,
+                    stats = exportStats,
+                    percent = (overall * 100).roundToInt(),
+                    elapsedMs = android.os.SystemClock.elapsedRealtime() - eta.startedAt,
+                    leftMs = left,
                 )
                 TimelineProgress(
                     overall,

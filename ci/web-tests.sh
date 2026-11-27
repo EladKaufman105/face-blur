@@ -127,6 +127,8 @@ case "${1:?shard}" in
     t subsplan.cjs "$U" $S/speech_two.mp4 $R/subsplan   # 15
     # The analysis stats panel: tiles and charts that update, more details, an (i), Copy (the report).
     t stats.cjs "$U" $S/walk.mp4 $R/stats   # 14
+    # The export's stats panel: a tap on the percentage opens tiles (encode speed, frames, blur per frame, encoder, time), details, (i), Copy; phone (he) and desktop (en); the pure history and report.
+    t exportstats.cjs "$U" $S/speech_two.mp4 $R/exportstats   # ~25
     # Subtitles on the timeline, as the app's: a tap selects, the bar's Start / End here, split, merge, delete and text, the edges dragged, all undone; bleeps follow their words. Desktop and a phone.
     t cues.cjs "$U" $S/speech_two.mp4 $R/cues   # 13
     t cues.cjs "$U" $S/speech_two.mp4 $R/cuesp phone   # 13

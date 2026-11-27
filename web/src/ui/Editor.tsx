@@ -8,7 +8,8 @@ import { AddIcon, BackIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, CutIco
 import { FRAME, Timeline } from './Timeline'
 import { BlurBar } from './BlurBar'
 import { CueBar, CueSidePanel } from './CueBar'
-import { SafeZoneBar } from './SafeZoneBar'
+import { SafeZoneBar, SAFE_PILL_RESERVED } from './SafeZoneBar'
+import { EditorBrand } from './EditorBrand'
 import { appliesTo, easeOut, GLIDE_MS, mixZone, zoneOf, type Platform, type Zone } from '../lib/safezone'
 import { drawSafeZone } from '../lib/safezonemock'
 import { CutTab, wordSpan } from './CutTab'
@@ -126,12 +127,13 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [srcInfo, setSrcInfo] = useState<{ codec: string; fps: number; bitrate: number } | null>(null)
   // The safe zone, a view aid: where a short-video platform's own screens cover a vertical frame (drawn here only, never exported).
   const safeAvailable = appliesTo(exportOpts.aspect, W, H)
-  const [safeOn, setSafeOn] = useState(false)
+  // On or off for good once chosen: kept with the project, and it stays on while the chooser is out of the way (a panel open on a phone) until it is turned off.
+  const [safeOn, setSafeOn] = useState(saved?.safe?.on ?? false)
   /** The blur view (as the app's): the real blur in the player, or outlines only (to see the faces under it). Only here, never in the export. */
   const [blurView, setBlurView] = useState(true)
   // With no blur left the switch goes (it shows only with blurs): the next blur starts on the real blur again.
   useEffect(() => { if (tracks.length === 0 && !blurView) setBlurView(true) }, [tracks.length, blurView])
-  const [safePlatform, setSafePlatform] = useState<Platform>(() => { try { const p = localStorage.getItem(storageKey('safezone.platform')); return p === 'reels' || p === 'shorts' ? p : 'tiktok' } catch { return 'tiktok' } })
+  const [safePlatform, setSafePlatform] = useState<Platform>(() => { const k = saved?.safe?.platform; if (k === 'tiktok' || k === 'reels' || k === 'shorts') return k; try { const p = localStorage.getItem(storageKey('safezone.platform')); return p === 'reels' || p === 'shorts' ? p : 'tiktok' } catch { return 'tiktok' } })
   const safe = useRef<{ platform: Platform; from: Zone; at: number }>({ platform: safePlatform, from: zoneOf(safePlatform), at: -1e9 })
   // The picture tools: the camera's motion, the cuts and the people (from one pass over the video).
   const [picture, setPicture] = useState<ProjectPicture | null>(project?.picture ?? null)
@@ -148,7 +150,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   )
   const cutMap = useMemo(() => new CutMap(cuts), [cuts])
   const url = useMemo(() => URL.createObjectURL(file), [file])
-  // How wide the exported frame is on screen: the safe zone's chooser is as wide as it.
+  // How wide the exported frame is on screen: the safe zone's floating chooser is as wide as it (at most 122 px).
   const viewBox = useRef<HTMLDivElement>(null)
   const [viewW, setViewW] = useState(0)
   useEffect(() => {
@@ -399,7 +401,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       }
       tc.restore()
       // The safe zone's mock of a platform's screens, over everything and only here (never in the export).
-      if (state.current.safeOn && fw >= 2 && fh >= 2) drawSafeZone(tc, safe.current.platform, zoneNow(), fx, fy, fw, fh)
+      if (state.current.safeOn && fw >= 2 && fh >= 2) drawSafeZone(tc, safe.current.platform, zoneNow(), fx, fy, fw, fh, Math.max(0, SAFE_PILL_RESERVED * (W / (viewBox.current?.clientWidth || W)) - fy))
     }
   }
 
@@ -651,7 +653,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     const timer = setTimeout(() => {
       const state: ProjectState = {
         analysis: an, analyzed, detectInfo, tracks, thumbs: [...thumbOf.entries()], off: [...off], look, cues, words, bleeped: [...bleeped], tone, voice,
-        sfx, mark, subStyle, cuts, denoise, enhance, loud: loudOn, background, steady: steadyLevel, aspect: exportOpts.aspect,
+        sfx, mark, subStyle, cuts, denoise, enhance, loud: loudOn, background, steady: steadyLevel, aspect: exportOpts.aspect, safe: { on: safeOn, platform: safePlatform },
       }
       const pic = savedPicture.current !== picture ? picture : undefined
       savedPicture.current = picture
@@ -662,7 +664,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
       })
     }, 1200)
     return () => clearTimeout(timer)
-  }, [projectTick, an, analyzed, tracks, thumbOf, off, look, cues, words, bleeped, tone, voice, sfx, mark, subStyle, cuts, denoise, enhance, loudOn, background, steadyLevel, exportOpts.aspect, picture, dur, detecting])
+  }, [projectTick, an, analyzed, tracks, thumbOf, off, look, cues, words, bleeped, tone, voice, sfx, mark, subStyle, cuts, denoise, enhance, loudOn, background, steadyLevel, exportOpts.aspect, safeOn, safePlatform, picture, dur, detecting])
 
   // A short message over the video (what a tool did, or why it couldn't).
   useEffect(() => {
@@ -1480,7 +1482,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         }}
       />
     )}
-    <main class={'editor' + (narrow && !detecting && !hidden ? ' narrow' : '') + (tablet && !detecting && !hidden ? ' tablet' : '') + (phone && panelOpen ? ' panel-open' : '') + (tablet && panelOpen ? ' panel-shown' : '')} style={detecting || hidden ? 'display:none' : ''}>
+    <main class={'editor' + (narrow && !detecting && !hidden ? ' narrow' : '') + (tablet && !detecting && !hidden ? ' tablet' : '') + (phone && panelOpen ? ' panel-open' : '') + (tablet && panelOpen ? ' panel-shown' : '') + (!narrow && !detecting && !hidden ? ' compact-top' : '')} style={detecting || hidden ? 'display:none' : ''}>
       {tablet && groupBar}
       <div class="player">
         <div class={'row top-row' + (BETA ? ' beta' : '') + (safeAvailable && tracks.length > 0 ? ' many' : '')}>
@@ -1488,20 +1490,22 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             ? <button class="icon-btn back-btn" onClick={onClose} aria-label={t('סרטון חדש')} title={t('סרטון חדש')}><span class="flip"><BackIcon /></span></button>
             : <button class="btn ghost" onClick={onClose} style="padding-inline:6px"><span class="flip"><BackIcon /></span> {t('סרטון חדש')}</button>}
           {narrow && BETA && <span class="beta-mini">BETA</span>}
+          {!narrow && <EditorBrand />}
           <div class="grow" />
           <span class="small muted detect-info">{detectInfo}</span>
           {!narrow && editTools}
+          {!narrow && <button class="icon-btn settings-open" onClick={() => window.dispatchEvent(new Event('onit:settings'))} aria-label={t('הגדרות')} title={t('הגדרות')}><SettingsIcon size={22} /></button>}
           {narrow && <div class="export-bar">{editTools}{saveTplIcon}<button class="icon-btn settings-open" onClick={() => window.dispatchEvent(new Event('onit:settings'))} aria-label={t('הגדרות')} title={t('הגדרות')}><SettingsIcon size={22} /></button>{exportBtn}</div>}
         </div>
         {an.reduced && !narrow && <DetectionNotice />}
         {an.fast && !narrow && <DetectionNotice fast />}
         {an.selfie && !narrow && <DetectionNotice selfie />}
-        {safeAvailable && <SafeZoneBar open={safeOn} platform={safePlatform} frameWidth={frameW} onPick={choosePlatform} />}
         <div class={'screen' + (adding ? ' adding' : '') + (selected !== null ? ' sel' : '')} onPointerDown={onScreenDown} onPointerMove={onScreenMove} onPointerUp={onScreenUp} onPointerCancel={(e) => { press.current = null; touches.current.delete(e.pointerId); if (touches.current.size < 2) pinch.current = null }}>
           <div class="view" ref={viewBox} style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc(var(--screen-h) * ${(W / H).toFixed(4)}))` }}>
             <canvas ref={canvas} width={W} height={H} />
             <canvas ref={rings} class="layer" width={W} height={H} />
             <canvas ref={overlay} class="layer" width={W} height={H} />
+            {safeAvailable && <SafeZoneBar open={safeOn} platform={safePlatform} frameWidth={frameW} onPick={choosePlatform} />}
             {(an.reduced || an.fast || an.selfie) && narrow && <DetectionNotice overlay reduced={!!an.reduced} fast={!!an.fast} selfie={!!an.selfie} />}
           </div>
           <video ref={video} src={url} playsInline preload="auto" />

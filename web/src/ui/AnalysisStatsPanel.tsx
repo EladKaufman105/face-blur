@@ -172,7 +172,7 @@ function Tile({ id, size, a, onInfo }: { id: CellId; size: Size; a: AnalysisStat
 export type VideoFacts = { width: number; height: number; fps: number; duration: number }
 
 /** Copies [text]; the clipboard API needs a secure page and a gesture, else the old way. */
-async function copyText(text: string) {
+export async function copyText(text: string) {
   try {
     await navigator.clipboard.writeText(text)
     return

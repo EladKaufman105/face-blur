@@ -20,7 +20,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -102,12 +101,8 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.layout.requiredHeight
-import androidx.compose.ui.layout.onSizeChanged
-import com.elad.faceblur.edit.Reframer
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.selection.selectable
@@ -264,16 +259,7 @@ fun EditorScreen(
     val watermarkOn = export.watermark.enabled(LocalContext.current)
     // The safe-zone view aid is for vertical frames only (the export's, or the video's own).
     val safeZoneAvailable = SafeZone.appliesTo(export.aspect, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)
-    // While it's on, its platform chooser has a strip of its own directly above the video (see SafeZoneStrip).
-    val safeZoneShown = safeZoneAvailable && ctrl.safeZoneOn
-    // The width of the video's box on screen, and of the frame in it (the part a vertical export
-    // keeps): the safe zone's bar is as wide as the frame.
-    val videoBoxW = remember(ctrl) { mutableIntStateOf(0) }
-    val safeFrameWidthPx = {
-        val a = ctrl.session.analysis
-        val crop = if (export.aspect == ExportAspect.ORIGINAL || ctrl.frameCount == 0) 1f else Reframer.cropFraction(a.uprightW, a.uprightH, export.aspect.ratio).first
-        videoBoxW.intValue * crop
-    }
+    // While it's on, its platform chooser floats as a small pill over the top of the video (see VideoWithOverlay): the video keeps its size.
     // A group opens the tool used last in it (or its first).
     val lastInGroup = remember(ctrl) { mutableStateMapOf<ToolGroup, EditorPanel>() }
     LaunchedEffect(ctrl.panel) { ctrl.panel?.let { lastInGroup[groupOf(it)] = it } }
@@ -369,7 +355,7 @@ fun EditorScreen(
     // One video for both layouts (see EditorVideoArea).
     val videoArea = remember(ctrl) {
         movableContentOf { modifier: Modifier, ex: ExportOptions, st: SubtitleStyle, messages: Boolean ->
-            EditorVideoArea(ctrl, ex, st, modifier, messages) { videoBoxW.intValue = it }
+            EditorVideoArea(ctrl, ex, st, modifier, messages)
         }
     }
     // The timeline (with the messages and, on a phone, the selected clip's bar over its bottom
@@ -469,15 +455,12 @@ fun EditorScreen(
                     // A tall video stays at the side at full height; the panel and the timeline
                     // share the rest of the width. With the panel closed, the timeline takes its
                     // place: every row of blurs in view, like an editor's timeline on a computer.
-                    // The top bar and, while it shows, the safe zone's strip are above the video.
-                    val stripH = if (safeZoneShown) SafeZoneStripHeight else 0.dp
-                    val videoW = minOf((fullH - 56.dp - stripH) * aspect, (fullW - rail) * 0.5f)
+                    // The top bar is above the video.
+                    val videoW = minOf((fullH - 56.dp) * aspect, (fullW - rail) * 0.5f)
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         topBar()
                         Row(Modifier.weight(1f)) {
-                            // The safe zone's strip goes above the video, in its column (videoW allows for it).
                             Column(Modifier.width(videoW).fillMaxHeight()) {
-                                SafeZoneStrip(ctrl, safeZoneShown, safeFrameWidthPx)
                                 videoArea(Modifier.weight(1f), export, subStyle, false)
                             }
                             Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -498,7 +481,6 @@ fun EditorScreen(
                 } else {
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         topBar()
-                        SafeZoneStrip(ctrl, safeZoneShown, safeFrameWidthPx)
                         videoArea(Modifier.weight(1f), export, subStyle, false)
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Transport(ctrl, busy, zoom) }
                         timelineArea(false, null)
@@ -521,10 +503,6 @@ fun EditorScreen(
     ) {
         topBar()
         val phoneShows: Any? = if (propsOpen && selecting) PROPS else ctrl.panel
-        // Not with a panel open (the video is small then, and the strip would take more of it), nor on a
-        // screen this short (a phone on its side): the overlay stays, with the platform chosen last.
-        val stripRoom = LocalConfiguration.current.screenHeightDp >= 480
-        SafeZoneStrip(ctrl, safeZoneShown && phoneShows == null && stripRoom, safeFrameWidthPx)
         videoArea(Modifier.weight(1f), export, subStyle, phoneShows != null)
 
         // Video controls and timelines run left to right even in a Hebrew UI.
@@ -583,9 +561,12 @@ fun EditorScreen(
  * changes (a phone turned on its side): the player and its surface keep going.
  */
 @Composable
-private fun EditorVideoArea(ctrl: EditorController, export: ExportOptions, subStyle: SubtitleStyle, modifier: Modifier, messages: Boolean, onBoxWidth: (Int) -> Unit) {
+private fun EditorVideoArea(ctrl: EditorController, export: ExportOptions, subStyle: SubtitleStyle, modifier: Modifier, messages: Boolean) {
+    // The platform chooser's pill gives way with a panel open in the timeline's place (the video is small then; [messages] says a
+    // phone has one open) and on a screen this short (a phone on its side): the zone itself stays on, for the platform chosen last.
+    val chooser = !messages && LocalConfiguration.current.screenHeightDp >= 480
     Box(modifier.fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
-        VideoWithOverlay(ctrl, export.subs, subStyle, export.aspect, export.watermark, onBoxWidth)
+        VideoWithOverlay(ctrl, export.subs, subStyle, export.aspect, export.watermark, chooser = chooser)
         // With a panel in the timeline's place (a phone), the messages go at the video's foot.
         if (messages) EditorMessages(ctrl, Modifier.align(Alignment.BottomCenter))
     }
@@ -630,7 +611,8 @@ private fun VideoWithOverlay(
     style: SubtitleStyle,
     frameShape: ExportAspect = ExportAspect.ORIGINAL,
     watermark: Watermark = Watermark(),
-    onBoxWidth: (Int) -> Unit = {},
+    /** Whether the safe zone's platform chooser (a small pill over the video's top) may show, while the zone is on. */
+    chooser: Boolean = false,
 ) {
     val context = LocalContext.current
     val analysis = ctrl.session.analysis
@@ -691,7 +673,7 @@ private fun VideoWithOverlay(
             if (SystemClock.uptimeMillis() - sync.lastFrameReportMs > 300) ctrl.onFrameShown(at)
         }
     }
-    Box(Modifier.aspectRatio(aspect, matchHeightConstraintsFirst = true).onSizeChanged { onBoxWidth(it.width) }) {
+    Box(Modifier.aspectRatio(aspect, matchHeightConstraintsFirst = true)) {
         AndroidView(
             factory = { ctx ->
                 (LayoutInflater.from(ctx).inflate(R.layout.editor_player, null) as PlayerView).also { it.player = player }
@@ -701,6 +683,14 @@ private fun VideoWithOverlay(
             modifier = Modifier.fillMaxSize(),
         )
         Overlay(ctrl, subs, style, frameShape, watermark, Modifier.fillMaxSize())
+        // The safe zone's platform chooser floats over the video's top (the video keeps its whole size); it is the video's own
+        // overlay, so a dark glass pill with light icons whatever the theme. The zone stays on without it.
+        if (chooser && ctrl.safeZoneOn && SafeZone.appliesTo(frameShape, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)) {
+            PlatformChooser(
+                ctrl.safePlatform, { ctrl.safePlatform = it },
+                Modifier.align(Alignment.TopCenter).padding(top = SafeChooserTop).fillMaxWidth(0.9f).widthIn(max = SafeChooserMaxWidth).testTag(Tags.SAFE_ZONE + ".chooser"),
+            )
+        }
     }
 }
 
@@ -950,7 +940,8 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
             if (faded) nc.restore()
         }
         if (ctrl.safeZoneOn && fw >= 2f && fh >= 2f && SafeZone.appliesTo(aspect, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)) {
-            drawSafeZone(ctrl.safePlatform, safeZone(), Offset(fl, ft), Size(fw, fh))
+            // The mock's own top row starts below the chooser's pill, which floats over the video's top.
+            drawSafeZone(ctrl.safePlatform, safeZone(), Offset(fl, ft), Size(fw, fh), reserved = ((SafeChooserTop + SafeChooserHeight).toPx() - ft).coerceAtLeast(0f))
         }
         if (live && ctrl.playing) return@Canvas
         val shapes = ctrl.model.shapesAt(ctrl.shownFrame, ctrl.padding)
@@ -1844,41 +1835,18 @@ private fun PropActions(content: @Composable () -> Unit) {
 }
 
 
-/** Height of the safe zone's strip: the chooser's slim pill (a 30 dp segment, 2 dp padding) with room above and below,
- *  48 dp so each segment's 48 dp touch height fits inside the strip (which clips while it opens and closes). */
-private val SafeZoneStripHeight: Dp = 48.dp
+/** The floating chooser: its distance from the video's top edge, its height (a 30 dp segment and 2 dp padding a side) and its widest. */
+private val SafeChooserTop: Dp = 4.dp
+private val SafeChooserHeight: Dp = 34.dp
+private val SafeChooserMaxWidth: Dp = 122.dp
 
 /** The chooser's visible segments and the gap between them. */
 private val SegmentHeight: Dp = 30.dp
 private val SegmentGap: Dp = 4.dp
 
 /**
- * The safe zone's own strip directly above the video (not over it: the whole frame stays in view),
- * holding the platform chooser, as wide as the video's frame ([frameWidthPx]; at least 240 dp, at
- * most the strip less 12 dp a side).
- *
- * It grows and shrinks like the app's other folds, and the video gives it the height while it does.
- * This one strip consciously departs from Motion's "nothing slides the layout around" (the owner's
- * choice: the bar opening reads better than a fade).
- */
-@Composable
-private fun SafeZoneStrip(ctrl: EditorController, visible: Boolean, frameWidthPx: () -> Float) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = expandVertically(tween(Motion.PANEL)) + fadeIn(tween(Motion.CONTENT)),
-        exit = shrinkVertically(tween(Motion.STATE)) + fadeOut(tween(Motion.CONTENT)),
-    ) {
-        BoxWithConstraints(Modifier.fillMaxWidth().height(SafeZoneStripHeight), contentAlignment = Alignment.Center) {
-            val frame = with(LocalDensity.current) { frameWidthPx().toDp() }
-            val pillW = frame.coerceAtLeast(240.dp).coerceAtMost((maxWidth - Space.M * 2).coerceAtLeast(0.dp))
-            PlatformChooser(ctrl.safePlatform, { ctrl.safePlatform = it }, Modifier.width(pillW))
-        }
-    }
-}
-
-/**
- * The safe zone's platform chooser: a pill of three equal segments with the platforms' icons (no
- * text) in the theme's colors, the chosen one on a high-contrast stadium that slides from the old
+ * The safe zone's platform chooser: a small pill floating over the video's top, three equal segments with the platforms' icons (no
+ * text) in light on dark glass, the chosen one on a white stadium that slides from the old
  * choice to the new one while the icons' colors cross-fade with it. Each segment shows 30 dp but
  * takes touches over 48 dp of height (reaching past the pill).
  *
@@ -1897,17 +1865,15 @@ private fun PlatformChooser(selected: Platform, onSelect: (Platform) -> Unit, mo
         spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow),
         label = "platform",
     )
-    // In the theme's colors (it sits on the editor's background, not on the video): a slightly raised
-    // pill, a highlight in the strongest contrast (light in the dark theme, dark in the light one) and
-    // the chosen icon cut out of it in the background's color.
-    val colors = MaterialTheme.colorScheme
-    val iconOff = colors.onSurfaceVariant
-    val iconOn = colors.surface
+    // Over the video, so dark glass with light icons whatever the theme (as the web's): a highlight in white
+    // and the chosen icon cut out of it in dark.
+    val iconOff = Color.White.copy(alpha = 0.85f)
+    val iconOn = Color(0xFF111111)
     val stadium = RoundedCornerShape(50)
     BoxWithConstraints(
         modifier
-            .background(colors.surfaceContainerHigh, stadium)
-            .border(1.dp, colors.outlineVariant, stadium)
+            .background(Color.Black.copy(alpha = 0.55f), stadium)
+            .border(1.dp, Color.White.copy(alpha = 0.22f), stadium)
             .padding(2.dp),
     ) {
         // In whole pixels from the pill's measured width, as the row places its segments.
@@ -1921,7 +1887,7 @@ private fun PlatformChooser(selected: Platform, onSelect: (Platform) -> Unit, mo
             Modifier
                 .offset { IntOffset((at.value.coerceIn(0f, 2f) * step).roundToInt(), 0) }
                 .size(with(density) { segPx.toDp() }, SegmentHeight)
-                .background(colors.onSurface, stadium),
+                .background(Color.White, stadium),
         )
         Row(
             Modifier.fillMaxWidth().height(SegmentHeight).selectableGroup(),

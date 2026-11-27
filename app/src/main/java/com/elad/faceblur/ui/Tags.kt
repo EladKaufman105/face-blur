@@ -66,6 +66,7 @@ object Tags {
     const val PROGRESS_PERCENT = "progress.percent"
     const val STATS_PANEL = "progress.stats"
     const val STATS_COPY = "progress.statsCopy"
+    const val EXPORT_STATS_PANEL = "progress.exportStats"
 
     /** A group of tools in the editor's bar. */
     fun group(name: String) = "group." + name.lowercase()

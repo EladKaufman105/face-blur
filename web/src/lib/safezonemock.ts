@@ -17,6 +17,10 @@ const G = {
   SEARCH: 'M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
 }
 
+/** The button column's centre, from the frame's right edge, and the most its caption gives way to it (as fractions of the width). */
+const RAIL_X = 0.085
+const RAIL_MAX = 0.19
+
 const paths = new Map<string, Path2D>()
 const path = (d: string) => { let p = paths.get(d); if (!p) { p = new Path2D(d); paths.set(d, p) } return p }
 
@@ -81,10 +85,14 @@ function measure(c: C, s: string, size: number, bold: boolean) { font(c, size, b
  * and sound lines at the bottom and a thin progress bar. A soft shade behind the top and bottom
  * parts and a thin dashed outline around the clear middle help the eye.
  */
-export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y: number, w: number, h: number) {
+export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y: number, w: number, h: number, reserved = 0) {
   const dp = Math.max(1, w / 360)
   const topH = h * zone.top, botH = h * zone.bottom
   const leftW = w * zone.left, rightW = w * zone.right
+  // The platform's button column is the same distance from the frame's edge on all three (the zone's right
+  // margin also holds the margin beside it, so it is not the column's own width), and its caption stops short of it.
+  const colX = w - w * RAIL_X
+  const railW = Math.min(rightW, w * RAIL_MAX)
   c.save()
   c.beginPath(); c.rect(x, y, w, h); c.clip()
   c.translate(x, y)
@@ -98,7 +106,8 @@ export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y:
 
   // Top: the tab strip (and, per platform, search / menu).
   const tabSize = w * 0.04
-  const tabY = topH * 0.62
+  // Below the platform chooser's floating pill ([reserved] px from the frame's top), which it must not sit under.
+  const tabY = Math.max(topH * 0.62, reserved + tabSize * 1.15)
   const a = t('עוקבים'), b = t('בשבילך')
   const gap = w * 0.05
   const wa = measure(c, a, tabSize, false), wb = measure(c, b, tabSize, true)
@@ -107,15 +116,15 @@ export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y:
   label(c, b, sx + wa + gap, tabY, tabSize, true, 0.95)
   bar(c, sx + wa + gap, tabY + tabSize * 0.35, wb, Math.max(2 * dp, tabSize * 0.1), INK)
   const topIcon = Math.min(w * 0.06, topH * 0.36)
-  if (platform === 'tiktok') glyph(c, G.SEARCH, w - rightW / 2 - topIcon * 0.1, tabY - tabSize * 0.35, topIcon)
+  if (platform === 'tiktok') glyph(c, G.SEARCH, colX - topIcon * 0.1, tabY - tabSize * 0.35, topIcon)
   else if (platform === 'shorts') {
-    glyph(c, G.SEARCH, w - rightW / 2 - topIcon * 1.15, tabY - tabSize * 0.35, topIcon)
-    glyph(c, G.DOTS, w - rightW / 2 + topIcon * 0.1, tabY - tabSize * 0.35, topIcon)
+    glyph(c, G.SEARCH, colX - topIcon * 1.15, tabY - tabSize * 0.35, topIcon)
+    glyph(c, G.DOTS, colX + topIcon * 0.1, tabY - tabSize * 0.35, topIcon)
   }
 
   // Right: the column of buttons, ending with the sound disc / thumbnail low in the bottom zone.
   const icon = Math.min(w * 0.07, Math.max(w * 0.045, rightW * 0.5))
-  const cx = w - rightW / 2
+  const cx = colX
   const step = icon * 2.05
   const last = h - botH * 0.52
   const items = platform === 'tiktok' ? ['avatar', 'heart', 'comment', 'bookmark', 'share', 'disc']
@@ -199,7 +208,7 @@ export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y:
     }
   }
   const barH = textSize * 0.42
-  const capW = w - x0 - rightW - w * 0.03
+  const capW = w - x0 - railW - w * 0.03
   bar(c, x0, cap1 - barH, capW * 0.9, barH, 'rgba(255,255,255,0.7)')
   bar(c, x0, cap2 - barH, capW * 0.55, barH, 'rgba(255,255,255,0.7)')
   glyph(c, G.NOTE, x0 + textSize * 0.55, soundY - textSize * 0.3, textSize * 1.1)

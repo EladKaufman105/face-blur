@@ -10,6 +10,8 @@ import { cutCues, toSrt } from '../lib/subtitles'
 import { releaseSpeechForExport } from '../lib/speech'
 import { friendlyExport, technical } from '../lib/errors'
 import { ErrorDetails } from './ErrorReport'
+import { ExportHistory, type ExportStats } from '../lib/export-stats'
+import { ExportStatsPanel } from './ExportStatsPanel'
 
 export type { ExportJob }
 
@@ -21,14 +23,22 @@ export function Exporting({ job, onBack, onNew, onEdit }: { job: ExportJob; onBa
   // The export as it's made: a small picture now and then.
   const live = useRef<HTMLCanvasElement>(null)
   const [seen, setSeen] = useState(false)
+  // Tap the percentage to open the stats panel (how the export is going; ?debug shows it from the start).
+  const [debug, setDebug] = useState(() => new URLSearchParams(location.search).has('debug'))
+  const [stats, setStats] = useState<ExportStats | null>(null)
   useWakeLock(!result && !error)
 
   useEffect(() => {
     releaseSpeechForExport()
     const worker = new Worker(new URL('../workers/export.worker.ts', import.meta.url), { type: 'module' })
+    // The stats' last minute: new for each export.
+    let history: ExportHistory | null = null
+    setStats(null)
     worker.onmessage = (e: MessageEvent<ExportMessage>) => {
       const m = e.data
       if (m.type === 'progress') setProgress(m.progress)
+      else if (m.type === 'facts') history = new ExportHistory(m.facts)
+      else if (m.type === 'stats') { if (history) setStats(history.add(m.snap)) }
       else if (m.type === 'frame') {
         const c = live.current
         if (c) {
@@ -38,7 +48,7 @@ export function Exporting({ job, onBack, onNew, onEdit }: { job: ExportJob; onBa
         }
         m.bitmap.close()
       } else if (m.type === 'done') { setResult({ blob: m.blob, ms: m.ms }); worker.terminate() }
-      else { setError({ message: friendlyExport(m.code, m.message), details: technical('export', m.message, m.code) }); worker.terminate() }
+      else if (m.type === 'error') { setError({ message: friendlyExport(m.code, m.message), details: technical('export', m.message, m.code) }); worker.terminate() }
     }
     worker.onerror = (e) => { setError({ message: friendlyExport('failed', e.message || ''), details: technical('export worker', e.message || 'error') }); worker.terminate() }
     let cancelled = false
@@ -97,9 +107,10 @@ export function Exporting({ job, onBack, onNew, onEdit }: { job: ExportJob; onBa
               <strong>{job.twoSteps ? t('שלב 2 מתוך 2 · מטשטש ושומר') : t('מייצא')}</strong>
               <div class="small muted">{[t('עברו %s', duration(elapsed)), left !== null ? t('נותרו כ-%s', duration(left)) : ''].filter(Boolean).join(' · ')}</div>
             </div>
-            <div class="big-num">{pct}%</div>
+            {mp3 ? <div class="big-num">{pct}%</div> : <button type="button" class="big-num stats-toggle" aria-expanded={debug} onClick={() => setDebug((d) => !d)}>{pct}%</button>}
           </div>
           <div class="progress" style="margin:14px 0 12px"><div style={{ width: `${Math.max(2, pct)}%` }} /></div>
+          {!mp3 && <ExportStatsPanel open={debug && !!stats} stats={stats} percent={pct} elapsedSec={elapsed} leftSec={left} />}
           <div class="row">
             <div class="small muted grow">{canKeepAwake() ? t('השאר את הלשונית פתוחה עד הסוף. המסך יישאר דלוק.') : t('אל תסגור את הלשונית עד הסיום.')}</div>
             <button class="btn tonal" onClick={onBack}>{t('ביטול')}</button>

@@ -254,6 +254,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var livePreview by mutableStateOf<LivePreview?>(null)
         private set
 
+    /** How the export is doing (the progress screen's stats panel); null until it knows what it is making. */
+    var exportStats by mutableStateOf<com.elad.faceblur.pipeline.ExportStats?>(null)
+        private set
+
     /** [snapshot] goes into [history] (one per analysis run) on the main thread. */
     private fun showLive(frame: android.graphics.Bitmap, faces: List<com.elad.faceblur.analysis.Box>, gpu: Boolean = false, snapshot: StatsSnapshot? = null, history: StatsHistory? = null) {
         main.post {
@@ -663,7 +667,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ctrl.onFacesFound = { persistFaces(ctrl) }
         autosave?.cancel()
         autosave = viewModelScope.launch {
-            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, subtitleStyle, sessionExport, ctrl.background, ctrl.masksReady, ctrl.session.settings, ctrl.stabilizeLevel, ctrl.translateTo) }
+            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, subtitleStyle, sessionExport, ctrl.background, ctrl.masksReady, ctrl.session.settings, ctrl.stabilizeLevel, ctrl.translateTo, ctrl.safeZoneOn, ctrl.safePlatform) }
                 .drop(1)
                 .collectLatest {
                     delay(1500)
@@ -755,6 +759,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 when (val st = j.opt("stabilize")) { is Boolean -> if (st) 2 else 0; is Number -> st.toInt(); else -> 0 },
             )
             ctrl.changeTranslateTo(j.optString("translateTo").takeIf { it.isNotBlank() })
+            // The safe zone's view aid, as it was left with this project (older projects have none: off).
+            j.optJSONObject("safeZone")?.let { z ->
+                ctrl.safeZoneOn = z.optBoolean("on", false)
+                runCatching { com.elad.faceblur.template.Platform.valueOf(z.optString("platform")) }.getOrNull()?.let { ctrl.safePlatform = it }
+            }
             editor = ctrl
             projectId = id
             startAutosave(ctrl)
@@ -1065,6 +1074,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // What the screens after it need, read before the work starts.
         val subsOnly = s.subtitlesOnly
         if (!auto) livePreview = null
+        exportStats = null
+        val counters = com.elad.faceblur.pipeline.ExportCounters()
+        val history = com.elad.faceblur.pipeline.ExportHistory()
         state = UiState.Working(s.info, 2, 0f, subsOnly, auto)
         saveProject(ctrl)
         val saved = FaceBlurProcessor(getApplication()).render(
@@ -1072,7 +1084,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ctrl.background, s.masks,
             stabilizer = ctrl.stabilizer,
             onPreview = { frame -> showLive(frame, emptyList()) },
-        ) { p -> state = UiState.Working(s.info, 2, p, subsOnly, auto) }
+            counters = counters,
+        ) { p ->
+            state = UiState.Working(s.info, 2, p, subsOnly, auto)
+            // The progress comes about every half second: the counters are read with it.
+            history.add(counters.snapshot(android.os.SystemClock.elapsedRealtime()))?.let { exportStats = it }
+        }
+        exportStats = null
         if (s.analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / s.analysisMs
         state = UiState.Done(s.info, saved, canEdit = true, subsOnly = subsOnly, fast = !subsOnly && s.settings.fast, selfie = !subsOnly && s.settings.selfie)
     }

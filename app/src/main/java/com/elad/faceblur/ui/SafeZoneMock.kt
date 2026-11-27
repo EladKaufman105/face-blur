@@ -51,6 +51,10 @@ private object Mock {
     val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xF2FFFFFF.toInt() }
 }
 
+/** The button column's centre, from the frame's right edge, and the most its caption gives way to it (as fractions of the width). */
+private const val RAIL_X = 0.085f
+private const val RAIL_MAX = 0.19f
+
 private val INK = Color.White.copy(alpha = 0.92f)
 private val SOFT = Color.White.copy(alpha = 0.55f)
 private val SHADOW = Color.Black.copy(alpha = 0.38f)
@@ -123,13 +127,17 @@ internal fun glidingSafeZone(platform: Platform): () -> SafeZone {
  * bottom parts and a thin dashed outline around the clear middle help the eye. Only drawn on
  * screen, never burned into the video.
  */
-internal fun DrawScope.drawSafeZone(platform: Platform, zone: SafeZone, origin: Offset, frame: Size) {
+internal fun DrawScope.drawSafeZone(platform: Platform, zone: SafeZone, origin: Offset, frame: Size, reserved: Float = 0f) {
     val w = frame.width
     val h = frame.height
     val topH = h * zone.top
     val botH = h * zone.bottom
     val leftW = w * zone.left
     val rightW = w * zone.right
+    // The platform's button column is the same distance from the frame's edge on all three (the zone's right
+    // margin also holds the margin beside it, so it is not the column's own width), and its caption stops short of it.
+    val colX = w - w * RAIL_X
+    val railW = minOf(rightW, w * RAIL_MAX)
     withTransform({ translate(origin.x, origin.y) }) {
         // Light shade where the platform's screens sit, so white shapes read on any video.
         drawRect(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.34f), Color.Transparent), 0f, topH), Offset.Zero, Size(w, topH))
@@ -137,7 +145,8 @@ internal fun DrawScope.drawSafeZone(platform: Platform, zone: SafeZone, origin: 
 
         // Top: the tab strip (and, per platform, search / menu).
         val tabSize = w * 0.04f
-        val tabY = topH * 0.62f
+        // Below the platform chooser's floating pill ([reserved] px from the frame's top), which it must not sit under.
+        val tabY = maxOf(topH * 0.62f, reserved + tabSize * 1.15f)
         val a = t("עוקבים")
         val b = t("בשבילך")
         val gap = w * 0.05f
@@ -149,17 +158,17 @@ internal fun DrawScope.drawSafeZone(platform: Platform, zone: SafeZone, origin: 
         bar(sx + wa + gap, tabY + tabSize * 0.35f, wb, maxOf(2.dp.toPx(), tabSize * 0.1f), INK)
         val topIcon = minOf(w * 0.06f, topH * 0.36f)
         when (platform) {
-            Platform.TIKTOK -> glyph(MockGlyphs.SEARCH, w - rightW / 2f - topIcon * 0.1f, tabY - tabSize * 0.35f, topIcon)
+            Platform.TIKTOK -> glyph(MockGlyphs.SEARCH, colX - topIcon * 0.1f, tabY - tabSize * 0.35f, topIcon)
             Platform.SHORTS -> {
-                glyph(MockGlyphs.SEARCH, w - rightW / 2f - topIcon * 1.15f, tabY - tabSize * 0.35f, topIcon)
-                glyph(MockGlyphs.DOTS, w - rightW / 2f + topIcon * 0.1f, tabY - tabSize * 0.35f, topIcon)
+                glyph(MockGlyphs.SEARCH, colX - topIcon * 1.15f, tabY - tabSize * 0.35f, topIcon)
+                glyph(MockGlyphs.DOTS, colX + topIcon * 0.1f, tabY - tabSize * 0.35f, topIcon)
             }
             Platform.REELS -> Unit
         }
 
         // Right: the column of buttons, ending with the sound disc / thumbnail low in the bottom zone.
         val icon = (rightW * 0.5f).coerceIn(w * 0.045f, w * 0.07f)
-        val cx = w - rightW / 2f
+        val cx = colX
         val step = icon * 2.05f
         val last = h - botH * 0.52f
         val items = when (platform) {
@@ -244,7 +253,7 @@ internal fun DrawScope.drawSafeZone(platform: Platform, zone: SafeZone, origin: 
             Platform.TIKTOK -> Unit
         }
         val barH = textSize * 0.42f
-        val capW = w - x0 - rightW - w * 0.03f
+        val capW = w - x0 - railW - w * 0.03f
         bar(x0, cap1 - barH, capW * 0.9f, barH, Color.White.copy(alpha = 0.7f))
         bar(x0, cap2 - barH, capW * 0.55f, barH, Color.White.copy(alpha = 0.7f))
         glyph(MockGlyphs.NOTE, x0 + textSize * 0.55f, soundY - textSize * 0.3f, textSize * 1.1f)

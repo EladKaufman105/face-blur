@@ -16,6 +16,7 @@ import { cueWordTimes, drawCue } from '../lib/subrender'
 import { loadSubFont } from '../lib/substyle'
 import { CutMap, type Range } from '../lib/cutmap'
 import { speakerColor } from '../lib/speakers'
+import type { AudioStep, EncoderKind, ExportFacts, ExportSnapshot } from '../lib/export-stats'
 
 export type ExportRequest = { file: File; times: Float64Array; tracks: Track[]; look: Look; sfx: SfxSamples[]; overlay: ImageBitmap | null; cues: Cue[]; subStyle: SubStyle; /** The site's root (for the fonts). */ base: string; /** The recognized words (when each is said). */ words: Word[]; /** An imported font's bytes. */ customFont?: ArrayBuffer | null; voice: { rate: number; data: Float32Array } | null; /** The voice is changed or words are bleeped: the source's own sound must never be exported. */ anonymize: boolean; cuts: Range[]; options?: ExportOptions; picture?: ExportPicture }
 export type ExportMessage =
@@ -24,8 +25,27 @@ export type ExportMessage =
   | { type: 'error'; code: string; message: string }
   /** A small picture of the frame just made, now and then: the export, shown as it's made. */
   | { type: 'frame'; bitmap: ImageBitmap }
+  /** What is known when the export starts (the stats panel), and then, a few times a second, the counters. */
+  | { type: 'facts'; facts: ExportFacts }
+  | { type: 'stats'; snap: ExportSnapshot }
 
 const post = (m: ExportMessage) => (self as unknown as Worker).postMessage(m)
+
+/**
+ * Whether the browser says it can encode [codec] at this size in hardware (WebCodecs doesn't say which
+ * encoder it picks: 'hardware' means one was reported as supported, so it is likely, not certain).
+ */
+async function encoderKind(codec: VideoCodec, width: number, height: number, bitrate: number): Promise<EncoderKind> {
+  try {
+    const VE = (self as any).VideoEncoder
+    if (!VE?.isConfigSupported) return 'unknown'
+    const base = { codec: codec === 'hevc' ? 'hvc1.1.6.L153.B0' : 'avc1.640033', width, height, bitrate }
+    if ((await VE.isConfigSupported({ ...base, hardwareAcceleration: 'prefer-hardware' }))?.supported) return 'hardware'
+    return (await VE.isConfigSupported({ ...base, hardwareAcceleration: 'prefer-software' }))?.supported ? 'software' : 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
 
 self.onmessage = async (e: MessageEvent<ExportRequest>) => {
   try {
@@ -189,24 +209,19 @@ async function run(req: ExportRequest) {
       }
     }
   }
-  const conversion = await Conversion.init({
-    input,
-    output,
-    composable: feed !== null,
-    // Nothing of the source's metadata goes out (where it was filmed, on what phone), as the app's
-    // Mp4Privacy. (A composable conversion copies none anyway.)
-    ...(feed !== null ? {} : { tags: {} }),
-    video: {
-      codec,
-      bitrate,
-      forceTranscode: true,
-      allowTransformationMetadata: false,
-      ...(resized ? { width: w, height: h, fit: 'fill' as const } : {}),
-      ...(camera ? { processedWidth: w, processedHeight: h } : {}),
-      ...(o.fps > 0 && o.fps < srcFps - 0.5 ? { frameRate: o.fps } : {}),
-      process: async (sample) => {
-        // A cut frame is dropped; the ones after a cut move up.
-        if (!cuts.empty && cuts.isCut(sample.timestamp)) return null
+  // What the stats panel shows: what is known now, and the counters as the frames come.
+  const audioSteps: AudioStep[] = voice ? ['voice'] : silent && sfx.length === 0 ? ['none'] : sfx.length === 0 && cuts.empty ? ['copy'] : ['reencode']
+  if (sfx.length > 0 && !audioSteps.includes('none')) audioSteps.push('sfx')
+  if (!cuts.empty && !audioSteps.includes('none')) audioSteps.push('cuts')
+  const dur = await video.computeDuration().catch(() => 0)
+  post({ type: 'facts', facts: { srcWidth: sw, srcHeight: sh, width: w, height: h, codec, encoder: await encoderKind(codec, w, h, bitrate), bitrate, fps: srcFps, totalFrames: Math.max(1, Math.round(dur * srcFps)), audio: audioSteps } })
+  let frames = 0, blurFrames = 0, blurMs = 0, statsAt = -1e9
+  const tick = (force = false) => {
+    const now = performance.now()
+    if (force || now - statsAt >= 250) { statsAt = now; post({ type: 'stats', snap: { atMs: now, frames, blurFrames, blurMs } }) }
+  }
+  /** One frame through the blur, the picture tools and the subtitles. */
+  const one = async (sample: VideoSample) => {
         if (layer) {
           const cue = cueAt(cues, sample.timestamp)
           if (cue !== shownCue || (cue && animated)) {
@@ -269,6 +284,34 @@ async function run(req: ExportRequest) {
         if (cuts.empty) return result
         const ts = sample.timestamp, d = sample.duration
         return new VideoSample(result, { timestamp: cuts.out(ts), duration: cuts.kept(ts, ts + d) || d })
+  }
+  const conversion = await Conversion.init({
+    input,
+    output,
+    composable: feed !== null,
+    // Nothing of the source's metadata goes out (where it was filmed, on what phone), as the app's
+    // Mp4Privacy. (A composable conversion copies none anyway.)
+    ...(feed !== null ? {} : { tags: {} }),
+    video: {
+      codec,
+      bitrate,
+      forceTranscode: true,
+      allowTransformationMetadata: false,
+      ...(resized ? { width: w, height: h, fit: 'fill' as const } : {}),
+      ...(camera ? { processedWidth: w, processedHeight: h } : {}),
+      ...(o.fps > 0 && o.fps < srcFps - 0.5 ? { frameRate: o.fps } : {}),
+      process: async (sample) => {
+        frames++
+        // A cut frame is dropped (it is counted, but spent no time in the blur).
+        if (!cuts.empty && cuts.isCut(sample.timestamp)) { tick(); return null }
+        const t = performance.now()
+        try {
+          return await one(sample)
+        } finally {
+          blurFrames++
+          blurMs += performance.now() - t
+          tick()
+        }
       },
     },
     // The sound is copied as is, or re-encoded with the sound effects mixed in (and the cuts).
