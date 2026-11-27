@@ -9,7 +9,7 @@ import { getFont } from './projects'
 import type { Range } from './cutmap'
 import { DEFAULT_EXPORT, outputSize, type ExportOptions } from './exportopts'
 
-export type ExportJob = { file: File; times: Float64Array; tracks: Track[]; look: Look; width: number; height: number; sfx: SfxClip[]; watermark: Watermark; cues: Cue[]; subStyle: SubStyle; words?: Word[]; voice: { rate: number; data: Float32Array } | null; /** A voice change or bleeps are asked for (the export refuses to go without the processed sound). */ anonymize: boolean; cuts: Range[]; options?: ExportOptions; standalone?: boolean; picture?: Omit<ExportPicture, 'image'>; /** The second of two steps (found and saved straight away). */ twoSteps?: boolean }
+export type ExportJob = { file: File; times: Float64Array; tracks: Track[]; look: Look; width: number; height: number; sfx: SfxClip[]; watermark: Watermark; cues: Cue[]; subStyle: SubStyle; words?: Word[]; voice: { rate: number; data: Float32Array } | null; /** A voice change or bleeps are asked for (the export refuses to go without the processed sound). */ anonymize: boolean; /** Hiding the bleeped words in the subtitles is off and some are bleeped: the .srt file would show them (it asks first). */ showsBleeps?: boolean; cuts: Range[]; options?: ExportOptions; standalone?: boolean; picture?: Omit<ExportPicture, 'image'>; /** The second of two steps (found and saved straight away). */ twoSteps?: boolean }
 
 /**
  * The export worker's request for [job], and what to transfer with it. The sounds' samples and

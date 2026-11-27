@@ -1045,7 +1045,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         com.elad.faceblur.audio.Mp3Export.convert(getApplication(), info.uri, base, isActive = { isActive }, onProgress = progress(0f, 1f))
                     }
                     com.elad.faceblur.audio.Mp3Plan.Route.EDITED -> {
-                        val edited = FaceBlurProcessor(getApplication()).renderAudio(info, ctrl.model, audio, progress(0f, 0.5f))
+                        val edited = FaceBlurProcessor(getApplication()).renderAudio(info, ctrl.model, audio, ctrl.decodedSound, ctrl.lastLevels, progress(0f, 0.5f))
                         try {
                             withContext(Dispatchers.IO) {
                                 com.elad.faceblur.audio.Mp3Export.convert(getApplication(), Uri.fromFile(edited), base, isActive = { isActive }, onProgress = progress(0.5f, 0.5f))
@@ -1070,13 +1070,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         state = UiState.Working(s.info, 2, 0f, subsOnly, auto)
         saveProject(ctrl)
         // An export from the editor does not save .srt files by itself (there is no switch): "Save subtitles (SRT)"
-        // is an action of the subtitles panel and of the done screen. A template's run (auto) keeps its own choice.
-        val export = if (auto) exportOptions else exportOptions.copy(saveSrt = false)
+        // is an action of the subtitles panel and of the done screen. A template's choice (also after editing the video) is kept.
+        val export = exportOptions.forEditorExport(ownedBySession = sessionExport != null)
         val saved = FaceBlurProcessor(getApplication()).render(
             s.info, s.settings, s.analysis, s.model, s.analysisMs, export, subtitleStyle, ctrl.audio,
             ctrl.background, s.masks,
             stabilizer = ctrl.stabilizer,
             onPreview = { frame -> showLive(frame, emptyList()) },
+            sound = ctrl.decodedSound, previewLevels = ctrl.lastLevels,
         ) { p -> state = UiState.Working(s.info, 2, p, subsOnly, auto) }
         if (s.analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / s.analysisMs
         state = UiState.Done(s.info, saved, canEdit = true, subsOnly = subsOnly, fast = !subsOnly && s.settings.fast, selfie = !subsOnly && s.settings.selfie)

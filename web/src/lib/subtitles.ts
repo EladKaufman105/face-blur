@@ -178,7 +178,7 @@ function srtTime(t: number) {
 }
 
 /** The subtitles at their times in the result, without what was cut (a cue cut whole is left out). */
-export function cutCues(cues: Cue[], cuts: CutMap): Cue[] {
+export function cutCues(cues: Cue[], cuts: CutMap, words?: Word[]): Cue[] {
   if (cuts.empty) return cues
   const out: Cue[] = []
   for (const c of [...cues].sort((a, b) => a.start - b.start)) {
@@ -186,9 +186,30 @@ export function cutCues(cues: Cue[], cuts: CutMap): Cue[] {
     if (kept < 0.05) continue
     const from = cuts.isCut(c.start) ? cuts.cutEnd(c.start) : c.start
     const start = cuts.out(from)
-    out.push({ ...c, start, end: start + kept })
+    const cue: Cue = { ...c, start, end: start + kept }
+    // Words cut out of the video leave a partly cut subtitle too (as the app's exportCues does), when the text's words are the cue's
+    // words one for one; the translation is not aligned to the words, so it goes with them.
+    const gone = words ? goneWords(c, words, cuts) : null
+    if (gone && gone.size > 0) {
+      const toks = c.text.split(/\s+/).filter(Boolean)
+      const text = toks.filter((_, i) => !gone.has(i)).join(' ')
+      if (!text) continue
+      cue.text = text
+      if (cue.tr) cue.tr = undefined
+    }
+    out.push(cue)
   }
   return out
+}
+
+/** The positions (in the cue's text) of the words that lie in a cut: a word is cut when its middle is. null: the text's words are not the cue's. */
+function goneWords(c: Cue, words: Word[], cuts: CutMap): Set<number> | null {
+  const wi = cueWi(c)
+  const toks = c.text.split(/\s+/).filter(Boolean)
+  if (wi.length === 0 || toks.length !== wi.length) return null
+  const gone = new Set<number>()
+  wi.forEach((k, i) => { const w = words[k]; if (w && cuts.isCut((w.start + w.end) / 2)) gone.add(i) })
+  return gone
 }
 
 /** Subtitles from an SRT file (times in seconds; HTML-like tags dropped). */
