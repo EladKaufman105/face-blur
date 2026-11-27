@@ -17,6 +17,9 @@ const G = {
   SEARCH: 'M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
 }
 
+/** The most the caption gives way to the button column (as a fraction of the width). The column itself is centred in the zone's right margin. */
+const RAIL_MAX = 0.19
+
 const paths = new Map<string, Path2D>()
 const path = (d: string) => { let p = paths.get(d); if (!p) { p = new Path2D(d); paths.set(d, p) } return p }
 
@@ -60,6 +63,19 @@ function dot(c: C, cx: number, cy: number, r: number, color = INK) {
 
 function font(c: C, size: number, bold: boolean) { c.font = `${bold ? 700 : 400} ${size}px system-ui, sans-serif` }
 
+/** Set while a mirrored (right-to-left app) mock is drawn: the whole canvas is flipped, and text is flipped back so that it still reads. */
+let flipped = false
+
+/** Fills [s] at [x] (left edge, in the mock's own layout), reading the right way round also when the canvas is flipped. */
+function fillText(c: C, s: string, x: number, baseline: number) {
+  if (!flipped) { c.fillText(s, x, baseline); return }
+  c.save()
+  c.translate(x + c.measureText(s).width, 0)
+  c.scale(-1, 1)
+  c.fillText(s, 0, baseline)
+  c.restore()
+}
+
 function label(c: C, s: string, x: number, baseline: number, size: number, bold: boolean, alpha: number) {
   font(c, size, bold)
   c.textAlign = 'left'
@@ -69,7 +85,7 @@ function label(c: C, s: string, x: number, baseline: number, size: number, bold:
   c.shadowColor = 'rgba(0,0,0,0.53)'
   c.shadowBlur = size * 0.18
   c.shadowOffsetY = size * 0.06
-  c.fillText(s, x, baseline)
+  fillText(c, s, x, baseline)
   c.shadowColor = 'transparent'; c.shadowBlur = 0; c.shadowOffsetY = 0
 }
 
@@ -79,15 +95,21 @@ function measure(c: C, s: string, size: number, bold: boolean) { font(c, size, b
  * The platform's own interface, imitated, over a frame at ([x], [y]) of [w] x [h], laid out by the
  * platform's [zone]: a tab strip at the top, a column of buttons at the right, the account, caption
  * and sound lines at the bottom and a thin progress bar. A soft shade behind the top and bottom
- * parts and a thin dashed outline around the clear middle help the eye.
+ * parts and a thin dashed outline around the clear middle help the eye. [mirrored]: the app in a right-to-left
+ * language (Arabic, Hebrew): the whole picture is flipped, so the column of buttons is at the left (the text stays readable).
  */
-export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y: number, w: number, h: number) {
+export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y: number, w: number, h: number, reserved = 0, mirrored = false) {
   const dp = Math.max(1, w / 360)
   const topH = h * zone.top, botH = h * zone.bottom
   const leftW = w * zone.left, rightW = w * zone.right
+  // The button column is centred in the platform's right margin (mirrored: the left one, the canvas is flipped), and its caption stops short of it.
+  const colX = w - rightW / 2
+  const railW = Math.min(rightW, w * RAIL_MAX)
   c.save()
   c.beginPath(); c.rect(x, y, w, h); c.clip()
   c.translate(x, y)
+  flipped = mirrored
+  if (mirrored) { c.translate(w, 0); c.scale(-1, 1) }
   // Light shade where the platform's screens sit, so white shapes read on any video.
   let g = c.createLinearGradient(0, 0, 0, Math.max(1, topH))
   g.addColorStop(0, 'rgba(0,0,0,0.34)'); g.addColorStop(1, 'rgba(0,0,0,0)')
@@ -98,7 +120,8 @@ export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y:
 
   // Top: the tab strip (and, per platform, search / menu).
   const tabSize = w * 0.04
-  const tabY = topH * 0.62
+  // Below the platform chooser's floating pill ([reserved] px from the frame's top), which it must not sit under.
+  const tabY = Math.max(topH * 0.62, reserved + tabSize * 1.15)
   const a = t('עוקבים'), b = t('בשבילך')
   const gap = w * 0.05
   const wa = measure(c, a, tabSize, false), wb = measure(c, b, tabSize, true)
@@ -107,15 +130,15 @@ export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y:
   label(c, b, sx + wa + gap, tabY, tabSize, true, 0.95)
   bar(c, sx + wa + gap, tabY + tabSize * 0.35, wb, Math.max(2 * dp, tabSize * 0.1), INK)
   const topIcon = Math.min(w * 0.06, topH * 0.36)
-  if (platform === 'tiktok') glyph(c, G.SEARCH, w - rightW / 2 - topIcon * 0.1, tabY - tabSize * 0.35, topIcon)
+  if (platform === 'tiktok') glyph(c, G.SEARCH, colX - topIcon * 0.1, tabY - tabSize * 0.35, topIcon)
   else if (platform === 'shorts') {
-    glyph(c, G.SEARCH, w - rightW / 2 - topIcon * 1.15, tabY - tabSize * 0.35, topIcon)
-    glyph(c, G.DOTS, w - rightW / 2 + topIcon * 0.1, tabY - tabSize * 0.35, topIcon)
+    glyph(c, G.SEARCH, colX - topIcon * 1.15, tabY - tabSize * 0.35, topIcon)
+    glyph(c, G.DOTS, colX + topIcon * 0.1, tabY - tabSize * 0.35, topIcon)
   }
 
   // Right: the column of buttons, ending with the sound disc / thumbnail low in the bottom zone.
   const icon = Math.min(w * 0.07, Math.max(w * 0.045, rightW * 0.5))
-  const cx = w - rightW / 2
+  const cx = colX
   const step = icon * 2.05
   const last = h - botH * 0.52
   const items = platform === 'tiktok' ? ['avatar', 'heart', 'comment', 'bookmark', 'share', 'disc']
@@ -192,14 +215,14 @@ export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y:
     if (platform === 'shorts') {
       pill(c, px, py, tw + ps * 1.6, ph, ph / 2, 'rgba(255,255,255,0.92)')
       font(c, ps, true); c.textAlign = 'left'; c.fillStyle = '#202020'; c.shadowColor = 'transparent'
-      c.fillText(txt, px + ps * 0.8, py + ph / 2 + ps * 0.35)
+      fillText(c, txt, px + ps * 0.8, py + ph / 2 + ps * 0.35)
     } else {
       c.beginPath(); c.roundRect(px, py, tw + ps * 1.6, ph, ph / 2); c.strokeStyle = INK; c.lineWidth = Math.max(1.5, ps * 0.1); c.stroke()
       label(c, txt, px + ps * 0.8, py + ph / 2 + ps * 0.35, ps, true, 0.95)
     }
   }
   const barH = textSize * 0.42
-  const capW = w - x0 - rightW - w * 0.03
+  const capW = w - x0 - railW - w * 0.03
   bar(c, x0, cap1 - barH, capW * 0.9, barH, 'rgba(255,255,255,0.7)')
   bar(c, x0, cap2 - barH, capW * 0.55, barH, 'rgba(255,255,255,0.7)')
   glyph(c, G.NOTE, x0 + textSize * 0.55, soundY - textSize * 0.3, textSize * 1.1)
@@ -214,4 +237,5 @@ export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y:
   c.strokeRect(leftW, topH, w - leftW - rightW, h - topH - botH)
   c.setLineDash([])
   c.restore()
+  flipped = false
 }

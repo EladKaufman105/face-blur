@@ -81,7 +81,9 @@ function png(w, h, [r, g, b, a]) {
     if (u.lowManual !== 0 || u.none !== 0) fail('a manual blur or nothing is flagged')
     if (!u.vertical || u.landscape || u.square || u.fourFive) fail('the safe zone applies to the wrong export frames')
     if (!u.shot916 || u.shot45 || u.shotTall || !u.shotEdge || u.shotNo) fail('the safe zone applies to the wrong shot frames')
-    if (Math.abs(u.tiktok.top - 240 / 1920) > 1e-6 || Math.abs(u.reels.bottom - 0.35) > 1e-6 || Math.abs(u.shorts.right - 192 / 1080) > 1e-6) fail('the zones are not the app\'s')
+    if (Math.abs(u.tiktok.top - 240 / 1920) > 1e-6 || Math.abs(u.tiktok.bottom - 660 / 1920) > 1e-6 || Math.abs(u.tiktok.left - 120 / 1080) > 1e-6 || Math.abs(u.tiktok.right - 300 / 1080) > 1e-6
+      || Math.abs(u.reels.top - 0.14) > 1e-6 || Math.abs(u.reels.bottom - 0.35) > 1e-6 || Math.abs(u.reels.left - 0.06) > 1e-6 || Math.abs(u.reels.right - 0.06) > 1e-6
+      || Math.abs(u.shorts.top - 288 / 1920) > 1e-6 || Math.abs(u.shorts.bottom - 672 / 1920) > 1e-6 || Math.abs(u.shorts.left - 48 / 1080) > 1e-6 || Math.abs(u.shorts.right - 192 / 1080) > 1e-6) fail('the zones are not the verified numbers (docs/parity.md, shared/catalog/safezones.json): ' + JSON.stringify([u.tiktok, u.reels, u.shorts]))
 
     // ---- the watermark's logo is kept between visits
     {
@@ -242,7 +244,7 @@ function png(w, h, [r, g, b, a]) {
       await p.waitForTimeout(800)
       await tool(p, 0, video)
       if (await p.$('.safe-toggle')) fail('the safe zone switch shows on a landscape video')
-      if (await p.$('.safe-strip')) fail('the chooser is there on a landscape video')
+      if (await p.$('.safe-float')) fail('the chooser is there on a landscape video')
       // A vertical export (9:16 in the Picture group) brings it.
       await p.click('.tabs button[data-g=picture]')
       await p.click('.frame-aspect button >> nth=1')
@@ -251,12 +253,18 @@ function png(w, h, [r, g, b, a]) {
       await p.waitForSelector('.safe-toggle', { state: 'detached' })
       await p.click('.frame-aspect button >> nth=1')
       await p.waitForSelector('.safe-toggle')
-      // Off: nothing over the video (the 9:16 frame's shade aside) and no strip height.
+      // Off: nothing over the video (the 9:16 frame's shade aside) and no chooser.
       const off = await overlay(p)
       if ((await p.getAttribute('.safe-toggle', 'aria-pressed')) !== 'false') fail('the switch is on from the start')
-      if ((await p.locator('.safe-strip').boundingBox())?.height > 1) fail('the strip is open with the switch off')
+      if (await p.isVisible('.safe-pill')) fail('the chooser shows with the switch off')
+      const sized = () => p.evaluate(() => { const r = (s) => { const k = document.querySelector(s).getBoundingClientRect(); return [Math.round(k.width), Math.round(k.height)] }; return { screen: r('.screen'), view: r('.screen .view') } })
+      const before = await sized()
       await p.click('.safe-toggle')
-      await p.waitForFunction(() => document.querySelector('.safe-strip')?.getBoundingClientRect().height > 40)
+      await p.waitForSelector('.safe-float.open .safe-pill', { state: 'visible' })
+      await p.waitForTimeout(400)
+      // The chooser floats over the video: the video keeps its whole size (no strip above it).
+      const after = await sized()
+      if (JSON.stringify(before) !== JSON.stringify(after)) fail(`the video changed size with the chooser: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`)
       const on = await overlay(p)
       if (!(on.n > off.n + 200)) fail(`the mock is not drawn: ${off.n} -> ${on.n}`)
       await p.screenshot({ path: `${out}/3_safe_tiktok.png` })
@@ -270,30 +278,102 @@ function png(w, h, [r, g, b, a]) {
         p.safe[plat] = o
         await p.screenshot({ path: `${out}/3_safe_${plat}.png` })
       }
-      // The strip is above the video (not over it), the pill is three icon buttons (a logo each, no text), at least 240 px wide.
+      // The pill is a small one over the top of the video (inside its box, near its top edge, centred on it), three icon buttons (a logo each, no text).
       const geo = await p.evaluate(() => {
         const r = (s) => document.querySelector(s).getBoundingClientRect()
-        const strip = r('.safe-strip'), screen = r('.screen'), pill = r('.safe-pill')
+        const view = r('.screen .view'), pill = r('.safe-pill'), mir = r('.safe-mirror')
         const segs = [...document.querySelectorAll('.safe-seg')].map((e) => ({ svg: !!e.querySelector('svg path'), text: e.textContent.trim(), h: e.getBoundingClientRect().height, label: e.getAttribute('aria-label') }))
         const hi = r('.safe-hi'), chosen = r('.safe-seg.on')
-        return { stripBottom: strip.bottom, screenTop: screen.top, pillW: pill.width, segs, hiX: hi.left + hi.width / 2, onX: chosen.left + chosen.width / 2 }
+        return { mir: [mir.left, mir.top, mir.right, mir.bottom], view: [view.left, view.top, view.right, view.bottom], pill: [pill.left, pill.top, pill.right, pill.bottom], pillW: pill.width, segs, hiX: hi.left + hi.width / 2, onX: chosen.left + chosen.width / 2, stripGone: !document.querySelector('.safe-strip') }
       })
       console.log('geometry:', JSON.stringify(geo))
-      if (geo.stripBottom > geo.screenTop + 1) fail('the chooser is over the video')
-      if (geo.pillW < 239) fail('the pill is narrower than 240 px: ' + geo.pillW)
+      if (!geo.stripGone) fail('the old strip is still there')
+      if (geo.pill[0] < geo.view[0] - 1 || geo.pill[2] > geo.view[2] + 1 || geo.pill[1] < geo.view[1] - 1 || geo.pill[3] > geo.view[1] + 60) fail('the pill is not over the top of the video: ' + JSON.stringify([geo.pill, geo.view]))
+      if (geo.pillW > 123 || geo.pillW < 90) fail('the pill is not small: ' + geo.pillW)
+      // The pill and the mirror switch beside it are one group, centred on the video; the switch is on the video too.
+      if (geo.mir[0] < geo.view[0] - 1 || geo.mir[2] > geo.view[2] + 1) fail('the mirror switch is outside the video: ' + JSON.stringify([geo.mir, geo.view]))
+      if (Math.abs((Math.min(geo.pill[0], geo.mir[0]) + Math.max(geo.pill[2], geo.mir[2])) / 2 - (geo.view[0] + geo.view[2]) / 2) > 2) fail('the pill and its switch are not centred on the video')
       if (geo.segs.length !== 3 || geo.segs.some((s) => !s.svg || s.text !== '' || !s.label)) fail('the chooser buttons are not three bare logos: ' + JSON.stringify(geo.segs))
       if (Math.abs(geo.hiX - geo.onX) > 2) fail('the highlight is not under the chosen logo')
+      // A tap on the pill does not play or select on the video under it.
+      const t0 = await p.evaluate(() => document.querySelector('video').paused)
+      await p.click('.safe-seg[data-platform=tiktok]')
+      if ((await p.evaluate(() => document.querySelector('video').paused)) !== t0) fail('a tap on the chooser played / paused the video')
+      // The mock's own top row (its tabs) is below the pill, not under it: the top rows of the overlay, in the pill's strip, hold nothing but the search / menu icons at the far side.
+      const clash = await p.evaluate(() => {
+        const c = document.querySelectorAll('.view canvas')[2], v = document.querySelector('.screen .view').getBoundingClientRect(), pl = document.querySelector('.safe-pill').getBoundingClientRect()
+        const k = c.width / v.width
+        const x0 = Math.floor((pl.left - v.left) * k), x1 = Math.ceil((pl.right - v.left) * k), y1 = Math.floor((pl.bottom - v.top) * k)
+        const d = c.getContext('2d').getImageData(x0, 0, x1 - x0, y1).data
+        let bright = 0
+        for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200 && d[i] > 200 && d[i + 1] > 200) bright++
+        return bright
+      })
+      if (clash > 30) fail('the mock draws its own top UI under the pill (' + clash + ' bright pixels)')
       // The mock is only drawn in the editor: the export's code does not have it.
       const dist = path.join(__dirname, '..', 'dist', 'assets')
       const src = (re) => fs.readdirSync(dist).filter((f) => re.test(f)).map((f) => fs.readFileSync(path.join(dist, f), 'utf8')).join('')
       if (src(/^export\.worker.*\.js$/).includes('@username')) fail('the safe zone mock is in the export worker')
       if (!src(/^index-.*\.js$/).includes('@username')) fail('the mock is not in the editor')
-      // Off again: the mock goes.
+      // Stays on after the chooser is out of the way: closing it is not turning the zone off (the overlay stays until the switch is).
+      if ((await p.getAttribute('.safe-toggle', 'aria-pressed')) !== 'true') fail('the switch lost its state')
+      // Off again: the mock and the chooser go.
       await p.click('.safe-toggle')
-      await p.waitForFunction(() => document.querySelector('.safe-strip')?.getBoundingClientRect().height < 2)
+      await p.waitForFunction(() => !document.querySelector('.safe-float')?.classList.contains('open'))
       await p.waitForTimeout(900)
       const off2 = await overlay(p)
       if (!(off2.n < on.n - 200)) fail(`the mock stays with the switch off: ${off.n} / ${on.n} / ${off2.n}`)
+      await p.context().close()
+    }
+
+    // ---- the safe zone stays on, per project: kept with the project, back as it was when it is opened again (and never for another project)
+    {
+      const p = (cur = await newPage())
+      await p.goto(url)
+      await p.waitForTimeout(800)
+      await tool(p, 0, portrait)
+      await p.waitForSelector('.safe-toggle')
+      await p.click('.safe-toggle')
+      await p.click('.safe-seg[data-platform=shorts]')
+      await p.waitForTimeout(2600)
+      await p.click('.editor .btn.ghost >> nth=0')
+      await p.waitForSelector('.project', { timeout: 10000 })
+      await p.click('.project-open')
+      await p.waitForSelector('.editor .tabs', { timeout: 30000 })
+      await p.waitForSelector('.safe-toggle')
+      if ((await p.getAttribute('.safe-toggle', 'aria-pressed')) !== 'true') fail('the safe zone was not kept with the project')
+      if ((await p.getAttribute('.safe-seg[data-platform=shorts]', 'aria-checked')) !== 'true') fail('the platform was not kept with the project')
+      await p.waitForSelector('.safe-float.open .safe-pill', { state: 'visible' })
+      await p.waitForTimeout(600)
+      if ((await overlay(p)).n < 200) fail('no mock over the reopened project')
+      // Mirrored (an app in a right-to-left language): the column of buttons moves to the left; kept with the project too.
+      const side = (pp) => pp.evaluate(() => {
+        const c = document.querySelectorAll('.view canvas')[2], g = c.getContext('2d')
+        const mass = (x0) => { const d = g.getImageData(x0, Math.round(c.height * 0.35), Math.round(c.width * 0.14), Math.round(c.height * 0.3)).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 150) n++; return n }
+        return { left: mass(0), right: mass(c.width - Math.round(c.width * 0.14)) }
+      })
+      const lt = await side(p)
+      if (lt.right <= lt.left) fail('the button column is not at the right to start with: ' + JSON.stringify(lt))
+      await p.click('.safe-mirror')
+      await p.waitForTimeout(600)
+      const rt = await side(p)
+      if (rt.left <= rt.right) fail('the button column did not move to the left when mirrored: ' + JSON.stringify(rt))
+      if ((await p.getAttribute('.safe-mirror', 'aria-pressed')) !== 'true') fail('the mirror button is not pressed')
+      await p.waitForTimeout(2600)
+      await p.click('.editor .btn.ghost >> nth=0')
+      await p.waitForSelector('.project', { timeout: 10000 })
+      await p.click('.project-open')
+      await p.waitForSelector('.safe-mirror')
+      if ((await p.getAttribute('.safe-mirror', 'aria-pressed')) !== 'true') fail('the mirrored zone was not kept with the project')
+      await p.click('.safe-mirror')
+      // Turned off, kept off.
+      await p.click('.safe-toggle')
+      await p.waitForTimeout(2600)
+      await p.click('.editor .btn.ghost >> nth=0')
+      await p.waitForSelector('.project', { timeout: 10000 })
+      await p.click('.project-open')
+      await p.waitForSelector('.safe-toggle')
+      if ((await p.getAttribute('.safe-toggle', 'aria-pressed')) !== 'false') fail('the safe zone came back on after it was turned off')
       await p.context().close()
     }
 
@@ -309,18 +389,37 @@ function png(w, h, [r, g, b, a]) {
       const topBar = await p.evaluate(() => [...document.querySelectorAll('.top-row button')].map((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right)] }))
       if (topBar.some(([l, r]) => l < -1 || r > 394)) fail('the top bar overflows with the switch: ' + JSON.stringify(topBar))
       await p.tap('.safe-toggle')
-      await p.waitForFunction(() => document.querySelector('.safe-strip')?.getBoundingClientRect().height > 40)
-      if ((await side()) > 1) fail('sideways with the strip')
+      await p.waitForSelector('.safe-float.open .safe-pill', { state: 'visible' })
+      if ((await side()) > 1) fail('sideways with the chooser')
+      await p.waitForTimeout(500)
       const o = await overlay(p)
       if (o.n < 200) fail('no mock over the portrait video')
       await p.tap('.safe-seg[data-platform=shorts]')
       await p.waitForTimeout(400)
       await p.screenshot({ path: `${out}/4_phone_safe.png` })
-      // A panel open in the timeline's place: the strip is hidden, the mock stays (for the platform chosen last).
+      // A narrow phone (360 x 640): the video is narrow too, and the mirror switch is still on it and can be tapped.
+      await p.setViewportSize({ width: 360, height: 640 })
+      await p.waitForTimeout(500)
+      const nar = await p.evaluate(() => {
+        const r = (q) => document.querySelector(q)?.getBoundingClientRect()
+        const v = r('.screen .view'), m = r('.safe-mirror'), pl = r('.safe-pill')
+        return { view: [v.left, v.right], mir: [m.left, m.right, m.top, m.bottom], pill: [pl.left, pl.right], pillB: pl.bottom, w: v.width, hit: document.elementFromPoint((m.left + m.right) / 2, (m.top + m.bottom) / 2)?.closest('.safe-mirror') !== null }
+      })
+      console.log('narrow phone', JSON.stringify(nar))
+      if (nar.mir[0] < nar.view[0] - 1 || nar.mir[1] > nar.view[1] + 1) fail('the mirror switch is cut off on a narrow video: ' + JSON.stringify(nar))
+      if (nar.pill[0] < nar.mir[1] - 1 && nar.mir[0] < nar.pill[1] - 1 && nar.mir[2] < nar.pillB - 1) fail('the pill and the mirror switch overlap: ' + JSON.stringify(nar))
+      if (!nar.hit) fail('something covers the mirror switch on a narrow video')
+      await p.tap('.safe-mirror')
+      if ((await p.getAttribute('.safe-mirror', 'aria-pressed')) !== 'true') fail('the mirror switch did not take the tap on a narrow phone')
+      await p.tap('.safe-mirror')
+      await p.setViewportSize({ width: 393, height: 852 })
+      await p.waitForTimeout(400)
+      // A panel open in the timeline's place: the chooser is hidden, the zone stays on (for the platform chosen last) and the switch still says so.
       await p.tap('.tabs button[data-g=sound]')
-      await p.waitForFunction(() => !(document.querySelector('.safe-strip')?.getBoundingClientRect().height > 1) || getComputedStyle(document.querySelector('.safe-strip')).display === 'none')
+      await p.waitForFunction(() => getComputedStyle(document.querySelector('.safe-float')).display === 'none')
       const o2 = await overlay(p)
-      if (o2.n < 200) fail('the mock went with the strip')
+      if (o2.n < 200) fail('the mock went with the chooser')
+      if ((await p.getAttribute('.safe-toggle', 'aria-pressed')) !== 'true') fail('the switch lost its state with the panel open')
       await p.waitForTimeout(300)
       await p.screenshot({ path: `${out}/4_phone_panel.png` })
 

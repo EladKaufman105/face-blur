@@ -16,7 +16,7 @@ class SafeZoneTest {
         assertEquals(240f / 1920f, tiktok.top, 1e-6f)
         assertEquals(660f / 1920f, tiktok.bottom, 1e-6f)
         assertEquals(120f / 1080f, tiktok.left, 1e-6f)
-        assertEquals(180f / 1080f, tiktok.right, 1e-6f)
+        assertEquals(300f / 1080f, tiktok.right, 1e-6f)
         assertEquals(0.14f, reels.top, 1e-6f)
         assertEquals(0.35f, reels.bottom, 1e-6f)
         assertEquals(0.06f, reels.left, 1e-6f)

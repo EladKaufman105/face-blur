@@ -44,6 +44,7 @@ Rows marked **privacy** must be closed first.
 | Speech model on Ready | Row with download button | Dialog with size (`W/ui/SpeechUi.tsx`) | differs | |
 | Blur and save straight | Export sheet, then auto flow | Same (`Ready.tsx:196`) | same | |
 | Analysis stats panel | Tap percentage | Tap or `?debug` | same | |
+| Export stats panel | Tap the percentage while exporting: encode fps and frames (charts), blur ms per frame, likely encoder, time, details (audio steps, size, bitrate), (i), Copy (`A/ui/ExportStatsPanel.kt`, `A/pipeline/ExportStats.kt`, `ExportStatsTest.kt`) | Tap the percentage or `?debug`: the same tiles (`W/ui/ExportStatsPanel.tsx`, `W/lib/export-stats.ts`, `web/tests/exportstats.cjs`) | same | The encoder is "hardware (likely)": the system lists the encoder but does not say which one it used. Blur ms per frame is the time in the blur step on the GL thread (app) or the worker thread (web); the GPU may finish later. The sound steps differ a little (the app has a separate pitch step) |
 | Cancel analysis | Yes | Yes | same | |
 | Keep screen on | `FLAG_KEEP_SCREEN_ON` | Wake Lock if available, else warning | differs | |
 
@@ -51,7 +52,7 @@ Rows marked **privacy** must be closed first.
 
 | Feature | App | Web | Status | Note / link |
 |---|---|---|---|---|
-| Top bar | Back, title, Properties (tablet, panel closed), blur view toggle, safe zone, undo, redo, Export | Back, Properties (tablet, panel closed), safe zone, undo, redo, blur view, save template, settings, Export (`W/ui/Editor.tsx` `editTools`) | differs | Order and the web's save-template and settings icons |
+| Top bar | Back, title, Properties (tablet, panel closed), blur view toggle, safe zone, undo, redo, Export | Back, Properties (tablet, panel closed), safe zone, undo, redo, blur view, save template, settings, Export (`W/ui/Editor.tsx` `editTools`) | differs | Order and the web's save-template and settings icons. On a wide web screen (desktop, ChromeOS) the site header is hidden in the editor: its logo, the settings button and an (i) with the privacy line and the beta note sit in this one compact row, so the video gets 40 px or more of height (`W/ui/EditorBrand.tsx`, `web/tests/panels.cjs`) |
 | Blur view toggle (blur / outlines) | Eye icon: the real blur in the player, or outlines only (`A/ui/EditorScreen.kt:333`, `A/edit/EditorController.kt` `togglePreview`) | Eye icon `.blur-view` (shown once there are blurs): the blur, or each blur as a light shape with its number; editor only, never the export (`W/ui/Editor.tsx` `blurView`, `web/tests/parity3.cjs`) | same | |
 | Transport | Time, prev, play, next, zoom -/+ | Prev, play, next, time; zoom by pinch and keys | differs | Web: add zoom buttons (unverified) |
 | Mini scrubber while a panel is open (phone) | `MiniScrubber` (`A/ui/EditorShell.kt:518`) | Thin range input at the top of the open phone panel (`W/ui/Editor.tsx`, `web/tests/parity2.cjs`) | same | Hidden under 600 px of height |
@@ -122,7 +123,7 @@ Rows marked **privacy** must be closed first.
 
 | Feature | App | Web | Status | Note / link |
 |---|---|---|---|---|
-| Safe-zone overlay (TikTok / Reels / Shorts) | Switch, platform pill, mock overlay, 9:16 only (`A/ui/SafeZoneMock.kt`, `docs/specs/safe-zones.md`) | Same, drawn in the editor only (`W/lib/safezonemock.ts`); the export worker never imports it | same | Icons are SVG paths |
+| Safe-zone overlay (TikTok / Reels / Shorts) | Switch, a small floating platform pill over the top of the video (no space of its own: the video keeps its size), mock overlay, 9:16 only; on stays on while editing and is saved per project (`safeZone` in project.json) (`A/ui/SafeZoneMock.kt`, `A/ui/EditorScreen.kt` `PlatformChooser`, `docs/specs/safe-zones.md`) | Same, drawn in the editor only (`W/lib/safezonemock.ts`, `W/ui/SafeZoneBar.tsx`); saved per project (`safe` in `ProjectState`); the export worker never imports it (`web/tests/parity2.cjs`) | same | Icons are SVG paths. A small round switch beside the pill mirrors the zone and the mock for a right-to-left app, saved per project (`safeMirrored` / `safe.mirrored`; the margins are the left-to-right ones swapped, not verified from a source). The app also remembers the last platform for new projects, as the web does. Margins, 1080x1920 (top / bottom / left / right): TikTok 240 / 660 / 120 / 300 px, Reels 14% / 35% / 6% / 6%, Shorts 288 / 672 / 48 / 192 px, one source `shared/catalog/safezones.json`; sources in `docs/specs/safe-zones.md` (TikTok: ads.tiktok.com video-ads-specifications; Meta: facebook.com/business/ads-guide Reels; Google: services.google.com/fh/files/misc/universalsafezones-youtube.pdf). TikTok right was 180 px (without its 120 px margin), now 300 |
 
 ## Export
 

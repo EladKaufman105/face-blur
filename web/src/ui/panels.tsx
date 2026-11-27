@@ -30,6 +30,8 @@ function useMedia(query: string): boolean {
 export const useNarrow = () => useMedia(PHONE_QUERY)
 /** The tablet layout: a rail of groups, the panel beside the video. */
 export const useTablet = () => useMedia(TABLET_QUERY)
+/** 840 px and wider: where the page has the video and the controls side by side (and the editor's compact top row). */
+export const useWideScreen = () => useMedia('(min-width: 840px)')
 
 export type Sub = [id: string, label: string]
 

@@ -108,7 +108,7 @@ private object StatsLayout {
  * A row's cells: the chart's height (0: none), the padding, whether it's a flat detail cell, and
  * the units' size next to the value (relative, so they shrink with it).
  */
-private enum class CellSize(val chart: Dp, val padH: Dp, val padV: Dp, val flat: Boolean, val unitEm: Float) {
+internal enum class CellSize(val chart: Dp, val padH: Dp, val padV: Dp, val flat: Boolean, val unitEm: Float) {
     BIG(42.dp, Space.M, Space.M, false, 0.45f),
     MID(26.dp, Space.M, Space.S, false, 0.6f),
     DETAIL(0.dp, Space.M, Space.S, true, 0.8f),
@@ -116,13 +116,13 @@ private enum class CellSize(val chart: Dp, val padH: Dp, val padV: Dp, val flat:
 
 /** The value's largest size; a value too long for its cell gets smaller, down to [MIN_TEXT]. */
 @Composable
-private fun CellSize.valueStyle(): TextStyle = when (this) {
+internal fun CellSize.valueStyle(): TextStyle = when (this) {
     CellSize.BIG -> AppType.Display
     CellSize.MID -> AppType.Title.copy(fontSize = 18.sp, lineHeight = 24.sp)
     CellSize.DETAIL -> MaterialTheme.typography.titleSmall
 }.tnum()
 
-private val MIN_TEXT = 8.sp
+internal val MIN_TEXT = 8.sp
 
 /** What a cell shows. Resolution and sampling change in jumps: step charts. */
 private enum class Cell(val step: Boolean = false) {
@@ -236,11 +236,11 @@ private fun Cell.value(s: AnalysisStats, small: SpanStyle): AnnotatedString = bu
     }
 }
 
-private const val LRI = "\u2066"
-private const val PDI = "\u2069"
+internal const val LRI = "\u2066"
+internal const val PDI = "\u2069"
 
 /** A time or a count: whole from 10 up, else one decimal (always with a dot). */
-private fun fmt(v: Float): String = if (v >= 9.95f) v.roundToInt().toString() else String.format(Locale.US, "%.1f", v)
+internal fun fmt(v: Float): String = if (v >= 9.95f) v.roundToInt().toString() else String.format(Locale.US, "%.1f", v)
 
 /** Why not the GPU, for the panel: selfie mode's reason translated (the others are the detector's own words). */
 private fun whyNoGpu(why: String?): String? = why?.takeIf { it.isNotEmpty() }?.let { if (it == "selfie mode runs on the CPU") t("מצב סלפי רץ על המעבד") else it }
@@ -279,8 +279,8 @@ fun AnalysisStatsPanel(visible: Boolean, stats: AnalysisStats?, info: VideoInfo,
 }
 
 // The same fold as the app's other collapsible sections (see BlurSettings), for the panel and its details.
-private val FoldIn = expandVertically(tween(Motion.PANEL)) + fadeIn(tween(Motion.CONTENT))
-private val FoldOut = shrinkVertically(tween(Motion.STATE)) + fadeOut(tween(Motion.CONTENT))
+internal val FoldIn = expandVertically(tween(Motion.PANEL)) + fadeIn(tween(Motion.CONTENT))
+internal val FoldOut = shrinkVertically(tween(Motion.STATE)) + fadeOut(tween(Motion.CONTENT))
 
 @Composable
 private fun StatsContent(stats: AnalysisStats, info: VideoInfo, percent: Int, elapsedMs: () -> Long) {
@@ -367,7 +367,7 @@ private fun StatCell(cell: Cell, size: CellSize, stats: AnalysisStats, modifier:
 
 /** The cell's name and an (i); a tap shows [info] in a small bubble, a tap anywhere else hides it. */
 @Composable
-private fun InfoLabel(label: String, info: String) {
+internal fun InfoLabel(label: String, info: String) {
     var open by remember { mutableStateOf(false) }
     val gap = with(LocalDensity.current) { Space.XS.roundToPx() }
     Box {
@@ -428,7 +428,7 @@ private class AboveAnchor(private val gap: Int) : PopupPositionProvider {
  * curve that never overshoots a sample (monotone cubic); [step]: the value holds until it jumps.
  */
 @Composable
-private fun Sparkline(series: Series, color: Color, step: Boolean, modifier: Modifier) {
+internal fun Sparkline(series: Series, color: Color, step: Boolean, modifier: Modifier) {
     Canvas(modifier) {
         val v = series.values
         if (v.size < 2) return@Canvas
@@ -506,7 +506,7 @@ private fun monotoneSlopes(y: FloatArray, dx: Float): FloatArray {
 }
 
 /** Samples a chart spans (as many as [com.elad.faceblur.analysis.StatsHistory] keeps). */
-private const val KEEP = 60
+internal const val KEEP = 60
 
 /**
  * The stats as plain text to paste to an AI agent: keys in English in every language, values as
