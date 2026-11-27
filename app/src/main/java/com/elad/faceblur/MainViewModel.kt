@@ -1055,7 +1055,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         com.elad.faceblur.audio.Mp3Export.convert(getApplication(), info.uri, base, isActive = { isActive }, onProgress = progress(0f, 1f))
                     }
                     com.elad.faceblur.audio.Mp3Plan.Route.EDITED -> {
-                        val edited = FaceBlurProcessor(getApplication()).renderAudio(info, ctrl.model, audio, ctrl.decodedSound, ctrl.lastLevels, progress(0f, 0.5f))
+                        val edited = FaceBlurProcessor(getApplication()).renderAudio(info, ctrl.model, audio, ctrl.decodedSound, progress(0f, 0.5f))
                         try {
                             withContext(Dispatchers.IO) {
                                 com.elad.faceblur.audio.Mp3Export.convert(getApplication(), Uri.fromFile(edited), base, isActive = { isActive }, onProgress = progress(0.5f, 0.5f))
@@ -1093,7 +1093,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 stabilizer = ctrl.stabilizer,
                 onPreview = { frame -> showLive(frame, emptyList()) },
                 counters = counters,
-                sound = ctrl.decodedSound, previewLevels = ctrl.lastLevels,
+                sound = ctrl.decodedSound,
             ) { p ->
                 state = UiState.Working(s.info, 2, p, subsOnly, auto)
                 // The progress comes about every half second: the counters are read with it.

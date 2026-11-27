@@ -34,7 +34,7 @@ import { cleanupOn, type Cleanup } from '../lib/cleanup'
 import { loadExportOptions, saveExportOptions } from '../lib/exportopts'
 import { Analyzing } from './Analyzing'
 import { ChipTabs, PANEL_ID, STYLE_PARTS, subsOf, useNarrow, useTablet, useWideScreen } from './panels'
-import { bleepRanges, cutCues, cueAt, cueRoom, cueWi, maskCue, maskWarning, mergeCues, migrateCues, orphansOf, retimeCue, shownText, splitCueAtTime, trVisible, type Cue, type SubStyle, type Word } from '../lib/subtitles'
+import { bleepRanges, cutCues, dropCutWords, cueAt, cueRoom, cueWi, maskCue, maskWarning, mergeCues, migrateCues, orphansOf, retimeCue, shownText, splitCueAtTime, trVisible, type Cue, type SubStyle, type Word } from '../lib/subtitles'
 import { DEFAULT_SUB_STYLE, loadSubFont, normalizeStyle } from '../lib/substyle'
 import { cueWordTimes, drawCue } from '../lib/subrender'
 import { getFont } from '../lib/projects'
@@ -1218,6 +1218,8 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const masked = (c: Cue) => (subStyle.maskBleeped === false ? c.text : maskCue(c, words, bleeped, orphans))
   /** What the video shows of a subtitle: its masked text, and its translation where that can't give a masked word away. */
   const shown = (c: Cue) => shownText(c, masked(c), subStyle.show, subStyle.maskBleeped !== false)
+  /** The subtitles as the video and the .srt file have them: the words cut out of the video taken out first (a translation goes with them), then what shows. */
+  const exportedCues = () => dropCutWords(cues, cutMap, words).map((c) => ({ ...c, text: shown(c) }))
   /** The subtitles whose text was edited so that a bleeped word of theirs may show (see [maskWarning]). */
   const maskWarned = useMemo(() => (subStyle.maskBleeped === false ? [] : cues.filter((c) => maskWarning(c, words, bleeped, orphans))), [cues, words, bleeped, orphans, subStyle.maskBleeped])
   /** The selected subtitle's bar and properties (a tablet with its panel open shows the properties there, as the app's). */
@@ -1439,7 +1441,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         {(tab === 'subs' || subsSeen.current) && (
           <div class="subs-keep" hidden={tab !== 'subs'}>
           <SubtitlesTab
-            srtCues={() => cutCues(cues.map((c) => ({ ...c, text: shown(c) })), cutMap, words)}
+            srtCues={() => cutCues(exportedCues(), cutMap)}
             onBusy={setSubsBusy}
             onLost={setLost}
             onAttention={() => { setSubsAlert(true); setSubTab((s) => ({ ...s, subs: 'make' })) }}
@@ -1726,7 +1728,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           if (tplBusy || soundBlocked) { setExportOpen(false); return }
           setExportOpen(false)
           saveExportOptions(exportOpts)
-          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: shown(c) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, anonymize: voice !== 'none' || bleeped.size > 0, showsBleeps: subStyle.maskBleeped === false && bleeped.size > 0, cuts, words, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
+          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: exportedCues(), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, anonymize: voice !== 'none' || bleeped.size > 0, showsBleeps: subStyle.maskBleeped === false && bleeped.size > 0, cuts, words, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
         }}
       />
     )}

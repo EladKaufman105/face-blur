@@ -108,6 +108,8 @@ sealed interface Outcome {
         val renderMs: Long,
         /** Number of .srt files saved (Download/ONIT). */
         val srtFiles: Int = 0,
+        /** The .srt files hide bleeped words although the video's subtitles show them (the mask is off): the done screen says so. */
+        val srtMasked: Boolean = false,
     ) : Outcome
     data object NoFaces : Outcome
 }
@@ -286,25 +288,30 @@ class FaceBlurProcessor(private val context: Context) {
     /** The sound's processors (shared by the video and the MP3 export, so both apply the same edits). */
     class AudioChain(val processors: List<AudioProcessor>, val sfx: List<SfxPlay>, val cutMap: com.elad.faceblur.edit.CutMap, val removeAudio: Boolean)
 
+    private fun wantsLevels(model: EditModel, audio: AudioEdit) = audio.tone && audio.voice != VoiceFx.MUTE && model.bleeps.isNotEmpty()
+
+    /** The share of the progress bar the sound's decode takes when the export has to do it (the export's own progress follows it). */
+    private fun decodeShare(model: EditModel, audio: AudioEdit, sound: FloatArray?) = if (sound == null && wantsLevels(model, audio)) 0.05f else 0f
+
     /**
-     * Each bleep's beep level from the speech it replaces (null: no beeps, or no level could be had: the fallback level).
-     * [sound] is the video's sound if the editor already has it decoded; else it is decoded here (cancellable, with progress).
-     * When that fails the levels the preview used ([previewLevels]) stand in, and the failure is logged.
+     * Each bleep's beep level from the speech it replaces (null: no beeps, or the sound could not be read: the fallback level,
+     * logged). [sound] is the video's sound if the editor already has it decoded; else it is decoded here, cancellable, within [share]
+     * of the progress bar.
      */
     private suspend fun bleepLevels(
         info: VideoInfo, model: EditModel, audio: AudioEdit,
-        sound: FloatArray?, previewLevels: FloatArray?, onProgress: (Float) -> Unit,
+        sound: FloatArray?, share: Float, onProgress: (Float) -> Unit,
     ): FloatArray? {
-        if (!audio.tone || audio.voice == VoiceFx.MUTE || model.bleeps.isEmpty()) return null
+        if (!wantsLevels(model, audio)) return null
         val bleeps = model.bleeps.map { (a, b) -> longArrayOf(a, b) }
         val job = currentCoroutineContext()[Job]
         val pcm = sound ?: withContext(Dispatchers.IO) {
             runCatching {
-                com.elad.faceblur.subs.AudioDecoder.decode(context, info.uri, { job?.isActive != false }) { p -> onProgress(p * 0.05f) }
-            }.onFailure { android.util.Log.w("ONIT", "bleep levels: the sound could not be read, using the preview's levels", it) }.getOrNull()
+                com.elad.faceblur.subs.AudioDecoder.decode(context, info.uri, { job?.isActive != false }) { p -> onProgress(p * share) }
+            }.onFailure { android.util.Log.w("ONIT", "bleep levels: the sound could not be read, beeps use the fallback level", it) }.getOrNull()
         }
         job?.ensureActive()
-        if (pcm == null) return previewLevels?.takeIf { it.size == bleeps.size }
+        if (pcm == null) return null
         return BleepLevel.levels(pcm, com.elad.faceblur.subs.AudioDecoder.RATE, bleeps, audio.gain)
     }
 
@@ -333,9 +340,11 @@ class FaceBlurProcessor(private val context: Context) {
      */
     suspend fun renderAudio(
         info: VideoInfo, model: EditModel, audio: AudioEdit,
-        sound: FloatArray? = null, previewLevels: FloatArray? = null, onProgress: (Float) -> Unit,
+        sound: FloatArray? = null, onProgress: (Float) -> Unit,
     ): File {
-        val chain = audioChain(model, audio, bleepLevels(info, model, audio, sound, previewLevels, onProgress))
+        val share = decodeShare(model, audio, sound)
+        val chain = audioChain(model, audio, bleepLevels(info, model, audio, sound, share, onProgress))
+        val exportProgress = { p: Float -> onProgress(share + (1 - share) * p) }
         check(!chain.removeAudio) { t("אין סאונד לשמירה: הסאונד מושתק") }
         val out = temp("audio")
         out.delete()
@@ -344,7 +353,7 @@ class FaceBlurProcessor(private val context: Context) {
             .setEffects(Effects(chain.processors, emptyList()))
             .build()
         try {
-            export(composition(item, Composition.HDR_MODE_KEEP_HDR, forceAudio = chain.sfx.isNotEmpty()), out, null, null, onProgress)
+            export(composition(item, Composition.HDR_MODE_KEEP_HDR, forceAudio = chain.sfx.isNotEmpty()), out, null, null, exportProgress)
         } catch (e: Throwable) {
             out.delete()
             throw e
@@ -369,9 +378,8 @@ class FaceBlurProcessor(private val context: Context) {
         onPreview: ((android.graphics.Bitmap) -> Unit)? = null,
         /** Counted while it runs, for the progress screen's stats panel. */
         counters: ExportCounters? = null,
-        /** The video's sound (16 kHz mono) if the editor has it decoded, and the beep levels its preview used. */
+        /** The video's sound (16 kHz mono) if the editor has it decoded (else the beeps' levels read it here). */
         sound: FloatArray? = null,
-        previewLevels: FloatArray? = null,
         onProgress: (Float) -> Unit,
     ): Outcome.Saved {
         // No caller may save without a people background that is set: it would silently be left out.
@@ -396,7 +404,9 @@ class FaceBlurProcessor(private val context: Context) {
         if (burn.isNotEmpty()) overlays += SubtitleOverlay(burn, subStyle, SubtitleRenderer.get(context))
         if (export.watermark.enabled(context)) overlays += WatermarkOverlay(context, export.watermark)
         val subsEffect = if (overlays.isEmpty()) emptyList() else listOf<Effect>(OverlayEffect(ImmutableList.copyOf(overlays)))
-        val chain = audioChain(model, audio, bleepLevels(info, model, audio, sound, previewLevels, onProgress))
+        val share = decodeShare(model, audio, sound)
+        val chain = audioChain(model, audio, bleepLevels(info, model, audio, sound, share, onProgress))
+        val renderProgress = { p: Float -> onProgress(share + (1 - share) * p) }
         val audioFx = chain.processors
         val sfx = chain.sfx
         val cutMap = chain.cutMap
@@ -466,7 +476,7 @@ class FaceBlurProcessor(private val context: Context) {
                 keptHdr = info.isHdr && hdrMode == Composition.HDR_MODE_KEEP_HDR
                 counters?.reset()
                 // A video without sound still gets one for its sound effects.
-                export(composition(item, hdrMode, forceAudio = sfx.isNotEmpty()), out, bitrate, mime = export.mimeType(), onProgress)
+                export(composition(item, hdrMode, forceAudio = sfx.isNotEmpty()), out, bitrate, mime = export.mimeType(), renderProgress)
             }
             withContext(Dispatchers.IO) {
                 // No location or phone details in what's shared: if they can't be taken out, nothing is saved (the temp file goes below).
@@ -477,12 +487,13 @@ class FaceBlurProcessor(private val context: Context) {
             out.delete()
         }
         // Subtitle files in the cut video's time.
-        val srtCues = cutMap.mapCues(cues)
+        // An automatic file never holds a bleeped word, whatever the video's own mask says: the done screen's action asks first.
+        val srtCues = model.automaticSrtCues()
         val srts = if (export.saveSrt && srtCues.isNotEmpty()) withContext(Dispatchers.IO) {
             Srt.saveAll(context, base, srtCues)
         } else 0
         val renderMs = SystemClock.elapsedRealtime() - t1
-        return Outcome.Saved(saved, timeline.trackCount, keptHdr, analysis.frameCount, analysisMs, renderMs, srts)
+        return Outcome.Saved(saved, timeline.trackCount, keptHdr, analysis.frameCount, analysisMs, renderMs, srts, srtMasked = srts > 0 && model.automaticSrtDiffers(audio.maskWords))
     }
 
     private suspend fun runWithHdrFallback(modes: List<Int>, block: suspend (Int) -> Unit) {

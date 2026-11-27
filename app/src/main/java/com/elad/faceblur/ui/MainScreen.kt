@@ -603,6 +603,7 @@ private fun DoneCard(state: UiState.Done, onEdit: (() -> Unit)?, srtCtrl: Editor
                             }
                             if (state.result.keptHdr) append(t(" · HDR נשמר"))
                             if (state.result.srtFiles > 0) append(t(" · כתוביות SRT ב-Download/ONIT"))
+                            if (state.result.srtMasked) append(t(" (המילים המצופצפות מוסתרות)"))
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
