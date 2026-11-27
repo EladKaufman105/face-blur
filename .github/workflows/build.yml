@@ -595,10 +595,10 @@ jobs:
             part: 0
             classes: com.elad.faceblur.EndToEndTest,com.elad.faceblur.SubtitlesTest,com.elad.faceblur.models.ModelGateTest,com.elad.faceblur.models.ModelDownloaderTest
             selftest: 0
-          # 3: EditorScreenTest (~120), the self-test (~75)
+          # 3: EditorScreenTest (~120), SelfieTest (~15, estimated), the self-test (~75)
           - shard: 3
             part: 0
-            classes: com.elad.faceblur.EditorScreenTest
+            classes: com.elad.faceblur.EditorScreenTest,com.elad.faceblur.SelfieTest
             selftest: 1
           # 4: ProjectsVoiceTest (~110), BatchTest (~100)
           - shard: 4

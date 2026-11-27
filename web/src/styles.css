@@ -1051,7 +1051,7 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .crash-back { z-index: 60; }
 .crash-dialog { grid-template-rows: auto auto minmax(0, 1fr) auto; }
 
-/* Detection: the mode (fast, normal, extended) and the sensitivity (ready screen, template editor). */
+/* Detection: the mode (fast, normal, extended, selfie) and the sensitivity (ready screen, template editor). */
 .detect-controls { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
 .detect-controls .caption { margin: 0; }
 .detect-controls .slider-row { margin-top: var(--space-1); }

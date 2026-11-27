@@ -11,6 +11,7 @@ import { canKeepAwake } from '../lib/wakelock'
 import { AddIcon, BackIcon, CheckIcon, CloseIcon, SaveIcon } from './icons'
 import { TemplatePicker, templateLabel } from './TemplatePicker'
 import { useFrame } from './TemplatePreview'
+import { DetectionNotice } from './DetectionNotice'
 import { loadWatermark } from './EditorTabs'
 import { SwitchRow } from './EditorTabs'
 import { QualityChoice, useSpeechPlan } from './SpeechUi'
@@ -153,6 +154,9 @@ export function BatchSetup({ onBack, onStarted, initial }: { onBack: () => void;
           <div class="row"><span class="grow">{t('זמן משוער')}</span><strong class="batch-estimate">{estimateText(estimate)}</strong></div>
         )}
         {settings.blurOff && <p class="small batch-noblur" role="alert" style="margin:0;color:var(--danger-text);font-weight:700">{t('הפנים לא יטושטשו בסרטונים האלה: בתבנית הזו אין טשטוש פנים.')}</p>}
+        {/* The weaker detections a template chose say so here too (as the app's batch screen). */}
+        {!settings.blurOff && !settings.sensitive && settings.fast && <DetectionNotice fast />}
+        {!settings.blurOff && !settings.sensitive && !settings.fast && settings.selfie && <DetectionNotice selfie />}
         {files.length > 0 && <p class="small muted" style="margin:0">{t('ההערכה משתפרת אחרי שהמכשיר הזה מעבד כמה סרטונים.')}</p>}
         {settings.createSubs && cached === false && (
           <>

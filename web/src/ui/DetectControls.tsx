@@ -8,18 +8,18 @@ export const NORMAL_DETECT: DetectChoice = { mode: 'normal', sensitivity: 0 }
 
 /** The detection's name for a summary line: "Normal detection", "Fast detection · Sensitivity 40%"... */
 export function detectSummary(d: DetectChoice): string {
-  const name = d.mode === 'fast' ? t('זיהוי מהיר') : d.mode === 'extended' ? t('זיהוי מורחב') : t('זיהוי רגיל')
+  const name = d.mode === 'fast' ? t('זיהוי מהיר') : d.mode === 'selfie' ? t('זיהוי סלפי') : d.mode === 'extended' ? t('זיהוי מורחב') : t('זיהוי רגיל')
   const pct = Math.round(d.sensitivity * 100)
   return pct > 0 ? name + ' · ' + t('רגישות %d%%', pct).replace('%%', '%') : name
 }
 
 /**
- * How faces are looked for: fast, normal (the default) or extended, with what the choice means
- * (fast's warning stands out), and the sensitivity, which only ever blurs more than the default.
+ * How faces are looked for: fast, normal (the default), extended or selfie, with what the choice means
+ * (fast's and selfie's warnings stand out), and the sensitivity, which only ever blurs more than the default.
  * As the app's DetectionControls.
  */
 export function DetectControls({ value, onChange, cls }: { value: DetectChoice; onChange: (d: DetectChoice) => void; cls?: string }) {
-  const modes: [DetectMode, string][] = [['fast', t('מהיר')], ['normal', t('רגיל')], ['extended', t('מורחב')]]
+  const modes: [DetectMode, string][] = [['fast', t('מהיר')], ['normal', t('רגיל')], ['extended', t('מורחב')], ['selfie', t('סלפי')]]
   const pct = Math.round(value.sensitivity * 100)
   return (
     <div class={'detect-controls ' + (cls ?? '')}>
@@ -29,7 +29,9 @@ export function DetectControls({ value, onChange, cls }: { value: DetectChoice; 
           <button class={(value.mode === m ? 'on ' : '') + 'mode-' + m} role="radio" aria-checked={value.mode === m} onClick={() => onChange({ ...value, mode: m })}>{label}</button>
         ))}
       </div>
-      {value.mode === 'fast'
+      {value.mode === 'selfie'
+        ? <p class="small selfie-warning fast-warning" role="note">{t('מצב סלפי מהיר מאוד, אבל מיועד לאדם אחד קרוב למצלמה. פנים קטנות או רחוקות ברקע עלולות לא להיטשטש. צפו בתוצאה לפני שמשתפים.')}</p>
+        : value.mode === 'fast'
         ? <p class="small fast-warning" role="note">{t('זיהוי מהיר בודק פחות פריימים, ולכן מהיר יותר. הוא עלול לפספס לרגע פנים קטנות, רחוקות או בקצה המסך. כדאי לצפות בתוצאה לפני שמשתפים.')}</p>
         : <p class="small muted detect-desc">{value.mode === 'extended'
           ? t('בודק כל פריים ומטשטש גם פנים שהמערכת פחות בטוחה בהן. מפספס פחות, אבל עלול לטשטש גם דברים מיותרים, ואיטי יותר.')

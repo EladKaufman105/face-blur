@@ -490,8 +490,8 @@ internal fun BlurLookControls(
 }
 
 /**
- * How faces are looked for: fast, normal (the default) or extended, with what the choice means
- * (fast's warning stands out), and the sensitivity, which only ever blurs more than the default.
+ * How faces are looked for: fast, normal (the default), extended or selfie, with what the choice means
+ * (fast's and selfie's warnings stand out), and the sensitivity, which only ever blurs more than the default.
  */
 @Composable
 internal fun DetectionControls(
@@ -509,6 +509,7 @@ internal fun DetectionControls(
                         com.elad.faceblur.analysis.DetectMode.FAST to t("מהיר"),
                         com.elad.faceblur.analysis.DetectMode.NORMAL to t("רגיל"),
                         com.elad.faceblur.analysis.DetectMode.EXTENDED to t("מורחב"),
+                        com.elad.faceblur.analysis.DetectMode.SELFIE to t("סלפי"),
                     ),
                     detect,
                     onDetect,
@@ -516,6 +517,7 @@ internal fun DetectionControls(
             }
             when (detect) {
                 com.elad.faceblur.analysis.DetectMode.FAST -> FastDetectionWarning()
+                com.elad.faceblur.analysis.DetectMode.SELFIE -> SelfieDetectionWarning()
                 com.elad.faceblur.analysis.DetectMode.NORMAL -> Text(
                     t("בודק כ-15 פריימים בכל שנייה של וידאו. מתאים לרוב הסרטונים."),
                     style = MaterialTheme.typography.bodySmall,
@@ -559,10 +561,28 @@ internal fun FastDetectionWarning(modifier: Modifier = Modifier) {
     )
 }
 
+/** What selfie detection may miss: shown where it is chosen, after the analysis and in the editor. */
+@Composable
+internal fun SelfieDetectionWarning(modifier: Modifier = Modifier) {
+    Text(
+        t("מצב סלפי מהיר מאוד, אבל מיועד לאדם אחד קרוב למצלמה. פנים קטנות או רחוקות ברקע עלולות לא להיטשטש. צפו בתוצאה לפני שמשתפים."),
+        style = MaterialTheme.typography.bodySmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onTertiaryContainer,
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.tertiaryContainer)
+            .padding(horizontal = Space.M, vertical = Space.S)
+            .testTag(Tags.SELFIE_WARNING),
+    )
+}
+
 /** The detection's name for a summary line: "Normal detection", "Fast detection · Sensitivity 40%"... */
 internal fun detectionSummary(detect: com.elad.faceblur.analysis.DetectMode, sensitivity: Float): String {
     val name = when (detect) {
         com.elad.faceblur.analysis.DetectMode.FAST -> t("זיהוי מהיר")
+        com.elad.faceblur.analysis.DetectMode.SELFIE -> t("זיהוי סלפי")
         com.elad.faceblur.analysis.DetectMode.NORMAL -> t("זיהוי רגיל")
         com.elad.faceblur.analysis.DetectMode.EXTENDED -> t("זיהוי מורחב")
     }

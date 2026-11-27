@@ -11,15 +11,19 @@ import kotlin.math.roundToInt
  *  - [EXTENDED] ("sensitive"): every frame, and the tracker takes weaker evidence.
  *  - [FAST]: the same detector at 5 detections a second (never fewer), for long videos. It may
  *    briefly miss small or distant faces, or faces at the frame's edge; the app says so.
+ *  - [SELFIE]: a talking head. MediaPipe's BlazeFace on every frame ([BlazeFace]), no other
+ *    detector. Very fast, and finds one face close to the camera very well; it misses most faces
+ *    under about 48 px, so small or distant faces in the background may stay unblurred; the app says so.
  */
 enum class DetectMode {
-    NORMAL, EXTENDED, FAST;
+    NORMAL, EXTENDED, FAST, SELFIE;
 
     companion object {
-        /** Extended wins over fast: a choice never gets weaker than one asked for. */
-        fun of(sensitive: Boolean, fast: Boolean): DetectMode = when {
+        /** Extended wins over fast and selfie: a choice never gets weaker than one asked for. */
+        fun of(sensitive: Boolean, fast: Boolean, selfie: Boolean = false): DetectMode = when {
             sensitive -> EXTENDED
             fast -> FAST
+            selfie -> SELFIE
             else -> NORMAL
         }
     }
@@ -96,6 +100,13 @@ object DetectTuning {
     const val POOL_YUNET = DetectConst.POOL_YUNET
     const val POOL_YUNET_ONLY = DetectConst.POOL_YUNET_ONLY
 
+    /** Selfie mode's BlazeFace score threshold at sensitivity 0 (MediaPipe's own), and at 1. */
+    const val SELFIE_THRESHOLD = 0.5f
+    const val SELFIE_MOST = 0.3f
+
+    /** Selfie mode above sensitivity 0: BlazeFace's candidates are taken once from this fixed, lower pool (its threshold at 1), beside the default ones. */
+    const val SELFIE_POOL = SELFIE_MOST
+
     /** Extra detections a frame gets the crop re-check on (the most likely first). */
     const val MAX_EXTRA_CHECKS = DetectConst.MAX_EXTRA_CHECKS
 
@@ -119,6 +130,12 @@ object DetectTuning {
         )
     }
 
+    /** Selfie mode's BlazeFace threshold at sensitivity [s]: 0.5 at 0 (exactly), lower as [s] grows, 0.3 at 1. */
+    fun selfieThreshold(s: Float): Float {
+        val k = clamp(s)
+        return if (k == 0f) SELFIE_THRESHOLD else SELFIE_THRESHOLD + (SELFIE_MOST - SELFIE_THRESHOLD) * k
+    }
+
     /** Detections per second of video normal detection aims at, and the fewest a slow device goes down to. */
     const val RATE = DetectConst.RATE
     const val MIN_RATE = DetectConst.MIN_RATE
@@ -130,9 +147,10 @@ object DetectTuning {
      * keep up, every `second`-th at most. Normal: every fps / 15 frames (rounded), down to fps /
      * 8. Extended: every frame. Fast: never fewer than about 5 a second (within 2%: 29.97 fps
      * is every 6th frame, 4.995 a second; 24 fps every 4th, 6 a second), and the same at most.
+     * Selfie: every frame (BlazeFace is light enough that no device needs fewer).
      */
     fun cadence(mode: DetectMode, fps: Float): Pair<Int, Int> = when (mode) {
-        DetectMode.EXTENDED -> 1 to 1
+        DetectMode.EXTENDED, DetectMode.SELFIE -> 1 to 1
         DetectMode.NORMAL -> {
             val base = max(1, (fps / RATE).roundToInt())
             base to max(base, (fps / MIN_RATE).toInt())

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { t } from '../i18n'
 import { BETA } from '../lib/channel'
-import { KEEP, backendText, deviceLines, fmt, max, min, statsReport, type AnalysisStats, type Series } from '../lib/analysis-stats'
+import { KEEP, SELFIE_NO_GPU, backendText, deviceLines, fmt, max, min, statsReport, type AnalysisStats, type Series } from '../lib/analysis-stats'
 
 declare const __BUILD__: string
 
@@ -29,6 +29,8 @@ const DETAILS: [Size, CellId[]][] = [
   ['detail', ['gpu', 'check', 'crops']],
   ['detail', ['decode', 'cuts', 'merge']],
 ]
+/** What selfie mode has none of (one detector, no coarse pass, no GPU, no crop re-check, no merge, no YuNet): its cells are left out. */
+const SELFIE_HIDDEN = new Set<CellId>(['coarse', 'gpu', 'check', 'crops', 'merge', 'strength'])
 /** Resolution and sampling change in jumps: step charts. */
 const STEP: CellId[] = ['resolution', 'sampling']
 /** The chart's height in px per row size (also the SVG's own coordinate height). */
@@ -60,7 +62,7 @@ const info = (c: CellId): string => ({
   measured: t('כמה פריימים באמת עברו זיהוי בכל שנייה של וידאו, ובחלון של 2 שניות עם הכי מעט.'),
   gap: t('הרווח הארוך ביותר בין שני זיהויים באותה סצנה, בפריימים ובשניות.'),
   strength: t('הגודל הקטן ביותר שבו רץ המעבר המפורט, והאם YuNet רץ.'),
-  mode: t('רגיל, מורחב (כל פריים) או מהיר (5 בשנייה), והרגישות שנבחרה.'),
+  mode: t('רגיל, מורחב (כל פריים), מהיר (5 בשנייה) או סלפי, והרגישות שנבחרה.'),
 })[c]
 
 /** The cell's value as [number, unit] parts, left to right; [word] is a small text before or after. */
@@ -74,7 +76,7 @@ function value(c: CellId, a: AnalysisStats): { num: string; unit?: string; after
     case 'frame': return ms(a.frameMs)
     case 'resolution': return { num: String(l.side), unit: 'px' }
     case 'sampling': return { num: fmt(l.rate), unit: '/s' }
-    case 'backend': return { num: backendText(l) }
+    case 'backend': return { num: backendText(l, (x) => (x === SELFIE_NO_GPU ? t('מצב סלפי רץ על המעבד') : x)) }
     case 'workers': return { num: `${l.workers}/${l.cores}` }
     case 'fine': return ms(a.fineMs)
     case 'coarse': return { ...ms(a.coarseMs), after: `${Math.round(a.coarseShare * 100)}%` }
@@ -88,7 +90,7 @@ function value(c: CellId, a: AnalysisStats): { num: string; unit?: string; after
     case 'gap': return { num: String(l.measured.gapFrames), unit: t('פריימים'), after: `${l.measured.gapS.toFixed(2)} ${t('שנ׳')}` }
     case 'strength': return { num: String(l.measured.minSide), unit: 'px', after: l.measured.yunet ? 'YuNet' : t('בלי YuNet') }
     case 'mode': {
-      const name = l.mode === 'fast' ? t('מהיר') : l.mode === 'extended' ? t('מורחב') : t('רגיל')
+      const name = l.mode === 'fast' ? t('מהיר') : l.mode === 'selfie' ? t('סלפי') : l.mode === 'extended' ? t('מורחב') : t('רגיל')
       const pct = Math.round((l.sensitivity ?? 0) * 100)
       return pct > 0 ? { num: name, after: `${pct}%` } : { num: name }
     }
@@ -254,7 +256,7 @@ export function AnalysisStatsPanel({ open, stats, video, percent, elapsed }: { o
           <div class={`sfold${more ? ' open' : ''}`} inert={!more}>
             <div class="sfold-in">
               <div class="stats-details">
-                {a && DETAILS.map(([size, ids]) => (
+                {a && DETAILS.map(([size, all]) => [size, a.latest.mode === 'selfie' ? all.filter((id) => !SELFIE_HIDDEN.has(id)) : all] as const).filter(([, ids]) => ids.length > 0).map(([size, ids]) => (
                   <div class={`stats-row ${size}`} key={ids[0]}>{ids.map((id) => <Tile key={id} id={id} size={size} a={a} onInfo={showInfo} />)}</div>
                 ))}
               </div>

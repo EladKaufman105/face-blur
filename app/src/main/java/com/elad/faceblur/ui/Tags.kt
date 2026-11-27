@@ -28,6 +28,8 @@ object Tags {
     const val SENSITIVITY = "ready.sensitivity"
     const val FAST_WARNING = "fastWarning"
     const val FAST_NOTICE = "editor.fastNotice"
+    const val SELFIE_WARNING = "selfieWarning"
+    const val SELFIE_NOTICE = "editor.selfieNotice"
     const val BACK = "editor.back"
     const val PROPERTIES = "editor.properties"
     const val EXPORT = "editor.export"

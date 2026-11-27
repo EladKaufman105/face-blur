@@ -28,6 +28,7 @@ object ProcessingErrors {
         if (e is com.elad.faceblur.models.ModelMissing) {
             return when (e.pack) {
                 com.elad.faceblur.models.PackId.FACES -> t("מודל זיהוי הפנים לא במכשיר, או שהשתנה, ולכן הסרטון לא טושטש ולא נשמר. הורד אותו בהגדרות › מודלים ונסה שוב.")
+                com.elad.faceblur.models.PackId.SELFIE -> t("מודל מצב הסלפי לא במכשיר, או שהשתנה, ולכן הסרטון לא טושטש ולא נשמר. הורד אותו בהגדרות › מודלים ונסה שוב.")
                 else -> t("חסר מודל במכשיר. הורד אותו בהגדרות › מודלים ונסה שוב.")
             }
         }

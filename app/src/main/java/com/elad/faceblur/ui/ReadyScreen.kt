@@ -67,13 +67,13 @@ internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, on
     val facesMissing = vm.facesMissing
     val actions: @Composable () -> Unit = {
         Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
-            if (!blurOff) ModelCard(com.elad.faceblur.models.PackId.FACES)
+            if (!blurOff && vm.detectMode != com.elad.faceblur.analysis.DetectMode.SELFIE) ModelCard(com.elad.faceblur.models.PackId.FACES)
             GradientButton(
                 if (blurOff) t("פתח בעורך") else t("טשטש פנים"),
                 { vm.review = true; vm.start() },
                 Modifier.fillMaxWidth().testTag(Tags.BLUR_FACES),
                 icon = if (blurOff) null else AppIcons.Face,
-                enabled = !facesMissing,
+                enabled = !facesMissing && !vm.selfieMissing,
             )
             Text(
                 if (blurOff) t("בלי טשטוש פנים: ייפתח העורך, והתבנית תחול על הסרטון.")
@@ -188,6 +188,9 @@ private fun BlurSettings(vm: MainViewModel) {
             // Fast detection's warning stays in view with the settings folded (open, it is under the choice).
             if (!open && vm.detectMode == com.elad.faceblur.analysis.DetectMode.FAST) {
                 FastDetectionWarning(Modifier.padding(start = Space.L, end = Space.L, bottom = Space.M))
+            }
+            if (!open && vm.detectMode == com.elad.faceblur.analysis.DetectMode.SELFIE) {
+                SelfieDetectionWarning(Modifier.padding(start = Space.L, end = Space.L, bottom = Space.M))
             }
             AnimatedVisibility(
                 open,

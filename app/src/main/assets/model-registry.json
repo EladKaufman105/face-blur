@@ -37,6 +37,16 @@
       ]
     },
     {
+      "id": "selfie",
+      "feature": "selfie detection mode (one close face)",
+      "version": 1,
+      "compat": 1,
+      "recommended": false,
+      "files": [
+        { "name": "blaze_face_full_range.tflite", "size": 1083786, "sha256": "3698b18f063835bc609069ef052228fbe86d9c9a6dc8dcb7c7c2d69aed2b181b", "url": "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range/float16/1/blaze_face_full_range.tflite" }
+      ]
+    },
+    {
       "id": "speech-he",
       "feature": "Hebrew subtitles (ivrit.ai Whisper)",
       "version": 1,

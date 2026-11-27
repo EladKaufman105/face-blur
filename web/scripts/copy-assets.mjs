@@ -26,6 +26,12 @@ if (!existsSync(model) || statSync(model).mtimeMs < statSync(src).mtimeMs || !ex
   const out = join(pub, 'models', 'yunet.onnx')
   if (!existsSync(out) || statSync(out).mtimeMs < statSync(yunet).mtimeMs) copy(yunet, out)
 }
+// BlazeFace full range (MediaPipe, Apache-2.0), selfie mode's detector, converted from MediaPipe's TFLite model to ONNX (scripts/blazeface_to_onnx.py; float32, 2 MB).
+{
+  const blaze = join(models, 'blazeface_full_range.onnx')
+  const out = join(pub, 'models', 'blazeface_full_range.onnx')
+  if (!existsSync(out) || statSync(out).mtimeMs < statSync(blaze).mtimeMs) copy(blaze, out)
+}
 // Every subtitle font (all under the SIL Open Font License, its text beside them).
 for (const f of readdirSync(join(assets, 'fonts'))) if (f.endsWith('.ttf')) copy(join(assets, 'fonts', f), join(pub, 'fonts', f))
 copy(join(assets, 'fonts', 'licenses'), join(pub, 'fonts', 'licenses'))

@@ -39,7 +39,7 @@ data class StatsSnapshot(
     val lite: Boolean,
     val workers: Int,
     val maxWorkers: Int,
-    /** The detection mode ("normal", "extended", "fast") and the sensitivity (0..1, see [DetectTuning]). */
+    /** The detection mode ("normal", "extended", "fast", "selfie") and the sensitivity (0..1, see [DetectTuning]). */
     val mode: String = "normal",
     val sensitivity: Float = 0f,
 ) {

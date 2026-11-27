@@ -150,6 +150,9 @@ internal fun BatchSetupContent(vm: MainViewModel, s: UiState.BatchSetup, onAddMo
                     }
                     // A card for each missing model: the batch doesn't start without it.
                     for (id in missingPacks) ModelCard(id)
+                    // The weaker detections a template chose say so here too.
+                    if (!settings.blurOff && settings.detect == com.elad.faceblur.analysis.DetectMode.FAST) FastDetectionWarning()
+                    if (!settings.blurOff && settings.detect == com.elad.faceblur.analysis.DetectMode.SELFIE) SelfieDetectionWarning()
                     for (n in vm.batchNotes) Text(n, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (!roomOk) {
                         Text(t("אין מספיק מקום. אפשר להסיר סרטונים או לפנות מקום במכשיר."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)

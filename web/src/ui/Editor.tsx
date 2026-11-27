@@ -1495,13 +1495,14 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         </div>
         {an.reduced && !narrow && <DetectionNotice />}
         {an.fast && !narrow && <DetectionNotice fast />}
+        {an.selfie && !narrow && <DetectionNotice selfie />}
         {safeAvailable && <SafeZoneBar open={safeOn} platform={safePlatform} frameWidth={frameW} onPick={choosePlatform} />}
         <div class={'screen' + (adding ? ' adding' : '') + (selected !== null ? ' sel' : '')} onPointerDown={onScreenDown} onPointerMove={onScreenMove} onPointerUp={onScreenUp} onPointerCancel={(e) => { press.current = null; touches.current.delete(e.pointerId); if (touches.current.size < 2) pinch.current = null }}>
           <div class="view" ref={viewBox} style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc(var(--screen-h) * ${(W / H).toFixed(4)}))` }}>
             <canvas ref={canvas} width={W} height={H} />
             <canvas ref={rings} class="layer" width={W} height={H} />
             <canvas ref={overlay} class="layer" width={W} height={H} />
-            {(an.reduced || an.fast) && narrow && <DetectionNotice overlay reduced={!!an.reduced} fast={!!an.fast} />}
+            {(an.reduced || an.fast || an.selfie) && narrow && <DetectionNotice overlay reduced={!!an.reduced} fast={!!an.fast} selfie={!!an.selfie} />}
           </div>
           <video ref={video} src={url} playsInline preload="auto" />
           {adding && <div class="screen-hint">{t('הקש על הסרטון במקום שצריך לטשטש')}</div>}
@@ -1683,7 +1684,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     {saveTpl && (
       <SaveTemplate
         settings={{
-          blurOff: false, look, sensitive: !!an.sensitive, fast: !!an.fast, sensitivity: an.sensitivity ?? 0, createSubs: cues.length > 0, language: savedLanguage(lang.value === 'he'), translate: false, subStyle,
+          blurOff: false, look, sensitive: !!an.sensitive, fast: !!an.fast, selfie: !!an.selfie, sensitivity: an.sensitivity ?? 0, createSubs: cues.length > 0, language: savedLanguage(lang.value === 'he'), translate: false, subStyle,
           split: { words: 0, chars: 0 }, burn: exportOpts.burn === false ? 'NONE' : subStyle.show === 'tr' ? 'TRANSLATED' : subStyle.show === 'both' ? 'BOTH' : 'ORIGINAL', saveSrt: exportOpts.srt,
           voice, denoise, enhance, loud: loudOn, cutSilences: cuts.length > 0, minPauseMs: 800, cutFillers: cuts.length > 0 && cues.length > 0,
           background, stabilize: steadyLevel, aspect: exportOpts.aspect, shortSide: exportOpts.shortSide, fps: exportOpts.fps, quality: exportOpts.quality, codec: exportOpts.codec, watermark: mark,
