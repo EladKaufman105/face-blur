@@ -49,6 +49,11 @@ self.onmessage = async (e: MessageEvent<SubsRequest>) => {
 /** The longest sound read (three hours of 16 kHz mono: about 690 MB). */
 const MAX_SAMPLES = RATE * 3 * 3600
 
+/** A buffer of [n] samples; when the device can't give it, an out-of-memory error that says how big it was. */
+function alloc(n: number): Float32Array {
+  try { return new Float32Array(n) } catch { throw new Error(`out of memory: no room for ${Math.round((n * 4) / 1e6)} MB of sound`) }
+}
+
 /** The sound is longer than [MAX_SAMPLES]. */
 class TooLong extends Error {}
 
@@ -62,7 +67,9 @@ async function audio16k(file: File, onProgress: (p: number) => void): Promise<Fl
   const dur = (await track.getDurationFromMetadata().catch(() => null)) ?? 0
   let lastP = 0
   // Sized from the header (a minute when it has none), grows by half when full, and stops at three hours.
-  let buf = new Float32Array(Math.min(dur > 0 ? Math.ceil(dur * RATE) + RATE : RATE * 60, MAX_SAMPLES))
+  // (A header that says more than the cap fails at once, before anything is allocated or decoded.)
+  if (dur * RATE > MAX_SAMPLES) throw new TooLong()
+  let buf = alloc(Math.min(dur > 0 ? Math.ceil(dur * RATE) + RATE : RATE * 60, MAX_SAMPLES))
   let n = 0
   let ratio = 1
   let acc = 0, accN = 0, pos = 0
@@ -91,7 +98,7 @@ async function audio16k(file: File, onProgress: (p: number) => void): Promise<Fl
       if (pos >= ratio) {
         if (n === buf.length) {
           if (n >= MAX_SAMPLES) throw new TooLong()
-          const bigger = new Float32Array(Math.min(Math.ceil(buf.length * 1.5), MAX_SAMPLES)); bigger.set(buf); buf = bigger
+          const bigger = alloc(Math.min(Math.ceil(buf.length * 1.5), MAX_SAMPLES)); bigger.set(buf); buf = bigger
         }
         buf[n++] = acc / accN
         acc = 0; accN = 0; pos -= ratio

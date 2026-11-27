@@ -62,7 +62,7 @@ export function ExportSheet(p: Props) {
           {(p.maskWarn ?? 0) > 0 && carries && (
             <label class="small mask-warn-note confirm" role="alert" style="margin:0;display:flex;gap:8px;align-items:flex-start">
               <input type="checkbox" class="mask-warn-ok" checked={maskOk} onChange={(e) => setMaskOk((e.currentTarget as HTMLInputElement).checked)} />
-              <span>{p.maskWarn === 1 ? t('בכתובית אחת מילה מצופצפת לא נמצאת בטקסט, ולכן הכתובית עלולה להציג אותה. סמן כדי לייצא בכל זאת.') : t('ב-%d כתוביות מילה מצופצפת לא נמצאת בטקסט, ולכן הן עלולות להציג אותה. סמן כדי לייצא בכל זאת.', p.maskWarn ?? 0)}</span>
+              <span>{p.maskWarn === 1 ? t('בכתובית אחת מופיעה מילה שאולי היא המילה המצופצפת, ולכן היא עלולה להיראות. בדוק אותה, וסמן כדי לייצא בכל זאת.') : t('ב-%d כתוביות מופיעה מילה שאולי היא המילה המצופצפת, ולכן היא עלולה להיראות. בדוק אותן, וסמן כדי לייצא בכל זאת.', p.maskWarn ?? 0)}</span>
             </label>
           )}
           <h4 class="caption">{t('מה לשמור')}</h4>

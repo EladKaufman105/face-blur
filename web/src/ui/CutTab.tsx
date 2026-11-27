@@ -4,8 +4,9 @@ import { addCut, CUT_JOIN, covers, cutAt, cutTotal, uncut, type Range } from '..
 import { cueWi, type Cue, type Word } from '../lib/subtitles'
 import { CutIcon } from './icons'
 
-/** A spoken word's stretch (a word without a length gets the app's 80 ms). */
-export const wordSpan = (w: Word): Range => [w.start, Math.max(w.end, w.start + 0.08)]
+import { wordSpan } from '../lib/subtitles'
+/** A spoken word's stretch (a word without a length gets the app's 80 ms): see [wordSpan] in the library. */
+export { wordSpan }
 
 /** The recognized words a subtitle shows. */
 export function cueWords(c: Cue, words: Word[]): Word[] {
