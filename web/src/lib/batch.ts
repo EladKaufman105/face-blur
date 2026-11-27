@@ -316,7 +316,7 @@ async function processOne(b: Batch, item: BatchItem) {
     mark('export')
     const base = item.name.replace(/\.[^.]+$/, '') + '-onit'
     const url = URL.createObjectURL(r.blob)
-    const srt = s.saveSrt && p.cues.length ? new Blob([toSrt(cutCues(p.cues, new CutMap(p.cuts)))], { type: 'application/x-subrip' }) : null
+    const srt = s.saveSrt && p.cues.length ? new Blob([toSrt(cutCues(p.cues, new CutMap(p.cuts), p.words))], { type: 'application/x-subrip' }) : null
     item.output = { name: base + '.mp4', blob: r.blob, url, srt: srt ? { name: base + '.srt', url: URL.createObjectURL(srt) } : null }
     if (id && thumb) saveProject(id, { thumb }, state).catch(() => {})
     // A video saved on its own (a template's "save straight") whose faces are to be checked isn't downloaded unasked: it waits in the list, flagged.

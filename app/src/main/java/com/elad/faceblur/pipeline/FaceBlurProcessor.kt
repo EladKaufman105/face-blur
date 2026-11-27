@@ -22,6 +22,7 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
+import com.elad.faceblur.audio.BleepLevel
 import com.elad.faceblur.audio.CutAudioProcessor
 import com.elad.faceblur.edit.StabilizeEffect
 import com.elad.faceblur.edit.Stabilizer
@@ -65,6 +66,9 @@ import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.TextureOverlay
 import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -282,12 +286,34 @@ class FaceBlurProcessor(private val context: Context) {
     /** The sound's processors (shared by the video and the MP3 export, so both apply the same edits). */
     class AudioChain(val processors: List<AudioProcessor>, val sfx: List<SfxPlay>, val cutMap: com.elad.faceblur.edit.CutMap, val removeAudio: Boolean)
 
-    private fun audioChain(model: EditModel, audio: AudioEdit): AudioChain {
+    /**
+     * Each bleep's beep level from the speech it replaces (null: no beeps, or no level could be had: the fallback level).
+     * [sound] is the video's sound if the editor already has it decoded; else it is decoded here (cancellable, with progress).
+     * When that fails the levels the preview used ([previewLevels]) stand in, and the failure is logged.
+     */
+    private suspend fun bleepLevels(
+        info: VideoInfo, model: EditModel, audio: AudioEdit,
+        sound: FloatArray?, previewLevels: FloatArray?, onProgress: (Float) -> Unit,
+    ): FloatArray? {
+        if (!audio.tone || audio.voice == VoiceFx.MUTE || model.bleeps.isEmpty()) return null
+        val bleeps = model.bleeps.map { (a, b) -> longArrayOf(a, b) }
+        val job = currentCoroutineContext()[Job]
+        val pcm = sound ?: withContext(Dispatchers.IO) {
+            runCatching {
+                com.elad.faceblur.subs.AudioDecoder.decode(context, info.uri, { job?.isActive != false }) { p -> onProgress(p * 0.05f) }
+            }.onFailure { android.util.Log.w("ONIT", "bleep levels: the sound could not be read, using the preview's levels", it) }.getOrNull()
+        }
+        job?.ensureActive()
+        if (pcm == null) return previewLevels?.takeIf { it.size == bleeps.size }
+        return BleepLevel.levels(pcm, com.elad.faceblur.subs.AudioDecoder.RATE, bleeps, audio.gain)
+    }
+
+    private fun audioChain(model: EditModel, audio: AudioEdit, bleepLevels: FloatArray? = null): AudioChain {
         // The voice: the pitch, then bleeps and robot sound (so the beep isn't shifted).
         val audioFx = ArrayList<AudioProcessor>()
         val bleeps = model.bleeps.map { (a, b) -> longArrayOf(a, b) }
         val sfx = model.sfx.mapNotNull { c -> SfxLibrary.load(context, c.sound)?.let { SfxPlay(c.startMs * 1000, it, c.gain) } }
-        val dsp = VoiceDsp(bleeps, audio.voice, audio.tone, sfx = sfx, denoise = audio.denoise, enhance = audio.enhance, gain = audio.gain)
+        val dsp = VoiceDsp(bleeps, audio.voice, audio.tone, sfx = sfx, denoise = audio.denoise, enhance = audio.enhance, gain = audio.gain, bleepLevels = bleepLevels)
         // Stretches cut out: their frames and their sound are dropped at the end of the chains.
         val cutMap = model.cutMap()
         // No sound at all: the track is dropped, unless sound effects play over the silence.
@@ -305,8 +331,11 @@ class FaceBlurProcessor(private val context: Context) {
      * as a temporary file for the MP3 encoder. Throws if they can't be applied: the caller must
      * not save the original sound instead.
      */
-    suspend fun renderAudio(info: VideoInfo, model: EditModel, audio: AudioEdit, onProgress: (Float) -> Unit): File {
-        val chain = audioChain(model, audio)
+    suspend fun renderAudio(
+        info: VideoInfo, model: EditModel, audio: AudioEdit,
+        sound: FloatArray? = null, previewLevels: FloatArray? = null, onProgress: (Float) -> Unit,
+    ): File {
+        val chain = audioChain(model, audio, bleepLevels(info, model, audio, sound, previewLevels, onProgress))
         check(!chain.removeAudio) { t("אין סאונד לשמירה: הסאונד מושתק") }
         val out = temp("audio")
         out.delete()
@@ -338,6 +367,9 @@ class FaceBlurProcessor(private val context: Context) {
         stabilizer: Stabilizer? = null,
         /** Now and then, a small copy of the finished frame being saved. */
         onPreview: ((android.graphics.Bitmap) -> Unit)? = null,
+        /** The video's sound (16 kHz mono) if the editor has it decoded, and the beep levels its preview used. */
+        sound: FloatArray? = null,
+        previewLevels: FloatArray? = null,
         onProgress: (Float) -> Unit,
     ): Outcome.Saved {
         // No caller may save without a people background that is set: it would silently be left out.
@@ -362,7 +394,7 @@ class FaceBlurProcessor(private val context: Context) {
         if (burn.isNotEmpty()) overlays += SubtitleOverlay(burn, subStyle, SubtitleRenderer.get(context))
         if (export.watermark.enabled(context)) overlays += WatermarkOverlay(context, export.watermark)
         val subsEffect = if (overlays.isEmpty()) emptyList() else listOf<Effect>(OverlayEffect(ImmutableList.copyOf(overlays)))
-        val chain = audioChain(model, audio)
+        val chain = audioChain(model, audio, bleepLevels(info, model, audio, sound, previewLevels, onProgress))
         val audioFx = chain.processors
         val sfx = chain.sfx
         val cutMap = chain.cutMap

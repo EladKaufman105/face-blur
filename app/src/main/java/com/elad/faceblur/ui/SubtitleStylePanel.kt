@@ -27,6 +27,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -119,14 +120,20 @@ fun SubtitleStylePanel(style: SubtitleStyle, onChange: (SubtitleStyle) -> Unit, 
     }
 }
 
-/** Equal-width cells, [columns] per row. */
+/** The columns a panel of [widthDp] fits: cells of about 104 dp, at least [min] (3 on a phone), at most 6 (the web's grid fills the same way). */
+internal fun gridColumns(widthDp: Float, min: Int = 3): Int = (widthDp / 104f).toInt().coerceIn(min, 6)
+
+/** Equal-width cells; as many columns as the width allows, but at least [columns] per row. */
 @Composable
 private fun <T> Grid(items: List<T>, columns: Int, cell: @Composable (T) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (row in items.chunked(columns)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (item in row) Box(Modifier.weight(1f)) { cell(item) }
-                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val n = gridColumns(maxWidth.value, columns)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (row in items.chunked(n)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (item in row) Box(Modifier.weight(1f)) { cell(item) }
+                    repeat(n - row.size) { Spacer(Modifier.weight(1f)) }
+                }
             }
         }
     }

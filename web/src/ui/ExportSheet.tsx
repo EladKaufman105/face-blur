@@ -29,7 +29,7 @@ type Props = {
 
 /**
  * Before exporting, as the app's export sheet: a video or only the sound (MP3), the video's
- * resolution, frame rate, quality and codec, and the subtitles as an SRT file too.
+ * resolution, frame rate, quality and codec. (The subtitles as an SRT file are not a choice here: the done screen and the subtitles panel offer them whenever there are subtitles.)
  */
 export function ExportSheet(p: Props) {
   const o = p.options
@@ -46,8 +46,8 @@ export function ExportSheet(p: Props) {
   }, [])
   // A subtitle that may show a bleeped word blocks the video's export until it is fixed or the person says to go on.
   const [maskOk, setMaskOk] = useState(false)
-  // (Only what carries the subtitles: the burned-in text, or the SRT file.)
-  const carries = o.format === 'mp4' && (o.burn !== false || o.srt)
+  // (The video carries the subtitles when they are burned in; the SRT file the done screen offers carries them always.)
+  const carries = o.format === 'mp4'
   const blocked = (p.maskWarn ?? 0) > 0 && carries && !maskOk
   const chip = (on: boolean, label: string, onClick: () => void) => <button class={'chip' + (on ? ' on' : '')} onClick={onClick}>{label}</button>
   return (
@@ -123,18 +123,6 @@ export function ExportSheet(p: Props) {
               </div>
               <p class="small muted" style="margin:0">{o.burn === false ? t('הכתוביות לא ייצרבו בסרטון.') : t('הכתוביות ייצרבו בתמונה ויופיעו בכל נגן.')}</p>
             </>
-          )}
-          {p.hasCues && (
-            <label class="row switch-row" style="cursor:pointer">
-              <div class="grow">
-                <strong class="small-title">{t('שמור גם קובץ כתוביות SRT')}</strong>
-                <div class="small muted">{t('לפלטפורמות שמציגות כתוביות בעצמן. הזמנים מותאמים לחיתוכים.')}</div>
-              </div>
-              <span class="switch">
-                <input type="checkbox" class="export-srt" checked={o.srt} onChange={(e) => set({ srt: (e.currentTarget as HTMLInputElement).checked })} />
-                <span />
-              </span>
-            </label>
           )}
           {o.format === 'mp4' && p.fps && p.srcBitrate != null && (p.duration ?? 0) > 0 && (() => {
             // What comes out, as the app's sheet says: its size, frame rate and about how big the file is.
