@@ -16,6 +16,7 @@ on:
       - 'models/**'
       - 'app/src/main/assets/fonts/**'
       - 'app/src/main/assets/sfx/**'
+      - 'app/src/main/assets/model-registry.json'
       - '.github/workflows/web.yml'
       - '.github/workflows/web-tests.yml'
       - 'ci/web-tests.sh'

@@ -82,6 +82,7 @@ jobs:
               - 'models/**'
               - 'app/src/main/assets/fonts/**'
               - 'app/src/main/assets/sfx/**'
+              - 'app/src/main/assets/model-registry.json'
             subtitles:
               - 'web/src/workers/subs.worker.ts'
               - 'web/src/lib/subtitles.ts'
