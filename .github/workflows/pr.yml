@@ -158,7 +158,7 @@ jobs:
         run: bash ci/gradle-annotate.sh /tmp/gradle.log
 
       - name: ccache stats
-        if: always()
+        if: ${{ !cancelled() }}
         run: bash ci/ccache.sh stats
 
       - name: Upload the unit test report
