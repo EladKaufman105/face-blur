@@ -105,6 +105,13 @@ export function poolSize(cores: number, memoryGB?: number, mobile = false): numb
   return Math.max(2, Math.min(most, phone, Math.floor(cores) - KEEP_CORES))
 }
 
+/**
+ * How many detectors take over when detection leaves the GPU (a software adapter, the CPU found faster, a failed GPU): [wanted] with
+ * 4 or more cores, else one (a detector with YuNet in a worker of its own overlaps the two on two or three cores; two workers, each
+ * running YuNet after RetinaFace, didn't beat that in the runs made).
+ */
+export const fallbackPoolSize = (cores: number, wanted: number) => (cores >= 4 ? wanted : 1)
+
 /** The report's lines for [d] (keys in English in every language, as the rest of the report). */
 export function diagLines(d: DeviceDiag): string[] {
   const g = d.gpu

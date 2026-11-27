@@ -81,8 +81,10 @@ here (273 vs 785 ms)", then one detector on 16 cores: "waves 1/16"). What was fo
 
 - A software WebGPU adapter (`adapter.info.isFallbackAdapter`, or one that names itself SwiftShader or llvmpipe) is never used:
   it is WebGPU on the CPU, several times slower than the CPU's own WebAssembly with the workers.
-- When detection leaves the GPU (software adapter, the check finding the CPU faster, a GPU that fails) on a device with cores
-  to spare, the CPU workers start then, as they do with no GPU. It used to carry on with one detector on one core.
+- When detection leaves the GPU (software adapter, the check finding the CPU faster, a GPU that fails) on a device with 4 or
+  more cores, the CPU workers start then, as they do with no GPU. It used to carry on with one detector on one core. On two
+  or three cores it still does: one detector with YuNet in a worker of its own overlaps the two, which two workers (each
+  runs YuNet after RetinaFace) didn't beat in the runs made.
 - The workers: one per core but two (`poolSize`), no more than the memory allows (8 GB reported: up to 6, about 2 GB of heaps; 4 GB: 3; else 2) and
   four on a phone or tablet. Never fewer than before. Each runs one WebAssembly thread: the frames are the parallel work, which
   needs no synchronising between threads.

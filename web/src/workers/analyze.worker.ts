@@ -7,7 +7,7 @@ import { CoverageMeter, type Coverage } from '../lib/coverage'
 import { YunetWorker } from '../lib/yunet-worker'
 import { SELFIE_NO_GPU, StatsHistory, summary, type AnalysisStats, type StatsSnapshot } from '../lib/analysis-stats'
 import { DetectorPool } from '../lib/detector-pool'
-import { poolSize as wantedPool, wasmSimd, type DeviceDiag, type GpuDiag } from '../lib/devicediag'
+import { fallbackPoolSize, poolSize as wantedPool, wasmSimd, type DeviceDiag, type GpuDiag } from '../lib/devicediag'
 import { CutDetector } from '../lib/cuts'
 import { track } from '../lib/tracker'
 import { lowConfidenceTracks } from '../lib/lowconf'
@@ -72,6 +72,9 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
   const poolWanted = wantedPool(cores, memory, mobile)
   const asked = workers !== undefined ? Math.min(8, Math.max(1, Math.round(workers))) : undefined
   const poolSize = asked ?? poolWanted
+  // When detection leaves the GPU the workers take over only with cores for them (4 or more): on two cores a detector with
+  // YuNet in a worker of its own (the two overlap) measured faster than two workers (each runs YuNet after RetinaFace).
+  const fallbackPool = asked ?? fallbackPoolSize(cores, poolWanted)
   // No GPU also where the browser has WebGPU but no adapter for it (common on Android and Linux).
   const gpu = (self.navigator as any)?.gpu
   const cpuOnly = backend === 'wasm' || !gpu || !(await gpu.requestAdapter().catch(() => null))
@@ -100,7 +103,7 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
   let ynWorker = !pool && yunet ? await YunetWorker.create(yunet) : null
   let detector: FaceDetector | null = pool ? null : await FaceDetector.create(base + 'models/', backend, undefined, yunet, ynWorker, tune?.softGpu === true).catch((e) => { ynWorker?.close(); throw e })
   // The GPU-vs-CPU check compares the GPU with the detectors the CPU would run side by side.
-  if (detector) detector.cpuLanes = poolSize
+  if (detector) detector.cpuLanes = fallbackPool
   // Why detection isn't on the GPU after it left it (the detector is gone once the workers took over).
   let leftGpu: string | null = null
   // The stats of the detector that ran before the workers took over (so the counters never go back).
@@ -115,7 +118,7 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
    * adapter's device measured "waves 1/16": one detector, 15 idle cores).
    */
   const toPool = async () => {
-    if (!detector || detector.backend !== 'wasm' || pool || poolTried || poolSize <= 1) return
+    if (!detector || detector.backend !== 'wasm' || pool || poolTried || fallbackPool <= 1) return
     poolTried = true
     const p = await startPool(detector.fp32Bytes)
     if (!p) return

@@ -24,6 +24,9 @@ for (const cores of [2, 3, 4, 5, 6, 8, 10, 12, 16, 24]) for (const mem of [undef
   if (sz(cores, mem) < before) fail('fewer detectors than before at ' + cores + ' cores, memory ' + mem)
 }
 
+// ---- the workers that take over from a GPU: with 4 cores or more
+if (D.fallbackPoolSize(2, 2) !== 1 || D.fallbackPoolSize(3, 2) !== 1 || D.fallbackPoolSize(4, 2) !== 2 || D.fallbackPoolSize(16, 6) !== 6 || D.fallbackPoolSize(1, 1) !== 1) fail('the fallback pool')
+
 // ---- a software adapter
 if (!D.isSoftwareAdapter({ isFallbackAdapter: true }) || !D.isSoftwareAdapter({ info: { isFallbackAdapter: true } })) fail('a fallback adapter')
 if (!D.isSoftwareAdapter({ info: { architecture: 'swiftshader' } }) || !D.isSoftwareAdapter({ info: { description: 'llvmpipe (LLVM 15)' } })) fail('a named software renderer')
