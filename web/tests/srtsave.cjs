@@ -85,6 +85,22 @@ const WORDS = [['שלום', 1, 1.5], ['לכולם', 1.6, 2.5], ['היום', 4, 4
     if (early) fail('the SRT with the bleeped words downloaded without asking')
     const shown = await download('.srt-ask-yes')
     if (!shown.includes('שלום לכולם')) fail('the confirmed SRT lacks the bleeped word: ' + shown)
+
+    // The done screen, with the mask off and a bleeped word: the same ask, no download before the confirm.
+    await p.click('.export-bar .btn')
+    await p.click('.export-go')
+    await p.waitForSelector('.result video, .card.error', { timeout: 600000 })
+    if (await p.$('.card.error')) fail('the export failed')
+    if (await p.$('a.srt-link:not(.srt-shows)')) fail('the done screen offers the SRT without asking')
+    await p.waitForSelector('.srt-shows')
+    let early2 = false
+    p.once('download', () => { early2 = true })
+    await p.click('.srt-shows')
+    await p.waitForSelector('.srt-ask')
+    await p.waitForTimeout(400)
+    if (early2) fail('the done screen saved the SRT with the bleeped words without asking')
+    const shown2 = await download('.srt-ask-yes')
+    if (!shown2.includes('שלום לכולם')) fail('the confirmed done-screen SRT lacks the bleeped word: ' + shown2)
     console.log('PASS')
   } catch (e) {
     await p.screenshot({ path: `${out}/failure.png` }).catch(() => {})
