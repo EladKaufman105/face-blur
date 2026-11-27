@@ -686,10 +686,18 @@ private fun VideoWithOverlay(
         // The safe zone's platform chooser floats over the video's top (the video keeps its whole size); it is the video's own
         // overlay, so a dark glass pill with light icons whatever the theme. The zone stays on without it.
         if (chooser && ctrl.safeZoneOn && SafeZone.appliesTo(frameShape, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)) {
-            PlatformChooser(
-                ctrl.safePlatform, { ctrl.safePlatform = it },
-                Modifier.align(Alignment.TopCenter).padding(top = SafeChooserTop).fillMaxWidth(0.9f).widthIn(max = SafeChooserMaxWidth).testTag(Tags.SAFE_ZONE + ".chooser"),
-            )
+            // The pill stays centred; the small mirror switch sits beside it (a spacer of the same width on the other side),
+            // all of it inside the row, so every touch target is within what is drawn.
+            BoxWithConstraints(Modifier.align(Alignment.TopCenter).padding(top = SafeChooserTop).fillMaxWidth()) {
+                val pillW = minOf(SafeChooserMaxWidth, maxWidth * 0.9f)
+                Row(Modifier.align(Alignment.TopCenter), verticalAlignment = Alignment.Top) {
+                    Spacer(Modifier.width(SafeMirrorSlot))
+                    PlatformChooser(ctrl.safePlatform, { ctrl.chooseSafePlatform(it) }, Modifier.width(pillW).testTag(Tags.SAFE_ZONE + ".chooser"))
+                    Box(Modifier.width(SafeMirrorSlot).padding(start = 6.dp).padding(top = 1.dp)) {
+                        SafeMirrorButton(ctrl.safeMirrored, { ctrl.safeMirrored = it })
+                    }
+                }
+            }
         }
     }
 }
@@ -941,7 +949,7 @@ private fun Overlay(ctrl: EditorController, subs: SubLang, style: SubtitleStyle,
         }
         if (ctrl.safeZoneOn && fw >= 2f && fh >= 2f && SafeZone.appliesTo(aspect, ctrl.session.info.displayWidth, ctrl.session.info.displayHeight)) {
             // The mock's own top row starts below the chooser's pill, which floats over the video's top.
-            drawSafeZone(ctrl.safePlatform, safeZone(), Offset(fl, ft), Size(fw, fh), reserved = ((SafeChooserTop + SafeChooserHeight).toPx() - ft).coerceAtLeast(0f))
+            drawSafeZone(ctrl.safePlatform, safeZone(), Offset(fl, ft), Size(fw, fh), reserved = ((SafeChooserTop + SafeChooserHeight).toPx() - ft).coerceAtLeast(0f), mirrored = ctrl.safeMirrored)
         }
         if (live && ctrl.playing) return@Canvas
         val shapes = ctrl.model.shapesAt(ctrl.shownFrame, ctrl.padding)
@@ -1839,6 +1847,8 @@ private fun PropActions(content: @Composable () -> Unit) {
 private val SafeChooserTop: Dp = 4.dp
 private val SafeChooserHeight: Dp = 34.dp
 private val SafeChooserMaxWidth: Dp = 122.dp
+/** The room each side of the pill: the mirror switch (32 dp) and its gap. */
+private val SafeMirrorSlot: Dp = 38.dp
 
 /** The chooser's visible segments and the gap between them. */
 private val SegmentHeight: Dp = 30.dp
@@ -1900,12 +1910,12 @@ private fun PlatformChooser(selected: Platform, onSelect: (Platform) -> Unit, mo
                 // highlight is, the plain one elsewhere (so no icon vanishes into it as it passes).
                 val tint = lerp(iconOff, iconOn, (1f - abs(at.value - i)).coerceIn(0f, 1f))
                 val touch = remember { MutableInteractionSource() }
-                // A 48 dp tall touch target (centered on the 30 dp segment, so it reaches past the
-                // pill); the press ripple stays inside the visible segment.
+                // The touch target is the segment itself (30 dp): it stays inside the pill, so a tap on the
+                // video's top edge is never taken from the video; the press ripple fills it.
                 Box(
                     Modifier
                         .weight(1f)
-                        .requiredHeight(MinTouch)
+                        .height(SegmentHeight)
                         .selectable(selected = on, interactionSource = touch, indication = null, role = Role.RadioButton, onClick = { onSelect(p) })
                         .testTag(Tags.SAFE_ZONE + "." + p.name),
                     contentAlignment = Alignment.Center,

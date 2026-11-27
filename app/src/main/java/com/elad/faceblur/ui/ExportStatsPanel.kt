@@ -63,6 +63,11 @@ import java.util.Locale
  * AnalysisStatsPanel, with the export's own numbers (the web app has the same panel).
  */
 
+/** Holds the last stats while the panel folds away. */
+private class ExportKept {
+    var stats: ExportStats? = null
+}
+
 private val XGap = Space.S
 
 private enum class XCell { FPS, FRAMES, BLUR, ENCODER, TIME, AUDIO, SIZE, BITRATE }
@@ -108,7 +113,17 @@ private fun AudioStep.text(): String = when (this) {
     AudioStep.MUTED -> t("אין סאונד")
 }
 
-private fun codecName(mime: String) = if (mime.contains("hevc", true) || mime.contains("265")) "HEVC" else "H.264"
+/** The codec by its MIME type (the export's, which is the source's when "same as the video" is chosen). */
+private fun codecName(mime: String) = when {
+    mime.contains("hevc", true) || mime.contains("265") -> "HEVC"
+    mime.contains("vp9", true) -> "VP9"
+    mime.contains("vp8", true) -> "VP8"
+    mime.contains("av01", true) || mime.contains("av1", true) -> "AV1"
+    mime.contains("avc", true) || mime.contains("264") -> "H.264"
+    mime.contains("mp4v", true) -> "MPEG-4"
+    mime.contains("3gpp", true) -> "H.263"
+    else -> mime.substringAfter('/').uppercase()
+}
 
 private fun encoderText(hardware: Boolean?): String = when (hardware) {
     true -> t("חומרה (כנראה)")
@@ -161,9 +176,10 @@ private fun XCell.value(e: ExportStats, elapsedMs: Long, leftMs: Long?, small: S
 /** The panel under the progress, opened and closed with the same fold as the analysis' one. [elapsedMs] and [leftMs] are read when drawn. */
 @Composable
 fun ExportStatsPanel(visible: Boolean, stats: ExportStats?, percent: Int, elapsedMs: Long, leftMs: Long?) {
-    var kept by remember { mutableStateOf<ExportStats?>(null) }
-    if (stats != null) kept = stats
-    val shown = stats ?: kept
+    // The last stats are kept (not as state: nothing is written while composing) so the panel can fold away after they are gone.
+    val kept = remember { ExportKept() }
+    if (stats != null) kept.stats = stats
+    val shown = stats ?: kept.stats
     AnimatedVisibility(visible && stats != null, enter = FoldIn, exit = FoldOut) {
         if (shown != null) ExportStatsContent(shown, percent, elapsedMs, leftMs)
     }

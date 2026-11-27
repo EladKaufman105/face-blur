@@ -126,7 +126,23 @@ class EditorController(
     /** Draw the platform's safe zone over the preview (a view aid for vertical frames; never in the export). */
     var safeZoneOn by mutableStateOf(false)
     /** The platform whose zone is drawn. */
-    var safePlatform by mutableStateOf(com.elad.faceblur.template.Platform.TIKTOK)
+    var safePlatform by mutableStateOf(
+        runCatching { com.elad.faceblur.template.Platform.valueOf(prefs?.safePlatform.orEmpty()) }.getOrDefault(com.elad.faceblur.template.Platform.TIKTOK),
+    )
+        private set
+
+    /** The platform picked in the chooser: kept for new projects too. */
+    fun chooseSafePlatform(p: com.elad.faceblur.template.Platform) {
+        safePlatform = p
+        prefs?.safePlatform = p.name
+    }
+
+    /** Sets the platform a saved project had, without making it the one new projects start with. */
+    fun restoreSafePlatform(p: com.elad.faceblur.template.Platform) {
+        safePlatform = p
+    }
+    /** The zone and the mock mirrored, for an app in a right-to-left language (the button column at the left). */
+    var safeMirrored by mutableStateOf(false)
 
     /**
      * How far the player's GPU effects were cut back after failing on this device: 0 all of them

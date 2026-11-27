@@ -402,7 +402,7 @@ class FaceBlurProcessor(private val context: Context) {
         if (counters != null) {
             val (ow, oh) = export.outputSize(info)
             val outMime = export.mimeType() ?: info.videoMime.ifEmpty { MimeTypes.VIDEO_H264 }
-            val enc = likelyEncoder(outMime)
+            val enc = likelyEncoder(outMime, ow, oh, bitrate)
             counters.facts = ExportFacts(
                 srcWidth = info.displayWidth, srcHeight = info.displayHeight, width = ow, height = oh,
                 mime = outMime, encoder = enc?.first, hardware = enc?.second, bitrate = bitrate,

@@ -64,6 +64,19 @@ function dot(c: C, cx: number, cy: number, r: number, color = INK) {
 
 function font(c: C, size: number, bold: boolean) { c.font = `${bold ? 700 : 400} ${size}px system-ui, sans-serif` }
 
+/** Set while a mirrored (right-to-left app) mock is drawn: the whole canvas is flipped, and text is flipped back so that it still reads. */
+let flipped = false
+
+/** Fills [s] at [x] (left edge, in the mock's own layout), reading the right way round also when the canvas is flipped. */
+function fillText(c: C, s: string, x: number, baseline: number) {
+  if (!flipped) { c.fillText(s, x, baseline); return }
+  c.save()
+  c.translate(x + c.measureText(s).width, 0)
+  c.scale(-1, 1)
+  c.fillText(s, 0, baseline)
+  c.restore()
+}
+
 function label(c: C, s: string, x: number, baseline: number, size: number, bold: boolean, alpha: number) {
   font(c, size, bold)
   c.textAlign = 'left'
@@ -73,7 +86,7 @@ function label(c: C, s: string, x: number, baseline: number, size: number, bold:
   c.shadowColor = 'rgba(0,0,0,0.53)'
   c.shadowBlur = size * 0.18
   c.shadowOffsetY = size * 0.06
-  c.fillText(s, x, baseline)
+  fillText(c, s, x, baseline)
   c.shadowColor = 'transparent'; c.shadowBlur = 0; c.shadowOffsetY = 0
 }
 
@@ -83,9 +96,10 @@ function measure(c: C, s: string, size: number, bold: boolean) { font(c, size, b
  * The platform's own interface, imitated, over a frame at ([x], [y]) of [w] x [h], laid out by the
  * platform's [zone]: a tab strip at the top, a column of buttons at the right, the account, caption
  * and sound lines at the bottom and a thin progress bar. A soft shade behind the top and bottom
- * parts and a thin dashed outline around the clear middle help the eye.
+ * parts and a thin dashed outline around the clear middle help the eye. [mirrored]: the app in a right-to-left
+ * language (Arabic, Hebrew): the whole picture is flipped, so the column of buttons is at the left (the text stays readable).
  */
-export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y: number, w: number, h: number, reserved = 0) {
+export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y: number, w: number, h: number, reserved = 0, mirrored = false) {
   const dp = Math.max(1, w / 360)
   const topH = h * zone.top, botH = h * zone.bottom
   const leftW = w * zone.left, rightW = w * zone.right
@@ -96,6 +110,8 @@ export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y:
   c.save()
   c.beginPath(); c.rect(x, y, w, h); c.clip()
   c.translate(x, y)
+  flipped = mirrored
+  if (mirrored) { c.translate(w, 0); c.scale(-1, 1) }
   // Light shade where the platform's screens sit, so white shapes read on any video.
   let g = c.createLinearGradient(0, 0, 0, Math.max(1, topH))
   g.addColorStop(0, 'rgba(0,0,0,0.34)'); g.addColorStop(1, 'rgba(0,0,0,0)')
@@ -201,7 +217,7 @@ export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y:
     if (platform === 'shorts') {
       pill(c, px, py, tw + ps * 1.6, ph, ph / 2, 'rgba(255,255,255,0.92)')
       font(c, ps, true); c.textAlign = 'left'; c.fillStyle = '#202020'; c.shadowColor = 'transparent'
-      c.fillText(txt, px + ps * 0.8, py + ph / 2 + ps * 0.35)
+      fillText(c, txt, px + ps * 0.8, py + ph / 2 + ps * 0.35)
     } else {
       c.beginPath(); c.roundRect(px, py, tw + ps * 1.6, ph, ph / 2); c.strokeStyle = INK; c.lineWidth = Math.max(1.5, ps * 0.1); c.stroke()
       label(c, txt, px + ps * 0.8, py + ph / 2 + ps * 0.35, ps, true, 0.95)
@@ -223,4 +239,5 @@ export function drawSafeZone(c: C, platform: Platform, zone: Zone, x: number, y:
   c.strokeRect(leftW, topH, w - leftW - rightW, h - topH - botH)
   c.setLineDash([])
   c.restore()
+  flipped = false
 }

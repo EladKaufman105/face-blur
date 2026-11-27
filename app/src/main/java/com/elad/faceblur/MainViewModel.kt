@@ -667,7 +667,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ctrl.onFacesFound = { persistFaces(ctrl) }
         autosave?.cancel()
         autosave = viewModelScope.launch {
-            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, subtitleStyle, sessionExport, ctrl.background, ctrl.masksReady, ctrl.session.settings, ctrl.stabilizeLevel, ctrl.translateTo, ctrl.safeZoneOn, ctrl.safePlatform) }
+            snapshotFlow { listOf(ctrl.version, ctrl.audio, ctrl.split, subtitleStyle, sessionExport, ctrl.background, ctrl.masksReady, ctrl.session.settings, ctrl.stabilizeLevel, ctrl.translateTo, ctrl.safeZoneOn, ctrl.safePlatform, ctrl.safeMirrored) }
                 .drop(1)
                 .collectLatest {
                     delay(1500)
@@ -762,7 +762,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // The safe zone's view aid, as it was left with this project (older projects have none: off).
             j.optJSONObject("safeZone")?.let { z ->
                 ctrl.safeZoneOn = z.optBoolean("on", false)
-                runCatching { com.elad.faceblur.template.Platform.valueOf(z.optString("platform")) }.getOrNull()?.let { ctrl.safePlatform = it }
+                ctrl.safeMirrored = z.optBoolean("mirrored", false)
+                runCatching { com.elad.faceblur.template.Platform.valueOf(z.optString("platform")) }.getOrNull()?.let { ctrl.restoreSafePlatform(it) }
             }
             editor = ctrl
             projectId = id
@@ -1079,18 +1080,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val history = com.elad.faceblur.pipeline.ExportHistory()
         state = UiState.Working(s.info, 2, 0f, subsOnly, auto)
         saveProject(ctrl)
-        val saved = FaceBlurProcessor(getApplication()).render(
-            s.info, s.settings, s.analysis, s.model, s.analysisMs, exportOptions, subtitleStyle, ctrl.audio,
-            ctrl.background, s.masks,
-            stabilizer = ctrl.stabilizer,
-            onPreview = { frame -> showLive(frame, emptyList()) },
-            counters = counters,
-        ) { p ->
-            state = UiState.Working(s.info, 2, p, subsOnly, auto)
-            // The progress comes about every half second: the counters are read with it.
-            history.add(counters.snapshot(android.os.SystemClock.elapsedRealtime()))?.let { exportStats = it }
+        // Whatever way it ends (saved, failed, cancelled), the stats go.
+        val saved = try {
+            FaceBlurProcessor(getApplication()).render(
+                s.info, s.settings, s.analysis, s.model, s.analysisMs, exportOptions, subtitleStyle, ctrl.audio,
+                ctrl.background, s.masks,
+                stabilizer = ctrl.stabilizer,
+                onPreview = { frame -> showLive(frame, emptyList()) },
+                counters = counters,
+            ) { p ->
+                state = UiState.Working(s.info, 2, p, subsOnly, auto)
+                // The progress comes about every half second: the counters are read with it.
+                history.add(counters.snapshot(android.os.SystemClock.elapsedRealtime()))?.let { exportStats = it }
+            }
+        } finally {
+            exportStats = null
         }
-        exportStats = null
         if (s.analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / s.analysisMs
         state = UiState.Done(s.info, saved, canEdit = true, subsOnly = subsOnly, fast = !subsOnly && s.settings.fast, selfie = !subsOnly && s.settings.selfie)
     }

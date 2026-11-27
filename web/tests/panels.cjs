@@ -614,6 +614,22 @@ self.onmessage = async () => { const n = Number(await (await fetch('/__run')).te
         const old = vh - 380
         if (top.screenH < old + 40) fail(`${vw}x${vh}: the video is ${Math.round(top.screenH)} px tall, not bigger than the old ${old} px`)
       }
+      // A landscape phone / small tablet that is neither the phone's nor the tablet's layout (601-839 px wide, under 600 px tall) keeps the
+      // site header and the old video (half the height): the compact row is only from 840 px wide, and a short wide screen never gets less than half.
+      for (const [vw, vh, compactRow] of [[740, 360, false], [667, 375, false], [640, 360, false], [839, 500, false], [900, 420, true], [1024, 360, true]]) {
+        await w.setViewportSize({ width: vw, height: vh })
+        await w.waitForTimeout(300)
+        const m = await w.evaluate(() => {
+          const r = (s) => document.querySelector(s)?.getBoundingClientRect()
+          const row = document.querySelector('.player > .top-row')
+          return { screenH: r('.screen').height, siteHeader: getComputedStyle(document.querySelector('header.top')).display !== 'none', brand: !!document.querySelector('.top-row .brand-mini'), rowOverflow: row.scrollWidth > row.clientWidth + 1, pageOverflow: document.documentElement.scrollWidth > innerWidth + 1 }
+        })
+        console.log('short', vw + 'x' + vh, JSON.stringify(m))
+        if (m.screenH < vh * 0.5 - 2) fail(`${vw}x${vh}: the video is ${Math.round(m.screenH)} px tall, under half the screen (the old layout's)`)
+        if (m.siteHeader === compactRow) fail(`${vw}x${vh}: the site header is ${m.siteHeader ? 'shown' : 'hidden'}, the compact row ${compactRow ? 'should' : 'should not'} be in use`)
+        if (m.brand !== compactRow) fail(`${vw}x${vh}: the brand in the top row is ${m.brand}, expected ${compactRow}`)
+        if (m.rowOverflow || m.pageOverflow) fail(`${vw}x${vh}: the top row or the page overflows sideways`)
+      }
       await w.setViewportSize({ width: 1366, height: 860 })
       // The privacy line is behind the (i) in the row.
       await w.click('.top-row .info-btn')

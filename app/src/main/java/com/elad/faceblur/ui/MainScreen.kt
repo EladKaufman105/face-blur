@@ -392,7 +392,9 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, exportStat
     val exporting = state.stage == 2
     val feature = if (state.subsOnly) Feature.SUBTITLES else Feature.FACES
     // A tap on the percentage shows how the analysis is doing (for tuning on a device).
-    var showStats by remember { mutableStateOf(false) }
+    // Each step's panel is opened on its own: the analysis' stays as it was left when the export begins.
+    var showAnalysisStats by remember { mutableStateOf(false) }
+    var showExportStats by remember { mutableStateOf(false) }
     val frame: @Composable (Modifier) -> Unit = { modifier ->
         Box(modifier, contentAlignment = Alignment.Center) {
             LiveFrame(
@@ -435,18 +437,18 @@ private fun WorkingScreen(state: UiState.Working, live: LivePreview?, exportStat
                         ltr("${(overall * 100).roundToInt()}%"),
                         style = MaterialTheme.typography.headlineMedium.tnum(),
                         color = feature.tint,
-                        modifier = Modifier.clickable { showStats = !showStats }.testTag(Tags.PROGRESS_PERCENT),
+                        modifier = Modifier.clickable { if (exporting) showExportStats = !showExportStats else showAnalysisStats = !showAnalysisStats }.testTag(Tags.PROGRESS_PERCENT),
                     )
                 }
                 AnalysisStatsPanel(
-                    visible = showStats && state.stage == 1,
+                    visible = showAnalysisStats && state.stage == 1,
                     stats = live?.stats,
                     info = state.info,
                     percent = (overall * 100).roundToInt(),
                     elapsedMs = { android.os.SystemClock.elapsedRealtime() - eta.startedAt },
                 )
                 ExportStatsPanel(
-                    visible = showStats && exporting,
+                    visible = showExportStats && exporting,
                     stats = exportStats,
                     percent = (overall * 100).roundToInt(),
                     elapsedMs = android.os.SystemClock.elapsedRealtime() - eta.startedAt,

@@ -344,6 +344,26 @@ function png(w, h, [r, g, b, a]) {
       await p.waitForSelector('.safe-float.open .safe-pill', { state: 'visible' })
       await p.waitForTimeout(600)
       if ((await overlay(p)).n < 200) fail('no mock over the reopened project')
+      // Mirrored (an app in a right-to-left language): the column of buttons moves to the left; kept with the project too.
+      const side = (pp) => pp.evaluate(() => {
+        const c = document.querySelectorAll('.view canvas')[2], g = c.getContext('2d')
+        const mass = (x0) => { const d = g.getImageData(x0, Math.round(c.height * 0.35), Math.round(c.width * 0.14), Math.round(c.height * 0.3)).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 150) n++; return n }
+        return { left: mass(0), right: mass(c.width - Math.round(c.width * 0.14)) }
+      })
+      const lt = await side(p)
+      if (lt.right <= lt.left) fail('the button column is not at the right to start with: ' + JSON.stringify(lt))
+      await p.click('.safe-mirror')
+      await p.waitForTimeout(600)
+      const rt = await side(p)
+      if (rt.left <= rt.right) fail('the button column did not move to the left when mirrored: ' + JSON.stringify(rt))
+      if ((await p.getAttribute('.safe-mirror', 'aria-pressed')) !== 'true') fail('the mirror button is not pressed')
+      await p.waitForTimeout(2600)
+      await p.click('.editor .btn.ghost >> nth=0')
+      await p.waitForSelector('.project', { timeout: 10000 })
+      await p.click('.project-open')
+      await p.waitForSelector('.safe-mirror')
+      if ((await p.getAttribute('.safe-mirror', 'aria-pressed')) !== 'true') fail('the mirrored zone was not kept with the project')
+      await p.click('.safe-mirror')
       // Turned off, kept off.
       await p.click('.safe-toggle')
       await p.waitForTimeout(2600)

@@ -879,6 +879,7 @@ internal val English: Map<String, String> = mapOf(
     "מה קורה לסאונד בייצוא: מועתק כמו שהוא, מקודד מחדש (עם אפקטים או חיתוכים) או נוצר מחדש (שינוי קול)." to "What happens to the sound in the export: copied as is, re-encoded (with effects or cuts) or made anew (a voice change).",
     "גודל התמונה: מהמקור לתוצאה." to "The picture’s size: from the source to the result.",
     "כמה סיביות בשנייה מבקשים מהמקודד." to "How many bits a second are asked of the encoder.",
+    "מראה: אפליקציה מימין לשמאל" to "Mirrored: right-to-left app",
     "מצב סלפי רץ על המעבד" to "Selfie mode runs on the CPU",
     "BlazeFace של MediaPipe, פנים קרובות למצלמה" to "MediaPipe's BlazeFace, faces close to the camera",
     "מאפשר: מצב זיהוי סלפי (אדם אחד קרוב למצלמה)" to "Enables: selfie detection (one person close to the camera)",

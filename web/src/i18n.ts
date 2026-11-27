@@ -656,6 +656,7 @@ const EN: Record<string, string> = {
   // The safe zone, and the mock of a platform's screens drawn over the video.
   'אזור בטוח': 'Safe zone',
   'מידע': 'Info',
+  'מראה: אפליקציה מימין לשמאל': 'Mirrored: right-to-left app',
   'עוקבים': 'Following',
   'בשבילך': 'For you',
   'עקוב': 'Follow',

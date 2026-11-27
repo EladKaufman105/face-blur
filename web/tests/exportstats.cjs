@@ -91,6 +91,8 @@ const fail = (m) => { throw new Error(m) }
       await p.screenshot({ path: `${out}/${name}_2_details.png` })
       // Copy: the report on the clipboard.
       await p.click('.stats-copy')
+      // The report is made with the device's details (asked for first): it lands on the clipboard a moment after the tap.
+      await p.waitForFunction(async () => (await navigator.clipboard.readText()).startsWith('# ONIT export stats'), null, { timeout: 10000 }).catch(() => {})
       const text = await p.evaluate(() => navigator.clipboard.readText())
       if (!text.startsWith('# ONIT export stats (web)') || !/encode_fps:/.test(text) || !/audio_steps:/.test(text)) fail(`${name}: the copied report: ${text.slice(0, 120)}`)
       // The percentage closes it again.
