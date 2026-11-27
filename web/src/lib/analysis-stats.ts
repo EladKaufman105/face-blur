@@ -3,6 +3,7 @@
 // the worker reads its counters (totals since the pass began) with each preview, StatsHistory turns
 // them into the current per-second values and keeps the last 60 samples (about a second apart).
 // Plain data only: it crosses from the worker to the page in a message.
+import { diagLines, type DeviceDiag } from './devicediag.ts'
 
 /** The counters at one moment: totals since the pass began (ms), and how detection is set up now. */
 export interface StatsSnapshot {
@@ -48,6 +49,8 @@ export interface StatsSnapshot {
   /** The detection mode ('normal', 'extended', 'fast', 'selfie') and the sensitivity (0..1, lib/sensitivity.ts). */
   mode?: string
   sensitivity?: number
+  /** What the device report adds (lib/devicediag.ts): the GPU, the threads, the isolation, the workers. */
+  diag?: DeviceDiag
 }
 
 /** Measured from the frames really detected: D, G, S. */
@@ -247,6 +250,7 @@ export function statsReport(a: AnalysisStats, c: ReportContext): string {
     `per_detection_ms: fine ${fmt(a.fineMs)}, coarse ${fmt(a.coarseMs)} (ran on ${Math.round(a.coarseShare * 100)}% of detections), gpu_inference ${gpu ? fmt(a.gpuMs) : '-'}, gpu_check ${fmt(a.checkMs)}, crop_check ${fmt(a.verifyMs)}, merge ${fmt(a.mergeMs)}`,
     `per_frame_ms: decode_wait ${fmt(a.decodeWaitMs)}, cut_check ${fmt(a.cutMs)}`,
     `frames: ${l.frames}, detections_per_frame: ${l.frames ? (l.detections / l.frames).toFixed(2) : '0'}`,
+    ...(l.diag ? diagLines(l.diag) : []),
   ]
   return out.join('\n')
 }

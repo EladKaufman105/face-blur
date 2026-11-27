@@ -51,6 +51,8 @@ case "${1:?shard}" in
     node tests/fusion.cjs   # 1
     # Selfie detection's pure parts: BlazeFace's anchors, decoding, weighted NMS and letterbox against MediaPipe's own results (the Android app's BlazeFaceTest checks the same fixture), the sensitivity's threshold (0.5 at 0 exactly, 0.3 at 1), the choice of mode (pure, no browser).
     node tests/blazeface.cjs   # 1
+    # The device report's pure parts and the rules that use the cores: how many CPU detectors run side by side (cores, memory, phones; never fewer than before), a software WebGPU adapter never used, the runtime's node placement read as counts, the pace not counting a detection that compiled shaders (pure, no browser).
+    node tests/devdiag.cjs   # 1
     # The bleep's loudness follows the speech it replaces (the app's BleepLevelTest checks the same vectors): a quiet word a quiet beep, a loud one a louder beep under the cap, nothing clips (pure, no browser).
     node tests/bleep.cjs   # 1
     node tests/cutsrt.cjs   # 1
@@ -114,6 +116,8 @@ case "${1:?shard}" in
     t usernotes.cjs "$U" $S/speech_two.mp4 $S/walk.mp4 $R/usernotes   # 43
     # The speech model's flow with no download: faster / better quality kept, a stuck recognition ends with an error and a retry, Cancel ends the worker, a template asks before downloading.
     t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 38
+    # A software WebGPU adapter (headless Chromium's SwiftShader, not told ?backend=wasm) is never used for detection: the CPU workers run (more than one on a machine with cores), the report says why and lists the adapter, node placement, threads, isolation and the detector pool.
+    t softgpu.cjs "http://localhost:4173/?coi=0" $S/walk.mp4 $R/softgpu   # ~25
     # A subtitles job shows life at once (no model: a stub for the Hub): the model is asked for at the start, beside the sound's reading, and the sound's percent shows with the model's phase.
     t subsstart.cjs "$U" $S/speech_two.mp4 $R/subsstart strict   # 8
     ;;
@@ -155,7 +159,7 @@ case "${1:?shard}" in
     t project.cjs "$U" $S/speech_two.mp4 $R/project   # 15
     # Which speech model the subtitles tab offers (no download): ivrit.ai's for Hebrew, with its size; Whisper for the other languages.
     t subsplan.cjs "$U" $S/speech_two.mp4 $R/subsplan   # 15
-    # The analysis stats panel: tiles and charts that update, more details, an (i), Copy (the report).
+    # The analysis stats panel: tiles and charts that update, more details, an (i), Copy details (the report, with the GPU, node placement, threads, isolation and detector pool).
     t stats.cjs "$U" $S/walk.mp4 $R/stats   # 14
     # The export's stats panel: a tap on the percentage opens tiles (encode speed, frames, blur per frame, encoder, time), details, (i), Copy; phone (he) and desktop (en); the pure history and report.
     t exportstats.cjs "$U" $S/speech_two.mp4 $R/exportstats   # ~25

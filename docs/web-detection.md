@@ -72,6 +72,32 @@ second; at a rate, every frame its gate took is detected. YuNet's cost can
 make the analysis take longer, never lighter. `web/tests/fusion.cjs` checks both on simulated
 devices (fast and slow GPUs, CPUs with one to four detectors, a cheap or costly YuNet).
 
+## Which detector runs, and on how many cores
+
+Two owner devices both ended at 640 px and 4 detections a second. One was a ChromeOS laptop (GPU fp16,
+374 ms a detection, "waves 1/2"), the other a browser whose WebGPU was a software adapter ("the CPU is faster
+here (273 vs 785 ms)", then one detector on 16 cores: "waves 1/16"). What was found and changed
+(`web/src/lib/devicediag.ts`, `detector.ts`, `workers/analyze.worker.ts`; the numbers are in the PR that made it):
+
+- A software WebGPU adapter (`adapter.info.isFallbackAdapter`, or one that names itself SwiftShader or llvmpipe) is never used:
+  it is WebGPU on the CPU, several times slower than the CPU's own WebAssembly with the workers.
+- When detection leaves the GPU (software adapter, the check finding the CPU faster, a GPU that fails) on a device with 4 or
+  more cores, the CPU workers start then, as they do with no GPU. It used to carry on with one detector on one core. On two
+  or three cores it still does: one detector with YuNet in a worker of its own overlaps the two, which two workers (each
+  runs YuNet after RetinaFace) didn't beat in the runs made.
+- The workers: one per core but two (`poolSize`), no more than the memory allows (8 GB reported: up to 6, about 2 GB of heaps; 4 GB: 3; else 2) and
+  four on a phone or tablet. Never fewer than before. Each runs one WebAssembly thread: the frames are the parallel work, which
+  needs no synchronising between threads.
+- The GPU-vs-CPU check compares the GPU with the CPU workers that would run side by side (each counted at 75%), not with
+  one core, and only counts runs after the GPU has run that shape once.
+- A detection that ran a shape on the GPU for the first time (shaders compile: seconds on a weak GPU) is left out of the pace
+  (`Timing.cold`). Each size step of the pace is a new shape; its compile read as a slow device and shrank the frame again.
+  Nothing becomes lighter because of this: a device that is slow in steady state is still paced down as before.
+- The label said "fp16" after a half-precision GPU run had moved to the CPU's float32 model; it now says what runs.
+- The stats panel's "Copy details" report lists what we can't see from here: the GPU adapter and shader-f16, how many
+  nodes ONNX Runtime put on the GPU and on the CPU, the first run's time (shader compiling), the WebAssembly threads and
+  SIMD, cross-origin isolation (the page's, through its service worker) and the detector pool (running, wanted, cores, memory).
+
 ## What was really detected
 
 The analysis also measures what detection really covered, from the frames that got a detection

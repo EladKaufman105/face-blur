@@ -261,7 +261,9 @@ export function pace(i: PaceIn): Pace {
 /**
  * A detection's times (ms): whole, RetinaFace's passes (fine + coarse), its fine pass; and the GPU's check against the CPU inside
  * it, if it ran, and a sensitivity's extra work (lib/sensitivity.ts), both left out of the pace: a sensitivity never makes the
- * default detection lighter.
+ * default detection lighter. A detection that ran a shape on the GPU for the first time (the pace changed the frame's size, or the
+ * first frames) compiled shaders, a second or more on a weak GPU: that detection isn't counted (it would read as a slow device,
+ * shrink the frame, and compile again at the next size).
  */
 export interface Timing {
   ms: number
@@ -269,6 +271,8 @@ export interface Timing {
   fineMs: number
   checkMs?: number
   extraMs?: number
+  /** A first run of a shape on the GPU (its shaders compiled in this detection): warm-up, not the device's pace. */
+  cold?: boolean
 }
 
 /**
@@ -290,6 +294,7 @@ export class Pacer {
 
   /** The means when [t] completes a window, else null. */
   add(t: Timing): { recentMs: number; rfMs: number; fineMs: number } | null {
+    if (t.cold) return null
     if (++this.seen <= this.warmup) return null
     this.window.push({ ms: Math.max(0, t.ms - (t.checkMs ?? 0) - (t.extraMs ?? 0)), rfMs: t.rfMs, fineMs: t.fineMs })
     if (this.window.length < Pacer.WINDOW) return null
