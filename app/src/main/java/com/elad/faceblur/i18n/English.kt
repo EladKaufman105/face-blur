@@ -854,6 +854,8 @@ internal val English: Map<String, String> = mapOf(
     "הורדה חד-פעמית. בלי המודל ONIT לא מטשטש פנים, ולא מנסה בשיטה חלשה יותר." to "Downloaded once. Without it ONIT doesn't blur faces, and doesn't try a weaker way.",
     "הורדה חד-פעמית. המודל מוצא את האנשים בכל פריים." to "Downloaded once. It finds the people in every frame.",
     "מצב סלפי" to "Selfie mode",
+    "מודל מצב הסלפי לא במכשיר, או שהשתנה, ולכן הסרטון לא טושטש ולא נשמר. הורד אותו בהגדרות › מודלים ונסה שוב." to "The selfie mode model isn't on the device, or it changed, so the video was not blurred or saved. Download it in Settings › Models and try again.",
+    "מצב סלפי רץ על המעבד" to "Selfie mode runs on the CPU",
     "BlazeFace של MediaPipe, פנים קרובות למצלמה" to "MediaPipe's BlazeFace, faces close to the camera",
     "מאפשר: מצב זיהוי סלפי (אדם אחד קרוב למצלמה)" to "Enables: selfie detection (one person close to the camera)",
     "כדי להשתמש במצב סלפי צריך את מודל הסלפי" to "Selfie mode needs the selfie model",

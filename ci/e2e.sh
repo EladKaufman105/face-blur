@@ -8,7 +8,7 @@
 #                 EndToEndTest clip runs). Otherwise @Weekly tests are left out and EndToEndTest
 #                 does its 6 default runs.
 set -x
-ALL_CLASSES=com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.SubtitlesTest,com.elad.faceblur.ProjectsVoiceTest,com.elad.faceblur.LabsTest,com.elad.faceblur.BatchTest,com.elad.faceblur.models.ModelGateTest,com.elad.faceblur.models.ModelDownloaderTest
+ALL_CLASSES=com.elad.faceblur.EndToEndTest,com.elad.faceblur.EditorScreenTest,com.elad.faceblur.SelfieTest,com.elad.faceblur.SubtitlesTest,com.elad.faceblur.ProjectsVoiceTest,com.elad.faceblur.LabsTest,com.elad.faceblur.BatchTest,com.elad.faceblur.models.ModelGateTest,com.elad.faceblur.models.ModelDownloaderTest
 CLASSES="${E2E_CLASSES:-$ALL_CLASSES}"
 SHARD_ARGS=""
 [ -n "${E2E_SHARDS:-}" ] && SHARD_ARGS="-e e2eShards $E2E_SHARDS -e e2eShard ${E2E_SHARD:-0}"

@@ -13,7 +13,7 @@ import java.io.FileNotFoundException
  * first-launch sheet as seen, so it doesn't cover the screens the tests look at.
  */
 object ModelSeed {
-    val ALL = listOf(PackId.FACES, PackId.PEOPLE, PackId.SPEAKERS)
+    val ALL = listOf(PackId.FACES, PackId.PEOPLE, PackId.SPEAKERS, PackId.SELFIE)
 
     fun install(packs: List<PackId> = ALL) {
         val inst = InstrumentationRegistry.getInstrumentation()

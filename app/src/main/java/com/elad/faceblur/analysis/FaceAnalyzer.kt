@@ -225,10 +225,11 @@ class FaceAnalyzer private constructor(
                 else -> "gpu-checking"
             },
             // On the GPU: its precision and time per frame; on the CPU: why not the GPU.
-            precision = if (g != null) (if (g.precise) "fp32" else "fp16") else half.state,
+            precision = if (g != null) (if (g.precise) "fp32" else "fp16") else if (selfie) "fp32" else half.state,
             gpuMs = g?.inferMs ?: 0f,
             gpuQueueMs = g?.queueMs ?: 0f,
-            noGpu = if (g != null) null else (gpu?.why ?: GpuFaceNet.unavailable),
+            // (Selfie mode never uses the GPU or the fp16 passes: GpuFaceNet.unavailable is the last face-pack pass's.)
+            noGpu = if (g != null) null else if (selfie) "selfie mode runs on the CPU" else (gpu?.why ?: GpuFaceNet.unavailable),
             side = if (g != null) maxSide else cpuSide,
             every = detectEvery,
             lite = lite,

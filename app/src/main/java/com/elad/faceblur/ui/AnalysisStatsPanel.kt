@@ -242,13 +242,16 @@ private const val PDI = "\u2069"
 /** A time or a count: whole from 10 up, else one decimal (always with a dot). */
 private fun fmt(v: Float): String = if (v >= 9.95f) v.roundToInt().toString() else String.format(Locale.US, "%.1f", v)
 
+/** Why not the GPU, for the panel: selfie mode's reason translated (the others are the detector's own words). */
+private fun whyNoGpu(why: String?): String? = why?.takeIf { it.isNotEmpty() }?.let { if (it == "selfie mode runs on the CPU") t("מצב סלפי רץ על המעבד") else it }
+
 /** "GPU · fp32 · 14 ms" or "CPU · fp16 · <why not the GPU>". */
 private fun backend(s: AnalysisStats): String {
     val l = s.latest
     return if (l.onGpu) {
         listOfNotNull(if (l.accelerator == "gpu") "GPU" else "GPU (checking)", l.precision, l.gpuMs.takeIf { it > 0f }?.let { fmt(it) + " ms" })
     } else {
-        listOfNotNull("CPU", l.precision, l.noGpu?.takeIf { it.isNotEmpty() })
+        listOfNotNull("CPU", l.precision, whyNoGpu(l.noGpu))
     }.joinToString(" · ")
 }
 
@@ -524,7 +527,7 @@ internal fun statsReport(context: Context, s: AnalysisStats, info: VideoInfo, el
     if (sides.isEmpty()) sides += l.side
     val gpu = when {
         l.onGpu -> if (l.gpuMs > 0f) fmt(l.gpuMs) + " ms" else "-"
-        else -> l.noGpu?.takeIf { it.isNotEmpty() } ?: "-"
+        else -> whyNoGpu(l.noGpu) ?: "-"
     }
     val gpuCall = if (l.onGpu) fmt(s.gpuCallMs) + (if (l.gpuQueueMs > 0f) " (queue ${fmt(l.gpuQueueMs)})" else "") else "-"
     val fps = String.format(Locale.US, "%.2f", info.fps).trimEnd('0').trimEnd('.')

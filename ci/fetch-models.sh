@@ -6,7 +6,7 @@
 #
 # Usage, from the repository root:
 #   bash ci/fetch-models.sh [--out DIR] [--with-speech] [PACK...]
-# PACK: faces, people, speakers (the default: all three), selfie, speech-he, speech-any.
+# PACK: faces, people, speakers, selfie (the default: these four), speech-he, speech-any.
 # DIR: where the files go, by their registry names (default app/src/androidTest/assets/models).
 # The speech models (574 MB, a release asset) are fetched only when named or with --with-speech;
 # the tests use whisper's "tiny" model instead (ci/fetch-test-media.sh).
@@ -23,7 +23,7 @@ while [ $# -gt 0 ]; do
     *) packs+=("$1"); shift ;;
   esac
 done
-[ ${#packs[@]} -gt 0 ] || packs=(faces people speakers)
+[ ${#packs[@]} -gt 0 ] || packs=(faces people speakers selfie)
 [ "$speech" = 1 ] && packs+=(speech-he)
 mkdir -p "$out"
 

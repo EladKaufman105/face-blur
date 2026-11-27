@@ -1089,9 +1089,11 @@ class EditorController(
     fun findFaces() {
         val ctx = appContext ?: return
         if (!session.subtitlesOnly || findJob?.isActive == true) return
-        // Never without the whole face pack (and never a weaker way instead): the panel offers the download.
-        if (!com.elad.faceblur.models.ModelStore.get(ctx).isUsable(com.elad.faceblur.models.PackId.FACES)) {
-            notice = t("כדי לטשטש פנים צריך את מודל זיהוי הפנים")
+        // Never without the whole pack of the detection chosen (the selfie pack in selfie mode, else the faces; never a weaker way instead): the panel offers the download.
+        val selfie = session.settings.detect == com.elad.faceblur.analysis.DetectMode.SELFIE
+        val pack = if (selfie) com.elad.faceblur.models.PackId.SELFIE else com.elad.faceblur.models.PackId.FACES
+        if (!com.elad.faceblur.models.ModelStore.get(ctx).isUsable(pack)) {
+            notice = if (selfie) t("כדי להשתמש במצב סלפי צריך את מודל הסלפי") else t("כדי לטשטש פנים צריך את מודל זיהוי הפנים")
             return
         }
         if (segmentProgress != null || segmentJob?.isActive == true) {

@@ -69,11 +69,12 @@ internal fun FacesList(ctrl: EditorController) {
                     TextButton(onClick = ctrl::cancelFindFaces) { Text(t("עצור")) }
                 }
             } else {
-                // Never without the whole face pack: its "download to use" card first.
-                ModelCard(com.elad.faceblur.models.PackId.FACES)
+                // Never without the whole pack of the detection chosen (selfie mode: its own): the "download to use" card first.
+                val pack = if (ctrl.session.settings.detect == com.elad.faceblur.analysis.DetectMode.SELFIE) com.elad.faceblur.models.PackId.SELFIE else com.elad.faceblur.models.PackId.FACES
+                ModelCard(pack)
                 val ctx = androidx.compose.ui.platform.LocalContext.current
                 val facesReady = androidx.compose.runtime.remember { com.elad.faceblur.models.ModelStore.get(ctx) }
-                    .statuses[com.elad.faceblur.models.PackId.FACES]?.usable == true
+                    .statuses[pack]?.usable == true
                 FilledTonalButton(onClick = ctrl::findFaces, enabled = ctrl.segmentProgress == null && facesReady, modifier = Modifier.fillMaxWidth().testTag(Tags.FIND_FACES)) { Text(t("זהה פנים")) }
             }
         }
