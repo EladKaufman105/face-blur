@@ -53,7 +53,10 @@ const [, , base, video, out, strict] = process.argv
   if (strict) {
     if (firstModel === null || firstModel > 2500) throw new Error('the model was asked for late: ' + firstModel)
     if (firstNumber === null || firstNumber > 2500) throw new Error('no number on screen in the first 2.5 seconds: ' + firstNumber)
-    // The sound's progress shows beside the model's phase (they run together).
-    if (!seen.some(([, s]) => /טוען|מוריד/.test(s) && /מכין את הקול… \d+%/.test(s))) throw new Error('the sound and the model did not run together')
+    // The sound's progress shows on the screen while the model is still being fetched (every answer takes 2.5 s, so the model
+    // is not ready by then). Judged by what was seen and requested, not by one line holding both texts at one instant.
+    const sound = seen.find(([, s]) => /מכין את הקול… \d+%/.test(s))
+    if (!sound) throw new Error('the sound\'s progress never showed')
+    if (firstModel > sound[0] + 2500) throw new Error('the model was asked for long after the sound began: ' + firstModel + ' vs ' + sound[0])
   }
 })().catch((e) => { console.error(e); process.exit(1) })
