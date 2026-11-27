@@ -7,7 +7,7 @@ import org.json.JSONObject
 
 /**
  * What the editor changes, for project.json: the subtitle look [style], how subtitles are cut,
- * the sound, frame, background, steadying and the blur's settings. [export] is kept too when
+ * the sound, frame, background, steadying, the safe zone's view aid and the blur's settings. [export] is kept too when
  * the project was made from a template (so reopening it exports the same way).
  */
 fun EditorController.projectFields(style: SubtitleStyle, export: ExportOptions? = null): JSONObject = JSONObject()
@@ -19,5 +19,7 @@ fun EditorController.projectFields(style: SubtitleStyle, export: ExportOptions? 
     .put("stabilize", stabilizeLevel)
     .put("settings", session.settings.let { st -> JSONObject().put("mode", st.mode.name).put("strength", st.strength.toDouble()).put("padding", st.padding.toDouble()).put("sensitive", st.sensitive).put("fast", st.fast).put("sensitivity", st.sensitivity.toDouble()).also { j -> if (st.selfie) j.put("selfie", true) } })
     .also { o -> if (export != null) o.put("export", export.toJson()) }
+    // The safe zone's view aid stays as it was left, per project: on or off, and the platform (never in the export).
+    .put("safeZone", JSONObject().put("on", safeZoneOn).put("platform", safePlatform.name).put("mirrored", safeMirrored))
     // What the subtitles are translated into (kept so "complete translation" after reopening keeps the language).
     .also { o -> translateTo?.let { o.put("translateTo", it) } }

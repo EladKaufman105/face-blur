@@ -2,8 +2,8 @@
   "about": "Where each short-video platform's own screens cover a vertical frame, as fractions of it, measured on a 1080x1920 frame from the platforms' published templates and guides (sources: docs/specs/safe-zones.md). The app's template/SafeZone.kt and the web's lib/safezone.ts read these.",
   "frame": { "width": 1080, "height": 1920 },
   "platforms": [
-    { "id": "tiktok", "doc": "TikTok: top 240 px, bottom 660 px, left 120 px, right 180 px (its button column).",
-      "top": { "px": 240 }, "bottom": { "px": 660 }, "left": { "px": 120 }, "right": { "px": 180 } },
+    { "id": "tiktok", "doc": "TikTok: top 240 px, bottom 660 px, left 120 px, right 300 px (120 px margin plus its 180 px button column; the margin is 120 px above y=840).",
+      "top": { "px": 240 }, "bottom": { "px": 660 }, "left": { "px": 120 }, "right": { "px": 300 } },
     { "id": "reels", "doc": "Reels: 14% top, 35% bottom, 6% at the sides.",
       "top": 0.14, "bottom": 0.35, "left": 0.06, "right": 0.06 },
     { "id": "shorts", "doc": "Shorts: top 288 px (15%), bottom 672 px (35%), left 48 px, right 192 px.",

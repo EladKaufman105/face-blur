@@ -91,6 +91,11 @@ class AppPrefs(context: Context) {
         sp.edit().putString("sub_style", v.toJson()).apply()
     }
 
+    /** The safe zone's platform chosen last (a new project starts with it; a saved one keeps its own), as the web remembers it. */
+    var safePlatform: String?
+        get() = sp.getString("safe_platform", null)
+        set(v) { sp.edit().putString("safe_platform", v).apply() }
+
     /** Learned time of the render pass relative to the analysis pass. */
     var renderRatio: Float
         get() = sp.getFloat("render_ratio", 0.8f)

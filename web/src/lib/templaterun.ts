@@ -168,7 +168,7 @@ export function exportVideo(job: ExportJob, onProgress: (p: number) => void, onF
       if (m.type === 'progress') onProgress(m.progress)
       else if (m.type === 'frame') { if (onFrame) onFrame(m.bitmap); else m.bitmap.close() }
       else if (m.type === 'done') ok({ blob: m.blob, ms: m.ms })
-      else fail(new StepError(m.message, m.code))
+      else if (m.type === 'error') fail(new StepError(m.message, m.code))
     },
     signal,
   )
