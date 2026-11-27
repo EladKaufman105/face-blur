@@ -25,14 +25,23 @@ type Props = {
   onCancel: () => void
 }
 
-/** For tests, on localhost only: ?detect=yunet:0,side:640,rate:5 pins detection (no YuNet, a 640 px fine pass, 5 detections a second), with no pacing; reduced:1 starts it in the reduced mode; softgpu:1 lets a software WebGPU adapter be used. */
+/** The main pointer is touch (a phone or tablet, also with the browser's desktop site, whose user agent says nothing of it). */
+function touchPrimary(): boolean {
+  try {
+    return matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 1 && !matchMedia('(any-pointer: fine)').matches)
+  } catch {
+    return false
+  }
+}
+
+/** For tests, on localhost only: ?detect=yunet:0,side:640,rate:5 pins detection (no YuNet, a 640 px fine pass, 5 detections a second), with no pacing; reduced:1 starts it in the reduced mode. */
 function tuneFromUrl(): Tune | undefined {
   // Only on this computer (the tests' server): on the site it would weaken detection with a link.
   if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return undefined
   const q = new URLSearchParams(location.search).get('detect')
   if (!q) return undefined
   const kv = Object.fromEntries(q.split(',').map((p) => p.split(':')))
-  return { yunet: kv.yunet !== '0', ...(Number(kv.side) ? { side: Number(kv.side) } : {}), ...(Number(kv.rate) ? { rate: Number(kv.rate) } : {}), ...(kv.reduced === '1' ? { reduced: true } : {}), ...(kv.softgpu === '1' ? { softGpu: true } : {}) }
+  return { yunet: kv.yunet !== '0', ...(Number(kv.side) ? { side: Number(kv.side) } : {}), ...(Number(kv.rate) ? { rate: Number(kv.rate) } : {}), ...(kv.reduced === '1' ? { reduced: true } : {}) }
 }
 
 export function Analyzing({ file, sensitive, fast, selfie, sensitivity, twoSteps, onDone, onError, onCancel }: Props) {
@@ -46,6 +55,9 @@ export function Analyzing({ file, sensitive, fast, selfie, sensitivity, twoSteps
   const [debug, setDebug] = useState(() => new URLSearchParams(location.search).has('debug'))
   const [aspect, setAspect] = useState(16 / 9)
   const started = useRef(performance.now())
+  const workerRef = useRef<Worker | null>(null)
+  // The device report's placement probe (where the model's nodes run) starts when the stats panel is opened, not in every analysis.
+  useEffect(() => { if (debug) workerRef.current?.postMessage({ type: 'probe' }) }, [debug, ready])
 
   useEffect(() => {
     releaseSpeechForExport() // a phone gives the speech model's memory back first
@@ -104,9 +116,10 @@ export function Analyzing({ file, sensitive, fast, selfie, sensitivity, twoSteps
       onError(t('משהו השתבש בעיבוד. נסה שוב; אם זה חוזר, העתק את הפרטים הטכניים ושלח אותם.'), technical('face detection worker', e.message || 'error'))
     }
     const forced = new URLSearchParams(location.search).get('backend')
-    const req: AnalyzeRequest = { file, sensitive, fast, selfie, sensitivity, base: new URL('.', document.baseURI).href, backend: forced === 'wasm' || forced === 'webgpu' ? forced : undefined, workers: Number(new URLSearchParams(location.search).get('workers')) || undefined, tune: tuneFromUrl() }
+    const req: AnalyzeRequest = { file, sensitive, fast, selfie, sensitivity, base: new URL('.', document.baseURI).href, touch: touchPrimary(), backend: forced === 'wasm' || forced === 'webgpu' ? forced : undefined, workers: Number(new URLSearchParams(location.search).get('workers')) || undefined, tune: tuneFromUrl() }
     worker.postMessage(req)
-    return () => worker.terminate()
+    workerRef.current = worker
+    return () => { workerRef.current = null; worker.terminate() }
   }, [file, sensitive, fast, selfie, sensitivity])
 
   useWakeLock(true)

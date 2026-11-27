@@ -31,6 +31,38 @@ if (D.fallbackPoolSize(2, 2) !== 1 || D.fallbackPoolSize(3, 2) !== 1 || D.fallba
 if (!D.isSoftwareAdapter({ isFallbackAdapter: true }) || !D.isSoftwareAdapter({ info: { isFallbackAdapter: true } })) fail('a fallback adapter')
 if (!D.isSoftwareAdapter({ info: { architecture: 'swiftshader' } }) || !D.isSoftwareAdapter({ info: { description: 'llvmpipe (LLVM 15)' } })) fail('a named software renderer')
 if (D.isSoftwareAdapter({ isFallbackAdapter: false, info: { isFallbackAdapter: false } }) || D.isSoftwareAdapter({}) || D.isSoftwareAdapter(null)) fail('a real adapter is not software')
+for (const d of ['Microsoft Basic Render Driver', 'Microsoft WARP', 'VMware SVGA 3D', 'VirtualBox Graphics Adapter', 'Google SwiftShader'])
+  if (!D.isSoftwareAdapter({ info: { description: d } })) fail('software by name: ' + d)
+for (const d of ['NVIDIA GeForce RTX 3060', 'Intel(R) UHD Graphics', 'Apple M2', 'Mali-G78', 'Adreno (TM) 740'])
+  if (D.isSoftwareAdapter({ info: { vendor: 'x', description: d } })) fail('a real GPU read as software: ' + d)
+
+// ---- leaving a GPU that works (GPU ms and CPU ms are the check's per-frame means at the check's size)
+{
+  const base = { gpuMs: 100, cpuMs: 300, yunetMs: 60, lanes: 6, gpuFineMs: 100, slowMs: 80 }
+  // The GPU holds the fine pass at its full size (under the slow limit): never left for speed, with any number of workers
+  for (const lanes of [1, 2, 4, 6, 12]) if (D.leaveGpuForSpeed({ ...base, lanes, gpuMs: 70, gpuFineMs: 70, cpuMs: 120, yunetMs: 20 })) fail('left a GPU that holds 1280 at full rate, lanes ' + lanes)
+  // The 6-worker case that dropped 1280 to 960: 70 ms on the GPU against 6 workers at 300 ms (+ YuNet 60) each
+  if (D.leaveGpuForSpeed({ ...base, gpuMs: 70, gpuFineMs: 70 })) fail('a fast GPU left for six slow workers')
+  // A GPU over the limit and slower than the workers is left
+  if (!D.leaveGpuForSpeed({ ...base, gpuMs: 335, gpuFineMs: 335 })) fail('a slow GPU not left')
+  // YuNet counts on the CPU's side: workers that look faster without it are not, with it
+  const edge = { gpuMs: 300, cpuMs: 700, yunetMs: 0, lanes: 4, gpuFineMs: 300, slowMs: 80 }
+  if (!D.leaveGpuForSpeed(edge)) fail('four workers at 700 ms beat a 300 ms GPU')
+  if (D.leaveGpuForSpeed({ ...edge, yunetMs: 150 })) fail('YuNet left out of the CPU comparison')
+  // One detector: YuNet overlaps (its own worker), the slower of the two counts
+  if (!D.leaveGpuForSpeed({ gpuMs: 300, cpuMs: 200, yunetMs: 100, lanes: 1, gpuFineMs: 300, slowMs: 80 })) fail('one overlapping detector faster than a slow GPU')
+  if (D.leaveGpuForSpeed({ gpuMs: 300, cpuMs: 290, yunetMs: 100, lanes: 1, gpuFineMs: 300, slowMs: 80 })) fail('a hair faster is not faster (90%)')
+}
+
+// ---- a move for speed from 1280 is flagged: the pace's baseline stays the GPU's size
+{
+  const w = { recentMs: 250, rfMs: 220, fineMs: 200, extraMs: 0 }
+  const inp = { ...w, workers: 6, maxRate: 15, side: 960, rate: 15, gpu: false, frameSide: 1280, frameRate: 30, nominal: 30 }
+  const against960 = P.pace({ ...inp, startSide: 960 })
+  const against1280 = P.pace({ ...inp, startSide: 1280 })
+  if (against960.reduced) fail('960 against the CPU baseline is not reduced')
+  if (!against1280.reduced) fail('960 against the GPU baseline (left for speed) must be flagged reduced')
+}
 if (D.adapterText({ info: { vendor: 'intel', architecture: 'gen-12lp', device: '', description: 'Intel(R) UHD Graphics' } }) !== 'intel gen-12lp Intel(R) UHD Graphics' || D.adapterText({}) !== '') fail('the adapter text')
 
 // ---- the runtime's node placement lines

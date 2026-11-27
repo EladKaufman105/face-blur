@@ -33,7 +33,11 @@ export interface DeviceDiag {
 }
 
 /** Whether this browser runs WebAssembly SIMD (the runtime's builds all need it; wasm-feature-detect's test module). */
+let simd: boolean | undefined
 export function wasmSimd(): boolean {
+  return (simd ??= wasmSimdNow())
+}
+function wasmSimdNow(): boolean {
   try {
     return WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11]))
   } catch {
@@ -51,7 +55,8 @@ export function adapterText(adapter: any): string {
 export function isSoftwareAdapter(adapter: any): boolean {
   if (adapter?.isFallbackAdapter === true || adapter?.info?.isFallbackAdapter === true) return true
   // The browser doesn't always say it (newer ones keep it on adapter.info only): a software renderer names itself.
-  return /swiftshader|llvmpipe|software/i.test(`${adapter?.info?.architecture ?? ''} ${adapter?.info?.description ?? ''} ${adapter?.info?.vendor ?? ''}`)
+  // SwiftShader, llvmpipe, Windows' WARP ("Microsoft Basic Render Driver"), and the VM adapters that draw on the host's CPU.
+  return /swiftshader|llvmpipe|software|\bwarp\b|basic render|vmware|virtualbox|svga3d/i.test(`${adapter?.info?.architecture ?? ''} ${adapter?.info?.description ?? ''} ${adapter?.info?.vendor ?? ''} ${adapter?.info?.device ?? ''}`)
 }
 
 /** The "Node(s) placed on [X]. Number of nodes: N" lines ONNX Runtime logs when a session is made (verbose), as counts per provider. */
@@ -111,6 +116,33 @@ export function poolSize(cores: number, memoryGB?: number, mobile = false): numb
  * running YuNet after RetinaFace, didn't beat that in the runs made).
  */
 export const fallbackPoolSize = (cores: number, wanted: number) => (cores >= 4 ? wanted : 1)
+
+/** How much of N workers' speed N detectors really get on N cores (measured: 2 workers on 2 cores 7.28 a second against 4.74 for one = 0.77). */
+export const POOL_EFFICIENCY = 0.75
+
+export interface GpuVsCpu {
+  /** The check's means per frame (ms): the GPU's RetinaFace, the CPU's one core's RetinaFace, YuNet (it runs after RetinaFace in each CPU worker, beside it on the GPU path). */
+  gpuMs: number
+  cpuMs: number
+  yunetMs: number
+  /** CPU detectors that would run side by side. */
+  lanes: number
+  /** The GPU's RetinaFace at the size the fine pass runs at (the check's time scaled by the area), and the most the pace allows it there (GPU_SLOW_MS). */
+  gpuFineMs: number
+  slowMs: number
+}
+
+/**
+ * Whether a GPU that works (not a software adapter, not a failure) is left for the CPU's detectors: only when the GPU can't hold the
+ * fine pass at the size it starts at (the pace would shrink the frame there anyway) and the CPU, YuNet included, is the faster.
+ * A GPU that holds that size is never left for speed: the frame would drop from 1280 to 960 px for nothing.
+ */
+export function leaveGpuForSpeed(i: GpuVsCpu): boolean {
+  if (i.gpuFineMs <= i.slowMs) return false
+  // Side by side, each worker runs YuNet after RetinaFace; one detector has YuNet in a worker of its own, overlapping.
+  if (i.lanes <= 1) return Math.max(i.cpuMs, i.yunetMs) < i.gpuMs * 0.9
+  return (i.cpuMs + i.yunetMs) / (i.lanes * POOL_EFFICIENCY) < i.gpuMs * 0.9
+}
 
 /** The report's lines for [d] (keys in English in every language, as the rest of the report). */
 export function diagLines(d: DeviceDiag): string[] {

@@ -15,7 +15,7 @@ import { FAST_RATE, modeOf, quantize, selfieThreshold, thresholds, widen, type D
 import { BLAZEFACE_MODEL, BlazeFaceDetector } from '../lib/blazeface-detector'
 import type { Det, Track } from '../lib/types'
 
-export type AnalyzeRequest = { file: File; sensitive: boolean; /** Fast detection (5 a second; [sensitive] wins). */ fast?: boolean; /** Selfie detection (BlazeFace on every frame; [sensitive] and [fast] win). */ selfie?: boolean; /** 0..1: more faces blurred, never fewer (lib/sensitivity.ts). */ sensitivity?: number; base: string; backend?: 'webgpu' | 'wasm'; /** How many CPU detectors to run side by side (default: by core count). */ workers?: number; /** For tests on localhost only (the page's ?detect=yunet:0,side:640,rate:5): detection pinned to these settings, no pacing. A tune weaker than the default marks the video reduced, with the thresholds as they are. */ tune?: Tune }
+export type AnalyzeRequest = { file: File; sensitive: boolean; /** Fast detection (5 a second; [sensitive] wins). */ fast?: boolean; /** Selfie detection (BlazeFace on every frame; [sensitive] and [fast] win). */ selfie?: boolean; /** 0..1: more faces blurred, never fewer (lib/sensitivity.ts). */ sensitivity?: number; base: string; backend?: 'webgpu' | 'wasm'; /** How many CPU detectors to run side by side (default: by core count). */ workers?: number; /** The device's main pointer is touch (a phone or tablet, even when its browser asks for the desktop site): the pool is sized as for a phone. */ touch?: boolean; /** For tests on localhost only (the page's ?detect=yunet:0,side:640,rate:5): detection pinned to these settings, no pacing. A tune weaker than the default marks the video reduced, with the thresholds as they are. */ tune?: Tune }
 export type AnalyzeMessage =
   | { type: 'ready'; backend: string; width: number; height: number; duration: number; fps: number }
   | { type: 'progress'; done: number; total: number; preview?: ImageBitmap; dets?: Det[]; faces: number; backend: string; stats: AnalysisStats }
@@ -23,7 +23,7 @@ export type AnalyzeMessage =
   | { type: 'error'; code: string; message: string }
   | { type: 'log'; message: string }
 
-export type Tune = { yunet?: boolean; side?: number; rate?: number; /** As if the device were too slow: the reduced mode from the start (the notice, the flag, the lower thresholds). */ reduced?: boolean; /** On localhost only: a software WebGPU adapter is used (the GPU path's tests, where there is no real GPU). */ softGpu?: boolean }
+export type Tune = { yunet?: boolean; side?: number; rate?: number; /** As if the device were too slow: the reduced mode from the start (the notice, the flag, the lower thresholds). */ reduced?: boolean }
 
 /** The measures for a log line: "D 15.0/s (window min 14.6, need 12.0, 30 windows, 0 short), G 2 frames 0.083 s, cuts 3 (0 missed), S 960 px, YuNet on". */
 const coverageText = (c: Coverage, side: number, yunet: boolean) =>
@@ -34,7 +34,16 @@ const measuredText = (c: Coverage) =>
 const post = (m: AnalyzeMessage, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(m, transfer)
 const log = (message: string) => post({ type: 'log', message })
 
-self.onmessage = async (e: MessageEvent<AnalyzeRequest>) => {
+/** The device report's placement probe (FaceDetector.probePlacement), asked for when the stats panel opens. */
+let probe: (() => void) | null = null
+let probeWanted = false
+
+self.onmessage = async (e: MessageEvent<AnalyzeRequest | { type: 'probe' }>) => {
+  if ('type' in e.data) {
+    probeWanted = true
+    probe?.()
+    return
+  }
   try {
     await analyze(e.data)
   } catch (err) {
@@ -42,7 +51,7 @@ self.onmessage = async (e: MessageEvent<AnalyzeRequest>) => {
   }
 }
 
-async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, sensitivity: sensAsked, base, backend, workers, tune }: AnalyzeRequest) {
+async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, sensitivity: sensAsked, base, backend, workers, touch, tune }: AnalyzeRequest) {
   const t0 = performance.now()
   // Normal, extended, fast or selfie (extended wins); the sensitivity on its 5% steps.
   const mode: DetectMode = modeOf(sensitive, fastAsked, selfieAsked)
@@ -68,7 +77,7 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
   const cores = (self.navigator?.hardwareConcurrency ?? 2)
   // Detectors side by side on the CPU: one per core but two (see devicediag.ts' poolSize: memory, phones).
   const memory = (self.navigator as any)?.deviceMemory as number | undefined
-  const mobile = /Android|iPhone|iPad|Mobile/i.test(self.navigator?.userAgent ?? '') || (self.navigator as any)?.userAgentData?.mobile === true
+  const mobile = /Android|iPhone|iPad|Mobile/i.test(self.navigator?.userAgent ?? '') || (self.navigator as any)?.userAgentData?.mobile === true || touch === true
   const poolWanted = wantedPool(cores, memory, mobile)
   const asked = workers !== undefined ? Math.min(8, Math.max(1, Math.round(workers))) : undefined
   const poolSize = asked ?? poolWanted
@@ -93,6 +102,8 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
   }
   // The workers are tried once: a device that can't start them goes on with one detector.
   let poolTried = false
+  // Workers started ahead of the move off the GPU (see FaceDetector.preparePool).
+  let spare: DetectorPool | null = null
   if (cpuOnly && poolSize > 1) {
     poolTried = true
     pool = await startPool(await fp32())
@@ -100,12 +111,27 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
   // One detector here (the GPU's, or one on the CPU): YuNet in a worker of its own, so that it runs
   // while RetinaFace does (else, or if that worker fails, in this thread, after it). The pool's
   // detectors (all the cores busy already) run it in theirs.
-  let ynWorker = !pool && yunet ? await YunetWorker.create(yunet) : null
-  let detector: FaceDetector | null = pool ? null : await FaceDetector.create(base + 'models/', backend, undefined, yunet, ynWorker, tune?.softGpu === true).catch((e) => { ynWorker?.close(); throw e })
-  // The GPU-vs-CPU check compares the GPU with the detectors the CPU would run side by side.
-  if (detector) detector.cpuLanes = fallbackPool
+  let ynWorker: YunetWorker | null = null
+  const ynMake = async () => (ynWorker ??= yunet ? await YunetWorker.create(yunet) : null)
+  // Workers to start if detection ends on the CPU (a software adapter, a GPU that failed): then this detector makes no CPU session or YuNet worker.
+  let detector: FaceDetector | null = pool ? null : await FaceDetector.create(base + 'models/', backend, undefined, yunet, ynMake, fallbackPool > 1 && !poolTried).catch((e) => { ynWorker?.close(); throw e })
+  // The GPU-vs-CPU check compares the GPU with the detectors the CPU would run side by side, and starts them before the GPU is left.
+  if (detector) {
+    const gpuDet = detector
+    probe = () => gpuDet.probePlacement()
+    if (probeWanted) probe()
+    detector.cpuLanes = fallbackPool
+    detector.preparePool = async () => {
+      if (spare || pool) return true
+      poolTried = true
+      spare = await startPool(detector!.fp32Bytes)
+      return spare !== null
+    }
+  }
   // Why detection isn't on the GPU after it left it (the detector is gone once the workers took over).
   let leftGpu: string | null = null
+  // That move was for speed (the GPU works, the CPU is faster): the pace judges the CPU's frame size against the GPU's, so a drop is flagged.
+  let leftSpeed = false
   // The stats of the detector that ran before the workers took over (so the counters never go back).
   let retired: DetectStats | null = null
   let gpuDiag: GpuDiag | null = null
@@ -118,15 +144,21 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
    * adapter's device measured "waves 1/16": one detector, 15 idle cores).
    */
   const toPool = async () => {
-    if (!detector || detector.backend !== 'wasm' || pool || poolTried || fallbackPool <= 1) return
-    poolTried = true
-    const p = await startPool(detector.fp32Bytes)
+    if (!detector || detector.backend !== 'wasm' || pool || fallbackPool <= 1) return
+    if (!spare && !poolTried) {
+      poolTried = true
+      spare = await startPool(detector.fp32Bytes)
+    }
+    const p = spare
     if (!p) return
+    spare = null
     leftGpu = detector.fellBack
+    leftSpeed = detector.leftForSpeed
+    detector.release()
     gpuDiag = detector.gpuDiag
     retired = { ...detector.stats }
     pool = p
-    ynWorker?.close()
+    ;(ynWorker as YunetWorker | null)?.close()
     ynWorker = null
     detector = null
     precision = p.precision
@@ -134,6 +166,8 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
     log(`detection moved to the CPU workers x${p.size}: ${leftGpu ?? ''}`)
   }
   await toPool()
+  // Still one detector on the CPU (no workers wanted or started): its own session and YuNet worker.
+  await detector?.settleCpu(ynMake)
   if (tune?.side && detector) detector.side = tune.side
   // Fast detection on the CPU: the fine pass at 640 px from the start (the app's LOW_SIDE), on frames decoded at 960 (crops see those).
   else if (fast && detector && detector.backend === 'wasm') detector.side = LOW_SIDE
@@ -243,7 +277,7 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
     if (!tune && w) {
       const { recentMs: recent, rfMs } = w
       const gpuNow = backendNow() === 'webgpu'
-      const startNow = gpuNow ? GPU_SIDE : fast ? LOW_SIDE : CPU_SIDE
+      const startNow = gpuNow || leftSpeed || detector?.leftForSpeed ? GPU_SIDE : fast ? LOW_SIDE : CPU_SIDE
       const p = pace({ ...w, workers: pool?.size ?? 1, maxRate, side: fineSide, startSide: startNow, rate, gpu: gpuNow, frameSide, frameRate: frameRate.fps, nominal: nominalFps, sizeRate: fast ? FAST_RATE : undefined })
       rate = p.rate
       if (p.side !== fineSide) {
@@ -334,7 +368,7 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
     if (pool) await pool.drain()
   } finally {
     pool?.close()
-    ynWorker?.close()
+    ;(ynWorker as YunetWorker | null)?.close()
   }
   cover = meter.result(true)
   if (cover.short && !reduced) reduce(measuredText(cover))

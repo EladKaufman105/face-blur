@@ -14,9 +14,9 @@ import { DET_THRESHOLD } from './tracker'
 import { MAX_EXTRA_CHECKS, POOL_RF, POOL_YUNET, POOL_YUNET_ONLY, extras, quantize, thresholds } from './sensitivity'
 import { Yunet } from './yunet'
 // The values: shared/detect/detect.json, shared with the app (generated).
-import { COARSE_MIN_BOX, COARSE_SIDE, CPU_SIDE, GPU_SIDE, LOW_SIDE, VERIFY_SIDE } from '../gen/detect'
+import { COARSE_MIN_BOX, COARSE_SIDE, CPU_SIDE, GPU_SIDE, GPU_SLOW_MS, LOW_SIDE, VERIFY_SIDE } from '../gen/detect'
 import type { YunetWorker } from './yunet-worker'
-import { adapterText, isSoftwareAdapter, type GpuDiag } from './devicediag'
+import { adapterText, isSoftwareAdapter, leaveGpuForSpeed, type GpuDiag } from './devicediag'
 
 export { RF_THRESHOLD, iou, nmsIou }
 export type { GpuDiag }
@@ -73,10 +73,17 @@ export class FaceDetector {
   private timed = 0
   private gpuMs = 0
   private cpuMs = 0
+  private yunetMs = 0
+  /** The long side of the frame the fine pass runs at (the latest detection's). */
+  private fineLong = GPU_SIDE
   /** Long side the fine pass runs at (lowered when the device is slow). */
   side: number
   /** Why detection left the GPU, if it did. */
   fellBack: string | null = null
+  /** Detection left a GPU that works because the CPU is faster (not a failure, a mismatch or a software adapter): the pace still judges it against the GPU's size, so the drop is flagged. */
+  leftForSpeed = false
+  /** Starts the CPU workers before the GPU is left for them (true: they run); the analysis sets it. A GPU stays when they can't start. */
+  preparePool: (() => Promise<boolean>) | null = null
   /** YuNet couldn't be loaded: RetinaFace alone (weaker than the app's detection). */
   yunetMissing = false
   /** What the GPU path found (null: no WebGPU in this browser, or none tried). */
@@ -130,10 +137,9 @@ export class FaceDetector {
 
   /**
    * [base]: the folder with retinaface_fp32.onnx, retinaface_fp16.onnx and yunet.onnx; [fp32], [yunet]: those models' bytes if already loaded.
-   * [allowSoftware]: for tests on localhost only (the page's ?detect=softgpu:1): a software WebGPU adapter is used all the same, to test the GPU path where no real GPU is.
-   * [ynWorker]: YuNet already running in a worker of its own (from [yunet]): this thread's YuNet is then made only if that worker fails (one YuNet runtime, not two, on a phone short of memory).
+   * [ynMake]: starts YuNet in a worker of its own (from [yunet]); this thread's YuNet is then made only if that fails (one YuNet runtime, not two, on a phone short of memory). [poolNext]: the CPU workers take over if detection ends up on the CPU (no CPU session or YuNet worker is made for that case).
    */
-  static async create(base: string, force?: Backend, fp32?: Uint8Array, yunet?: Uint8Array | null, ynWorker?: YunetWorker | null, allowSoftware = false): Promise<FaceDetector> {
+  static async create(base: string, force?: Backend, fp32?: Uint8Array, yunet?: Uint8Array | null, ynMake?: (() => Promise<YunetWorker | null>) | null, poolNext = false): Promise<FaceDetector> {
     // One thread: ORT's thread pool can't start from inside a bundled module worker (WebGPU is
     // the fast path anyway).
     ort.env.wasm.numThreads = 1
@@ -155,58 +161,78 @@ export class FaceDetector {
         if (adapter) {
           // Half precision where the GPU has it: about twice the speed on phones and tablets.
           const half = adapter.features?.has?.('shader-f16') === true
-          diag = { adapter: adapterText(adapter), f16: half, software: isSoftwareAdapter(adapter) && !allowSoftware, nodesGpu: null, nodesCpu: null, model: half ? 'fp16' : 'fp32', firstRunMs: null }
+          diag = { adapter: adapterText(adapter), f16: half, software: isSoftwareAdapter(adapter), nodesGpu: null, nodesCpu: null, model: half ? 'fp16' : 'fp32', firstRunMs: null }
           // A software adapter (the browser's WebGPU on the CPU, e.g. SwiftShader): measured 785 ms against the CPU's 273 ms for one
           // frame, and it keeps the CPU workers from starting. Never used: the CPU's own path is the faster one.
-          if (diag.software && !allowSoftware) why = 'software WebGPU adapter (a slower CPU path)'
+          if (diag.software) why = 'software WebGPU adapter (a slower CPU path)'
           else {
             const model = half ? await load('retinaface_fp16.onnx') : model32
             const s = await ort.InferenceSession.create(model, { executionProviders: ['webgpu'], graphOptimizationLevel: 'all' })
             const g = new FaceDetector(s, model32, half ? 'fp16' : 'fp32', ynBytes)
             g.gpuDiag = diag
-            g.probePlacement(model)
-            await g.startYunet(ynWorker)
+            g.gpuModel = model
+            await g.startYunet(await ynMake?.() ?? null)
             return g
           }
         }
       } catch (e) {
         console.warn('ONIT: no WebGPU face detection', e)
+        why = `GPU failed: ${String((e as Error)?.message ?? e).slice(0, 160)}`
       }
     }
     const d = new FaceDetector(null, model32, 'fp32', ynBytes)
     d.gpuDiag = diag
     if (why) d.fellBack = why
-    await d.cpuSession()
-    await d.startYunet(ynWorker)
+    // The CPU workers take over at once (poolNext): this detector's own CPU session and YuNet worker would be thrown away.
+    if (!poolNext) await d.settleCpu(ynMake)
     return d
   }
 
+  /** The CPU path's own session and YuNet (in a worker of its own, from [ynMake], or here), made now: for a detector that stays on the CPU. */
+  async settleCpu(ynMake?: (() => Promise<YunetWorker | null>) | null) {
+    if (this.gpu) return
+    await this.cpuSession()
+    if (!this.ynWorker && !this.yn) await this.startYunet(await ynMake?.() ?? null)
+  }
+
+  /** The GPU session's model (fp16 or fp32), for the placement probe. */
+  gpuModel: Uint8Array | null = null
+  private probed = false
+
   /**
    * Where ONNX Runtime put the model's nodes (on the GPU, on the CPU), for the device report: a verbose session in a worker of its
-   * own, a few seconds after the start (this session stays quiet: its runs would log every dispatch). The report says "not
-   * measured yet" until it answers; a worker that fails or doesn't answer in 60 s leaves it so.
+   * own, started only when someone looks (the stats panel is opened; never in a normal analysis, never during the backend check).
+   * The worker keeps the runtime's verbose log out of the console. The report says "not measured yet" until it answers; a worker
+   * that fails or doesn't answer in 60 s leaves it so.
    */
-  private probePlacement(model: Uint8Array) {
-    const diag = this.gpuDiag
-    if (!diag || typeof Worker === 'undefined') return
-    setTimeout(() => {
-      let w: Worker | null = null
-      const stop = () => { w?.terminate(); w = null }
-      try {
-        w = new Worker(new URL('../workers/placement.worker.ts', import.meta.url), { type: 'module' })
-        const timer = setTimeout(stop, 60000)
-        w.onmessage = (e: MessageEvent<{ gpu: number | null; cpu: number | null }>) => {
-          diag.nodesGpu = e.data.gpu
-          diag.nodesCpu = e.data.cpu
-          clearTimeout(timer)
-          stop()
-        }
-        w.onerror = (e) => { e.preventDefault(); clearTimeout(timer); stop() }
-        w.postMessage({ model: model.slice() })
-      } catch {
+  probePlacement() {
+    const diag = this.gpuDiag, model = this.gpuModel
+    if (this.probed || !diag || !model || typeof Worker === 'undefined') return
+    this.probed = true
+    let w: Worker | null = null
+    const stop = () => { w?.terminate(); w = null }
+    try {
+      w = new Worker(new URL('../workers/placement.worker.ts', import.meta.url), { type: 'module' })
+      const timer = setTimeout(stop, 60000)
+      w.onmessage = (e: MessageEvent<{ gpu: number | null; cpu: number | null }>) => {
+        diag.nodesGpu = e.data.gpu
+        diag.nodesCpu = e.data.cpu
+        clearTimeout(timer)
         stop()
       }
-    }, 3000)
+      w.onerror = (e) => { e.preventDefault(); clearTimeout(timer); stop() }
+      w.postMessage({ model: model.slice() })
+    } catch {
+      stop()
+    }
+  }
+
+  /** Gives back what this detector holds on the CPU (its WebAssembly session and YuNet) once the workers took over. The GPU session stays (see leaveGpu). */
+  release() {
+    this.cpu?.release().catch(() => {})
+    this.cpu = null
+    this.yn?.release()
+    this.yn = null
   }
 
   private async cpuSession(): Promise<Session> {
@@ -252,7 +278,8 @@ export class FaceDetector {
   }
 
   /** From now on on the CPU. The GPU session isn't released: on some drivers that breaks WebGPU. */
-  private leaveGpu(why: string) {
+  private leaveGpu(why: string, forSpeed = false) {
+    this.leftForSpeed = forSpeed
     console.warn('ONIT: face detection moves to the CPU:', why)
     this.fellBack = why
     this.gpu = null
@@ -270,6 +297,7 @@ export class FaceDetector {
    */
   async detect(frame: OffscreenCanvas): Promise<Det[]> {
     const src = Math.max(frame.width, frame.height) > this.side * 1.05 ? this.resize(frame, this.side) : frame
+    this.fineLong = Math.max(src.width, src.height)
     const st = this.stats
     st.detections++
     this.cold = false
@@ -389,12 +417,25 @@ export class FaceDetector {
       this.cpuMs += t2 - t1
       this.timed++
     }
+    // YuNet runs after RetinaFace in each CPU worker (beside it, on the GPU's path): its time counts on the CPU's side.
+    if (this.agreed > 0 && !coldRun && (this.ynWorker || this.yunetModel)) {
+      const ty = performance.now()
+      const bm = this.ynWorker ? await createImageBitmap(frame).then((b) => this.ynWorker!.run(b, this.ynThr), () => null) : await this.yunet(frame)
+      if (bm) this.yunetMs += performance.now() - ty
+    }
     if (++this.agreed >= 3 && this.timed >= 2) {
       this.checking = false
-      // The CPU's side is what the analysis would run there: its detectors side by side (the workers), each at 75% of a lone one's speed.
-      const lanes = Math.max(1, this.cpuLanes * (this.cpuLanes > 1 ? 0.75 : 1))
-      const cpuEff = this.cpuMs / lanes
-      if (cpuEff < this.gpuMs * 0.9) this.leaveGpu(`the CPU is faster here (${(this.cpuMs / this.timed).toFixed(0)} ms${this.cpuLanes > 1 ? ` x${this.cpuLanes} detectors` : ''} vs ${(this.gpuMs / this.timed).toFixed(0)} ms)`)
+      const n = this.timed
+      // The GPU's fine pass at the size it runs at, from the check's frame by the area (the pace judges it by its own limit).
+      const fine = Math.max(this.fineLong, 1), seen = Math.max(frame.width, frame.height)
+      const input = { gpuMs: this.gpuMs / n, cpuMs: this.cpuMs / n, yunetMs: this.yunetMs / n, lanes: this.cpuLanes, gpuFineMs: (this.gpuMs / n) * (fine / seen) ** 2, slowMs: GPU_SLOW_MS }
+      let leave = leaveGpuForSpeed(input)
+      // The workers start before the GPU is left for them; if they can't, the CPU is one detector.
+      if (leave && this.cpuLanes > 1 && this.preparePool && !(await this.preparePool())) {
+        this.cpuLanes = 1
+        leave = leaveGpuForSpeed({ ...input, lanes: 1 })
+      }
+      if (leave) this.leaveGpu(`the CPU is faster here (${(input.cpuMs + input.yunetMs).toFixed(0)} ms${this.cpuLanes > 1 ? ` x${this.cpuLanes} detectors` : ''} vs ${input.gpuMs.toFixed(0)} ms, the GPU's ${Math.round(input.gpuFineMs)} ms at ${fine} px is over ${GPU_SLOW_MS})`, true)
     }
   }
 
