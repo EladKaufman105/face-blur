@@ -328,3 +328,18 @@ Proposed CLAUDE.md lines (not applied):
 - The list of web files that deploy the web app: add `shared/` and `ci/shared_gen.py`.
 
 Proposed for `docs/parity.md`: each `same` row backed by a vector cites the vector file, and the `parity` agent edits `shared/` instead of porting tables.
+
+## 8. Status
+
+Done on `feature/shared-phase0` (behaviour: none; javap and bundle evidence in the PR):
+
+- T0.1: `ci/perf_check.py` (`web-size` in `web-build`, `bench`, `fusion-time`, `record`), `ci/make_bench_vectors.py` and `shared/vectors/tracker/bench.json`, `web/tests/bench.cjs`, `TrackerBench.kt`, the `SelfTest` lines `analysis_ms` / `render_ms`, the cold-start median in `ci/e2e.sh`, and `shared/perf/baseline.json` measured on develop 4e974ce.
+- T0.2: `ci/shared_gen.py`, `shared/catalog/safezones.json`, the Vite plugin, the `--check` step (in `pr.yml`'s `changes` job, which both required checks depend on) and the path filters.
+- T1.4: `shared/detect/detect.json` (50 constants) and the speaker model's URL and SHA-256 from the registry.
+
+Differences from the plan:
+
+- No Gradle `genShared` task. The generated Kotlin is committed and CI checks it, so an Android build needs no python3; the task could not be tested here (no Android SDK).
+- `TrackerBench` runs with `ONIT_BENCH=1` instead of `-Pbench`, so `app/build.gradle.kts` is unchanged.
+- TypeScript fractions are emitted as their computed values (the division stays in a comment), so the bundler can inline them; exported constants are re-exported (`export { X }`), never copied into a new `const`.
+- In T1.4 `OLD`, `BUDGET_MS`, `APP_SHARE`, the reduced thresholds and the app-only `0.98` and `AGREE_CLEAR` stay where they are.
