@@ -8,7 +8,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
 - `develop`: integration branch and the default branch. A merge publishes a beta pre-release of "ONIT Beta" (separate app id, installs beside ONIT) once the emulator e2e passes. Merges that change only paths in `EXCLUDES` of `ci/promote-check.sh` (`web/`, `models/`, `docs/`, `.claude/`, the PR template, `parity-hint.yml` and the web app's CI files) make no beta. Merges that change web files run the web tests, then deploy the beta web app. The web app from `develop` is the beta web app, at https://eladkaufman105.github.io/face-blur/beta/.
 - Never push, force-push, rebase or delete `main` or `develop`. Repository rulesets enforce this. Do not try to work around them.
 - `labs` is retired. Do not push to it. It is kept as history.
-- `hotfix/<name>`: branch from `main`, PR into `main`, then a PR `main` -> `develop` (merge commit) to bring the fix back.
+- `hotfix/<name>`: branch from `main`, PR into `main`. Then bring the fix back: branch `hotfix-back/<name>` from `origin/main`, merge `origin/develop` into it (resolve conflicts there), and open a PR into `develop`, merged with a merge commit (it keeps `main`'s history, which versioning reads). Never open a PR from `main` itself into `develop`: `develop` requires PRs to be up to date, which `main` can't be.
 
 ## Starting work
 
@@ -50,7 +50,7 @@ ONIT is an Android video editor (blurs faces, subtitles, voice) with a browser v
    - Add the label `needs-human`.
    - Post a PR comment listing each unresolved finding with the reviewer's view and your view.
    - Tell the user.
-8. If checks are green and no blocking findings remain, you may merge into `develop` yourself. Use squash merge, except a PR from `main` (hotfix merge-back): merge commit.
+8. If checks are green and no blocking findings remain, you may merge into `develop` yourself. Use squash merge, except a `hotfix-back/*` PR (hotfix merge-back): merge commit.
 
 ## Parity
 

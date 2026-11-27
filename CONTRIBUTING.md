@@ -63,7 +63,7 @@ For every PR into `develop`, and for hotfix PRs into `main`:
 5. Run at most 3 rounds. Only rounds with blocking findings count.
 6. List nits in a PR comment. Fixing them is optional.
 7. After round 3, if blocking findings remain, do not merge. Convert the PR to draft, add the label `needs-human`, and comment with each unresolved finding and both views.
-8. When green with no blocking findings, squash merge into `develop`. Exception: a PR from `main` (hotfix merge-back) uses a merge commit.
+8. When green with no blocking findings, squash merge into `develop`. Exception: a `hotfix-back/*` PR (hotfix merge-back) uses a merge commit.
 
 ## Release (develop -> main)
 
@@ -91,7 +91,16 @@ git switch -c hotfix/<name> origin/main
 gh pr create --base main
 ```
 
-Run the review loop, get a clear yes, then merge with a merge commit. Then open a PR `main` -> `develop` and merge it with a merge commit, so the fix returns to `develop`.
+Run the review loop, get a clear yes, then merge with a merge commit. Then bring the fix back to `develop`:
+
+```bash
+git fetch origin
+git switch -c hotfix-back/<name> origin/main
+git merge origin/develop   # resolve any conflicts here
+git push -u origin hotfix-back/<name>
+```
+
+Open a PR `hotfix-back/<name>` -> `develop` and merge it with a merge commit. (Not a PR from `main` itself: `develop` requires PRs to be up to date, and `main` can't take `develop`'s commits.)
 
 ## When CI fails
 
