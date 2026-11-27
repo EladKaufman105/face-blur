@@ -17,9 +17,29 @@ R=/tmp/web-results
 FULL="${FULL:-0}"
 export FULL
 # A script that fails is run once more (a timing flake shows as a warning); two failures fail the shard.
+# The failure's own lines (FAIL ..., the error and its first call frames), as an annotation anyone can read
+# on the run page (the log itself needs sign-in). A GitHub annotation is one line: newlines are %0A.
+note() {
+  local level=$1 title=$2 log=$3 text
+  text=$(grep -v '^\s*at .*node_modules' "$log" | grep -E -A12 'FAIL|Error|error:|Timeout|expect' | head -40)
+  [ -n "$text" ] || text=$(tail -25 "$log")
+  text=${text//'%'/'%25'}; text=${text//$'\r'/}; text=${text//$'\n'/'%0A'}
+  echo "::$level title=$title::$text"
+}
 t() {
   echo "::group::$*"
-  node "tests/$1" "${@:2}" || { echo "::warning::tests/$1 failed once, running it again"; node "tests/$1" "${@:2}"; }
+  local log
+  log=$(mktemp)
+  if ! node "tests/$1" "${@:2}" 2>&1 | tee "$log"; then
+    note warning "tests/$1 failed once, running it again" "$log"
+    if ! node "tests/$1" "${@:2}" 2>&1 | tee "$log"; then
+      echo "::endgroup::"
+      note error "tests/$1 failed" "$log"
+      rm -f "$log"
+      return 1
+    fi
+  fi
+  rm -f "$log"
   echo "::endgroup::"
 }
 
