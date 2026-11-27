@@ -84,6 +84,10 @@ class FaceAnalyzer private constructor(
     private val selfie = mode == DetectMode.SELFIE
     private val pack = if (selfie) com.elad.faceblur.models.PackId.SELFIE else com.elad.faceblur.models.PackId.FACES
 
+    // Selfie mode runs BlazeFace alone: none of the face pack's detectors, nor its GPU models.
+    private val selfie = mode == DetectMode.SELFIE
+    private val pack = if (selfie) com.elad.faceblur.models.PackId.SELFIE else com.elad.faceblur.models.PackId.FACES
+
     @Volatile private var packHeld = true
     private val retinaPath = if (selfie) "" else packFile(RetinaFaceDetector.MODEL)
     private val yunetPath = if (selfie) "" else packFile(FaceDetector.YUNET_MODEL)
