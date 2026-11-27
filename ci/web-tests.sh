@@ -94,6 +94,8 @@ case "${1:?shard}" in
   5) # about 210 s
     # A subtitle edited so a bleeped word may show: the alert, the mark on the timeline, the export asking first; a deleted subtitle's bleeps listed.
     t maskwarn.cjs "$U" $S/speech_two.mp4 $R/maskwarn   # 37
+    # SRT is no switch in the export sheet: "Save subtitles (SRT)" in the subtitles panel writes the masked file; the unmasked one (for editing) asks first.
+    t srtsave.cjs "$U" $S/speech_two.mp4 $R/srtsave   # 12
     # The landing page (/home/): it loads whole, its parts work, its links lead to the editor.
     t home.cjs "http://localhost:4173/" $R/home   # 32
     # The watermark's logo kept between visits and a template's logo shown; the template editor asking before it drops changes, and "Edit" for the chosen template (ready screen, batch); the safe zone's switch, chooser and mock (9:16 only, never in the export); the thin scrubber over a phone's panel; the low-confidence rule.
