@@ -342,11 +342,12 @@ export function grantSpeech(plan: SpeechPlan) {
 
 // ------------------------------------------------------------------ one job
 
+/** [audio]: the sound is being read beside the model's download or load (0..1); absent when it is done. */
 export type SpeechStatus =
-  | { stage: 'audio' }
-  | { stage: 'download'; progress: number; loaded: number; total: number }
-  | { stage: 'load' }
-  | { stage: 'recognize'; progress: number }
+  | { stage: 'audio'; progress: number }
+  | { stage: 'download'; progress: number; loaded: number; total: number; audio?: number }
+  | { stage: 'load'; audio?: number }
+  | { stage: 'recognize'; progress: number; /** The 30-second window being recognized, and how many there are about. */ win?: { i: number; n: number } }
   | { stage: 'fallback'; /** The same model, on the CPU (the Hebrew one), not a smaller one. */ same?: boolean }
 
 export class SpeechAborted extends Error {
@@ -442,10 +443,12 @@ export function transcribeFile(
     let worker: Worker | null = null
     let timer = 0
     let finished = false
-    let last = Date.now()
+    // Signs of life, apart for the two things that run together at the start: the sound's reading and the model's
+    // download and load (a hung decode is not hidden by the model's messages, nor a stalled download by the sound's).
+    let lastA = Date.now(), lastM = Date.now()
     // A tab put to sleep (or a frozen worker) says nothing: that is not "stuck". Coming back counts from now.
     let lastCheck = Date.now()
-    const alive = () => { last = Date.now(); lastCheck = last }
+    const alive = () => { lastA = lastM = Date.now(); lastCheck = lastM }
     const onVisible = () => { if (document.visibilityState === 'visible') alive() }
     document.addEventListener('visibilitychange', onVisible)
     document.addEventListener('resume', alive)
@@ -473,9 +476,21 @@ export function transcribeFile(
     void dropOldRevisions(opts.plan)
     let usedFallback = false
     let usedOneThread = false
+    const t0 = Date.now()
+    const timeline: string[] = []
+    const seenStage = new Set<string>()
     const attempt = (plan: SpeechPlan) => {
       stop()
       let phase: keyof typeof LIMITS | 'recognize' = 'audio'
+      // How far the sound is (it is read beside the model's download and load); 1 when done.
+      let audioP = 0
+      let shownStatus: SpeechStatus = { stage: 'audio', progress: 0 }
+      const show = (s: SpeechStatus) => {
+        shownStatus = s
+        // The first time each phase shows, in ms from the start (logged at the end: where the time went before the first token).
+        if (!seenStage.has(s.stage)) { seenStage.add(s.stage); timeline.push(`${s.stage}@${Date.now() - t0}`) }
+        onStatus(s)
+      }
       alive()
       const w = takeWarm(plan) ?? new Worker(new URL('../workers/subs.worker.ts', import.meta.url), { type: 'module' })
       worker = w
@@ -526,33 +541,56 @@ export function transcribeFile(
           })
           return
         }
+        console.info(`ONIT subs phases (ms): ${timeline.join(' ')} ${code}@${Date.now() - t0}`)
         end(() => reject(new SpeechError(message, code)))
       }
       timer = window.setInterval(() => {
         const now = Date.now()
         // The timer itself was paused (a frozen tab): the quiet is not the job's.
-        if (now - lastCheck > 5000) last = now
+        if (now - lastCheck > 5000) lastA = lastM = now
         lastCheck = now
-        const quiet = now - last
-        if (quiet > limitFor(phase, plan)) {
+        // Each running thing is timed by its own signs: the model by its phase's limit (download, load, recognition),
+        // the sound (while it is not all read) by the audio limit; whichever is quiet too long ends the job.
+        const quietA = now - lastA, quietM = now - lastM
+        const audioRuns = audioP < 1
+        let quiet = 0
+        if (phase === 'audio') quiet = quietA
+        else {
+          if (quietM > limitFor(phase, plan)) quiet = quietM
+          if (audioRuns && phase !== 'recognize' && quietA > limitFor('audio', plan) && quietA > quiet) quiet = quietA
+        }
+        const limit = phase === 'audio' || (quiet === quietA && audioRuns && phase !== 'recognize') ? limitFor('audio', plan) : limitFor(phase, plan)
+        if (quiet > limit) {
           const secs = Math.round(quiet / 1000)
           failOrFallback('stalled', t('הזיהוי נתקע: אין התקדמות כבר %d שניות. אפשר לנסות שוב, או לבחור "מהיר".', secs))
         }
       }, 1000)
       w.onmessage = (e: MessageEvent<SubsMessage>) => {
         const m = e.data
-        last = Date.now()
+        // Whose sign of life it is: the sound's reading, or the model (everything else, and in recognition both).
+        const now = Date.now()
+        if (m.type === 'audio' || (m.type === 'tick' && m.from === 'audio')) lastA = now
+        else if (m.type === 'tick' || m.type === 'load' || m.type === 'download') lastM = now
+        else lastA = lastM = now
         switch (m.type) {
           case 'tick': return
-          case 'audio': phase = 'audio'; return onStatus({ stage: 'audio' })
+          case 'audio': {
+            audioP = m.progress
+            if (phase === 'recognize') return
+            // `only`: the model is ready and the sound is what is waited for (its own limit); else it runs beside the model.
+            if (m.only || phase === 'audio') { phase = 'audio'; return show({ stage: 'audio', progress: m.progress }) }
+            const a = audioP < 1 ? audioP : undefined
+            if (shownStatus.stage === 'download' || shownStatus.stage === 'load') show({ ...shownStatus, audio: a })
+            return
+          }
           // (A late "loading" after the recognition started is ignored: the recognition's longer limit stays.)
-          case 'load': if (phase === 'recognize') return; phase = 'load'; return onStatus({ stage: 'load' })
+          case 'load': if (phase === 'recognize') return; phase = 'load'; return show({ stage: 'load', audio: audioP < 1 ? audioP : undefined })
           case 'download':
             // Everything known so far is here: the loading starts (its limit), until another file starts.
             phase = m.total > 0 && m.loaded >= m.total ? 'load' : 'download'
-            return onStatus({ stage: 'download', progress: m.progress, loaded: m.loaded, total: m.total })
-          case 'transcribe': phase = 'recognize'; return onStatus({ stage: 'recognize', progress: m.progress })
-          case 'done': console.info(`ONIT subs: ${plan.model} (${plan.repo}) ${m.device}, model ${m.ms.load} ms, recognition ${m.ms.recognize} ms (to the first token ${m.ms.first}, ${m.ms.tokens} tokens ${m.ms.decode}, word timings ${m.ms.after})`); return end(() => resolve({ words: m.words, plan }), plan)
+            return show({ stage: 'download', progress: m.progress, loaded: m.loaded, total: m.total, audio: audioP < 1 ? audioP : undefined })
+          case 'transcribe': phase = 'recognize'; return show({ stage: 'recognize', progress: m.progress, win: m.win })
+          case 'done': console.info(`ONIT subs phases (ms): ${timeline.join(' ')}`); console.info(`ONIT subs: ${plan.model} (${plan.repo}) ${m.device}, model ${m.ms.load} ms, recognition ${m.ms.recognize} ms (to the first token ${m.ms.first}, ${m.ms.tokens} tokens ${m.ms.decode}, word timings ${m.ms.after})`); return end(() => resolve({ words: m.words, plan }), plan)
           case 'error': return failOrFallback(m.code, m.message)
         }
       }

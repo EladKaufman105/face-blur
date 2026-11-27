@@ -22,6 +22,7 @@ import com.elad.faceblur.subs.SubLanguages
 import com.elad.faceblur.subs.SubtitleEngine
 import com.elad.faceblur.subs.SpeakerDetector
 import com.elad.faceblur.audio.AudioEdit
+import com.elad.faceblur.audio.BleepLevel
 import com.elad.faceblur.audio.VoiceDsp
 import com.elad.faceblur.audio.VoiceFx
 import com.elad.faceblur.analysis.MaskStore
@@ -850,9 +851,24 @@ class EditorController(
         }
         val sfx = model.sfx.mapNotNull { c -> SfxLibrary.peek(c.sound)?.let { SfxPlay(c.startMs * 1000, it, c.gain) } }
         val cuts = model.removed.map { (x, y) -> longArrayOf(x, y) }
+        // Each beep as loud as the speech it replaces: needs the sound decoded (once, kept; until then the fallback level).
+        val needLevels = audio.tone && b.isNotEmpty()
+        val levels = if (needLevels) pcm16k?.let { BleepLevel.levels(it, com.elad.faceblur.subs.AudioDecoder.RATE, b, audio.gain) } else null
+        if (levels != null) lastLevels = levels
+        if (needLevels && levels == null && pcm16k == null && levelTries < 2 && ctx != null) {
+            // One more try after a failure (a busy decoder).
+            levelTries++
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    runCatching { mono16k(ctx) }.onFailure { android.util.Log.w("ONIT", "bleep levels: decode failed (try $levelTries)", it) }
+                }
+                dspVersion = -1
+                rebuildVoice()
+            }
+        }
         voiceDsp = VoiceDsp(
             b, audio.voice, audio.tone, pitchAfter = audio.voice.pitch, sfx = sfx,
-            denoise = audio.denoise, enhance = audio.enhance, gain = audio.gain, cuts = cuts,
+            denoise = audio.denoise, enhance = audio.enhance, gain = audio.gain, cuts = cuts, bleepLevels = levels,
         ).takeIf { it.active }
     }
 
@@ -899,6 +915,13 @@ class EditorController(
 
     /** The video's sound, mono at 16 kHz, decoded once and kept (silences, loudness). */
     private var pcm16k: FloatArray? = null
+    /** How often the sound was asked for the beeps' levels (twice at most: a failed decode or a video with no sound gets one more try). */
+    private var levelTries = 0
+    /** The beep levels the preview played with last (an export falls back to them if the sound can't be read again). */
+    var lastLevels: FloatArray? = null
+        private set
+    /** The video's sound if it is already decoded here (an export reuses it). */
+    val decodedSound: FloatArray? get() = pcm16k
     private fun mono16k(ctx: Context): FloatArray? {
         pcm16k?.let { return it }
         val x = com.elad.faceblur.subs.AudioDecoder.decode(ctx, session.info.uri, { true }) {}

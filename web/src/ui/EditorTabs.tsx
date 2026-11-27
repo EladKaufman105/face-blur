@@ -381,7 +381,7 @@ function SpeechNote() {
 /** Bleeped words that the new subtitles had no word for, with the words and bleeps they were found for (a later change makes them stale). */
 export type LostBleeps = { n: number; words: Word[]; bleeped: Set<number> }
 
-export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, stylePart, onPart, file, cues, onCues, words, onReplace, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
+export function SubtitlesTab({ srtCues, onLost, onAttention, onBusy, hidden, part, stylePart, onPart, file, cues, onCues, words, onReplace, bleeped, onBleeped, tone, onTone, style, onStyle, time, onSeek }: {
   /** On a phone: the sub-tool shown ('make', 'list' or 'style'); on a wide screen all of them. */
   part?: 'make' | 'list' | 'bleep' | 'style'; stylePart?: string; onPart?: (p: 'list') => void
   /** [step]: a change of its own for undo (not merged with the typing around it). */
@@ -390,6 +390,8 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
   onReplace: (c: Cue[], w: Word[], b: Set<number>) => void
   bleeped: Set<number>; onBleeped: (b: Set<number>) => void; tone: boolean; onTone: (t: boolean) => void
   style: SubStyle; onStyle: (s: SubStyle) => void; time: number; onSeek: (t: number) => void
+  /** The subtitles as the export shows them (bleeped words hidden, times after the cuts): what "Save subtitles (SRT)" writes. */
+  srtCues: () => Cue[]
   /** Something here is running (speech, speakers, translation): the editor keeps this tab mounted while it does, and marks its group. */
   onBusy?: (b: boolean) => void
   /** Another group is open: the tab stays mounted for its jobs, and does not move the video. */
@@ -481,7 +483,7 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
     onLost(null)
     const c = new AbortController()
     ctl.current = c
-    setRun({ stage: 'audio' })
+    setRun({ stage: 'audio', progress: 0 })
     try {
       const d = await probeDevice()
       const plan = currentPlan(d, lang)
@@ -530,15 +532,21 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
   const set = (patch: Partial<SubStyle>) => onStyle({ ...styleNow.current, ...patch })
   const edit = (id: number, patch: Partial<Cue>) => onCues(cues.map((c) => (c.id === id ? { ...c, ...patch } : c)))
   // The file has every word as typed: with bleeped words it asks first.
-  const [srtAsk, setSrtAsk] = useState(false)
-  const srt = () => {
+  const [srtAsk, setSrtAsk] = useState<false | 'edit' | 'shown'>(false)
+  const saveSrt = (list: Cue[]) => {
     setSrtAsk(false)
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([toSrt(cues)], { type: 'application/x-subrip' }))
+    a.href = URL.createObjectURL(new Blob([toSrt(list)], { type: 'application/x-subrip' }))
     a.download = file.name.replace(/\.[^.]+$/, '') + '.srt'
     a.click()
     setTimeout(() => URL.revokeObjectURL(a.href), 5000)
   }
+  /** The main action: the file as the export has it, the bleeped words hidden. */
+  /** Hiding the bleeped words is off: the file shows them, so it asks first (as the app's srtShowsBleeps). */
+  const srtShowsBleeps = style.maskBleeped === false && bleeped.size > 0
+  const srtMasked = () => (srtShowsBleeps ? setSrtAsk('shown') : saveSrt(srtCues()))
+  /** For editing: every word as typed (asks first when words are bleeped). */
+  const srt = () => saveSrt(cues)
   const busy = run !== null && run.stage !== 'error'
   const anyBusy = busy || kids.spk || kids.tr
   useEffect(() => { onBusy?.(anyBusy) }, [anyBusy])
@@ -588,6 +596,24 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
       )}
     </>
   )
+  // Saving the subtitles as an SRT file: always in view with the list, not folded away. The main action is the file as exported (bleeped words hidden).
+  const srtBlock = (
+    <div class="srt-tools" style="display:grid;gap:8px">
+      <div class="row wrap">
+        <button class="btn tonal small-btn srt-save" onClick={srtMasked} title={srtShowsBleeps ? t('ההסתרה כבויה: הקובץ יכלול את המילים המצופצפות כפי שהן') : t('הקובץ כמו בייצוא: המילים המצופצפות מוסתרות')}>{srtShowsBleeps ? t('שמור כתוביות (SRT, בלי הסתרה)') : t('שמור כתוביות (SRT)')}</button>
+        {bleeped.size > 0 && !srtShowsBleeps && <button class="btn ghost small-btn srt-download" onClick={() => setSrtAsk('edit')} title={t('הקובץ כולל את כל המילים, בלי הסתרה: לעריכה')}>{t('הורד SRT')} <span class="small muted">{t('(בלי הסתרה, לעריכה)')}</span></button>}
+      </div>
+    {srtAsk && (
+      <div class="confirm srt-ask" role="alertdialog" aria-label={t('להוריד SRT בלי הסתרה?')}>
+        <span class="small">{t('קובץ ה-SRT יכלול את המילים המצופצפות כפי שהן. אל תפרסם אותו.')}</span>
+        <div class="row">
+          <button class="btn small-btn danger-btn srt-ask-yes" onClick={srtAsk === 'shown' ? () => saveSrt(srtCues()) : srt}>{t('הורד')}</button>
+          <button class="btn ghost small-btn srt-ask-no" onClick={() => setSrtAsk(false)}>{t('ביטול')}</button>
+        </div>
+      </div>
+    )}
+    </div>
+  )
   // What used to be folded away as "more options". On a phone each piece sits in the sub-tool it
   // belongs to (making and translating, the list's tools); on a wide screen they share one fold,
   // which shows only when it has something in it.
@@ -595,18 +621,8 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
     <>
       <div class="row wrap">
         <button class={'btn small-btn ' + (findOpen ? 'primary' : 'tonal')} onClick={() => { setFindOpen(!findOpen); setFindResult(null) }}>{t('חפש והחלף')}</button>
-        <button class="btn tonal small-btn srt-download" onClick={() => (bleeped.size > 0 ? setSrtAsk(true) : srt())} title={t('הקובץ כולל את כל המילים, בלי הסתרה: לעריכה')}>{t('הורד SRT')} <span class="small muted">{t('(בלי הסתרה, לעריכה)')}</span></button>
         {!part && importSrt}
       </div>
-      {srtAsk && (
-        <div class="confirm srt-ask" role="alertdialog" aria-label={t('להוריד SRT בלי הסתרה?')}>
-          <span class="small">{t('קובץ ה-SRT יכלול את המילים המצופצפות כפי שהן. אל תפרסם אותו.')}</span>
-          <div class="row">
-            <button class="btn small-btn danger-btn srt-ask-yes" onClick={srt}>{t('הורד')}</button>
-            <button class="btn ghost small-btn srt-ask-no" onClick={() => setSrtAsk(false)}>{t('ביטול')}</button>
-          </div>
-        </div>
-      )}
       {findOpen && (
         <div class="find-row">
           <input class="text-in find-in" dir="auto" placeholder={t('חפש')} value={find} onInput={(e) => { setFind((e.currentTarget as HTMLInputElement).value); setFindResult(null) }} />
@@ -727,6 +743,7 @@ export function SubtitlesTab({ onLost, onAttention, onBusy, hidden, part, styleP
         <section class="card cue-list">
           <h3 class="section-title keep">{t('הטקסט')} <span class="small muted" style="font-weight:500;margin-inline-start:auto">{cues.length}</span></h3>
           <p class="small muted" style="margin:0">{t('הקש על כתובית כדי לערוך אותה.')}</p>
+          {srtBlock}
           {listNote && <p class="small" style="margin:0;color:var(--primary)">{listNote}</p>}
           <div class="clips">
             {sorted.map((c) => {

@@ -99,7 +99,6 @@ const SRT = `1
 
     // The SRT has both lines.
     await p.click('.export-bar .btn')
-    await p.click('.export-sheet .switch')
     await p.click('.export-go')
     await p.waitForSelector('.result video, .card.error', { timeout: 900000 })
     const srt = await p.evaluate(async () => (await fetch(document.querySelector('.srt-link').href)).text())

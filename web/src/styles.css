@@ -723,16 +723,15 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .folder-items { display: grid; gap: var(--space-2); border-top: 1px solid var(--outline-soft); padding-top: var(--space-2); }
 .folder-items .project { background: var(--surface-2); box-shadow: none; }
 
-/* Subtitles: the looks as cards in one scrolling row (each a sample drawn by the real renderer), the
-   rest folded away; a subtitle's actions only on the one being edited. */
-.chips.presets.preset-row { max-height: 380px; overflow-y: auto; padding: 4px 2px 8px; gap: 8px; }
-.chip.preset { flex: none; display: grid; gap: 6px; justify-items: center; padding: 4px; border-radius: var(--radius-card); scroll-snap-align: start; font-size: 13px; }
-.chip.preset canvas { display: block; border-radius: calc(var(--radius-card) - 4px); background: var(--surface-3); }
-.chip.preset .preset-name { max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-bottom: 2px; }
-.chip.preset.on { border-width: 2px; padding: 3px; }
-/* On a phone the looks and the languages are one row that scrolls sideways; on a wide screen they wrap. */
+/* Subtitles: the looks as a grid of small cards (each a sample drawn by the real renderer): as many columns
+   as the panel's width allows (3 on a phone, more on a wide panel), no scrolling of its own (the panel scrolls);
+   the rest folded away; a subtitle's actions only on the one being edited. */
+.chips.presets.preset-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; max-height: none; overflow: visible; padding: 2px; }
+.chip.preset { min-width: 0; display: grid; gap: 4px; justify-items: stretch; padding: 3px; border-radius: var(--radius-card); font-size: 12px; text-align: center; }
+.chip.preset canvas { display: block; width: 100%; height: auto; aspect-ratio: 132 / 84; border-radius: calc(var(--radius-card) - 4px); background: var(--surface-3); }
+.chip.preset .preset-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-bottom: 2px; }
+.chip.preset.on { border-width: 2px; padding: 2px; }
 @media (max-width: 600px) {
-  .chips.presets.preset-row { flex-wrap: nowrap; max-height: none; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
   .scroll-row { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
   .scroll-row .chip { flex: none; }
 }
@@ -994,7 +993,7 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 }
 
 /* The subtitle style's effect and font choices as cards (as the app's): each effect plays on a sample line, each font shows a sample in itself. */
-.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
 .chip.fx-card, .chip.font-card { min-height: 0; padding: 0; border-radius: 12px; border-width: 1px; background: var(--surface-2); color: var(--text); overflow: hidden; }
 .chip.fx-card { display: grid; grid-template-rows: auto auto; justify-items: stretch; text-align: center; }
 .fx-card canvas { display: block; width: 100%; aspect-ratio: 8 / 5; background: var(--surface-3); }
