@@ -5,6 +5,7 @@
 import { signal } from '@preact/signals'
 import { storageKey } from './channel'
 import { lang, t } from '../i18n'
+import { stalled } from './watchdog'
 import type { SubsMessage, SubsRequest } from '../workers/subs.worker'
 import type { Word } from './subtitles'
 import { isMemoryError } from './memerr'
@@ -353,7 +354,7 @@ export type SpeechStatus =
 export class SpeechAborted extends Error {
   constructor() { super('aborted') }
 }
-/** A failed job; [code]: 'no-audio' (no sound in the video), 'stalled' (no progress for too long), 'failed'. */
+/** A failed job; [code]: 'no-audio' (no sound in the video), 'stalled' (no progress for too long), 'audio' (the sound could not be read), 'failed'. */
 export class SpeechError extends Error {
   constructor(message: string, readonly code = 'failed') { super(message) }
 }
@@ -502,6 +503,12 @@ export function transcribeFile(
         // (Only the worker's own 'threads' says so: a stalled or failed download is not the threads.)
         // A lack of memory while the model loads with threads gets the same second try: each thread reserves
         // memory of its own, so one thread may fit where several don't.
+        // The video's sound could not be read: neither the graphics processor nor the threads are to blame, and nothing else would help.
+        if (code === 'audio') {
+          console.info(`ONIT subs phases (ms): ${timeline.join(' ')} audio-failed@${Date.now() - t0} ${message}`)
+          end(() => reject(new SpeechError(t('לא הצלחנו לקרוא את הסאונד של הסרטון, אז אי אפשר ליצור כתוביות.'), 'audio')))
+          return
+        }
         const loadingPhase = phase === 'load' || phase === 'download'
         if (plan.device === 'wasm' && plan.threads > 1 && !usedOneThread && (code === 'threads' || (code === 'memory' && loadingPhase))) {
           usedOneThread = true
@@ -549,19 +556,10 @@ export function transcribeFile(
         // The timer itself was paused (a frozen tab): the quiet is not the job's.
         if (now - lastCheck > 5000) lastA = lastM = now
         lastCheck = now
-        // Each running thing is timed by its own signs: the model by its phase's limit (download, load, recognition),
-        // the sound (while it is not all read) by the audio limit; whichever is quiet too long ends the job.
-        const quietA = now - lastA, quietM = now - lastM
-        const audioRuns = audioP < 1
-        let quiet = 0
-        if (phase === 'audio') quiet = quietA
-        else {
-          if (quietM > limitFor(phase, plan)) quiet = quietM
-          if (audioRuns && phase !== 'recognize' && quietA > limitFor('audio', plan) && quietA > quiet) quiet = quietA
-        }
-        const limit = phase === 'audio' || (quiet === quietA && audioRuns && phase !== 'recognize') ? limitFor('audio', plan) : limitFor(phase, plan)
-        if (quiet > limit) {
-          const secs = Math.round(quiet / 1000)
+        // What is quiet for too long (see stalled): the sound beside the model, the model by its phase's limit.
+        const over = stalled(phase, audioP < 1, now - lastA, now - lastM, limitFor('audio', plan), limitFor(phase, plan))
+        if (over) {
+          const secs = Math.round(over.quiet / 1000)
           failOrFallback('stalled', t('הזיהוי נתקע: אין התקדמות כבר %d שניות. אפשר לנסות שוב, או לבחור "מהיר".', secs))
         }
       }, 1000)

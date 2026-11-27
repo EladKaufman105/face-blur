@@ -641,6 +641,12 @@ class EditModel(
      */
     fun srtCues(mask: Boolean): List<Cue> = cutMap().mapCues(exportCues(mask))
 
+    /** The files an export saves by itself: never a bleeped word, whatever the video's own mask setting (the done screen's action asks first). */
+    fun automaticSrtCues(): List<Cue> = srtCues(true)
+
+    /** The automatic files hide a bleeped word that the video's subtitles show (the mask is off). */
+    fun automaticSrtDiffers(maskWords: Boolean): Boolean = !maskWords && cues.any { bleepedWords(it).isNotEmpty() }
+
     /** Removes every bleep (one undo step). */
     fun clearBleeps() {
         if (bleeps.isEmpty()) return

@@ -46,6 +46,9 @@ self.onmessage = async (e: MessageEvent<SubsRequest>) => {
   }
 }
 
+/** The longest sound read (three hours of 16 kHz mono: about 690 MB). */
+const MAX_SAMPLES = RATE * 3 * 3600
+
 /** The sound, mono at 16 kHz (what Whisper takes). Written straight into one buffer sized from the file's length (no list of parts to join at the end: half the peak memory). */
 async function audio16k(file: File, onProgress: (p: number) => void): Promise<Float32Array | null> {
   let seen = 0
@@ -55,7 +58,8 @@ async function audio16k(file: File, onProgress: (p: number) => void): Promise<Fl
   // The length from the file's header (fast); without one the bar stays empty until the end.
   const dur = (await track.getDurationFromMetadata().catch(() => null)) ?? 0
   let lastP = 0
-  let buf = new Float32Array(dur > 0 ? Math.ceil(dur * RATE) + RATE : RATE * 60)
+  // Starts at the header's length up to ten minutes (a header can lie), doubles when full, and stops at three hours.
+  let buf = new Float32Array(Math.min(dur > 0 ? Math.ceil(dur * RATE) + RATE : RATE * 60, RATE * 600))
   let n = 0
   let ratio = 1
   let acc = 0, accN = 0, pos = 0
@@ -82,7 +86,10 @@ async function audio16k(file: File, onProgress: (p: number) => void): Promise<Fl
       accN++
       pos++
       if (pos >= ratio) {
-        if (n === buf.length) { const bigger = new Float32Array(Math.ceil(buf.length * 1.5)); bigger.set(buf); buf = bigger }
+        if (n === buf.length) {
+          if (n >= MAX_SAMPLES) throw new Error('out of memory: the sound is longer than three hours')
+          const bigger = new Float32Array(Math.min(buf.length * 2, MAX_SAMPLES)); bigger.set(buf); buf = bigger
+        }
         buf[n++] = acc / accN
         acc = 0; accN = 0; pos -= ratio
       }
@@ -132,7 +139,7 @@ async function run({ file, language, repo, revision, device, encDtype, dtype, th
     return x
   }, (err) => {
     audioDone = true
-    if (!failed) { failed = true; post({ type: 'error', code: isMemoryError(err) ? 'memory' : 'failed', message: String((err as Error)?.message ?? err) }) }
+    if (!failed) { failed = true; post({ type: 'error', code: isMemoryError(err) ? 'memory' : 'audio', message: String((err as Error)?.message ?? err) }) }
     return null
   })
 

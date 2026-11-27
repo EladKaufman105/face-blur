@@ -60,7 +60,7 @@ export function Exporting({ job, onBack, onNew, onEdit }: { job: ExportJob; onBa
   // The subtitles as SRT, at their times after the cuts, as the export shows them (the bleeped words hidden): always offered when there are subtitles.
   const srt = useMemo(() => {
     if (mp3 || job.cues.length === 0) return null
-    return URL.createObjectURL(new Blob([toSrt(cutCues(job.cues, new CutMap(job.cuts), job.words))], { type: 'application/x-subrip' }))
+    return URL.createObjectURL(new Blob([toSrt(cutCues(job.cues, new CutMap(job.cuts)))], { type: 'application/x-subrip' }))
   }, [job])
   useEffect(() => () => { if (srt) URL.revokeObjectURL(srt) }, [srt])
   const [srtAsk, setSrtAsk] = useState(false)

@@ -46,6 +46,17 @@ class SrtNowTest {
     }
 
     @Test
+    fun theAutomaticFilesNeverHoldABleepedWordEvenWithTheMaskOff() {
+        val m = model(bleep = true)
+        val auto = Srt.files(m.automaticSrtCues()).first { it.tag == "he" }.text
+        assertTrue(auto.contains("שלום **** יפה"))
+        assertFalse(auto.contains("עולם"))
+        assertTrue(m.automaticSrtDiffers(maskWords = false))
+        assertFalse(m.automaticSrtDiffers(maskWords = true))
+        assertFalse(model(bleep = false).automaticSrtDiffers(maskWords = false))
+    }
+
+    @Test
     fun timesFollowTheCutsAndACutOutSubtitleIsLeftOut() {
         val m = model(bleep = false)
         m.cut(3000, 4000)

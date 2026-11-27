@@ -177,38 +177,61 @@ function srtTime(t: number) {
   return `${pad(h)}:${pad(m)}:${pad(s)},${pad(ms % 1000, 3)}`
 }
 
-/** The subtitles at their times in the result, without what was cut (a cue cut whole is left out). */
-export function cutCues(cues: Cue[], cuts: CutMap, words?: Word[]): Cue[] {
+/**
+ * [cues] (raw: the spoken text and its words, not what shows) with the words cut out of the video taken out, as the app's exportCues:
+ * a partly cut subtitle loses its cut words (and its translation, which is not aligned to them), one with no word left goes.
+ * Times stay the source's. A word is cut when its middle is. The text's words are the subtitle's [Cue.wi] words one for one; when the
+ * count no longer fits (the text was edited) or a word is unknown, the cue's time is spread over its words by length (as the app's
+ * wordSpanMs) rather than keeping a cut word in.
+ */
+export function dropCutWords(cues: Cue[], cuts: CutMap, words: Word[] = []): Cue[] {
   if (cuts.empty) return cues
   const out: Cue[] = []
-  for (const c of [...cues].sort((a, b) => a.start - b.start)) {
-    const kept = cuts.kept(c.start, c.end)
-    if (kept < 0.05) continue
-    const from = cuts.isCut(c.start) ? cuts.cutEnd(c.start) : c.start
-    const start = cuts.out(from)
-    const cue: Cue = { ...c, start, end: start + kept }
-    // Words cut out of the video leave a partly cut subtitle too (as the app's exportCues does), when the text's words are the cue's
-    // words one for one; the translation is not aligned to the words, so it goes with them.
-    const gone = words ? goneWords(c, words, cuts) : null
-    if (gone && gone.size > 0) {
-      const toks = c.text.split(/\s+/).filter(Boolean)
-      const text = toks.filter((_, i) => !gone.has(i)).join(' ')
-      if (!text) continue
-      cue.text = text
-      if (cue.tr) cue.tr = undefined
-    }
-    out.push(cue)
+  for (const c of cues) {
+    const toks = c.text.split(/\s+/).filter(Boolean)
+    const gone = goneWords(c, toks, words, cuts)
+    if (gone.size === 0) { out.push(c); continue }
+    const keep = toks.map((_, i) => i).filter((i) => !gone.has(i))
+    if (keep.length === 0) continue
+    const wi = cueWi(c)
+    // (An edited text keeps its words list as it was: masking then goes by the text, see maskCue.)
+    const fits = wi.length === toks.length
+    out.push({ ...c, text: keep.map((i) => toks[i]).join(' '), tr: undefined, trm: undefined, wi: fits ? keep.map((i) => wi[i]) : c.wi })
   }
   return out
 }
 
-/** The positions (in the cue's text) of the words that lie in a cut: a word is cut when its middle is. null: the text's words are not the cue's. */
-function goneWords(c: Cue, words: Word[], cuts: CutMap): Set<number> | null {
+/** [cues] in the cut video's time (a subtitle cut out entirely is left out); [words] given: [dropCutWords] first (raw cues only). */
+export function cutCues(cues: Cue[], cuts: CutMap, words?: Word[]): Cue[] {
+  if (cuts.empty) return cues
+  const out: Cue[] = []
+  for (const c of [...(words ? dropCutWords(cues, cuts, words) : cues)].sort((a, b) => a.start - b.start)) {
+    const kept = cuts.kept(c.start, c.end)
+    if (kept < 0.05) continue
+    const from = cuts.isCut(c.start) ? cuts.cutEnd(c.start) : c.start
+    const start = cuts.out(from)
+    out.push({ ...c, start, end: start + kept })
+  }
+  return out
+}
+
+/** Which of [toks] (the words of [c]'s text) are cut out of the video (indices). */
+function goneWords(c: Cue, toks: string[], words: Word[], cuts: CutMap): Set<number> {
   const wi = cueWi(c)
-  const toks = c.text.split(/\s+/).filter(Boolean)
-  if (wi.length === 0 || toks.length !== wi.length) return null
   const gone = new Set<number>()
-  wi.forEach((k, i) => { const w = words[k]; if (w && cuts.isCut((w.start + w.end) / 2)) gone.add(i) })
+  if (toks.length === 0) return gone
+  if (wi.length === toks.length && wi.every((k) => words[k])) {
+    wi.forEach((k, i) => { if (cuts.isCut((words[k].start + words[k].end) / 2)) gone.add(i) })
+    return gone
+  }
+  // No words to go by: the cue's time spread over its words by their length.
+  const total = toks.reduce((n, w) => n + w.length + 1, 0)
+  let at = c.start
+  toks.forEach((w, i) => {
+    const len = ((w.length + 1) / total) * (c.end - c.start)
+    if (cuts.isCut(at + len / 2)) gone.add(i)
+    at += len
+  })
   return gone
 }
 
