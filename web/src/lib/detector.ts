@@ -14,9 +14,9 @@ import { DET_THRESHOLD } from './tracker'
 import { MAX_EXTRA_CHECKS, POOL_RF, POOL_YUNET, POOL_YUNET_ONLY, extras, quantize, thresholds } from './sensitivity'
 import { Yunet } from './yunet'
 // The values: shared/detect/detect.json, shared with the app (generated).
-import { COARSE_MIN_BOX, COARSE_SIDE, CPU_SIDE, GPU_SIDE, GPU_SLOW_MS, LOW_SIDE, VERIFY_SIDE } from '../gen/detect'
+import { COARSE_MIN_BOX, COARSE_SIDE, CPU_SIDE, GPU_SIDE, LOW_SIDE, VERIFY_SIDE } from '../gen/detect'
 import type { YunetWorker } from './yunet-worker'
-import { adapterText, isSoftwareAdapter, leaveGpuForSpeed, type GpuDiag } from './devicediag'
+import { adapterText, isSoftwareAdapter, type GpuDiag } from './devicediag'
 
 export { RF_THRESHOLD, iou, nmsIou }
 export type { GpuDiag }
@@ -74,16 +74,16 @@ export class FaceDetector {
   private gpuMs = 0
   private cpuMs = 0
   private yunetMs = 0
-  /** The long side of the frame the fine pass runs at (the latest detection's). */
-  private fineLong = GPU_SIDE
+  private yunetN = 0
+  /** The GPU-vs-CPU check's means (ms per frame, at the same size), once it ended with the two agreeing (null before): the analysis decides on them (pace.ts' leaveGpuForSpeed). */
+  speed: { gpuMs: number; cpuMs: number; yunetMs: number } | null = null
+  private probeLater = false
   /** Long side the fine pass runs at (lowered when the device is slow). */
   side: number
   /** Why detection left the GPU, if it did. */
   fellBack: string | null = null
   /** Detection left a GPU that works because the CPU is faster (not a failure, a mismatch or a software adapter): the pace still judges it against the GPU's size, so the drop is flagged. */
   leftForSpeed = false
-  /** Starts the CPU workers before the GPU is left for them (true: they run); the analysis sets it. A GPU stays when they can't start. */
-  preparePool: (() => Promise<boolean>) | null = null
   /** YuNet couldn't be loaded: RetinaFace alone (weaker than the app's detection). */
   yunetMissing = false
   /** What the GPU path found (null: no WebGPU in this browser, or none tried). */
@@ -178,6 +178,7 @@ export class FaceDetector {
       } catch (e) {
         console.warn('ONIT: no WebGPU face detection', e)
         why = `GPU failed: ${String((e as Error)?.message ?? e).slice(0, 160)}`
+        if (diag) diag.failed = why
       }
     }
     const d = new FaceDetector(null, model32, 'fp32', ynBytes)
@@ -208,6 +209,8 @@ export class FaceDetector {
   probePlacement() {
     const diag = this.gpuDiag, model = this.gpuModel
     if (this.probed || !diag || !model || typeof Worker === 'undefined') return
+    // Not while the GPU-vs-CPU check runs (its timings): at its end.
+    if (this.checking) { this.probeLater = true; return }
     this.probed = true
     let w: Worker | null = null
     const stop = () => { w?.terminate(); w = null }
@@ -283,7 +286,7 @@ export class FaceDetector {
     console.warn('ONIT: face detection moves to the CPU:', why)
     this.fellBack = why
     this.gpu = null
-    this.checking = false
+    this.endCheck()
     // The model that runs from now on is the float32 one (the stats said "CPU fp16" for a run that had left the half-precision GPU).
     this.precision = 'fp32'
     this.side = Math.min(this.side, CPU_SIDE)
@@ -297,7 +300,6 @@ export class FaceDetector {
    */
   async detect(frame: OffscreenCanvas): Promise<Det[]> {
     const src = Math.max(frame.width, frame.height) > this.side * 1.05 ? this.resize(frame, this.side) : frame
-    this.fineLong = Math.max(src.width, src.height)
     const st = this.stats
     st.detections++
     this.cold = false
@@ -319,7 +321,7 @@ export class FaceDetector {
     if (big) st.coarse += shrinkMs
     if (this.checking) {
       t = performance.now()
-      await this.check(coarse)
+      await this.check(coarse, ynJob)
       st.check += performance.now() - t
     }
     t = performance.now()
@@ -396,7 +398,7 @@ export class FaceDetector {
   }
 
   /** Compares the GPU's faces with the CPU's; on disagreement, detection moves to the CPU. */
-  private async check(frame: OffscreenCanvas) {
+  private async check(frame: OffscreenCanvas, ynJob: Promise<Det[] | null> | null) {
     const t0 = performance.now()
     const was = this.cold
     this.cold = false
@@ -417,26 +419,33 @@ export class FaceDetector {
       this.cpuMs += t2 - t1
       this.timed++
     }
-    // YuNet runs after RetinaFace in each CPU worker (beside it, on the GPU's path): its time counts on the CPU's side.
+    // YuNet runs after RetinaFace in each CPU worker (beside it, on the GPU's path): its time counts on the CPU's side. Timed when its
+    // worker is idle (this detection's own job done first), else the wait behind that job would be counted as YuNet's time.
     if (this.agreed > 0 && !coldRun && (this.ynWorker || this.yunetModel)) {
+      if (ynJob) await ynJob.catch(() => null)
       const ty = performance.now()
-      const bm = this.ynWorker ? await createImageBitmap(frame).then((b) => this.ynWorker!.run(b, this.ynThr), () => null) : await this.yunet(frame)
-      if (bm) this.yunetMs += performance.now() - ty
+      const ok = this.ynWorker ? await createImageBitmap(frame).then((b) => this.ynWorker!.run(b, this.ynThr), () => null).then((r) => r !== null) : (await this.yunet(frame), !this.yunetMissing)
+      if (ok) { this.yunetMs += performance.now() - ty; this.yunetN++ }
     }
     if (++this.agreed >= 3 && this.timed >= 2) {
-      this.checking = false
       const n = this.timed
-      // The GPU's fine pass at the size it runs at, from the check's frame by the area (the pace judges it by its own limit).
-      const fine = Math.max(this.fineLong, 1), seen = Math.max(frame.width, frame.height)
-      const input = { gpuMs: this.gpuMs / n, cpuMs: this.cpuMs / n, yunetMs: this.yunetMs / n, lanes: this.cpuLanes, gpuFineMs: (this.gpuMs / n) * (fine / seen) ** 2, slowMs: GPU_SLOW_MS }
-      let leave = leaveGpuForSpeed(input)
-      // The workers start before the GPU is left for them; if they can't, the CPU is one detector.
-      if (leave && this.cpuLanes > 1 && this.preparePool && !(await this.preparePool())) {
-        this.cpuLanes = 1
-        leave = leaveGpuForSpeed({ ...input, lanes: 1 })
-      }
-      if (leave) this.leaveGpu(`the CPU is faster here (${(input.cpuMs + input.yunetMs).toFixed(0)} ms${this.cpuLanes > 1 ? ` x${this.cpuLanes} detectors` : ''} vs ${input.gpuMs.toFixed(0)} ms, the GPU's ${Math.round(input.gpuFineMs)} ms at ${fine} px is over ${GPU_SLOW_MS})`, true)
+      this.speed = { gpuMs: this.gpuMs / n, cpuMs: this.cpuMs / n, yunetMs: this.yunetN > 0 ? this.yunetMs / this.yunetN : 0 }
+      this.endCheck()
     }
+  }
+
+  /** The check is over (the faces agreed and were timed, or the GPU is left). */
+  private endCheck() {
+    this.checking = false
+    if (this.probeLater) {
+      this.probeLater = false
+      this.probePlacement()
+    }
+  }
+
+  /** The analysis found the CPU faster than a GPU that can't keep up: from now on on the CPU (flagged by the pace as a drop from the GPU's size). */
+  leaveForSpeed(why: string) {
+    this.leaveGpu(why, true)
   }
 
   /** Sets [dets]' verify scores: each re-detected on a square crop twice its size, 192 px. */

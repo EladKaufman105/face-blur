@@ -15,6 +15,8 @@ export interface GpuDiag {
   /** The model's precision on the GPU, and how long its first run took (ms: the shaders compiling; null: not run yet). */
   model: string
   firstRunMs: number | null
+  /** The GPU session could not be made (why): its node placement can't be measured. */
+  failed?: string
 }
 
 /** The device diagnostic the analysis worker sends with its stats. */
@@ -55,8 +57,8 @@ export function adapterText(adapter: any): string {
 export function isSoftwareAdapter(adapter: any): boolean {
   if (adapter?.isFallbackAdapter === true || adapter?.info?.isFallbackAdapter === true) return true
   // The browser doesn't always say it (newer ones keep it on adapter.info only): a software renderer names itself.
-  // SwiftShader, llvmpipe, Windows' WARP ("Microsoft Basic Render Driver"), and the VM adapters that draw on the host's CPU.
-  return /swiftshader|llvmpipe|software|\bwarp\b|basic render|vmware|virtualbox|svga3d/i.test(`${adapter?.info?.architecture ?? ''} ${adapter?.info?.description ?? ''} ${adapter?.info?.vendor ?? ''} ${adapter?.info?.device ?? ''}`)
+  // SwiftShader, llvmpipe, Windows' WARP ("Microsoft Basic Render Driver"). A VM's adapter (VMware, VirtualBox) is software only when the browser says so (isFallbackAdapter): many draw on the host's GPU.
+  return /swiftshader|llvmpipe|software|softpipe|\bwarp\b|basic render/i.test(`${adapter?.info?.architecture ?? ''} ${adapter?.info?.description ?? ''} ${adapter?.info?.vendor ?? ''} ${adapter?.info?.device ?? ''}`)
 }
 
 /** The "Node(s) placed on [X]. Number of nodes: N" lines ONNX Runtime logs when a session is made (verbose), as counts per provider. */
@@ -121,24 +123,19 @@ export const fallbackPoolSize = (cores: number, wanted: number) => (cores >= 4 ?
 export const POOL_EFFICIENCY = 0.75
 
 export interface GpuVsCpu {
-  /** The check's means per frame (ms): the GPU's RetinaFace, the CPU's one core's RetinaFace, YuNet (it runs after RetinaFace in each CPU worker, beside it on the GPU path). */
+  /** The check's means per frame (ms), both at the size the fine pass runs at: the GPU's RetinaFace, one CPU core's, and YuNet (it runs after RetinaFace in each CPU worker, beside it on the GPU path). */
   gpuMs: number
   cpuMs: number
   yunetMs: number
   /** CPU detectors that would run side by side. */
   lanes: number
-  /** The GPU's RetinaFace at the size the fine pass runs at (the check's time scaled by the area), and the most the pace allows it there (GPU_SLOW_MS). */
-  gpuFineMs: number
-  slowMs: number
 }
 
 /**
- * Whether a GPU that works (not a software adapter, not a failure) is left for the CPU's detectors: only when the GPU can't hold the
- * fine pass at the size it starts at (the pace would shrink the frame there anyway) and the CPU, YuNet included, is the faster.
- * A GPU that holds that size is never left for speed: the frame would drop from 1280 to 960 px for nothing.
+ * Whether the CPU's detectors, YuNet included, are faster than the GPU (the GPU's time counted at 90%). Only a part of leaving a GPU
+ * that works: see pace.ts' leaveGpuForSpeed (the GPU is left only when the pace itself would have lowered detection on it).
  */
-export function leaveGpuForSpeed(i: GpuVsCpu): boolean {
-  if (i.gpuFineMs <= i.slowMs) return false
+export function cpuBeatsGpu(i: GpuVsCpu): boolean {
   // Side by side, each worker runs YuNet after RetinaFace; one detector has YuNet in a worker of its own, overlapping.
   if (i.lanes <= 1) return Math.max(i.cpuMs, i.yunetMs) < i.gpuMs * 0.9
   return (i.cpuMs + i.yunetMs) / (i.lanes * POOL_EFFICIENCY) < i.gpuMs * 0.9
@@ -151,7 +148,7 @@ export function diagLines(d: DeviceDiag): string[] {
   if (g) {
     out.push(`webgpu: ${g.adapter || 'adapter (the browser gives no name)'}${g.software ? ' (software adapter, not used)' : ''}`)
     out.push(`shader_f16: ${g.f16 ? 'yes' : 'no'} (model ${g.model})`)
-    out.push(`ep_nodes: ${g.software ? 'no WebGPU session (software adapter)' : g.nodesGpu === null && g.nodesCpu === null ? 'not measured yet' : `${g.nodesGpu ?? 0} on the GPU, ${g.nodesCpu ?? 0} on the CPU`}`)
+    out.push(`ep_nodes: ${g.software ? 'no WebGPU session (software adapter)' : g.failed ? 'not available (GPU failed)' : g.nodesGpu === null && g.nodesCpu === null ? 'not measured yet' : `${g.nodesGpu ?? 0} on the GPU, ${g.nodesCpu ?? 0} on the CPU`}`)
     out.push(`gpu_first_run_ms: ${g.firstRunMs === null ? '-' : Math.round(g.firstRunMs)}`)
   } else out.push('webgpu: not available in this browser (or forced off)')
   out.push(`wasm: ${d.threads} thread${d.threads === 1 ? '' : 's'} per detector, simd ${d.simd ? 'yes' : 'no'}`)
