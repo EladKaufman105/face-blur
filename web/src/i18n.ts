@@ -49,6 +49,7 @@ const EN: Record<string, string> = {
   'עוד פרטים': 'More details',
   'פחות פרטים': 'Fewer details',
   'העתק': 'Copy',
+  'העתק פרטים': 'Copy details',
   'הנתונים הועתקו': 'Copied',
   'כמה זמן לוקח זיהוי פנים אחד. זה החלק הכבד.': 'How long one face detection takes. This is the heavy part.',
   'כמה זמן פריים מחכה לגלאי פנוי. גבוה: המכשיר לא עומד בקצב.': 'How long a frame waits for a free detector. High: the device can\'t keep up.',
