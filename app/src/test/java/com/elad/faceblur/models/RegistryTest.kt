@@ -164,4 +164,84 @@ class RegistryTest {
         rejects(one(pending, pack = "speech-any"))
         assertFalse(ModelRegistry.isSha256("A".repeat(64)))
     }
+
+    // ------------------------------------------------------------------ licences
+
+    /** Where a bundled licence text lives: the shared texts (shared/assets) or the app's own assets (the fonts'). */
+    private fun asset(rel: String): File? =
+        listOf("../shared/assets", "shared/assets", "src/main/assets", "app/src/main/assets").map { File(it, rel) }.firstOrNull { it.isFile }
+
+    /** Every file of every pack says what it is licensed under, and its full text is bundled (offline). */
+    @Test
+    fun everyFileHasItsLicenceAndAnExistingText() {
+        for (p in shipped().packs) {
+            assertTrue("pack ${p.id.key}: licenceVersion", p.licenceVersion >= 1)
+            for (f in p.files) {
+                val l = f.licence
+                assertTrue("${f.name}: title", l.title.isNotBlank())
+                assertTrue("${f.name}: licence", l.licence.isNotBlank())
+                assertTrue("${f.name}: copyright", l.copyright.isNotBlank())
+                assertTrue("${f.name}: source", l.source.startsWith("https://"))
+                assertTrue("${f.name}: licenceFile", l.licenceFile.isNotBlank())
+                val text = asset(l.licenceFile)
+                assertNotNull("${f.name}: licence file ${l.licenceFile} not found", text)
+                assertTrue("${f.name}: licence file is empty", text!!.length() > 500)
+            }
+        }
+    }
+
+    /** Today every model is MIT, Apache-2.0, BSD-3-Clause or CC BY 4.0 (attribution only): none asks for acceptance. A restricted one would set it. */
+    @Test
+    fun noShippedModelNeedsAcceptanceYet() {
+        for (p in shipped().packs) assertFalse(p.id.key, p.requiresAcceptance)
+    }
+
+    @Test
+    fun licenceFieldsAreRead() {
+        val file = """{"name":"a.onnx","size":10,"sha256":"${"a".repeat(64)}","url":"https://example.com/a.onnx",""" +
+            """"title":"A","licence":"Non-commercial","copyright":"(c) X","source":"https://example.com","licenceFile":"licences/X.txt","requiresAcceptance":true,"note":"n","unverified":"u"}"""
+        val r = ModelRegistry.parse(one(file, extra = ",\"licenceVersion\":3"))
+        val pack = r[PackId.FACES]
+        assertEquals(3, pack.licenceVersion)
+        assertTrue(pack.requiresAcceptance)
+        val l = pack.files.single().licence
+        assertEquals(LicenceInfo("A", "Non-commercial", "(c) X", "https://example.com", "licences/X.txt", true, "n", "u"), l)
+        // A file without licence fields (a test's own registry) needs no acceptance.
+        assertFalse(ModelRegistry.parse(one(okFile))[PackId.FACES].requiresAcceptance)
+        // The text must be a plain path inside the assets.
+        rejects(one(file.replace("licences/X.txt", "../X.txt")))
+        rejects(one(file.replace("licences/X.txt", "/etc/passwd")))
+        rejects(one(file, extra = ",\"licenceVersion\":0"))
+    }
+
+    @Test
+    fun sameTermsAreOneEntry() {
+        val faces = LicenceText.group(shipped()[PackId.FACES].files)
+        // RetinaFace's ONNX and its two GPU files share terms; YuNet is another holder's.
+        assertEquals(listOf("RetinaFace (MobileNetV2)", "YuNet (OpenCV Zoo)"), faces.map { it.title })
+        assertTrue(faces[0].note.contains("Converted to TFLite"))
+        assertEquals(listOf("PP-HumanSeg (OpenCV Zoo)", "LR-ASPP MobileNetV3"), LicenceText.group(shipped()[PackId.PEOPLE].files).map { it.title })
+    }
+
+    /** The "Open-source licences" list: components.json parses, ids are unique, each text is bundled. */
+    @Test
+    fun componentsListIsComplete() {
+        val json = (asset("licences/components.json") ?: error("components.json not found")).readText()
+        val list = LicenceCatalog.parseComponents(json)
+        assertTrue(list.size > 20)
+        val ids = list.map { it.id }
+        assertEquals(ids.size, ids.toSet().size)
+        for (name in listOf("ONNX Runtime", "OpenCV", "LiteRT", "MediaPipe", "whisper.cpp", "Media3", "Transformers.js", "Mediabunny", "Preact")) {
+            assertTrue("$name listed", list.any { it.info.title.startsWith(name) })
+        }
+        assertEquals(10, list.count { it.kind == "font" })
+        for (e in list) {
+            assertTrue("${e.id}: licence", e.info.licence.isNotBlank())
+            if (e.info.licenceFile.isNotBlank()) assertNotNull("${e.id}: ${e.info.licenceFile} not found", asset(e.info.licenceFile))
+            else assertTrue("${e.id}: no text and no reason", e.info.unverified.isNotBlank())
+        }
+        // Models: the registry's, grouped, then the screen adds ML Kit's.
+        assertEquals(setOf("faces-0", "faces-1", "people-0", "people-1", "speakers-0", "selfie-0", "speech-he-0", "speech-any-0"), LicenceCatalog.models(shipped()).map { it.id }.toSet())
+        assertTrue(list.any { it.id == "mlkit" && it.kind == "model" })
+    }
 }

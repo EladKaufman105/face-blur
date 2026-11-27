@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
+import type { ComponentType } from 'preact'
 import { lang, setLang, t, duration } from './i18n'
 import { palette, PALETTES, setPalette, setTheme, theme, type Theme } from './theme'
 import type { Analysis, Look } from './lib/types'
@@ -51,6 +52,7 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'home' })
   // Exporting keeps the editor (and everything in it) underneath, for "back to editing".
   const [job, setJob] = useState<ExportJob | null>(null)
+  const [licences, setLicences] = useState<ComponentType<{ onClose: () => void }> | null>(null)
   // The detection mode (normal, extended, fast, selfie) and sensitivity chosen on the ready screen.
   const [detect, setDetect] = useState<DetectChoice>(NORMAL_DETECT)
   const sensitive = detect.mode === 'extended'
@@ -257,8 +259,9 @@ export function App() {
         />
       )}
       <footer class="footer">
-        {t('גרסת ווב')} <bdi dir="ltr" class="num">2.0 ({__BUILD__})</bdi> · <a href={RELEASES} target="_blank" rel="noopener">{t('האפליקציה המלאה לאנדרואיד')}</a> · <a href="home/">{t('על ONIT')}</a>
+        {t('גרסת ווב')} <bdi dir="ltr" class="num">2.0 ({__BUILD__})</bdi> · <a href={RELEASES} target="_blank" rel="noopener">{t('האפליקציה המלאה לאנדרואיד')}</a> · <a href="home/">{t('על ONIT')}</a> · <button class="licences-link" onClick={() => { import('./ui/Licences').then((m) => setLicences(() => m.Licences)) }}>{t('רישיונות קוד פתוח')}</button>
       </footer>
+      {licences && (() => { const L = licences; return <L onClose={() => setLicences(null)} /> })()}
     </div>
   )
 }

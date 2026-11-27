@@ -67,6 +67,7 @@ import com.elad.faceblur.i18n.t
 import com.elad.faceblur.models.FailReason
 import com.elad.faceblur.models.Installed
 import com.elad.faceblur.models.Job
+import com.elad.faceblur.models.LicenceText
 import com.elad.faceblur.models.ModelDownloads
 import com.elad.faceblur.models.Net
 import com.elad.faceblur.models.NetDecision
@@ -332,6 +333,8 @@ internal fun ModelCard(id: PackId, modifier: Modifier = Modifier, showReady: Boo
 internal fun ModelQuestionHost() {
     val ctx = LocalContext.current
     val d = rememberDownloads()
+    // Licence terms to accept before a download (LicencesUi.kt); nothing is queued before that.
+    LicenceConsentHost()
     d.question?.let { q ->
         AlertDialog(
             onDismissRequest = d::dismissQuestion,
@@ -593,6 +596,7 @@ internal fun ModelsSettingsSheet(onDismiss: () -> Unit) {
     LaunchedEffect(Unit) { TranslationPacks.refresh() }
     val statuses = d.store.statuses
     var deleting by remember { mutableStateOf<PackId?>(null) }
+    var licenceOf by remember { mutableStateOf<PackId?>(null) }
     var deletingTranslation by remember { mutableStateOf(false) }
     val available = ORDER.filter { statuses[it] != null }
     val used = available.filter { statuses[it]?.usable == true }.sumOf { statuses[it]?.pack?.bytes ?: 0L }
@@ -636,6 +640,7 @@ internal fun ModelsSettingsSheet(onDismiss: () -> Unit) {
                     onCancel = { d.cancel(id) },
                     onNow = { d.downloadNow(id) },
                     onDelete = { deleting = id },
+                    onLicence = { licenceOf = id },
                 )
                 HorizontalDivider()
             }
@@ -646,6 +651,10 @@ internal fun ModelsSettingsSheet(onDismiss: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+    licenceOf?.let { id ->
+        val infos = LicenceText.group(d.store.registry[id].files)
+        LicenceViewerSheet(packName(id), infos) { licenceOf = null }
     }
     deleting?.let { id ->
         val s = statuses[id]
@@ -681,7 +690,7 @@ internal fun ModelsSettingsSheet(onDismiss: () -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PackRow(s: PackStatus, offline: Boolean, onDownload: () -> Unit, onCancel: () -> Unit, onNow: () -> Unit, onDelete: () -> Unit) {
+private fun PackRow(s: PackStatus, offline: Boolean, onDownload: () -> Unit, onCancel: () -> Unit, onNow: () -> Unit, onDelete: () -> Unit, onLicence: () -> Unit) {
     val id = s.pack.id
     Row(verticalAlignment = Alignment.Top) {
         FeatureTile(packIcon(id), MaterialTheme.colorScheme.primary, 40.dp)
@@ -731,7 +740,13 @@ private fun PackRow(s: PackStatus, offline: Boolean, onDownload: () -> Unit, onC
             }
         }
         Spacer(Modifier.width(Space.S))
-        ModelChip(s)
+        Column(horizontalAlignment = Alignment.End) {
+            ModelChip(s)
+            // The model's licence, read-only (also before it is downloaded).
+            IconButton(onClick = onLicence, modifier = Modifier.testTag(Tags.modelLicence(id))) {
+                Icon(AppIcons.Info, t("רישיון"), Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 
