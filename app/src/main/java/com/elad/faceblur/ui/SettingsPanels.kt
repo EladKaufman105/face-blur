@@ -354,7 +354,7 @@ fun ExportSheet(
 /** Language, light / dark mode and color palette. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit, onTemplates: (() -> Unit)? = null, onModels: (() -> Unit)? = null) {
+fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit, onTemplates: (() -> Unit)? = null, onModels: (() -> Unit)? = null, onRemembered: (() -> Unit)? = null) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             Modifier
@@ -422,12 +422,18 @@ fun AppSettingsSheet(prefs: AppPrefs, onDismiss: () -> Unit, onTemplates: (() ->
                     }
                 }
             }
+            if (onRemembered != null) {
+                HorizontalDivider()
+                Box(Modifier.testTag(Tags.REMEMBERED_ROW)) {
+                    ActionRow(AppIcons.ListLines, t("בחירות שנשמרו"), rememberedChoicesSummary(prefs), onClick = onRemembered)
+                }
+            }
             if (onTemplates != null) {
                 HorizontalDivider()
                 ActionRow(AppIcons.Tune, t("תבניות"), t("מראה, יעד ועיבוד לסרטונים: שינוי שם, שכפול, עריכה ומחיקה"), onClick = onTemplates)
             }
             if (onModels != null) {
-                if (onTemplates == null) HorizontalDivider()
+                if (onTemplates == null && onRemembered == null) HorizontalDivider()
                 Box(Modifier.testTag(Tags.MODELS_SETTINGS)) {
                     ActionRow(AppIcons.Download, t("מודלים"), t("מה במכשיר, הורדה ומחיקה, והורדות בסלולרי"), onClick = onModels)
                 }

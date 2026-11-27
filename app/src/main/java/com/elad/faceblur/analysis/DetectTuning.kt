@@ -315,7 +315,7 @@ object DetectTuning {
      * (both are contiguous). Tracks apart in time are rejected at once, and the count stops as
      * soon as the answer is known.
      */
-    private fun sameFace(a: TreeMap<Int, Box>, b: TreeMap<Int, Box>): Boolean {
+    internal fun sameFace(a: TreeMap<Int, Box>, b: TreeMap<Int, Box>): Boolean {
         val from = max(a.firstKey(), b.firstKey())
         val to = kotlin.math.min(a.lastKey(), b.lastKey())
         if (from > to) return false

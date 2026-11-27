@@ -47,6 +47,20 @@ class AppPrefs(context: Context) {
     var subsTranslate by mutableStateOf(sp.getBoolean("subs_translate", false))
         private set
 
+    /** Choices the person asked to remember in a dialog (key -> value; see [RememberedChoices]). */
+    private val choiceStore = object : RememberedChoices.Store {
+        override fun get(key: String): String? = sp.getString(key, null)
+        override fun put(key: String, value: String?) {
+            sp.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply()
+            choicesVersion++
+        }
+    }
+    val choices = RememberedChoices(choiceStore)
+
+    /** Bumped when a remembered choice changes: read it in a composable so the list shows the change. */
+    var choicesVersion by mutableStateOf(0)
+        private set
+
     init {
         I18n.lang = lang
     }

@@ -205,13 +205,16 @@ fun MainScreen(vm: MainViewModel) {
     }
     var showSettings by remember { mutableStateOf(false) }
     var showModels by remember { mutableStateOf(false) }
+    var showRemembered by remember { mutableStateOf(false) }
     if (showSettings) {
         AppSettingsSheet(
             vm.prefs, { showSettings = false },
             onTemplates = { showSettings = false; showTemplates = true },
             onModels = { showSettings = false; showModels = true },
+            onRemembered = { showSettings = false; showRemembered = true },
         )
     }
+    if (showRemembered) RememberedChoicesSheet(vm.prefs, onDismiss = { showRemembered = false })
     if (showModels) ModelsSettingsSheet(onDismiss = { showModels = false })
     // First launch: "ONIT's models", once (after older versions' files were checked, so it marks
     // what's already there), on the home screen; not when every model is already on the device.

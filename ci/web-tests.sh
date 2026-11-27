@@ -31,8 +31,10 @@ case "${1:?shard}" in
     node tests/fusion.cjs   # 1
     # Selfie detection's pure parts: BlazeFace's anchors, decoding, weighted NMS and letterbox against MediaPipe's own results (the Android app's BlazeFaceTest checks the same fixture), the sensitivity's threshold (0.5 at 0 exactly, 0.3 at 1), the choice of mode (pure, no browser).
     node tests/blazeface.cjs   # 1
+    # The remembered choices (what may be remembered, the settings list) and the merge of a second detection into the blurs ("Run detection again": Add never fewer, Replace keeps manual and edited blurs, the flags never weaker with Add) (pure, no browser).
+    node tests/choices.cjs   # 1
     ;;
-  1) # about 187 s
+  1) # about 310 s
     # Face detection with YuNet: RetinaFace + YuNet at 960 px (in the detector workers, and as one detector with YuNet in its own worker) finds no fewer faces than the old web detector (RetinaFace alone, 640 px) on the same frames of the stress clip and the classroom.
     t detect.cjs "$U" $R/detect 1.5 $S/stress_cuts.mp4 $S/classroom.mp4   # 73
     # Templates (a built-in look applied, edited and restored, copied and deleted) and two videos
@@ -48,6 +50,8 @@ case "${1:?shard}" in
     t pinch.cjs "$U" $S/walk.mp4 $R/pinch   # 8
     # The keyboard: groups by number, play / pause, a frame step, undo and redo.
     t keys.cjs "$U" $S/walk.mp4 $R/keys.png   # 6
+    # Run detection again: the sheet, the question (Add / Replace, Remember my choice), Add and Replace each one undo step, no question once remembered, Settings > Remembered choices (Clear, Clear all, the empty state, in English), Stop leaving the blurs as they were, a Fast run's notice kept by Add.
+    t rerun.cjs "$U" $S/walk.mp4 $R/rerun   # ~120 (measured locally)
     ;;
   2) # about 189 s
     # The editor's panels on a phone (390 px), as the app's, part 1: each group one compact panel of a bounded height with its tools as chips, the video in view, nothing sideways, no empty "more options" (he and en, four phone sizes); no detection; jobs that outlive a group switch.

@@ -382,6 +382,19 @@ internal fun EditorMessages(ctrl: EditorController, modifier: Modifier = Modifie
             transitionSpec = { (fadeIn(tween(Motion.STATE)) + slideInVertically(tween(Motion.STATE)) { it / 2 }) togetherWith fadeOut(tween(Motion.CONTENT)) },
             label = "notice",
         ) { msg -> if (msg != null) Banner(msg) }
+        // "Run detection again" came in: what it did, with Undo, for as long as nothing else is edited.
+        ctrl.rerunToast?.let { toast ->
+            @Suppress("UNUSED_VARIABLE") val v = ctrl.version
+            if (ctrl.model.undoDepth == toast.depth && !ctrl.model.canRedo) {
+                LaunchedEffect(toast) {
+                    delay(6000)
+                    if (ctrl.rerunToast === toast) ctrl.rerunToast = null
+                }
+                Box(Modifier.testTag(Tags.RERUN_UNDO)) {
+                    Banner(toast.text, action = t("בטל")) { ctrl.rerunToast = null; ctrl.undo() }
+                }
+            }
+        }
         ctrl.trackingProgress?.let { p ->
             ProgressPill(t("עוקב אחרי הפנים…"), p, ctrl::cancelTracking)
         }

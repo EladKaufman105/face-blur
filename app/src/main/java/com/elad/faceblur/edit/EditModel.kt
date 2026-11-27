@@ -365,11 +365,36 @@ class EditModel(
     }
 
     /** Final boxes of every blur, frame by frame, for the render pass. */
-    fun renderTracks(): List<TreeMap<Int, Box>> = tracks.mapNotNull { t ->
+    fun renderTracks(): List<TreeMap<Int, Box>> = tracks.mapNotNull { t -> shownBoxes(t).takeIf { it.isNotEmpty() } }
+
+    /** The boxes the blur [t] really covers, frame by frame (what the export draws; empty while it is turned off). */
+    fun shownBoxes(t: EditTrack): TreeMap<Int, Box> {
         val m = TreeMap<Int, Box>()
         for (i in max(0, t.start)..min(frameCount - 1, t.end)) boxAt(t, i)?.let { m[i] = it }
-        m.takeIf { it.isNotEmpty() }
+        return m
     }
+
+    /**
+     * "Run detection again": the faces [found] (on this model's frames) come in as one undo step, by [RerunMerge]'s rules. A blur
+     * turned off still counts as there, so a face found again is not added beside it. Returns how many blurs came in and went out.
+     */
+    fun rerun(found: List<TreeMap<Int, Box>>, mode: RerunMode): Pair<Int, Int> {
+        val there = tracks.map { t ->
+            // (A blur turned off has no shown boxes: its frames are what its path covers.)
+            val shown = if (t.off) TreeMap<Int, Box>().also { m -> for (i in max(0, t.start)..min(frameCount - 1, t.end)) rawBox(t, i)?.let { m[i] = it } } else shownBoxes(t)
+            RerunMerge.Existing(t.id, RerunMerge.isEdited(t), shown)
+        }
+        val plan = RerunMerge.plan(there, found, mode)
+        if (plan.add.isEmpty() && plan.removeIds.isEmpty()) return 0 to 0
+        snapshot()
+        tracks.removeAll { it.id in plan.removeIds }
+        for (p in plan.add) tracks += EditTrack(nextId++, false, TreeMap(p), p.firstKey(), p.lastKey())
+        changed()
+        return plan.add.size to plan.removeIds.size
+    }
+
+    /** How many undo steps there are (a message with "Undo" stays only while this is what it was). */
+    val undoDepth get() = undo.size
 
     // ------------------------------------------------------------------ edits
 

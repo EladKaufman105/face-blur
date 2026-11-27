@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.elad.faceblur.analysis.AnalysisResult
 import com.elad.faceblur.analysis.Box
+import com.elad.faceblur.analysis.DetectMode
 import com.elad.faceblur.pipeline.Settings
 import com.elad.faceblur.pipeline.VideoInfo
 import com.elad.faceblur.track.FaceTimeline
@@ -1147,6 +1148,91 @@ class EditorController(
 
     fun cancelFindFaces() {
         findJob?.cancel()
+    }
+
+    /** The remembered choices (null in a session made without preferences, as in tests). */
+    val choices get() = prefs?.choices
+
+    /** The message after "Run detection again": its text, and how many undo steps there were when it came (it goes when anything else is edited). */
+    class RerunToast(val text: String, val depth: Int)
+
+    var rerunToast by mutableStateOf<RerunToast?>(null)
+
+    /** Whether the whole model pack of [detect] is on the device (the selfie pack for selfie mode, else the faces pack). */
+    fun detectionReady(detect: DetectMode): Boolean {
+        val ctx = appContext ?: return false
+        return com.elad.faceblur.models.ModelStore.get(ctx).isUsable(detectPack(detect))
+    }
+
+    private fun detectPack(detect: DetectMode) =
+        if (detect == DetectMode.SELFIE) com.elad.faceblur.models.PackId.SELFIE else com.elad.faceblur.models.PackId.FACES
+
+    /**
+     * "Run detection again": the existing analysis pipeline runs on the same video with [detect] and [sensitivity] (never without the
+     * model pack of that mode: a way to detect weaker is never swapped in). Only when it is done, the faces it found come in by [merge]'s
+     * rules as one undo step; Stop (or leaving) changes nothing. The project's detection (its notices) follows, never getting weaker
+     * by an Add ([RerunMerge.detectAfter]). Progress and Stop are the ones "Find faces" shows.
+     */
+    fun rerunDetection(detect: DetectMode, sensitivity: Float, merge: RerunMode) {
+        val ctx = appContext ?: return
+        if (session.subtitlesOnly || findJob?.isActive == true || findFacesProgress != null) return
+        if (!detectionReady(detect)) {
+            notice = if (detect == DetectMode.SELFIE) t("כדי להשתמש במצב סלפי צריך את מודל הסלפי") else t("כדי לטשטש פנים צריך את מודל זיהוי הפנים")
+            return
+        }
+        if (segmentProgress != null || segmentJob?.isActive == true) {
+            notice = t("אי אפשר לזהות פנים בזמן שהאנשים מזוהים. חכה שהזיהוי יסתיים או בטל אותו.")
+            return
+        }
+        pauser()
+        addMode = false
+        rerunToast = null
+        findFacesProgress = 0f
+        val look = session.settings
+        val asked = Settings(look.mode, look.strength, look.padding, detect == DetectMode.EXTENDED, detect == DetectMode.FAST, sensitivity, detect == DetectMode.SELFIE)
+        // ATOMIC: the body (and its finally) runs even if cancelled before it starts, so the progress is always cleared.
+        findJob = scope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
+            try {
+                val found = FaceBlurProcessor(ctx).analyze(session.info, asked) { p -> main.post { if (findFacesProgress != null) findFacesProgress = p } }
+                try {
+                    // The blurs are read as they are now (what was edited while it ran stays), on this model's frames.
+                    val before = model.tracks.size
+                    val faces = found.tracks.map { RerunMerge.remap(it, found.times, model.times) }
+                    val (added, removed) = model.rerun(faces, merge)
+                    val now = session.settings
+                    val kept = RerunMerge.detectAfter(now.detect, detect, merge)
+                    session.settings = Settings(
+                        now.mode, now.strength, now.padding, kept == DetectMode.EXTENDED, kept == DetectMode.FAST,
+                        RerunMerge.sensitivityAfter(now.sensitivity, sensitivity, merge), kept == DetectMode.SELFIE,
+                    )
+                    sync()
+                    if (before == 0 && model.tracks.isNotEmpty()) playerEpoch++
+                    if (added == 0 && removed == 0) {
+                        notice = t("לא נמצאו פנים נוספים")
+                    } else {
+                        rerunToast = RerunToast(rerunText(merge, added), model.undoDepth)
+                    }
+                } finally {
+                    found.close()
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: com.elad.faceblur.models.ModelMissing) {
+                notice = t("כדי לטשטש פנים צריך את מודל זיהוי הפנים")
+            } catch (e: Exception) {
+                android.util.Log.w("ONIT", "running detection again failed", e)
+                notice = t("זיהוי הפנים נכשל")
+            } finally {
+                findFacesProgress = null
+            }
+        }
+    }
+
+    private fun rerunText(merge: RerunMode, added: Int): String = when {
+        merge == RerunMode.ADD -> if (added == 1) t("נמצאו פנים נוספים: אחד") else t("נמצאו %d פנים נוספים").format(added)
+        added == 0 -> t("הוחלף: לא נמצאו פנים")
+        added == 1 -> t("הוחלף: פנים אחד")
+        else -> t("הוחלף: %d פנים").format(added)
     }
 
     /** Turns a face's blur off or back on (one undo step). */

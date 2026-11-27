@@ -684,7 +684,7 @@ const EN: Record<string, string> = {
   'המשך': 'Continue',
   'עצור': 'Stop',
   'מזהה פנים…': 'Detecting faces…',
-  'זיהוי הפנים נכשל': 'Face detection failed',
+  'זיהוי הפנים נכשל': 'Finding the faces failed',
   'מה לעשות בטשטושים הקיימים?': 'What to do with the existing blurs?',
   'יש %d טשטושים בסרטון.': 'There are %d blurs in this video.',
   'הוסף לטשטושים הקיימים': 'Add to existing blurs',

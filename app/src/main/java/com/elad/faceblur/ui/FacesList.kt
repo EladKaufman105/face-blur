@@ -81,7 +81,10 @@ internal fun FacesList(ctrl: EditorController) {
         if (tracks.isEmpty()) return
     }
     if (tracks.isEmpty()) {
-        Text(t("לא נמצאו פנים בסרטון."), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
+            Text(t("לא נמצאו פנים בסרטון."), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!ctrl.session.subtitlesOnly) RerunAction(ctrl)
+        }
         return
     }
     val context = LocalContext.current
@@ -118,6 +121,7 @@ internal fun FacesList(ctrl: EditorController) {
             FilledTonalButton(onClick = { ctrl.setAllBlursOff(false) }, modifier = Modifier.testTag(Tags.FACE_ALL)) { Text(t("הכל")) }
             FilledTonalButton(onClick = { ctrl.setAllBlursOff(true) }, modifier = Modifier.testTag(Tags.FACE_NONE)) { Text(t("אף אחד")) }
         }
+        if (!ctrl.session.subtitlesOnly) RerunAction(ctrl)
     }
 }
 
