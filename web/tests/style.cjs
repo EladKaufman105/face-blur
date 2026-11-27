@@ -162,7 +162,6 @@ const layer = () => {
     // Not burned in, when so chosen (the SRT keeps them): no subtitle in the picture.
     await p.click('.export-bar .btn')
     await p.click('.burn-seg button >> nth=1')
-    await p.click('.export-sheet .switch')
     await p.click('.export-go')
     await p.waitForSelector('.result video, .card.error', { timeout: 900000 })
     const href2 = await p.getAttribute('a[download]', 'href')
@@ -175,7 +174,6 @@ const layer = () => {
     await p.click('text=חזרה לעריכה')
     await p.click('.export-bar .btn')
     await p.click('.burn-seg button >> nth=0')
-    await p.click('.export-sheet .switch')
     await p.keyboard.press('Escape')
 
     // Kept with the project, the imported font too.

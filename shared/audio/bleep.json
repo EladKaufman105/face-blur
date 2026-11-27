@@ -1,0 +1,10 @@
+{
+  "about": "The bleep's loudness, shared by the app and the web app (docs/shared-code.md): each bleep's beep follows the loudness of the speech it replaces. level = clamp(RMS of the speech over the bleep and BLEEP_WINDOW_S either side * BLEEP_SPEECH_GAIN, BLEEP_MIN_LEVEL, BLEEP_MAX_LEVEL), as the beep's peak amplitude (VoiceDsp / BleepLevel.kt, lib/voice.ts bleepLevel).",
+  "consts": [
+    { "name": "BLEEP_WINDOW_S", "type": "float", "value": 0.10, "doc": "Seconds of the speech either side of the bleep that are measured with it." },
+    { "name": "BLEEP_SPEECH_GAIN", "type": "float", "value": 1.0, "doc": "The beep's peak amplitude per unit of the speech's RMS: 1.0 is a sine whose RMS is 3 dB under the speech's." },
+    { "name": "BLEEP_MIN_LEVEL", "type": "float", "value": 0.02, "doc": "The quietest beep (peak, 1 = full scale): a bleep over near silence is still heard." },
+    { "name": "BLEEP_MAX_LEVEL", "type": "float", "value": 0.32, "doc": "The loudest beep (peak): the fixed level it was before it followed the speech. Never near clipping." },
+    { "name": "BLEEP_FALLBACK_LEVEL", "type": "float", "value": 0.16, "doc": "The beep when the speech's loudness is not known (the app before the sound is decoded)." }
+  ]
+}

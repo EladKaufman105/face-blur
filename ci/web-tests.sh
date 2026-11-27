@@ -33,6 +33,8 @@ case "${1:?shard}" in
     node tests/blazeface.cjs   # 1
     # The device report's pure parts and the rules that use the cores: how many CPU detectors run side by side (cores, memory, phones; never fewer than before), a software WebGPU adapter never used, the runtime's node placement read as counts, the pace not counting a detection that compiled shaders (pure, no browser).
     node tests/devdiag.cjs   # 1
+    # The bleep's loudness follows the speech it replaces (the app's BleepLevelTest checks the same vectors): a quiet word a quiet beep, a loud one a louder beep under the cap, nothing clips (pure, no browser).
+    node tests/bleep.cjs   # 1
     ;;
   1) # about 187 s
     # Face detection with YuNet: RetinaFace + YuNet at 960 px (in the detector workers, and as one detector with YuNet in its own worker) finds no fewer faces than the old web detector (RetinaFace alone, 640 px) on the same frames of the stress clip and the classroom.
@@ -92,10 +94,14 @@ case "${1:?shard}" in
     t subsflow.cjs "$U" $S/speech_two.mp4 $R/subsflow   # 38
     # A software WebGPU adapter (headless Chromium's SwiftShader, not told ?backend=wasm) is never used for detection: the CPU workers run (more than one on a machine with cores), the report says why and lists the adapter, node placement, threads, isolation and the detector pool.
     t softgpu.cjs "http://localhost:4173/?coi=0" $S/walk.mp4 $R/softgpu   # ~25
+    # A subtitles job shows life at once (no model: a stub for the Hub): the model is asked for at the start, beside the sound's reading, and the sound's percent shows with the model's phase.
+    t subsstart.cjs "$U" $S/speech_two.mp4 $R/subsstart strict   # 8
     ;;
   5) # about 210 s
     # A subtitle edited so a bleeped word may show: the alert, the mark on the timeline, the export asking first; a deleted subtitle's bleeps listed.
     t maskwarn.cjs "$U" $S/speech_two.mp4 $R/maskwarn   # 37
+    # SRT is no switch in the export sheet: "Save subtitles (SRT)" in the subtitles panel writes the masked file; the unmasked one (for editing) asks first.
+    t srtsave.cjs "$U" $S/speech_two.mp4 $R/srtsave   # 12
     # The landing page (/home/): it loads whole, its parts work, its links lead to the editor.
     t home.cjs "http://localhost:4173/" $R/home   # 32
     # The watermark's logo kept between visits and a template's logo shown; the template editor asking before it drops changes, and "Edit" for the chosen template (ready screen, batch); the safe zone's switch, chooser and mock (9:16 only, never in the export); the thin scrubber over a phone's panel; the low-confidence rule.
