@@ -3,13 +3,13 @@ description: Node and the npm packages, Playwright's Chromium (cached), the buil
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v6
       with:
         node-version: 22
         cache: npm
         cache-dependency-path: web/package-lock.json
 
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v7
       with:
         name: web-dist
         path: web/dist
@@ -27,7 +27,7 @@ runs:
       run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
 
     - id: pwcache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
