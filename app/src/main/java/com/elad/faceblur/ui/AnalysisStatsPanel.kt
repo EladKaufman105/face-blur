@@ -96,6 +96,7 @@ private object StatsLayout {
         CellSize.BIG to listOf(Cell.DETECT, Cell.WAIT),
         CellSize.MID to listOf(Cell.FRAME, Cell.RESOLUTION, Cell.SAMPLING),
     )
+    val SelfieHidden = setOf(Cell.COARSE, Cell.GPU_CALL, Cell.YUNET, Cell.CROPS)
     val Details = listOf(
         CellSize.DETAIL to listOf(Cell.BACKEND, Cell.MODE),
         CellSize.DETAIL to listOf(Cell.WORKERS, Cell.FINE, Cell.COARSE),
@@ -316,7 +317,10 @@ private fun StatsContent(stats: AnalysisStats, info: VideoInfo, percent: Int, el
         }
         AnimatedVisibility(more, enter = FoldIn, exit = FoldOut) {
             Column(verticalArrangement = Arrangement.spacedBy(StatsLayout.Gap)) {
-                StatsLayout.Details.forEach { (size, cells) -> CellRow(size, cells, stats) }
+                // Selfie mode has one detector and none of the rest (no coarse pass, no GPU, no YuNet, no crop re-check): those cells are left out.
+                StatsLayout.Details.map { (size, cells) -> size to (if (stats.latest.mode == "selfie") cells.filter { it !in StatsLayout.SelfieHidden } else cells) }
+                    .filter { (_, cells) -> cells.isNotEmpty() }
+                    .forEach { (size, cells) -> CellRow(size, cells, stats) }
             }
         }
     }

@@ -34,6 +34,7 @@ class BlazeFaceDetector(modelFile: File) : Closeable {
     private val rgb = Mat()
     private val floats = Mat()
     private val m = Mat(2, 3, CvType.CV_64F)
+    private val small = Mat()
 
     /** The last [detect] call's time, in microseconds (read by the same thread right after it). */
     var lastUs = 0L
@@ -59,11 +60,20 @@ class BlazeFaceDetector(modelFile: File) : Closeable {
     }
 
     /**
-     * The faces in [bgr] (8-bit BGR, the whole frame): the default ones, and with [withExtras]
+     * The faces in [frame] (8-bit BGR, the whole frame): the default ones, and with [withExtras]
      * (a sensitivity above 0) the extra ones from the lower pool too.
      */
-    fun detect(bgr: Mat, withExtras: Boolean): BlazeFace.Result {
+    fun detect(frame: Mat, withExtras: Boolean): BlazeFace.Result {
         val t0 = System.nanoTime()
+        // A frame much bigger than twice the model's side is first averaged down to that (INTER_AREA), so the
+        // bilinear warp below doesn't skip over pixels (aliasing: small faces would suffer, and a plain warp
+        // of a 1280 px frame to 192 px reads one pixel in six); the web's canvas smooths the same way.
+        val long = maxOf(frame.cols(), frame.rows())
+        val bgr = if (long > 2 * BlazeFace.SIZE) {
+            val k = 2.0 * BlazeFace.SIZE / long
+            Imgproc.resize(frame, small, Size(Math.max(1.0, Math.round(frame.cols() * k).toDouble()), Math.max(1.0, Math.round(frame.rows() * k).toDouble())), 0.0, 0.0, Imgproc.INTER_AREA)
+            small
+        } else frame
         val w = bgr.cols()
         val h = bgr.rows()
         // The frame letterboxed into the model's square the way MediaPipe does it (an affine
@@ -98,6 +108,7 @@ class BlazeFaceDetector(modelFile: File) : Closeable {
     override fun close() {
         interpreter.close()
         boxed.release()
+        small.release()
         rgb.release()
         floats.release()
         m.release()

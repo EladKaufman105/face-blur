@@ -79,10 +79,11 @@ class TemplateSelfieTest {
     }
 
     @Test
-    fun selfieNeedsItsPackUnlessThereIsNoFaceBlur() {
+    fun selfieNeedsItsOwnPackUnlessThereIsNoFaceBlur() {
         assertEquals(listOf(PackId.FACES), TemplateSettings().neededPacks)
         assertEquals(listOf(PackId.FACES), TemplateSettings(fast = true).neededPacks)
-        assertEquals(listOf(PackId.FACES, PackId.SELFIE), TemplateSettings(selfie = true).neededPacks)
+        // Selfie needs its own pack alone, never the faces.
+        assertEquals(listOf(PackId.SELFIE), TemplateSettings(selfie = true).neededPacks)
         assertTrue(TemplateSettings(selfie = true, blurOff = true).neededPacks.isEmpty())
         // Extended wins: no selfie pack.
         assertEquals(listOf(PackId.FACES), TemplateSettings(selfie = true, sensitive = true).neededPacks)

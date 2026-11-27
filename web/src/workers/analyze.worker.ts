@@ -5,7 +5,7 @@ import { CPU_SIDE, FaceDetector, GPU_SIDE, LOW_SIDE } from '../lib/detector'
 import { DetectGate, FrameRate, Pacer, follow, fullRate, needRate, pace, runSide, type Timing } from '../lib/pace'
 import { CoverageMeter, type Coverage } from '../lib/coverage'
 import { YunetWorker } from '../lib/yunet-worker'
-import { StatsHistory, summary, type AnalysisStats, type StatsSnapshot } from '../lib/analysis-stats'
+import { SELFIE_NO_GPU, StatsHistory, summary, type AnalysisStats, type StatsSnapshot } from '../lib/analysis-stats'
 import { DetectorPool } from '../lib/detector-pool'
 import { CutDetector } from '../lib/cuts'
 import { track } from '../lib/tracker'
@@ -394,7 +394,7 @@ async function analyzeSelfie(file: File, sensitivity: number, base: string, t0: 
     return {
       atMs: now, frames: times.length, frameMs: Math.max(0, now - loopStart - decodeWait), waitMs: 0, decodeWaitMs: decodeWait, cutMs,
       detections: n, detectMs, partDetections: n, pre: detector.stats.pre, inf: detector.stats.inf, dec: detector.stats.dec, coarse: 0, coarseRuns: 0, check: 0, verify: 0, merge: 0,
-      backend: 'wasm', precision: 'fp32', noGpu: 'selfie mode runs on the CPU',
+      backend: 'wasm', precision: 'fp32', noGpu: SELFIE_NO_GPU,
       side: 192, rate: times.length / Math.max(1e-3, (times[times.length - 1] ?? 0) + 1e-3), workers: 1, cores: self.navigator?.hardwareConcurrency ?? 2,
       measured: { rate: times.length / Math.max(1e-3, (times[times.length - 1] ?? 0) + 1e-3), minWindow: null, need: 0, gapFrames: 0, gapS: 0, minSide: 192, yunet: false },
       mode: 'selfie', sensitivity,

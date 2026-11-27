@@ -180,10 +180,13 @@ function push(q: Series, x: number, keep: number) {
 /** A time or a count: whole from 10 up, else one decimal (always with a dot). */
 export const fmt = (v: number) => (v >= 9.95 ? String(Math.round(v)) : v.toFixed(1))
 
+/** Selfie mode's [StatsSnapshot.noGpu] (the panel shows it translated). */
+export const SELFIE_NO_GPU = 'selfie mode runs on the CPU'
+
 /** "gpu fp16", "cpu fp32 · why not the GPU". */
-export function backendText(s: StatsSnapshot): string {
+export function backendText(s: StatsSnapshot, why: (noGpu: string) => string = (x) => x): string {
   const gpu = s.backend === 'webgpu'
-  return [gpu ? 'GPU' : 'CPU', s.precision, !gpu && s.noGpu ? s.noGpu : ''].filter(Boolean).join(' · ')
+  return [gpu ? 'GPU' : 'CPU', s.precision, !gpu && s.noGpu ? why(s.noGpu) : ''].filter(Boolean).join(' · ')
 }
 
 /** One line to compare runs (also in the console). */

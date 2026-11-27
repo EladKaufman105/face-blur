@@ -77,6 +77,7 @@ const EN: Record<string, string> = {
   'מורחב': 'Extended',
   'זיהוי מהיר': 'Fast detection',
   'סלפי': 'Selfie',
+  'מצב סלפי רץ על המעבד': 'Selfie mode runs on the CPU',
   'זיהוי סלפי': 'Selfie detection',
   'מצב סלפי מהיר מאוד, אבל מיועד לאדם אחד קרוב למצלמה. פנים קטנות או רחוקות ברקע עלולות לא להיטשטש. צפו בתוצאה לפני שמשתפים.': "Selfie mode is very fast, but it's made for one person close to the camera. Small or distant faces in the background may not be blurred. Watch the result before you share it.",
   'מצב סלפי: פנים קטנות או רחוקות ברקע עלולות לא להיטשטש. כדאי לצפות בתוצאה.': 'Selfie mode: small or distant faces in the background may not be blurred. Watch the result.',

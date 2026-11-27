@@ -333,7 +333,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun previewBase(): TemplateSettings = templateBase ?: currentSettings()
 
     private fun recomputeBatch() {
-        val base = previewBase()
+        // A batch never inherits the weaker detections (fast, selfie) chosen for one video: only a template can make a batch use them.
+        val base = previewBase().copy(fast = false, selfie = false)
         val notes = ArrayList<String>()
         val chosen = idsOf(batchChoice).mapNotNull { templates.find(it) }.map { templates.usable(it, notes) }
         batchSettings = applyAll(base, chosen).withSubs(batchSubsOverride).fitted()
@@ -390,7 +391,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     val missingPacks: List<com.elad.faceblur.models.PackId>
         // Selfie mode's pack follows the mode chosen on the screen (the template's choice may have been changed there).
-        get() = ((templateSettings?.neededPacks ?: listOf(com.elad.faceblur.models.PackId.FACES)).filter { it != com.elad.faceblur.models.PackId.SELFIE } +
+        get() = ((templateSettings?.neededPacks ?: listOf(com.elad.faceblur.models.PackId.FACES))
+            .filter { it != com.elad.faceblur.models.PackId.SELFIE && !(selfieWanted && it == com.elad.faceblur.models.PackId.FACES) } +
             (if (selfieWanted) listOf(com.elad.faceblur.models.PackId.SELFIE) else emptyList())).filter { !packReady(it) }
 
     /** Selfie detection is chosen and the video's face blur uses it. */
@@ -404,7 +406,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val templateNeedsModel: Boolean get() = missingPacks.any { it != com.elad.faceblur.models.PackId.FACES }
 
     /** Face blur can't run: its pack is missing (and the template, if any, blurs faces). */
-    val facesMissing: Boolean get() = templateSettings?.blurOff != true && !packReady(com.elad.faceblur.models.PackId.FACES)
+    val facesMissing: Boolean get() = templateSettings?.blurOff != true && detectMode != com.elad.faceblur.analysis.DetectMode.SELFIE && !packReady(com.elad.faceblur.models.PackId.FACES)
 
     /** Starts the batch in a foreground service (it goes on with the screen off) and shows its queue. */
     fun startBatch() {
@@ -881,7 +883,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (blockedByBatch()) return
         val tpl = templateSettings
         // Face blur never starts without the whole face pack (the Ready screen offers the download).
-        if (tpl?.blurOff != true && !modelStore.isUsable(com.elad.faceblur.models.PackId.FACES)) {
+        if (tpl?.blurOff != true && detectMode != com.elad.faceblur.analysis.DetectMode.SELFIE && !modelStore.isUsable(com.elad.faceblur.models.PackId.FACES)) {
             android.widget.Toast.makeText(getApplication(), t("כדי לטשטש פנים צריך את מודל זיהוי הפנים"), android.widget.Toast.LENGTH_LONG).show()
             return
         }

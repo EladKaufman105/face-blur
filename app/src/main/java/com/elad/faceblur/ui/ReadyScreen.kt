@@ -67,7 +67,7 @@ internal fun ReadyContent(vm: MainViewModel, s: UiState.Ready, wide: Boolean, on
     val facesMissing = vm.facesMissing
     val actions: @Composable () -> Unit = {
         Column(verticalArrangement = Arrangement.spacedBy(Space.S)) {
-            if (!blurOff) ModelCard(com.elad.faceblur.models.PackId.FACES)
+            if (!blurOff && vm.detectMode != com.elad.faceblur.analysis.DetectMode.SELFIE) ModelCard(com.elad.faceblur.models.PackId.FACES)
             GradientButton(
                 if (blurOff) t("פתח בעורך") else t("טשטש פנים"),
                 { vm.review = true; vm.start() },

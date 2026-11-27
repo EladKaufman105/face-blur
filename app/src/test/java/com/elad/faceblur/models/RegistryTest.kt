@@ -32,7 +32,8 @@ class RegistryTest {
             // A commit (40 hex) in a raw URL, or an immutable models-* release: never a branch.
             val raw = Regex("^https://raw\\.githubusercontent\\.com/EladKaufman105/face-blur/([0-9a-f]{40})/.+")
             val release = Regex("^https://github\\.com/EladKaufman105/face-blur/releases/download/models-[0-9]+/.+")
-            // MediaPipe's own versioned model files (a /float16/1/ path: a new version is a new path), checked by their SHA-256 too.
+            // MediaPipe's own versioned model files (a /float16/1/ path: a new version is a new path). The path alone isn't the pin:
+            // the file's SHA-256 (and size) in the registry is, and every download and every use is checked against it.
             val mediapipe = Regex("^https://storage\\.googleapis\\.com/mediapipe-models/[a-z_]+/[a-z_]+/float(16|32)/[0-9]+/[A-Za-z0-9_.]+")
             assertTrue("not pinned: ${f.url}", raw.matches(f.url) || release.matches(f.url) || mediapipe.matches(f.url))
         }
