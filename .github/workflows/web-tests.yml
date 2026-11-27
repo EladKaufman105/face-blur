@@ -89,11 +89,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/web-test-env
       - name: Chromium tests
+        # Under the job's limit: a hang fails this step (the results still upload) instead of cancelling the job.
+        timeout-minutes: 25
         env:
           FULL: ${{ inputs.full && '1' || '' }}
         run: bash ci/web-tests.sh ${{ matrix.shard }}
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ !cancelled() }}
         with:
           name: web-results-${{ matrix.shard }}
           path: /tmp/web-results
@@ -110,11 +112,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/web-test-env
       - name: Test subtitles in Chromium (Whisper, the model from Hugging Face)
+        timeout-minutes: 50
         env:
           FULL: ${{ inputs.full && '1' || '' }}
         run: bash ci/web-tests.sh subs
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ !cancelled() }}
         with:
           name: web-results-subtitles
           path: /tmp/web-results
