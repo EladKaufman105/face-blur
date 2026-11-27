@@ -8,7 +8,7 @@ set -euo pipefail
 repo=${REPO:?owner/repo}
 dev=${DEVELOP:?develop sha}
 
-prs=$(gh api "repos/$repo/pulls?base=develop&state=open&per_page=100" --paginate --jq '.[].number')
+prs=$(gh api "repos/$repo/pulls?base=develop&state=open&per_page=100" --paginate --jq '.[] | select(.draft | not) | .number')
 for n in $prs; do
   info=''
   for _ in $(seq 12); do
@@ -24,7 +24,7 @@ for n in $prs; do
   if [ "$mergeable" = false ]; then
     state=conflict
     what="conflicts with \`develop\`. Merge \`develop\` into this branch and resolve the conflicts; it can't merge until then."
-  elif [ "$(gh api "repos/$repo/compare/$head...$dev" --jq .ahead_by)" -gt 0 ]; then
+  elif ahead=$(gh api "repos/$repo/compare/$head...$dev" --jq .ahead_by) || { echo "#$n: couldn't compare"; false; }; [ "${ahead:-0}" -gt 0 ]; then
     state=behind
     what="is behind \`develop\`. Merge \`develop\` into this branch (the checks run again); it can't merge until then."
   else
