@@ -1,7 +1,5 @@
 package com.elad.faceblur.models
 
-import com.sun.net.httpserver.HttpExchange
-import com.sun.net.httpserver.HttpServer
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -20,14 +18,14 @@ import kotlin.random.Random
 
 /** The model downloader against a local server: resume, checksum, redirects. */
 class DownloaderTest {
-    private lateinit var server: HttpServer
+    private lateinit var server: TestHttpServer
     private lateinit var dir: File
     private val body = Random(7).nextBytes(300_000)
     private val sha = MessageDigest.getInstance("SHA-256").digest(body).joinToString("") { "%02x".format(it) }
     /** The Range header of each request ("" without one). */
     private val ranges: MutableList<String> = Collections.synchronizedList(ArrayList())
     /** What the server does with a request (the number of requests so far is passed). */
-    @Volatile private var handler: (HttpExchange, Int) -> Unit = { ex, _ -> serve(ex, body) }
+    @Volatile private var handler: (TestExchange, Int) -> Unit = { ex, _ -> serve(ex, body) }
 
     // Plain HTTP to this machine only (the app allows HTTPS only).
     private val downloader = Downloader(
@@ -38,7 +36,7 @@ class DownloaderTest {
     @Before
     fun start() {
         dir = Files.createTempDirectory("dl").toFile()
-        server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server = TestHttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/") { ex ->
             val n = ranges.size
             ranges += ex.requestHeaders.getFirst("Range") ?: ""
@@ -62,7 +60,7 @@ class DownloaderTest {
     private fun file(size: Long = body.size.toLong(), sum: String = sha) = ModelFile("m.onnx", url(), size, sum)
 
     /** Serves [data], honoring "Range: bytes=N-". */
-    private fun serve(ex: HttpExchange, data: ByteArray, honorRange: Boolean = true) {
+    private fun serve(ex: TestExchange, data: ByteArray, honorRange: Boolean = true) {
         val range = ex.requestHeaders.getFirst("Range")
         val from = if (honorRange && range != null) range.removePrefix("bytes=").removeSuffix("-").toInt() else 0
         if (from >= data.size && range != null) {
