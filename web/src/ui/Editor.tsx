@@ -1431,7 +1431,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         {(tab === 'subs' || subsSeen.current) && (
           <div class="subs-keep" hidden={tab !== 'subs'}>
           <SubtitlesTab
-            srtCues={() => cutCues(cues.map((c) => ({ ...c, text: shown(c) })), cutMap)}
+            srtCues={() => cutCues(cues.map((c) => ({ ...c, text: shown(c) })), cutMap, words)}
             onBusy={setSubsBusy}
             onLost={setLost}
             onAttention={() => { setSubsAlert(true); setSubTab((s) => ({ ...s, subs: 'make' })) }}
@@ -1718,7 +1718,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
           if (tplBusy || soundBlocked) { setExportOpen(false); return }
           setExportOpen(false)
           saveExportOptions(exportOpts)
-          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: shown(c) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, anonymize: voice !== 'none' || bleeped.size > 0, cuts, words, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
+          onExport({ file, times, tracks: enabled, look, width: W, height: H, sfx, watermark: mark, cues: cues.map((c) => ({ ...c, text: shown(c) })), subStyle, voice: voiceAudio ? { rate: voiceAudio.rate, data: voiceAudio.data } : null, anonymize: voice !== 'none' || bleeped.size > 0, showsBleeps: subStyle.maskBleeped === false && bleeped.size > 0, cuts, words, options: exportOpts, picture: { background: background.fill !== 'none' && (background.key !== 'person' || picture?.masks) ? background : null, masks: background.key === 'person' && background.fill !== 'none' ? picture?.masks ?? null : null, steady: steadied, path: framePath } })
         }}
       />
     )}
