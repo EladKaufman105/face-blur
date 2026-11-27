@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "packs": [
+    {
+      "id": "faces",
+      "feature": "face blur, batches and templates with blur",
+      "version": 1,
+      "compat": 1,
+      "recommended": true,
+      "licenceVersion": 1,
+      "files": [
+        { "name": "retinaface_mv2.onnx", "size": 6288551, "sha256": "f0798d00b32dd3aadf8641a9e5126d1435873425371ea1d911b780d314378dda", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/d220a0844af436c50d65ece712c3254c31c57805/app/src/main/assets/retinaface_mv2.onnx",
+          "title": "RetinaFace (MobileNetV2)", "licence": "MIT", "copyright": "Copyright (c) 2024 Yakhyokhuja Valikhujaev", "source": "https://github.com/yakhyo/retinaface-pytorch", "licenceFile": "licences/MIT.txt", "requiresAcceptance": false, "note": "Trained on WIDER FACE. Architecture after biubug6/Pytorch_Retinaface (MIT).", "unverified": "The weights' terms are taken from the repository's MIT licence; the WIDER FACE dataset's own terms (shuoyang1213.me) could not be reached." },
+        { "name": "face_detection_yunet_2023mar.onnx", "size": 232589, "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/d220a0844af436c50d65ece712c3254c31c57805/app/src/main/assets/face_detection_yunet_2023mar.onnx",
+          "title": "YuNet (OpenCV Zoo)", "licence": "MIT", "copyright": "Copyright (c) 2020 Shiqi Yu <shiqi.yu@gmail.com>", "source": "https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet", "licenceFile": "licences/MIT.txt", "requiresAcceptance": false },
+        { "name": "retinaface-mv2-1280x736.tflite", "size": 6314616, "sha256": "e3d003315300f7297c28db24736d7465fa88e5407dc528942e5aff4693fc9d96", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/1fa4412c520bc4b3ffada79e07f36252fd14afb5/retinaface-mv2-1280x736.tflite",
+          "title": "RetinaFace (MobileNetV2) for the GPU", "licence": "MIT", "copyright": "Copyright (c) 2024 Yakhyokhuja Valikhujaev", "source": "https://github.com/yakhyo/retinaface-pytorch", "licenceFile": "licences/MIT.txt", "requiresAcceptance": false, "note": "Converted to TFLite (float16 weights) from the RetinaFace ONNX model above." },
+        { "name": "retinaface-mv2-736x1280.tflite", "size": 6314616, "sha256": "cdc93a8e1af969314ffa6d39e704bff6323c136569051f75be4a396acfd7f293", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/1fa4412c520bc4b3ffada79e07f36252fd14afb5/retinaface-mv2-736x1280.tflite",
+          "title": "RetinaFace (MobileNetV2) for the GPU", "licence": "MIT", "copyright": "Copyright (c) 2024 Yakhyokhuja Valikhujaev", "source": "https://github.com/yakhyo/retinaface-pytorch", "licenceFile": "licences/MIT.txt", "requiresAcceptance": false, "note": "Converted to TFLite (float16 weights) from the RetinaFace ONNX model above." }
+      ]
+    },
+    {
+      "id": "people",
+      "feature": "background removal",
+      "version": 1,
+      "compat": 1,
+      "recommended": true,
+      "licenceVersion": 1,
+      "files": [
+        { "name": "human_segmentation_pphumanseg_2023mar.onnx", "size": 3102392, "sha256": "3e62d73d0146bb4eae1c9964dacd808f670092b3b4c99e3e3168522b5cbbc58f", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/d220a0844af436c50d65ece712c3254c31c57805/app/src/main/assets/human_segmentation_pphumanseg_2023mar.onnx",
+          "title": "PP-HumanSeg (OpenCV Zoo)", "licence": "Apache-2.0", "copyright": "Copyright (c) 2021 PaddlePaddle Authors. All Rights Reserved", "source": "https://github.com/opencv/opencv_zoo/tree/main/models/human_segmentation_pphumanseg", "licenceFile": "licences/Apache-2.0.txt", "requiresAcceptance": false },
+        { "name": "lraspp_mbv3_512x288_fp16.onnx", "size": 6481264, "sha256": "9f639c4dd0288bdafe736a2c62ee55d4f7fd26dc55af52ecc86fdbe68e2ae73a", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/187ecd0f0bdb7e082b132a0e844e3a6785fb463b/seg/lraspp_mbv3_512x288_fp16.onnx",
+          "title": "LR-ASPP MobileNetV3", "licence": "BSD-3-Clause", "copyright": "Copyright (c) Soumith Chintala 2016", "source": "https://github.com/pytorch/vision", "licenceFile": "licences/BSD-3-Clause.txt", "requiresAcceptance": false, "note": "torchvision's lraspp_mobilenet_v3_large, exported to ONNX with float16 weights.", "unverified": "The code's licence is torchvision's BSD-3-Clause; whether the pretrained weights (trained on a COCO subset) carry any further terms could not be checked (pytorch.org unreachable)." },
+        { "name": "lraspp_mbv3_288x512_fp16.onnx", "size": 6481264, "sha256": "b14720feee109c688b4639c73efa7a09063119ceefdc383308f45790af045a3b", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/187ecd0f0bdb7e082b132a0e844e3a6785fb463b/seg/lraspp_mbv3_288x512_fp16.onnx",
+          "title": "LR-ASPP MobileNetV3", "licence": "BSD-3-Clause", "copyright": "Copyright (c) Soumith Chintala 2016", "source": "https://github.com/pytorch/vision", "licenceFile": "licences/BSD-3-Clause.txt", "requiresAcceptance": false, "note": "torchvision's lraspp_mobilenet_v3_large, exported to ONNX with float16 weights.", "unverified": "The code's licence is torchvision's BSD-3-Clause; whether the pretrained weights (trained on a COCO subset) carry any further terms could not be checked (pytorch.org unreachable)." }
+      ]
+    },
+    {
+      "id": "speakers",
+      "feature": "speaker colors in subtitles",
+      "version": 1,
+      "compat": 1,
+      "recommended": true,
+      "licenceVersion": 1,
+      "files": [
+        { "name": "speaker-wespeaker-r34lm-fp16.onnx", "size": 13274831, "sha256": "3d70b71bab69dc5896fafc930394df5d0c03f4c3959aec67790fcd0c1cc27097", "url": "https://raw.githubusercontent.com/EladKaufman105/face-blur/bb8e2afa2a37a3db68956504d149ad0c616689cf/speaker-wespeaker-r34lm-fp16.onnx",
+          "title": "WeSpeaker ResNet34-LM (VoxCeleb)", "licence": "CC-BY-4.0", "copyright": "WeSpeaker authors (wenet-e2e); trained on the VoxCeleb dataset", "source": "https://github.com/wenet-e2e/wespeaker/blob/master/docs/pretrained.md", "licenceFile": "licences/CC-BY-4.0.txt", "requiresAcceptance": false, "note": "Modified: exported by sherpa-onnx, input fixed to 1 x 300 x 80, weights stored as float16, for OpenCV.", "unverified": "WeSpeaker's docs say the VoxCeleb models follow CC BY 4.0, but name no copyright holder; the holder line is a description, not a quoted notice." }
+      ]
+    },
+    {
+      "id": "selfie",
+      "feature": "selfie detection mode (one close face)",
+      "version": 1,
+      "compat": 1,
+      "recommended": false,
+      "licenceVersion": 1,
+      "files": [
+        { "name": "blaze_face_full_range.tflite", "size": 1083786, "sha256": "3698b18f063835bc609069ef052228fbe86d9c9a6dc8dcb7c7c2d69aed2b181b", "url": "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range/float16/1/blaze_face_full_range.tflite",
+          "title": "BlazeFace full range (MediaPipe)", "licence": "Apache-2.0", "copyright": "Copyright Google LLC", "source": "https://storage.googleapis.com/mediapipe-assets/MediaPipe%20BlazeFace%20Model%20Card%20(Full%20Range).pdf", "licenceFile": "licences/Apache-2.0.txt", "requiresAcceptance": false, "note": "MediaPipe BlazeFace full-range model card (V. Bazarevsky, Y. Kartynnik, Google): licensed under Apache License 2.0.", "unverified": "The model card states Apache-2.0 and names its authors at Google, but no copyright line; 'Google LLC' is the usual holder of MediaPipe, not quoted." }
+      ]
+    },
+    {
+      "id": "speech-he",
+      "feature": "Hebrew subtitles (ivrit.ai Whisper)",
+      "version": 1,
+      "compat": 1,
+      "recommended": false,
+      "licenceVersion": 1,
+      "files": [
+        { "name": "ggml-ivrit-large-v3-turbo-q5_0.bin", "size": 574041195, "sha256": "c8108b5546e255e385b1edbd45d319f4b4bf91d67d21cc524b6005ed7b749b54", "url": "https://github.com/EladKaufman105/face-blur/releases/download/models-1/ggml-ivrit-large-v3-turbo-q5_0.bin",
+          "title": "ivrit.ai Whisper large-v3-turbo (Hebrew)", "licence": "Apache-2.0", "copyright": "Copyright ivrit.ai", "source": "https://huggingface.co/ivrit-ai/whisper-large-v3-turbo-ggml", "licenceFile": "licences/Apache-2.0.txt", "requiresAcceptance": false, "note": "A Hebrew fine-tune of OpenAI Whisper large-v3-turbo (MIT, Copyright (c) 2022 OpenAI), converted to ggml and quantized to q5_0.", "unverified": "Hugging Face could not be reached: Apache-2.0 is what the repository already stated, and ivrit.ai's sibling card (whisper-large-v3-turbo-ct2) says apache-2.0 in a search snippet. The ggml repo's own card was not read." }
+      ]
+    },
+    {
+      "id": "speech-any",
+      "feature": "subtitles in any language (multilingual Whisper)",
+      "version": 1,
+      "compat": 1,
+      "recommended": false,
+      "unpinned": true,
+      "todo": "Pin it: mirror the file into the models-1 release with .github/workflows/models.yml (model: multilingual, a pinned Hugging Face revision), then set url, size and sha256 from its log and drop unpinned/minSize/approxSize. Until then it downloads from Hugging Face main and is checked by size only, as before the registry.",
+      "licenceVersion": 1,
+      "files": [
+        { "name": "ggml-large-v3-turbo-q5_0.bin", "size": 0, "sha256": "", "minSize": 10000000, "approxSize": 574000000, "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+          "title": "Whisper large-v3-turbo (multilingual)", "licence": "MIT", "copyright": "Copyright (c) 2022 OpenAI", "source": "https://github.com/openai/whisper", "licenceFile": "licences/MIT.txt", "requiresAcceptance": false, "note": "Converted to ggml and quantized to q5_0 by the whisper.cpp project (MIT, Copyright (c) 2023-2026 The ggml authors)." }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="he" dir="rtl" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ONIT · עורך וידאו פרטי, בדפדפן ובאנדרואיד</title>
+<meta name="description" content="עורך וידאו שרץ כולו על המכשיר: טשטוש פנים אוטומטי, כתוביות, שינוי קול והסרת רקע. בלי שרת, בלי חשבון, בלי להעלות את הסרטון.">
+<meta name="theme-color" content="#0B0D1C">
+<link rel="icon" type="image/png" href="../icons/favicon.png">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ONIT · עורך וידאו פרטי">
+<meta property="og:description" content="טשטוש פנים, כתוביות, שינוי קול והסרת רקע. הכל רץ על המכשיר, שום דבר לא עולה לרשת.">
+<meta property="og:url" content="https://eladkaufman105.github.io/face-blur/home/">
+<meta property="og:image" content="https://eladkaufman105.github.io/face-blur/home/media/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="fonts/allo-hebrew.woff2" as="font" type="font/woff2" crossorigin>
+<script src="channel.js"></script>
+<script>
+  // The editor's own settings, when there are any: its language and its light / dark choice (the
+  // beta's own in the beta, see channel.js).
+  ;(function () {
+    var d = document.documentElement, theme = 'dark', lang = null, k = (self.ONIT_STORE || 'onit') + '.'
+    try { theme = localStorage.getItem(k + 'theme') || 'dark'; lang = localStorage.getItem(k + 'lang') } catch (e) {}
+    if (theme === 'system') theme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+    d.dataset.theme = theme === 'light' ? 'light' : 'dark'
+    if (!lang) lang = (navigator.language || 'he').indexOf('he') === 0 ? 'he' : 'en'
+    d.dataset.lang = lang
+  })()
+</script>
+<link rel="stylesheet" href="home.css">
+</head>
+<body>
+<a class="skip" href="#main" data-i18n="skip">דילוג לתוכן</a>
+
+<header class="nav" id="top">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top" aria-label="ONIT">
+      <img src="../icons/logo-dark.png" width="36" height="36" alt="">
+      <span>ONIT</span>
+    </a>
+    <nav class="links" aria-label="ניווט" data-i18n-aria="navLabel">
+      <a href="#features" data-i18n="navFeatures">פיצ'רים</a>
+      <a href="#privacy" data-i18n="navPrivacy">פרטיות</a>
+      <a href="#platforms" data-i18n="navPlatforms">דפדפן ואנדרואיד</a>
+      <a href="#faq" data-i18n="navFaq">שאלות</a>
+    </nav>
+    <div class="nav-end">
+      <button class="lang" type="button" id="lang" aria-label="English">EN</button>
+      <a class="btn primary sm" href="../" data-i18n="openWeb">פתיחה בדפדפן</a>
+    </div>
+  </div>
+  <div class="scrolled-line" aria-hidden="true"><i></i></div>
+</header>
+
+<main id="main">
+  <!-- Hero -->
+  <section class="hero">
+    <div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="wrap hero-in">
+      <div class="hero-text">
+        <p class="eyebrow reveal"><span class="dot"></span><span data-i18n="eyebrow">חדש: ONIT עכשיו גם בדפדפן</span></p>
+        <h1 class="reveal" data-split data-i18n="heroTitle">עורך וידאו שלם.<br><span class="g">שום דבר לא עולה לרשת.</span></h1>
+        <p class="lead reveal" data-i18n="heroLead">טשטוש פנים אוטומטי, כתוביות מעוצבות, שינוי קול והסרת רקע. הכל רץ על המכשיר שלך: בלי שרת, בלי חשבון ובלי להעלות את הסרטון לשום מקום.</p>
+        <div class="ctas reveal">
+          <a class="btn primary lg" href="../">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2.5"/><path d="M3 8h18M8 21h8"/></svg>
+            <span data-i18n="openWeb">פתיחה בדפדפן</span>
+          </a>
+          <a class="btn tonal lg" href="https://github.com/EladKaufman105/face-blur/releases/latest" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+            <span data-i18n="getAndroid">הורדה לאנדרואיד</span>
+          </a>
+        </div>
+        <p class="fine reveal" data-i18n="heroFine">חינם · בלי הרשמה · עברית ואנגלית</p>
+      </div>
+      <div class="hero-visual reveal" aria-hidden="true">
+        <div class="browser hero-browser">
+          <div class="chrome"><i></i><i></i><i></i><span class="url"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3"/><rect x="5" y="11" width="14" height="10" rx="2"/></svg>eladkaufman105.github.io/face-blur</span></div>
+          <video class="screen" muted loop playsinline preload="auto" poster="media/hero.webp" width="1280" height="720" data-auto>
+            <source src="media/hero.mp4" type="video/mp4">
+          </video>
+        </div>
+        <div class="phone hero-phone cycle">
+          <img class="on" src="media/app-blur.webp" width="720" height="1473" alt="">
+          <img src="media/app-subs.webp" width="720" height="1473" alt="">
+          <img src="media/app-voice.webp" width="720" height="1473" alt="">
+          <img src="media/app-background.webp" width="720" height="1473" alt="">
+        </div>
+        <div class="chip-float c1"><span class="ok"></span><span data-i18n="chip1">2 פנים זוהו ומטושטשות</span></div>
+        <div class="chip-float c2"><svg viewBox="0 0 24 24"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M4 21h16" /></svg><span data-i18n="chip2">0 קבצים הועלו</span></div>
+      </div>
+    </div>
+    <div class="wrap stats reveal">
+      <div><b data-count="0" data-from="99">0</b><span data-i18n="stat1">העלאות לשרת</span></div>
+      <div><b data-count="28">28</b><span data-i18n="stat2">סגנונות כתוביות</span></div>
+      <div><b data-count="51">51</b><span data-i18n="stat3">אפקטים קוליים</span></div>
+      <div><b data-count="2">2</b><span data-i18n="stat4">פלטפורמות: דפדפן ואנדרואיד</span></div>
+    </div>
+  </section>
+
+  <!-- What's inside, moving -->
+  <div class="ribbon" aria-hidden="true">
+    <div class="row"><div class="track" data-row="0"></div></div>
+    <div class="row rev"><div class="track" data-row="1"></div></div>
+  </div>
+
+  <!-- Before / after -->
+  <section class="section compare-sec">
+    <div class="wrap">
+      <div class="head reveal">
+        <p class="kicker" data-i18n="k1">01 · פרטיות</p>
+        <h2 data-split data-i18n="cmpTitle">הפנים מזוהות ומטושטשות. <span class="g">אוטומטית.</span></h2>
+        <p data-i18n="cmpText">ONIT מוצא כל פנים בסרטון ועוקב אחריהן לאורך הצילום, גם כשהמצלמה זזה. אפשר לבחור טשטוש, פיקסלים או כיסוי מלא, ולהשאיר פנים מסוימות גלויות.</p>
+      </div>
+      <div class="compare reveal" id="compare" dir="ltr">
+        <img class="before" src="media/ba-before.webp" width="1600" height="900" alt="המקור: חדר עם חמישה אנשים, הפנים גלויות" data-i18n-alt="altBefore" loading="lazy">
+        <div class="after-wrap"><img class="after" src="media/ba-after.webp" width="1600" height="900" alt="אחרי ONIT: כל הפנים מטושטשות" data-i18n-alt="altAfter" loading="lazy"></div>
+        <video class="cmp-video" muted loop playsinline preload="none" width="1280" height="1440" aria-hidden="true" tabindex="-1">
+          <source src="media/compare.mp4" type="video/mp4">
+        </video>
+        <canvas class="cmp-canvas" width="1280" height="720" aria-hidden="true"></canvas>
+        <span class="tag tag-before" data-i18n="before">מקור</span>
+        <span class="tag tag-after">ONIT</span>
+        <div class="handle" aria-hidden="true"><span><svg viewBox="0 0 24 24"><path d="M9 6l-6 6 6 6M15 6l6 6-6 6"/></svg></span></div>
+        <input type="range" min="0" max="100" value="50" aria-label="השוואה בין המקור לתוצאה" data-i18n-aria="cmpAria">
+      </div>
+      <p class="hint" data-i18n="cmpHint">גררו כדי להשוות</p>
+    </div>
+  </section>
+
+  <!-- Feature tour -->
+  <section class="section" id="features">
+    <div class="wrap">
+      <div class="head reveal">
+        <p class="kicker" data-i18n="k2">02 · הכלים</p>
+        <h2 data-split data-i18n="featTitle">כל מה שצריך כדי לפרסם, <span class="g">במקום אחד.</span></h2>
+      </div>
+      <div class="tour reveal">
+        <div class="tour-list" role="tablist" aria-label="כלים" data-i18n-aria="toolsLabel">
+          <button role="tab" aria-selected="true" data-img="web-detect">
+            <svg viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="10.5" r="3"/><path d="M7.5 17.5c1-2 2.6-3 4.5-3s3.5 1 4.5 3"/></svg>
+            <span><b data-i18n="f1t">זיהוי פנים</b><small data-i18n="f1d">מודל זיהוי שרץ במכשיר, על כרטיס המסך כשאפשר, ובונה מסלול לכל אדם לאורך הסרטון.</small></span>
+          </button>
+          <button role="tab" aria-selected="false" data-img="web-editor">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8 9h.01M12 9h.01M16 9h.01M8 12h.01M12 12h.01M16 12h.01M8 15h.01M12 15h.01M16 15h.01" stroke-width="2.6"/></svg>
+            <span><b data-i18n="f2t">טשטוש ועריכה</b><small data-i18n="f2d">טשטוש, פיקסלים או כיסוי. טשטוש ידני שעוקב לבד אחרי כל דבר בפריים, חיתוך קטעים והסרת שתיקות.</small></span>
+          </button>
+          <button role="tab" aria-selected="false" data-img="web-subs">
+            <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M7 15h4M13 15h4M7 11h10"/></svg>
+            <span><b data-i18n="f3t">כתוביות</b><small data-i18n="f3d">תמלול על המכשיר בעברית ובאנגלית, או ייבוא SRT. 28 סגנונות, 18 אפקטים, 10 גופנים וצבע לכל דובר.</small></span>
+          </button>
+          <button role="tab" aria-selected="false" data-img="web-background">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="12" cy="10" r="2.6"/><path d="M7 20c.8-3 2.7-4.5 5-4.5s4.2 1.5 5 4.5"/></svg>
+            <span><b data-i18n="f4t">רקע ותמונה</b><small data-i18n="f4d">הסרת רקע בלי מסך ירוק, מפתח למסך ירוק, ייצוב מצלמה ומסגרת 9:16 שעוקבת אחרי הפנים.</small></span>
+          </button>
+          <button role="tab" aria-selected="false" data-img="web-sound">
+            <svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>
+            <span><b data-i18n="f5t">סאונד</b><small data-i18n="f5d">ניקוי רעשים, שינוי קול, צפצוף על מילים מתוך הכתוביות, ו-51 אפקטים קוליים על ציר הזמן.</small></span>
+          </button>
+          <button role="tab" aria-selected="false" data-img="web-exporting">
+            <svg viewBox="0 0 24 24"><path d="M12 3v11M7.5 9.5 12 14l4.5-4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+            <span><b data-i18n="f6t">ייצוא</b><small data-i18n="f6d">MP4 עם תצוגה חיה בזמן הייצוא: יחס מסך, רזולוציה, H.264 או HEVC, או MP3 בלבד. המיקום ופרטי המכשיר לא יוצאים עם הקובץ.</small></span>
+          </button>
+        </div>
+        <div class="tour-view">
+          <div class="browser">
+            <div class="chrome"><i></i><i></i><i></i><span class="url"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0 1 10 0v3"/><rect x="5" y="11" width="14" height="10" rx="2"/></svg>eladkaufman105.github.io/face-blur</span></div>
+            <div class="shots">
+              <video class="on" data-name="web-detect" muted playsinline preload="none" poster="media/tour-detect.webp" width="1280" height="720"><source data-src="media/tour-detect.mp4" type="video/mp4"></video>
+              <video data-name="web-editor" muted playsinline preload="none" poster="media/tour-editor.webp" width="1280" height="720"><source data-src="media/tour-editor.mp4" type="video/mp4"></video>
+              <video data-name="web-subs" muted playsinline preload="none" poster="media/tour-subs.webp" width="1280" height="720"><source data-src="media/tour-subs.mp4" type="video/mp4"></video>
+              <video data-name="web-background" muted playsinline preload="none" poster="media/tour-background.webp" width="1280" height="720"><source data-src="media/tour-background.mp4" type="video/mp4"></video>
+              <video data-name="web-sound" muted playsinline preload="none" poster="media/tour-sound.webp" width="1280" height="720"><source data-src="media/tour-sound.mp4" type="video/mp4"></video>
+              <video data-name="web-exporting" muted playsinline preload="none" poster="media/tour-export.webp" width="1280" height="720"><source data-src="media/tour-export.mp4" type="video/mp4"></video>
+            </div>
+          </div>
+          <div class="progress" aria-hidden="true"><i></i></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Privacy -->
+  <section class="section privacy" id="privacy">
+    <div class="wrap">
+      <div class="head center reveal">
+        <p class="kicker" data-i18n="k3">03 · בלי ענן</p>
+        <h2 class="huge" data-split data-i18n="privTitle">בלי שרת. בלי העלאה.<br><span class="g">הכל נשאר על המכשיר שלך.</span></h2>
+      </div>
+      <div class="flow reveal" aria-hidden="true">
+        <div class="node">
+          <span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10 9.5v5l4.2-2.5z"/></svg></span>
+          <b data-i18n="flow1">הסרטון שלך</b>
+        </div>
+        <div class="pipe"><i></i></div>
+        <div class="node core">
+          <span class="cloud"><svg viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18Z"/><path d="M3 3l18 18"/></svg><small data-i18n="flowCloud">שרת</small></span>
+          <span class="up"><i></i><em>×</em></span>
+          <span class="ic ring"><svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10 18.5h4"/><circle cx="12" cy="10" r="3"/></svg></span>
+          <b data-i18n="flow2">המכשיר שלך</b>
+          <small data-i18n="flow2s">זיהוי · תמלול · ייצוא</small>
+        </div>
+        <div class="pipe"><i></i></div>
+        <div class="node">
+          <span class="ic done"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg></span>
+          <b data-i18n="flow3">הסרטון המוכן</b>
+        </div>
+      </div>
+      <div class="cards three">
+        <article class="card reveal">
+          <svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10 18.5h4"/><path d="M9.5 10.5 11.3 12.3 14.8 8.8"/></svg>
+          <h3 data-i18n="p1t">הסרטון לא עוזב את המכשיר</h3>
+          <p data-i18n="p1d">הזיהוי, התמלול, העריכה והייצוא קורים בדפדפן או בטלפון. אין שרת שמקבל את הקבצים.</p>
+        </article>
+        <article class="card reveal">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c1.2-3.6 3.8-5.5 7-5.5s5.8 1.9 7 5.5"/><path d="M4 4l16 16"/></svg>
+          <h3 data-i18n="p2t">בלי חשבון</h3>
+          <p data-i18n="p2d">פותחים ומתחילים לעבוד. אין הרשמה, אין ענן ואין מנוי.</p>
+        </article>
+        <article class="card reveal">
+          <svg viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11A6.5 6.5 0 0 1 18.5 10c0 5.4-6.5 11-6.5 11Z"/><path d="M4 4l16 16"/></svg>
+          <h3 data-i18n="p3t">קובץ נקי</h3>
+          <p data-i18n="p3d">מיקום הצילום ופרטי המכשיר לא נשמרים בקובץ המיוצא.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Platforms -->
+  <section class="section" id="platforms">
+    <div class="wrap">
+      <div class="head reveal">
+        <p class="kicker" data-i18n="k4">04 · איפה שנוח</p>
+        <h2 data-split data-i18n="platTitle">בדפדפן או באפליקציה. <span class="g">אותו ONIT.</span></h2>
+      </div>
+      <div class="plats">
+        <article class="plat reveal">
+          <div class="plat-art web-art" aria-hidden="true">
+            <div class="browser small">
+              <div class="chrome"><i></i><i></i><i></i></div>
+              <img src="media/web-home.webp" width="1600" height="1000" alt="" loading="lazy">
+            </div>
+          </div>
+          <div class="plat-body">
+            <h3 data-i18n="webT">בדפדפן</h3>
+            <p data-i18n="webD">בלי התקנה: במחשב, בטלפון ובטאבלט. אפשר להתקין את האתר כאפליקציה ולשתף אליו סרטונים מהגלריה.</p>
+            <p class="meta" data-i18n="webM">מומלץ: Chrome או Edge עדכניים</p>
+            <a class="btn primary" href="../" data-i18n="openWeb">פתיחה בדפדפן</a>
+          </div>
+        </article>
+        <article class="plat reveal">
+          <div class="plat-art app-art" aria-hidden="true">
+            <div class="phone p-a"><img src="media/app-subs.webp" width="720" height="1473" alt="" loading="lazy"></div>
+            <div class="phone p-b"><img src="media/app-home.webp" width="720" height="1473" alt="" loading="lazy"></div>
+          </div>
+          <div class="plat-body">
+            <h3 data-i18n="appT">אנדרואיד</h3>
+            <p data-i18n="appD">אפליקציה מלאה לטלפון ולטאבלט, עם מסך עריכה רחב בטאבלט ותמלול עברית במודל שאומן לעברית (ivrit.ai).</p>
+            <p class="meta" data-i18n="appM">Android 10 ומעלה · קובץ APK</p>
+            <a class="btn tonal" href="https://github.com/EladKaufman105/face-blur/releases/latest" target="_blank" rel="noopener" data-i18n="getApk">הורדת האפליקציה</a>
+          </div>
+        </article>
+      </div>
+
+      <div class="tablet-row reveal">
+        <div class="tablet" aria-hidden="true">
+          <img src="media/tablet-editor.webp" width="1080" height="675" alt="" loading="lazy">
+        </div>
+        <div class="tablet-text">
+          <h3 data-i18n="tabT">ובטאבלט, מסך עריכה מלא</h3>
+          <p data-i18n="tabD">הנגן, ציר הזמן והכלים באותו מסך, ולוח מאפיינים לכל טשטוש ולכל כתובית.</p>
+        </div>
+      </div>
+
+      <div class="gallery reveal" aria-label="מסכים מהאפליקציה" data-i18n-aria="galleryLabel">
+        <figure><div class="phone"><img src="media/app-blur.webp" width="720" height="1473" alt="" loading="lazy"></div><figcaption data-i18n="g1">טשטוש שעוקב</figcaption></figure>
+        <figure><div class="phone"><img src="media/app-subs.webp" width="720" height="1473" alt="" loading="lazy"></div><figcaption data-i18n="g2">כתוביות</figcaption></figure>
+        <figure><div class="phone"><img src="media/app-voice.webp" width="720" height="1473" alt="" loading="lazy"></div><figcaption data-i18n="g3">צפצוף על מילים</figcaption></figure>
+        <figure><div class="phone"><img src="media/app-background.webp" width="720" height="1473" alt="" loading="lazy"></div><figcaption data-i18n="g4">הסרת רקע</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- Trailers -->
+  <section class="section trailers">
+    <div class="wrap">
+      <div class="head center reveal">
+        <p class="kicker" data-i18n="k5">05 · בתנועה</p>
+        <h2 data-split data-i18n="trTitle">צפו בטריילר</h2>
+        <div class="seg" role="tablist" aria-label="טריילר" data-i18n-aria="trLabel">
+          <button role="tab" aria-selected="true" data-tr="site" data-i18n="trSite">האתר</button>
+          <button role="tab" aria-selected="false" data-tr="android" data-i18n="trApp">האפליקציה</button>
+        </div>
+      </div>
+      <div class="player-glow reveal"><div class="player">
+        <video id="trailer" controls playsinline preload="none" poster="media/trailer-site.webp" width="1280" height="720">
+          <source src="media/trailer-site.mp4" type="video/mp4">
+        </video>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- Steps -->
+  <section class="section">
+    <div class="wrap">
+      <div class="head reveal">
+        <p class="kicker" data-i18n="k6">06 · איך זה עובד</p>
+        <h2 data-split data-i18n="stepsTitle">שלושה צעדים, <span class="g">וזהו.</span></h2>
+      </div>
+      <ol class="steps">
+        <li class="reveal"><span class="n">1</span><h3 data-i18n="s1t">בוחרים סרטון</h3><p data-i18n="s1d">מהמחשב או מהגלריה, או גוררים אותו לחלון.</p></li>
+        <li class="reveal"><span class="n">2</span><h3 data-i18n="s2t">ONIT מוצא את הפנים</h3><p data-i18n="s2d">ומטשטש אותן אוטומטית. כל אחת אפשר לשנות או להשאיר גלויה.</p></li>
+        <li class="reveal"><span class="n">3</span><h3 data-i18n="s3t">עורכים ומייצאים</h3><p data-i18n="s3d">כתוביות, סאונד ורקע, ואז ייצוא מוכן לרשתות.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section" id="faq">
+    <div class="wrap narrow">
+      <div class="head reveal">
+        <p class="kicker" data-i18n="k7">07 · שאלות</p>
+        <h2 data-split data-i18n="faqTitle">שאלות נפוצות</h2>
+      </div>
+      <div class="faq">
+        <details class="reveal"><summary data-i18n="q1">הסרטון באמת לא עולה לשום מקום?</summary><p data-i18n="a1">באמת. הסרטון נקרא ישירות מהמכשיר ומעובד בו. מהרשת יורדים רק האתר עצמו והמודלים שהוא צריך.</p></details>
+        <details class="reveal"><summary data-i18n="q2">כמה זה עולה?</summary><p data-i18n="a2">כלום. אין מנוי, אין פרסומות ואין הרשמה. הקוד זמין ב-GitHub.</p></details>
+        <details class="reveal"><summary data-i18n="q3">באיזה דפדפן כדאי להשתמש?</summary><p data-i18n="a3">Chrome או Edge עדכניים, במחשב או באנדרואיד. שם זיהוי הפנים רץ על כרטיס המסך (WebGPU). בלי WebGPU הוא רץ על המעבד ולוקח יותר זמן.</p></details>
+        <details class="reveal"><summary data-i18n="q4">מה ההבדל בין האתר לאפליקציה?</summary><p data-i18n="a4">אותם כלים ואותו עיצוב. באפליקציה לאנדרואיד התמלול בעברית מבוסס על מודל שאומן במיוחד לעברית (ivrit.ai).</p></details>
+        <details class="reveal"><summary data-i18n="q5">איך מתקינים את האפליקציה?</summary><p data-i18n="a5">מורידים את קובץ ה-APK מעמוד ההורדות ב-GitHub, פותחים אותו בטלפון ומאשרים התקנה. נדרש Android 10 ומעלה (arm64).</p></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final call -->
+  <section class="final">
+    <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="wrap center reveal">
+      <div class="halo"><img src="../icons/logo-dark.png" width="88" height="88" alt=""></div>
+      <h2 data-split data-i18n="finalTitle">הסרטון הבא שלכם,<br><span class="g">בלי לחשוף אף אחד.</span></h2>
+      <div class="ctas center">
+        <a class="btn primary lg" href="../" data-i18n="openWeb">פתיחה בדפדפן</a>
+        <a class="btn tonal lg" href="https://github.com/EladKaufman105/face-blur/releases/latest" target="_blank" rel="noopener" data-i18n="getAndroid">הורדה לאנדרואיד</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-in">
+    <div class="brand"><img src="../icons/logo-dark.png" width="28" height="28" alt=""><span>ONIT</span></div>
+    <p data-i18n="footLine">עורך וידאו שעובד על המכשיר</p>
+    <nav>
+      <a href="../" data-i18n="openWeb">פתיחה בדפדפן</a>
+      <a href="https://github.com/EladKaufman105/face-blur/releases/latest" target="_blank" rel="noopener" data-i18n="getAndroid">הורדה לאנדרואיד</a>
+      <a href="https://github.com/EladKaufman105/face-blur" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <p class="credits" data-i18n="credits">גופנים: Allo Hebrew ו-Rubik (SIL OFL)</p>
+  </div>
+</footer>
+
+<script src="home.js" defer></script>
+</body>
+</html>
