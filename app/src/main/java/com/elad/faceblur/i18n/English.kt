@@ -112,6 +112,7 @@ internal val English: Map<String, String> = mapOf(
     "מהטפט" to "Wallpaper",
     // Subtitles
     " · כתוביות SRT ב-Download/ONIT" to " · SRT subtitles in Download/ONIT",
+    " (המילים המצופצפות מוסתרות)" to " (bleeped words hidden)",
     "אין קול בסרטון" to "The video has no sound",
     "אנגלית" to "English",
     "בלי" to "None",

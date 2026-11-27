@@ -604,10 +604,10 @@ export function SubtitlesTab({ srtCues, onLost, onAttention, onBusy, hidden, par
         {bleeped.size > 0 && !srtShowsBleeps && <button class="btn ghost small-btn srt-download" onClick={() => setSrtAsk('edit')} title={t('הקובץ כולל את כל המילים, בלי הסתרה: לעריכה')}>{t('הורד SRT')} <span class="small muted">{t('(בלי הסתרה, לעריכה)')}</span></button>}
       </div>
     {srtAsk && (
-      <div class="confirm srt-ask" role="alertdialog" aria-label={t('להוריד SRT בלי הסתרה?')}>
+      <div class="confirm srt-ask" role="alertdialog" aria-label={t('לשמור SRT בלי הסתרה?')}>
         <span class="small">{t('קובץ ה-SRT יכלול את המילים המצופצפות כפי שהן. אל תפרסם אותו.')}</span>
         <div class="row">
-          <button class="btn small-btn danger-btn srt-ask-yes" onClick={srtAsk === 'shown' ? () => saveSrt(srtCues()) : srt}>{t('הורד')}</button>
+          <button class="btn small-btn danger-btn srt-ask-yes" onClick={srtAsk === 'shown' ? () => saveSrt(srtCues()) : srt}>{t('שמור')}</button>
           <button class="btn ghost small-btn srt-ask-no" onClick={() => setSrtAsk(false)}>{t('ביטול')}</button>
         </div>
       </div>

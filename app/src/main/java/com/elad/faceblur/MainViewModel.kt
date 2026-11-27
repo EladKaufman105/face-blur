@@ -1045,7 +1045,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         com.elad.faceblur.audio.Mp3Export.convert(getApplication(), info.uri, base, isActive = { isActive }, onProgress = progress(0f, 1f))
                     }
                     com.elad.faceblur.audio.Mp3Plan.Route.EDITED -> {
-                        val edited = FaceBlurProcessor(getApplication()).renderAudio(info, ctrl.model, audio, ctrl.decodedSound, ctrl.lastLevels, progress(0f, 0.5f))
+                        val edited = FaceBlurProcessor(getApplication()).renderAudio(info, ctrl.model, audio, ctrl.decodedSound, progress(0f, 0.5f))
                         try {
                             withContext(Dispatchers.IO) {
                                 com.elad.faceblur.audio.Mp3Export.convert(getApplication(), Uri.fromFile(edited), base, isActive = { isActive }, onProgress = progress(0.5f, 0.5f))
@@ -1077,7 +1077,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ctrl.background, s.masks,
             stabilizer = ctrl.stabilizer,
             onPreview = { frame -> showLive(frame, emptyList()) },
-            sound = ctrl.decodedSound, previewLevels = ctrl.lastLevels,
+            sound = ctrl.decodedSound,
         ) { p -> state = UiState.Working(s.info, 2, p, subsOnly, auto) }
         if (s.analysisMs > 0 && saved.renderMs > 0) prefs.renderRatio = saved.renderMs.toFloat() / s.analysisMs
         state = UiState.Done(s.info, saved, canEdit = true, subsOnly = subsOnly, fast = !subsOnly && s.settings.fast, selfie = !subsOnly && s.settings.selfie)
