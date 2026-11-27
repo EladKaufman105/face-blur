@@ -1,6 +1,8 @@
 // Voice changes for anonymity and bleeps, as the Android app does them: a pitch change that
 // keeps the timing (WSOLA time-stretch, then resampling), ring modulation for the robot and
-// disguise voices, and words replaced by a 1 kHz beep (or silence) with short fades.
+// disguise voices, and words replaced by a 1 kHz beep (or silence) with short fades. The beep is
+// as loud as the speech it replaces (bleepLevel), never louder than BLEEP_MAX_LEVEL.
+import { BLEEP_MAX_LEVEL, BLEEP_MIN_LEVEL, BLEEP_SPEECH_GAIN, BLEEP_WINDOW_S } from '../gen/bleep.ts'
 
 export type VoiceFx = 'none' | 'deep' | 'high' | 'robot' | 'disguise' | 'mute'
 
@@ -18,7 +20,22 @@ export interface Bleep { start: number; end: number }
 
 const FADE = 0.008
 const BEEP_HZ = 1000
-const BEEP_LEVEL = 0.32
+
+/** The beep's peak for speech of RMS [rms]: BLEEP_SPEECH_GAIN times it (a sine 3 dB under the speech), kept in [BLEEP_MIN_LEVEL, BLEEP_MAX_LEVEL]. The app's BleepLevel.level is the same. */
+export function bleepLevel(rms: number): number {
+  const v = rms * BLEEP_SPEECH_GAIN
+  return Number.isFinite(v) ? Math.min(BLEEP_MAX_LEVEL, Math.max(BLEEP_MIN_LEVEL, v)) : BLEEP_MIN_LEVEL
+}
+
+/** The RMS of [x] over [b] and BLEEP_WINDOW_S either side (0 for no samples). */
+export function speechRms(x: Float32Array, rate: number, b: Bleep): number {
+  const i0 = Math.max(0, Math.floor((b.start - BLEEP_WINDOW_S) * rate))
+  const i1 = Math.min(x.length, Math.ceil((b.end + BLEEP_WINDOW_S) * rate))
+  if (i1 <= i0) return 0
+  let e = 0
+  for (let i = i0; i < i1; i++) e += x[i] * x[i]
+  return Math.sqrt(e / (i1 - i0))
+}
 
 /** [x] stretched to [factor] times its length without changing its pitch (WSOLA). */
 function stretch(x: Float32Array, rate: number, factor: number, beat?: () => void): Float32Array {
@@ -89,14 +106,17 @@ export function processVoice(x: Float32Array, rate: number, fx: VoiceFx, bleeps:
     for (let i = 0; i < y.length; i++) y[i] *= 1 - v.ringMix + v.ringMix * Math.sin(w * i)
   }
   const wb = (2 * Math.PI * BEEP_HZ) / rate
-  for (const b of bleeps) {
+  // How loud each beep is: from the speech it replaces (the sound as it came, measured before any bleep is written).
+  const levels = tone ? bleeps.map((b) => bleepLevel(speechRms(x, rate, b))) : []
+  for (let k = 0; k < bleeps.length; k++) {
+    const b = bleeps[k]
     const i0 = Math.max(0, Math.floor((b.start - FADE) * rate))
     const i1 = Math.min(y.length, Math.ceil((b.end + FADE) * rate))
     for (let i = i0; i < i1; i++) {
       const t = i / rate
       const d = t < b.start ? (b.start - t) / FADE : t > b.end ? (t - b.end) / FADE : 0
       const g = Math.min(1, Math.max(0, d))
-      y[i] = y[i] * g + (tone ? (1 - g) * BEEP_LEVEL * Math.sin(wb * i) : 0)
+      y[i] = y[i] * g + (tone ? (1 - g) * levels[k] * Math.sin(wb * i) : 0)
     }
   }
   return y
