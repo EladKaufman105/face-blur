@@ -7,6 +7,8 @@
 const { chromium } = require('playwright')
 const fs = require('fs')
 const [, , url, video, out] = process.argv
+// Without a software adapter the test proves nothing: on a developer's machine it skips, in CI (SwiftShader is expected) it fails.
+const skip = (why) => { if (process.env.CI) throw new Error(`no software WebGPU adapter in CI: ${why}`); console.log(`SKIP: ${why}`) }
 
 ;(async () => {
   fs.mkdirSync(out, { recursive: true })
@@ -21,8 +23,8 @@ const [, , url, video, out] = process.argv
     await p.goto(url + (url.includes('?') ? '&' : '?') + 'workers=2')
     // The browser really offers a software adapter here (else this test proves nothing).
     const adapter = await p.evaluate(async () => { const a = await navigator.gpu?.requestAdapter(); return a ? { fallback: a.isFallbackAdapter === true || a.info?.isFallbackAdapter === true, arch: a.info?.architecture ?? '' } : null })
-    if (!adapter) { console.log('SKIP: this Chromium has no WebGPU adapter at all'); return }
-    if (!adapter.fallback && !/swiftshader|llvmpipe|software/i.test(adapter.arch)) { console.log(`SKIP: the adapter is a real one (${adapter.arch})`); return }
+    if (!adapter) return skip('this Chromium has no WebGPU adapter at all')
+    if (!adapter.fallback && !/swiftshader|llvmpipe|software/i.test(adapter.arch)) return skip(`the adapter is a real one (${adapter.arch})`)
     const cores = await p.evaluate(() => navigator.hardwareConcurrency)
     await p.setInputFiles('.hero input[type=file]', video)
     await p.click('.blur-faces')
