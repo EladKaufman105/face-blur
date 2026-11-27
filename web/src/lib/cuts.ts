@@ -1,5 +1,8 @@
 // Hard-cut detection, as in the Android app: a 32x18 thumbnail that changes a lot and a
 // brightness histogram that no longer correlates.
+// The thresholds: shared/detect/detect.json, shared with the app's CutDetector (generated).
+import { CUT_CORR, CUT_DIFF, CUT_DIFF_HARD } from '../gen/detect.ts'
+
 export class CutDetector {
   private small = new OffscreenCanvas(64, 36)
   private prevThumb: Float32Array | null = null
@@ -26,7 +29,7 @@ export class CutDetector {
     for (let i = 0; i < thumb.length; i++) diff += Math.abs(thumb[i] - pt[i])
     diff /= thumb.length
     const corr = correlation(hist, ph)
-    return (diff > 25 && corr < 0.75) || diff > 45
+    return (diff > CUT_DIFF && corr < CUT_CORR) || diff > CUT_DIFF_HARD
   }
 }
 

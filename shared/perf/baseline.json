@@ -1,0 +1,156 @@
+{
+  "about": "Performance baseline (docs/shared-code.md, section 4). `python3 ci/perf_check.py web-size` (CI, web-build) compares web/dist with \"web\"; the other numbers are machine-dependent references for A/B runs on one machine (`perf_check.py bench`, TrackerBench.kt). Any growth in size or time updates this file and says why.",
+  "apk": {
+    "file": "ONIT-Beta-2.1.0-beta.31.apk",
+    "tag": "v2.1.0-beta.31",
+    "commit": "4e974ce",
+    "bytes": 24143295,
+    "note": "arm64 release APK of the beta built from develop 4e974ce (the GitHub release asset); the gate for moved constants is +-4 KB"
+  },
+  "web": {
+    "note": "web/dist/assets of the release build (npm run build), hashes stripped; gzip at level 9",
+    "reason": "Selfie mode (BlazeFace detector and its UI) added to analyze.worker and index",
+    "chunks": {
+      "analyze.worker.js": {
+        "raw": 559704,
+        "gzip": 154127
+      },
+      "audio.worker.js": {
+        "raw": 372705,
+        "gzip": 96137
+      },
+      "detect.worker.js": {
+        "raw": 131620,
+        "gzip": 42675
+      },
+      "export.worker.js": {
+        "raw": 1136368,
+        "gzip": 287718
+      },
+      "follow.worker.js": {
+        "raw": 403701,
+        "gzip": 104163
+      },
+      "index.css": {
+        "raw": 61924,
+        "gzip": 12698
+      },
+      "index.js": {
+        "raw": 431411,
+        "gzip": 142355
+      },
+      "ort-wasm-simd-threaded.asyncify.wasm": {
+        "raw": 28747738,
+        "gzip": 7101248
+      },
+      "ort-wasm-simd-threaded.asyncify.mjs": {
+        "raw": 53457,
+        "gzip": 19380
+      },
+      "picture.worker.js": {
+        "raw": 526397,
+        "gzip": 143119
+      },
+      "speakers.worker.js": {
+        "raw": 488309,
+        "gzip": 132139
+      },
+      "subs.worker.js": {
+        "raw": 918867,
+        "gzip": 250254
+      },
+      "thumbs.worker.js": {
+        "raw": 396894,
+        "gzip": 101350
+      },
+      "yunet.worker.js": {
+        "raw": 122842,
+        "gzip": 39731
+      }
+    }
+  },
+  "webBench": {
+    "note": "node web/tests/bench.cjs: median ms of each part over the runs (machine-dependent: compare A/B on one machine, `perf_check.py bench`)",
+    "machine": {
+      "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz",
+      "cores": 4,
+      "node": "v22.23.5",
+      "python": "3.13.18"
+    },
+    "tree": "develop 4e974ce",
+    "runs": 7,
+    "ms": {
+      "cutmap": 15.0951,
+      "fuse": 0.0099,
+      "srt": 2.2192,
+      "track_s0": 0.2217,
+      "track_s50": 2.4652
+    },
+    "out": {
+      "track_s0": {
+        "tracks": 51,
+        "frames": 15497,
+        "sum": 19412.935
+      },
+      "track_s50": {
+        "tracks": 51,
+        "frames": 15497,
+        "sum": 19412.935
+      },
+      "fuse": {
+        "dets": 6989,
+        "sum": 6090.317
+      },
+      "cutmap": {
+        "sum": 29979700
+      },
+      "srt": {
+        "cues": 2000,
+        "last": 2999.735
+      }
+    }
+  },
+  "fusionCjs": {
+    "note": "wall time of `node web/tests/fusion.cjs` (machine-dependent)",
+    "machine": {
+      "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz",
+      "cores": 4,
+      "node": "v22.23.5",
+      "python": "3.13.18"
+    },
+    "tree": "develop 4e974ce",
+    "runs": 7,
+    "median_ms": 11825.3,
+    "min_ms": 11309.4
+  },
+  "jvmBench": {
+    "note": "TrackerBench.kt (ONIT_BENCH=1): median ms per second of video (machine-dependent)",
+    "ms": {
+      "track_s0": 0.3585,
+      "track_s50": 3.7477,
+      "fuse": 0.0041
+    },
+    "out": {
+      "track_s0": {
+        "tracks": 51,
+        "frames": 15497,
+        "sum": 19412.936
+      },
+      "track_s50": {
+        "tracks": 51,
+        "frames": 15497,
+        "sum": 19412.936
+      },
+      "fuse": {
+        "dets": 6989,
+        "sum": 6090.317
+      }
+    },
+    "runs": 7,
+    "iters": 40,
+    "units": "ms per second of video",
+    "java": "21.0.13.0.3",
+    "tree": "develop 4e974ce",
+    "how": "ONIT_BENCH=1 ONIT_BENCH_ITERS=40, median of 7 forked JVMs (the A/B harness alternating base and head)"
+  }
+}

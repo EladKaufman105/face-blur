@@ -83,4 +83,18 @@ done
 adb shell screencap -p /sdcard/selftest.png && adb pull /sdcard/selftest.png "$OUT/selftest.png" || true
 adb logcat -d -v time | grep -iE "AndroidRuntime|FATAL|faceblur|ONIT|R8|NoSuchMethod|ClassNotFound" | tail -n 300 > "$OUT/selftest_logcat.txt"
 cat "$OUT/selftest.txt"
-grep -q "^PASS" "$OUT/selftest.txt"
+status=0
+grep -q "^PASS" "$OUT/selftest.txt" || status=1
+
+# For information, never a pass or fail (docs/shared-code.md, 4.2): the release build's cold start,
+# `am start -W` TotalTime after a force-stop, 5 times; the median goes in coldstart.txt and the job summary.
+for _ in 1 2 3 4 5; do
+  timeout 30 adb shell am force-stop com.elad.faceblur
+  sleep 2
+  timeout 60 adb shell am start -W -n com.elad.faceblur/.MainActivity 2>/dev/null | tr -d '\r' | sed -n 's/^TotalTime: *//p'
+done > "$OUT/coldstart.txt" || true
+timeout 30 adb shell am force-stop com.elad.faceblur || true
+cold=$(grep -E '^[0-9]+$' "$OUT/coldstart.txt" | sort -n | awk '{ a[NR] = $1 } END { if (NR) print a[int((NR + 1) / 2)] }')
+echo "cold_start_ms (median of $(grep -cE '^[0-9]+$' "$OUT/coldstart.txt")): ${cold:-none}" | tee -a "$OUT/coldstart.txt"
+[ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "Release build cold start (median of 5, emulator): ${cold:-none} ms" >> "$GITHUB_STEP_SUMMARY"
+exit $status

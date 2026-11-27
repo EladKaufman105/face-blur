@@ -1,7 +1,8 @@
 import { defineConfig, type Plugin } from 'vite'
 import preact from '@preact/preset-vite'
+import { execFileSync } from 'node:child_process'
 import { copyFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const web = dirname(fileURLToPath(import.meta.url))
@@ -44,10 +45,31 @@ function beta(): Plugin {
   }
 }
 
+/**
+ * src/gen/ from ../shared (ci/shared_gen.py, python3): at the start of a build, and in `npm run dev`
+ * when a file there changes. The generated files are committed too (CI fails when they are stale);
+ * the script rewrites a file only when its content changes.
+ */
+function sharedGen(): Plugin {
+  const shared = resolve(web, '..', 'shared')
+  const run = () => execFileSync('python3', [resolve(web, '..', 'ci', 'shared_gen.py'), '--target', 'ts'], { stdio: 'inherit' })
+  return {
+    name: 'onit-shared-gen',
+    buildStart() { run() },
+    configureServer(server) {
+      server.watcher.add(shared)
+      server.watcher.on('change', (f) => {
+        if (!f.startsWith(shared + sep) || !f.endsWith('.json')) return
+        try { run() } catch { /* the script printed why; the dev server keeps the files it has */ }
+      })
+    },
+  }
+}
+
 // Served from GitHub Pages under /face-blur/ (relative base works anywhere).
 export default defineConfig({
   base: './',
-  plugins: [preact(), ...(channel === 'beta' ? [beta()] : [])],
+  plugins: [sharedGen(), preact(), ...(channel === 'beta' ? [beta()] : [])],
   define: {
     // The build's number on GitHub Actions (shown in the footer), "dev" locally.
     __BUILD__: JSON.stringify(process.env.GITHUB_RUN_NUMBER ?? 'dev'),

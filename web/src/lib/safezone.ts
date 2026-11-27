@@ -2,6 +2,8 @@
 // Android app's template/SafeZone.kt (values and sources: docs/specs/safe-zones.md). A view aid in
 // the editor only: never exported, never part of a template.
 import type { Aspect } from './camera'
+// With the extension: tests/parity2.cjs runs this file in Node as it is.
+import * as Z from '../gen/safezones.ts'
 
 export type Platform = 'tiktok' | 'reels' | 'shorts'
 export const PLATFORMS: Platform[] = ['tiktok', 'reels', 'shorts']
@@ -11,15 +13,14 @@ export interface Zone { top: number; bottom: number; left: number; right: number
 
 /**
  * Measured on a 1080x1920 frame from each platform's published templates and guides (sources in
- * docs/specs/safe-zones.md). TikTok: top 240 px, bottom 660 px, left 120 px, right 180 px (its
- * button column). Reels: 14% top, 35% bottom, 6% at the sides. Shorts: top 288 px (15%), bottom
- * 672 px (35%), left 48 px, right 192 px.
+ * docs/specs/safe-zones.md). The values are in shared/catalog/safezones.json, shared with the app
+ * (generated into gen/safezones.ts).
  */
 export function zoneOf(p: Platform): Zone {
   switch (p) {
-    case 'tiktok': return { top: 240 / 1920, bottom: 660 / 1920, left: 120 / 1080, right: 180 / 1080 }
-    case 'reels': return { top: 0.14, bottom: 0.35, left: 0.06, right: 0.06 }
-    case 'shorts': return { top: 288 / 1920, bottom: 672 / 1920, left: 48 / 1080, right: 192 / 1080 }
+    case 'tiktok': return { top: Z.TIKTOK_TOP, bottom: Z.TIKTOK_BOTTOM, left: Z.TIKTOK_LEFT, right: Z.TIKTOK_RIGHT }
+    case 'reels': return { top: Z.REELS_TOP, bottom: Z.REELS_BOTTOM, left: Z.REELS_LEFT, right: Z.REELS_RIGHT }
+    case 'shorts': return { top: Z.SHORTS_TOP, bottom: Z.SHORTS_BOTTOM, left: Z.SHORTS_LEFT, right: Z.SHORTS_RIGHT }
   }
 }
 

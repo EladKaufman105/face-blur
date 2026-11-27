@@ -1,5 +1,6 @@
 package com.elad.faceblur.analysis
 
+import com.elad.faceblur.gen.DetectConst
 import org.opencv.core.Mat
 import org.opencv.core.Scalar
 import org.opencv.core.Size
@@ -315,12 +316,13 @@ class RetinaFaceDetector(modelPath: String, private val gpu: GpuFaceNet? = null,
 
     companion object {
         const val MODEL = "retinaface_mv2.onnx"
-        private const val COARSE_SIDE = 480
+        // COARSE_SIDE, CPU_FINE_SIDE and COARSE_MIN_BOX are in shared/detect/detect.json, shared with the web app.
+        private const val COARSE_SIDE = DetectConst.COARSE_SIDE
         /** The fine pass's long side on the CPU (the GPU runs it at the frame's 1280). */
-        const val CPU_FINE_SIDE = 960
+        const val CPU_FINE_SIDE = DetectConst.CPU_SIDE
         /** Faces at least this sure are compared between GPU and CPU, fp16 and fp32. */
         private const val AGREE_CLEAR = 0.6f
-        private const val COARSE_MIN_BOX = 64f
+        private const val COARSE_MIN_BOX = DetectConst.COARSE_MIN_BOX
         /** A face whose long side is over this many px in a 1280 px frame is "big": only the coarse pass fits it well. */
         private const val BIG_FACE_PX = 300f
         // Shared by every detector (the values never change once computed).

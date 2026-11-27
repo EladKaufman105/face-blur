@@ -1,5 +1,7 @@
 package com.elad.faceblur.template
 
+import com.elad.faceblur.gen.SafeZones
+
 /** The short-video platforms that cover part of the picture with their own screens. */
 enum class Platform { TIKTOK, REELS, SHORTS }
 
@@ -30,14 +32,13 @@ data class SafeZone(val top: Float, val bottom: Float, val left: Float, val righ
 
         /**
          * Measured on a 1080x1920 frame from each platform's published templates and guides
-         * (sources in docs/specs/safe-zones.md). TikTok: top 240 px, bottom 660 px, left 120 px, right
-         * 180 px (its button column). Reels: 14% top, 35% bottom, 6% at the sides. Shorts: top 288 px
-         * (15%), bottom 672 px (35%), left 48 px, right 192 px.
+         * (sources in docs/specs/safe-zones.md). The values are in shared/catalog/safezones.json,
+         * shared with the web app (generated into [SafeZones]).
          */
         fun of(p: Platform): SafeZone = when (p) {
-            Platform.TIKTOK -> SafeZone(top = 240f / 1920f, bottom = 660f / 1920f, left = 120f / 1080f, right = 180f / 1080f)
-            Platform.REELS -> SafeZone(top = 0.14f, bottom = 0.35f, left = 0.06f, right = 0.06f)
-            Platform.SHORTS -> SafeZone(top = 288f / 1920f, bottom = 672f / 1920f, left = 48f / 1080f, right = 192f / 1080f)
+            Platform.TIKTOK -> SafeZone(top = SafeZones.TIKTOK_TOP, bottom = SafeZones.TIKTOK_BOTTOM, left = SafeZones.TIKTOK_LEFT, right = SafeZones.TIKTOK_RIGHT)
+            Platform.REELS -> SafeZone(top = SafeZones.REELS_TOP, bottom = SafeZones.REELS_BOTTOM, left = SafeZones.REELS_LEFT, right = SafeZones.REELS_RIGHT)
+            Platform.SHORTS -> SafeZone(top = SafeZones.SHORTS_TOP, bottom = SafeZones.SHORTS_BOTTOM, left = SafeZones.SHORTS_LEFT, right = SafeZones.SHORTS_RIGHT)
         }
     }
 }

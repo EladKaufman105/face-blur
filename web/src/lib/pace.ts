@@ -27,14 +27,15 @@
 // So YuNet's cost can make the analysis take longer, but never makes detection lighter than it
 // was before YuNet.
 
+// The shared values: shared/detect/detect.json (generated). With the extension: tests/fusion.cjs runs this file in Node.
+import { CPU_SIDE as MID_SIDE, GPU_SLOW_MS, LOW_SIDE, MIN_RATE, RATE } from '../gen/detect.ts'
+
 /** The smallest the fine pass gets (the app's LOW_SIDE), the size between, and the fewest detections per second (the app's MIN_RATE). */
-export const LOW_SIDE = 640
-export const MID_SIDE = 960
-export const MIN_RATE = 8
+export { LOW_SIDE, MID_SIDE, MIN_RATE }
 /** Detections per second of video the app aims at (its RATE). */
-export const RATE = 15
+export { RATE }
 /** On the GPU, the fine pass leaves 1280 px only when RetinaFace's own passes take longer than this (ms; the app's GPU_SLOW_MS). */
-export const GPU_SLOW_MS = 80
+export { GPU_SLOW_MS }
 /** Detection time allowed per second of video, per detector: analysis stays near the video's own speed. */
 export const BUDGET_MS = 1000
 /** Below this share of the wanted rate (or at a lower size) detection counts as reduced. */

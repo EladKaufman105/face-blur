@@ -3,6 +3,9 @@
 // FaceDetector.kt (RetinaFace is the main detector; YuNet adds the faces it misses and raises
 // the score where both agree).
 import type { Det } from './types'
+// The values: shared/detect/detect.json, shared with the app (generated). With the extension:
+// tests/fusion.cjs runs this file in Node as it is.
+import { CLEAR, FUSE_IOU, FUSE_NMS, FUSE_YUNET_ONLY, FUSE_YUNET_ONLY_SCALE, FUSE_YUNET_WEIGHT, RF_THRESHOLD, YUNET_NMS, YUNET_SIDE, YUNET_THRESHOLD } from '../gen/detect.ts'
 
 export function iou(a: Det, b: Det): number {
   const iw = Math.min(a.cx + a.w / 2, b.cx + b.w / 2) - Math.max(a.cx - a.w / 2, b.cx - b.w / 2)
@@ -21,17 +24,17 @@ export function nmsIou(dets: Det[], thr: number): Det[] {
 }
 
 /** RetinaFace's score threshold (as the app's RF_THRESHOLD) and the lower one of the reduced mode. */
-export const RF_THRESHOLD = 0.35
+export { RF_THRESHOLD }
 export const RF_THRESHOLD_REDUCED = 0.25
 /** YuNet's score threshold (as the app's FaceDetectorYN.create) and the lower one of the reduced mode. */
-export const YUNET_THRESHOLD = 0.4
+export { YUNET_THRESHOLD }
 export const YUNET_THRESHOLD_REDUCED = 0.3
 /** YuNet's NMS IoU (the app's FaceDetectorYN.create). */
-export const YUNET_NMS = 0.3
+export { YUNET_NMS }
 /** The model's fixed input side (the app runs it at 640 px at most). */
-export const YUNET_SIDE = 640
+export { YUNET_SIDE }
 /** A face this sure counts as strong evidence by itself (the app's FaceDetector.CLEAR). */
-export const CLEAR = 0.8
+export { CLEAR }
 
 const STRIDES = [8, 16, 32]
 
@@ -81,21 +84,21 @@ export function decodeYunet(o: YunetLevels, w: number, h: number, threshold: num
  *  - a YuNet face of [yunetOnly] (0.6) or more that no RetinaFace face overlaps is added, at 0.85 of its score;
  *  - then NMS at 0.4. New objects: [rf] and [yn] aren't changed.
  */
-export function fuse(rf: Det[], yn: Det[], yunetOnly = 0.6): Det[] {
+export function fuse(rf: Det[], yn: Det[], yunetOnly = FUSE_YUNET_ONLY): Det[] {
   const fused: Det[] = []
   const used = new Set<number>()
   for (const d of rf) {
     let score = d.score
     yn.forEach((y, j) => {
-      if (iou(d, y) > 0.3) {
-        score = 1 - (1 - score) * (1 - y.score * 0.8)
+      if (iou(d, y) > FUSE_IOU) {
+        score = 1 - (1 - score) * (1 - y.score * FUSE_YUNET_WEIGHT)
         used.add(j)
       }
     })
     fused.push({ ...d, score })
   }
   yn.forEach((y, j) => {
-    if (!used.has(j) && y.score >= yunetOnly && rf.every((r) => iou(y, r) <= 0.3)) fused.push({ ...y, score: y.score * 0.85 })
+    if (!used.has(j) && y.score >= yunetOnly && rf.every((r) => iou(y, r) <= FUSE_IOU)) fused.push({ ...y, score: y.score * FUSE_YUNET_ONLY_SCALE })
   })
-  return nmsIou(fused, 0.4)
+  return nmsIou(fused, FUSE_NMS)
 }

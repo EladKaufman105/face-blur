@@ -1,5 +1,6 @@
 package com.elad.faceblur.analysis
 
+import com.elad.faceblur.gen.DetectConst
 import org.opencv.core.Mat
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
@@ -136,12 +137,12 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
         val size = Size(w.toDouble(), h.toDouble())
         val net = if (pool) {
             // topK above the model's anchors (8,400 at 640 x 640): nothing is cut before the NMS (see [yunetDefault]).
-            yunetPool?.takeIf { yunetPoolSize == size } ?: FaceDetectorYN.create(yunetPath, "", size, DetectTuning.POOL_YUNET, 0.3f, POOL_TOP_K).also {
+            yunetPool?.takeIf { yunetPoolSize == size } ?: FaceDetectorYN.create(yunetPath, "", size, DetectTuning.POOL_YUNET, DetectConst.YUNET_NMS, POOL_TOP_K).also {
                 yunetPool = it
                 yunetPoolSize = size
             }
         } else {
-            yunet?.takeIf { yunetSize == size } ?: FaceDetectorYN.create(yunetPath, "", size, YUNET_THRESHOLD, 0.3f, 5000).also {
+            yunet?.takeIf { yunetSize == size } ?: FaceDetectorYN.create(yunetPath, "", size, YUNET_THRESHOLD, DetectConst.YUNET_NMS, 5000).also {
                 yunet = it
                 yunetSize = size
             }
@@ -207,12 +208,13 @@ class FaceDetector(retinaPath: String, private val yunetPath: String, gpu: GpuFa
 
     companion object {
         const val YUNET_MODEL = "face_detection_yunet_2023mar.onnx"
-        private const val RF_THRESHOLD = 0.35f
-        private const val VERIFY_SIDE = 192
+        // The values are in shared/detect/detect.json, shared with the web app (generated into DetectConst).
+        private const val RF_THRESHOLD = DetectConst.RF_THRESHOLD
+        private const val VERIFY_SIDE = DetectConst.VERIFY_SIDE
         /** A face this sure counts as strong evidence by itself (see [OfflineTracker]). */
-        const val CLEAR = 0.8f
-        private const val YUNET_SIDE = 640
-        private const val YUNET_THRESHOLD = 0.4f
+        const val CLEAR = DetectConst.CLEAR
+        private const val YUNET_SIDE = DetectConst.YUNET_SIDE
+        private const val YUNET_THRESHOLD = DetectConst.YUNET_THRESHOLD
         private const val POOL_TOP_K = 20000
     }
 }

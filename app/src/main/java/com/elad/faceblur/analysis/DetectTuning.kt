@@ -1,5 +1,6 @@
 package com.elad.faceblur.analysis
 
+import com.elad.faceblur.gen.DetectConst
 import java.util.TreeMap
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -78,13 +79,26 @@ enum class PaceStep { NONE, GPU_OFF, SIDE, RATE, LITE, RELAX }
  * no "check the faces" flag) stays as it is.
  */
 object DetectTuning {
-    val DEFAULT = Thresholds(cut = 0.40f, birth = 0.45f, strong = 0.60f, verified = 0.50f, shortVerified = 0.90f)
-    val MOST = Thresholds(cut = 0.25f, birth = 0.30f, strong = 0.45f, verified = 0.30f, shortVerified = 0.70f)
+    // The values are in shared/detect/detect.json, shared with the web app (generated into DetectConst).
+    val DEFAULT = Thresholds(
+        cut = DetectConst.DEFAULT_CUT,
+        birth = DetectConst.DEFAULT_BIRTH,
+        strong = DetectConst.DEFAULT_STRONG,
+        verified = DetectConst.DEFAULT_VERIFIED,
+        shortVerified = DetectConst.DEFAULT_SHORT_VERIFIED,
+    )
+    val MOST = Thresholds(
+        cut = DetectConst.MOST_CUT,
+        birth = DetectConst.MOST_BIRTH,
+        strong = DetectConst.MOST_STRONG,
+        verified = DetectConst.MOST_VERIFIED,
+        shortVerified = DetectConst.MOST_SHORT_VERIFIED,
+    )
 
     /** The candidate pool above sensitivity 0: RetinaFace's, YuNet's score threshold, and a face YuNet alone finds. */
-    const val POOL_RF = 0.20f
-    const val POOL_YUNET = 0.25f
-    const val POOL_YUNET_ONLY = 0.45f
+    const val POOL_RF = DetectConst.POOL_RF
+    const val POOL_YUNET = DetectConst.POOL_YUNET
+    const val POOL_YUNET_ONLY = DetectConst.POOL_YUNET_ONLY
 
     /** Selfie mode's BlazeFace score threshold at sensitivity 0 (MediaPipe's own), and at 1. */
     const val SELFIE_THRESHOLD = 0.5f
@@ -94,10 +108,10 @@ object DetectTuning {
     const val SELFIE_POOL = SELFIE_MOST
 
     /** Extra detections a frame gets the crop re-check on (the most likely first). */
-    const val MAX_EXTRA_CHECKS = 12
+    const val MAX_EXTRA_CHECKS = DetectConst.MAX_EXTRA_CHECKS
 
     /** An extra detection overlapping a default one this much (IoU) is that face: not extra. */
-    const val SAME_FACE_IOU = 0.3f
+    const val SAME_FACE_IOU = DetectConst.SAME_FACE_IOU
 
     /** [s] within 0..1 (NaN: 0). */
     fun clamp(s: Float): Float = if (s.isNaN()) 0f else s.coerceIn(0f, 1f)
@@ -123,10 +137,10 @@ object DetectTuning {
     }
 
     /** Detections per second of video normal detection aims at, and the fewest a slow device goes down to. */
-    const val RATE = 15f
-    const val MIN_RATE = 8f
+    const val RATE = DetectConst.RATE
+    const val MIN_RATE = DetectConst.MIN_RATE
     /** Fast detection's rate: also its floor. */
-    const val FAST_RATE = 5f
+    const val FAST_RATE = DetectConst.FAST_RATE
 
     /**
      * Which frames get a detection at [fps]: every `first`-th frame, and on a device that can't
@@ -207,25 +221,25 @@ object DetectTuning {
      * misses and raises the score where both agree), then NMS at 0.4: a YuNet face that no
      * RetinaFace face overlaps is added at 0.85 of its score when it is [yunetOnly] or more.
      */
-    fun fuse(rf: List<Det>, yn: List<Det>, yunetOnly: Float = 0.6f): List<Det> {
+    fun fuse(rf: List<Det>, yn: List<Det>, yunetOnly: Float = DetectConst.FUSE_YUNET_ONLY): List<Det> {
         val fused = ArrayList<Det>()
         val usedYn = HashSet<Int>()
         for (d in rf) {
             var score = d.score
             yn.forEachIndexed { j, y ->
-                if (Geometry.iou(d.box, y.box) > 0.3f) {
-                    score = 1f - (1f - score) * (1f - y.score * 0.8f)
+                if (Geometry.iou(d.box, y.box) > DetectConst.FUSE_IOU) {
+                    score = 1f - (1f - score) * (1f - y.score * DetectConst.FUSE_YUNET_WEIGHT)
                     usedYn += j
                 }
             }
             fused += Det(d.box, score)
         }
         yn.forEachIndexed { j, y ->
-            if (j !in usedYn && y.score >= yunetOnly && rf.none { Geometry.iou(y.box, it.box) > 0.3f }) {
-                fused += Det(y.box, y.score * 0.85f)
+            if (j !in usedYn && y.score >= yunetOnly && rf.none { Geometry.iou(y.box, it.box) > DetectConst.FUSE_IOU }) {
+                fused += Det(y.box, y.score * DetectConst.FUSE_YUNET_ONLY_SCALE)
             }
         }
-        return Geometry.nmsIou(fused, 0.4f)
+        return Geometry.nmsIou(fused, DetectConst.FUSE_NMS)
     }
 
     /**
@@ -294,7 +308,7 @@ object DetectTuning {
     }
 
     /** Steps of the setting. */
-    private const val STEPS = 20f
+    private const val STEPS = DetectConst.SENSITIVITY_STEPS
 
     /**
      * Mostly the same face: IoU over [SAME_FACE_IOU] on at least half the frames both tracks have

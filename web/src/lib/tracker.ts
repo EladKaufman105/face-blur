@@ -12,6 +12,12 @@
 import type { Det, Track } from './types'
 // With the extension: tests/fusion.cjs runs it in Node as it is.
 import { DEFAULT_THRESHOLDS, type Thresholds } from './sensitivity.ts'
+// The values: shared/detect/detect.json, shared with the app's OfflineTracker (generated).
+import {
+  TRACK_ABSORB_DIST as ABSORB_DIST, TRACK_ABSORB_GAP_S as ABSORB_GAP_S, TRACK_EXTEND_S as EXTEND_S, TRACK_GATE as GATE, TRACK_GATE_PER_S as GATE_PER_S,
+  TRACK_LINK_GAP_S as LINK_GAP_S, TRACK_MAX_GAP_S as MAX_GAP_S, TRACK_SHORT_N as SHORT_N, TRACK_SIGMA_POS_S as SIGMA_POS_S, TRACK_SIGMA_SIZE_S as SIGMA_SIZE_S,
+  TRACK_SIZE_RATIO as SIZE_RATIO,
+} from '../gen/detect.ts'
 
 interface SDet { x: number; y: number; w: number; h: number; score: number; verify: number }
 
@@ -40,17 +46,6 @@ class Tracklet {
 /** A detection under this score is no evidence of a face to the tracker (the detector re-checks only faces from here). */
 export const DET_THRESHOLD = DEFAULT_THRESHOLDS.cut
 // The other score thresholds (birth 0.45, strong 0.6, verified 0.5, short verified 0.9) are DEFAULT_THRESHOLDS (lib/sensitivity.ts).
-const SHORT_N = 4
-const MAX_GAP_S = 0.7
-const GATE = 0.6
-const GATE_PER_S = 1.5
-const SIZE_RATIO = 1.7
-const LINK_GAP_S = 1.2
-const ABSORB_GAP_S = 0.7
-const ABSORB_DIST = 1.0
-const EXTEND_S = 0.25
-const SIGMA_POS_S = 0.025
-const SIGMA_SIZE_S = 0.2
 
 /** [thr]: the score thresholds, the defaults or lower ones for a sensitivity above 0 (lib/sensitivity.ts). */
 export function track(n: number, dets: Map<number, Det[]>, cuts: number[], fps: number, aspect: number, sensitive: boolean, thr: Readonly<Thresholds> = DEFAULT_THRESHOLDS): Track[] {
