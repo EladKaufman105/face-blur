@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { t } from '../i18n'
 import { BETA } from '../lib/channel'
 import { BetaNote } from './Beta'
@@ -12,7 +12,8 @@ import { InfoIcon, LockIcon } from './icons'
 export function EditorBrand() {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
-  useEffect(() => {
+  // A layout effect: the listeners are there as soon as the bubble is drawn (a passive one can come after a quick Escape).
+  useLayoutEffect(() => {
     if (!open) return
     const away = (e: Event) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
