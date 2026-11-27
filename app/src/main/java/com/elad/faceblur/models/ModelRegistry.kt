@@ -5,6 +5,7 @@ import org.json.JSONObject
 /** The packs of models the app downloads, by their id in the registry. */
 enum class PackId(val key: String) {
     FACES("faces"),
+    SELFIE("selfie"),
     PEOPLE("people"),
     SPEAKERS("speakers"),
     SPEECH_HE("speech-he"),

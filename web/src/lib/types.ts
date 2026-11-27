@@ -41,6 +41,8 @@ export interface Analysis {
   reduced?: boolean
   /** Found with fast detection (5 a second): small or distant faces may be missed for a moment, so the video is to be checked. */
   fast?: boolean
+  /** Found with selfie detection (BlazeFace, one close face): small or distant faces in the background may be missed, so the video is to be checked. */
+  selfie?: boolean
   /** Found with extended detection (every frame, weaker evidence). */
   sensitive?: boolean
   /** The sensitivity it ran at (0..1, lib/sensitivity.ts). */

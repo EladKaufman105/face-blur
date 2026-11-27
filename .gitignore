@@ -12,3 +12,5 @@ app/src/main/cpp/whisper.cpp/
 
 # fetched by ci/fetch-opencv.sh
 app/src/main/jniLibs/
+
+__pycache__/

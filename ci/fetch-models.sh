@@ -6,7 +6,7 @@
 #
 # Usage, from the repository root:
 #   bash ci/fetch-models.sh [--out DIR] [--with-speech] [PACK...]
-# PACK: faces, people, speakers (the default: all three), speech-he, speech-any.
+# PACK: faces, people, speakers, selfie (the default: these four), speech-he, speech-any.
 # DIR: where the files go, by their registry names (default app/src/androidTest/assets/models).
 # The speech models (574 MB, a release asset) are fetched only when named or with --with-speech;
 # the tests use whisper's "tiny" model instead (ci/fetch-test-media.sh).
@@ -23,7 +23,7 @@ while [ $# -gt 0 ]; do
     *) packs+=("$1"); shift ;;
   esac
 done
-[ ${#packs[@]} -gt 0 ] || packs=(faces people speakers)
+[ ${#packs[@]} -gt 0 ] || packs=(faces people speakers selfie)
 [ "$speech" = 1 ] && packs+=(speech-he)
 mkdir -p "$out"
 
@@ -70,6 +70,10 @@ while read -r pack name size sha url; do
       ;;
     https://github.com/EladKaufman105/face-blur/releases/download/*)
       curl -sSfL --retry 4 --retry-all-errors --max-time 1800 -o "$dest.part" "$url"
+      ;;
+    https://storage.googleapis.com/mediapipe-models/*)
+      # MediaPipe's versioned model files: the size and SHA-256 below pin them.
+      curl -sSfL --retry 4 --retry-all-errors --max-time 600 -o "$dest.part" "$url"
       ;;
     *)
       echo "$pack/$name: not a pinned URL: $url" >&2

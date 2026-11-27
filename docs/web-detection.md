@@ -140,6 +140,45 @@ and a 21 px face for single frames (normal detection misses neither).
 (every frame of a slower clip), never measured short, with gaps of at most 0.2 s and a frame, and
 that normal detection's pace is unchanged. `web/tests/fast.cjs` measures it in the browser.
 
+## Selfie detection
+
+A fourth mode for a talking head (`selfie` in the analysis request and in templates; the app's
+`DetectMode.SELFIE`). MediaPipe's BlazeFace full range (Apache-2.0, `blaze_face_full_range`, the
+float16 TFLite model from `storage.googleapis.com/mediapipe-models/.../float16/1/`) on every frame,
+and nothing else: no RetinaFace, no YuNet, no crop re-check, no pace to keep. The same tracker and
+blur follow. On clips of one close face it found every face on every frame; it misses about 60% of
+faces under 48 px, so small or distant faces in the background may stay unblurred, and the app says so.
+
+- The model: the frame is letterboxed into 192 x 192 (scaled to fit, black bars), pixels as
+  (v - 127.5) / 127.5; 2304 anchors (one per cell of a 48 x 48 grid, stride 4), 16 numbers each
+  (the box and six landmarks) and a score as a logit. Decoding, the score threshold 0.5 and the
+  weighted NMS (IoU 0.3, boxes averaged by score) are MediaPipe's own calculators', in
+  `web/src/lib/blazeface.ts` and the app's `BlazeFace.kt`. `scripts/blazeface_ref.py` is a Python
+  reference that reproduces MediaPipe's FaceDetector task (scores within 1e-6, boxes within 2 px,
+  the same faces, on three clips); `web/tests/blazeface-fixture.json` and the app's
+  `BlazeFaceFixture.kt` are its results, and both decoders are tested against them.
+- The web runs it as `models/blazeface_full_range.onnx` (2 MB), converted from the TFLite file by
+  `scripts/blazeface_to_onnx.py` (no TensorFlow; the ONNX gives the TFLite's outputs to within
+  2e-4 on real frames), on ONNX Runtime Web's WebAssembly, in the analysis worker (one detector,
+  frames decoded at 640 px). The app runs the TFLite file on the LiteRT interpreter on the CPU
+  (a 192 px model takes milliseconds; a GPU delegate would need the agreement check the face
+  models' GPU pass has).
+- The tracker takes BlazeFace's score as the crop re-check's too (`verify = score`): it runs alone,
+  so a face needs 4 detections, or 2 over 0.9 for a very short one, as with a re-check.
+- Sensitivity: BlazeFace's threshold goes from 0.5 (0: the default exactly) to 0.3 at 1, lower at
+  every 5% step. Like the other modes, the default detections are kept whole and the faces from a
+  fixed lower pool (0.3) that are not a default face are added step by step (`selfieThreshold`).
+- Never silent: its warning under the choice (he: "מצב סלפי מהיר מאוד, אבל מיועד לאדם אחד קרוב
+  למצלמה. פנים קטנות או רחוקות ברקע עלולות לא להיטשטש. צפו בתוצאה לפני שמשתפים."; en: "Selfie mode
+  is very fast, but it's made for one person close to the camera. Small or distant faces in the
+  background may not be blurred. Watch the result before you share it."), kept in view with the
+  settings folded, on the check and "no faces" screens and in the editor (a pill on a phone); the
+  video is flagged like low confidence, so a batch flags it and "blur and save straight" stops at
+  the check screen. In a template: `selfie: true`, with `sensitive` and `fast` false, so an older
+  version reads normal detection (never weaker).
+
+`web/tests/blazeface.cjs` (pure) and `web/tests/selfie.cjs` (browser) check it.
+
 ## Sensitivity
 
 One number from 0 to 1, in steps of 5% (the slider under the mode; `sensitivity` in templates).

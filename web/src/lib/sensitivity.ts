@@ -2,8 +2,10 @@
 // browser): web/tests/fusion.cjs imports it.
 //
 // Modes: normal (the default, about 15 detections a second), extended ("sensitive": every frame,
-// weaker evidence) and fast (the same detector at 5 a second, never fewer; it may briefly miss
-// small or distant faces, or faces at the frame's edge, and says so).
+// weaker evidence), fast (the same detector at 5 a second, never fewer; it may briefly miss
+// small or distant faces, or faces at the frame's edge, and says so) and selfie (a talking head:
+// MediaPipe's BlazeFace on every frame, lib/blazeface.ts, no other detector; it finds one close
+// face very well and misses most faces under about 48 px, and says so).
 //
 // Sensitivity is one number from 0 to 1 (in steps of 5%). 0 is the default detection exactly (no
 // extra work at all). Above 0 every threshold moves, linearly, toward more detections, never above
@@ -28,10 +30,10 @@ import type { Det, Track } from './types'
 // With the extension: tests/fusion.cjs runs it in Node as it is.
 import { iou } from './fusion.ts'
 
-export type DetectMode = 'normal' | 'extended' | 'fast'
+export type DetectMode = 'normal' | 'extended' | 'fast' | 'selfie'
 
-/** Extended wins over fast: a choice never gets weaker than one asked for. */
-export const modeOf = (sensitive: boolean, fast = false): DetectMode => (sensitive ? 'extended' : fast ? 'fast' : 'normal')
+/** Extended wins over fast and selfie: a choice never gets weaker than one asked for. */
+export const modeOf = (sensitive: boolean, fast = false, selfie = false): DetectMode => (sensitive ? 'extended' : fast ? 'fast' : selfie ? 'selfie' : 'normal')
 
 /** Fast detection's rate (detections a second of video): also its floor. */
 export const FAST_RATE = 5
@@ -56,6 +58,11 @@ export const MOST: Readonly<Thresholds> = Object.freeze({ cut: 0.25, birth: 0.3,
 export const POOL_RF = 0.2
 export const POOL_YUNET = 0.25
 export const POOL_YUNET_ONLY = 0.45
+/** Selfie mode's BlazeFace score threshold at sensitivity 0 (MediaPipe's own), and at 1. */
+export const SELFIE_THRESHOLD = 0.5
+export const SELFIE_MOST = 0.3
+/** Selfie mode above sensitivity 0: BlazeFace's candidates are also taken once from this fixed, lower pool (its threshold at 1). */
+export const SELFIE_POOL = SELFIE_MOST
 /** Extra detections a frame gets the crop re-check on (the likeliest first). */
 export const MAX_EXTRA_CHECKS = 12
 /** An extra detection overlapping a default one this much (IoU) is that face: not extra. */
@@ -78,6 +85,12 @@ export function thresholds(s: unknown): Readonly<Thresholds> {
   const lerp = (a: number, b: number) => a + (b - a) * k
   const d = DEFAULT_THRESHOLDS
   return { cut: lerp(d.cut, MOST.cut), birth: lerp(d.birth, MOST.birth), strong: lerp(d.strong, MOST.strong), verified: lerp(d.verified, MOST.verified), shortVerified: lerp(d.shortVerified, MOST.shortVerified) }
+}
+
+/** Selfie mode's BlazeFace threshold at sensitivity [s]: 0.5 at 0 (exactly), lower as [s] grows, 0.3 at 1. */
+export const selfieThreshold = (s: unknown): number => {
+  const k = clamp(s)
+  return k === 0 ? SELFIE_THRESHOLD : SELFIE_THRESHOLD + (SELFIE_MOST - SELFIE_THRESHOLD) * k
 }
 
 /**

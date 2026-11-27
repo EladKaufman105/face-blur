@@ -347,7 +347,14 @@ private fun BlurEdit(p: BlurPart, onChange: (BlurPart) -> Unit) {
             DetectionControls(
                 p.detect ?: com.elad.faceblur.analysis.DetectMode.NORMAL, p.sensitivity ?: 0f,
                 onDetect = { d ->
-                    onChange(p.copy(sensitive = d == com.elad.faceblur.analysis.DetectMode.EXTENDED, fast = d == com.elad.faceblur.analysis.DetectMode.FAST))
+                    onChange(
+                        p.copy(
+                            sensitive = d == com.elad.faceblur.analysis.DetectMode.EXTENDED,
+                            fast = d == com.elad.faceblur.analysis.DetectMode.FAST,
+                            // Written only when on, as a saved template's file (see toTemplate).
+                            selfie = (d == com.elad.faceblur.analysis.DetectMode.SELFIE).takeIf { it },
+                        ),
+                    )
                 },
                 onSensitivity = { onChange(p.copy(sensitivity = it)) },
             )

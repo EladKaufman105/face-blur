@@ -14,6 +14,8 @@ type Props = {
   sensitive: boolean
   /** Fast detection ([sensitive] wins) and the sensitivity (lib/sensitivity.ts). */
   fast?: boolean
+  /** Selfie detection ([sensitive] and [fast] win). */
+  selfie?: boolean
   sensitivity?: number
   /** The first of two steps (found, then saved straight away). */
   twoSteps?: boolean
@@ -33,7 +35,7 @@ function tuneFromUrl(): Tune | undefined {
   return { yunet: kv.yunet !== '0', ...(Number(kv.side) ? { side: Number(kv.side) } : {}), ...(Number(kv.rate) ? { rate: Number(kv.rate) } : {}), ...(kv.reduced === '1' ? { reduced: true } : {}) }
 }
 
-export function Analyzing({ file, sensitive, fast, sensitivity, twoSteps, onDone, onError, onCancel }: Props) {
+export function Analyzing({ file, sensitive, fast, selfie, sensitivity, twoSteps, onDone, onError, onCancel }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const [progress, setProgress] = useState({ done: 0, total: 1, faces: 0 })
   const [ready, setReady] = useState(false)
@@ -90,7 +92,7 @@ export function Analyzing({ file, sensitive, fast, sensitivity, twoSteps, onDone
           b.close()
           return c.toDataURL('image/jpeg', 0.85)
         })
-        onDone({ times: m.times, width: m.width, height: m.height, fps: m.fps, tracks: m.tracks, cuts: m.cuts, lowConfidence: m.lowConfidence, reduced: m.reduced, fast: m.fast, sensitive: m.sensitive, sensitivity: m.sensitivity }, thumbs, m.ms, m.backend)
+        onDone({ times: m.times, width: m.width, height: m.height, fps: m.fps, tracks: m.tracks, cuts: m.cuts, lowConfidence: m.lowConfidence, reduced: m.reduced, fast: m.fast, selfie: m.selfie, sensitive: m.sensitive, sensitivity: m.sensitivity }, thumbs, m.ms, m.backend)
         worker.terminate()
       } else if (m.type === 'error') {
         worker.terminate()
@@ -102,10 +104,10 @@ export function Analyzing({ file, sensitive, fast, sensitivity, twoSteps, onDone
       onError(t('משהו השתבש בעיבוד. נסה שוב; אם זה חוזר, העתק את הפרטים הטכניים ושלח אותם.'), technical('face detection worker', e.message || 'error'))
     }
     const forced = new URLSearchParams(location.search).get('backend')
-    const req: AnalyzeRequest = { file, sensitive, fast, sensitivity, base: new URL('.', document.baseURI).href, backend: forced === 'wasm' || forced === 'webgpu' ? forced : undefined, workers: Number(new URLSearchParams(location.search).get('workers')) || undefined, tune: tuneFromUrl() }
+    const req: AnalyzeRequest = { file, sensitive, fast, selfie, sensitivity, base: new URL('.', document.baseURI).href, backend: forced === 'wasm' || forced === 'webgpu' ? forced : undefined, workers: Number(new URLSearchParams(location.search).get('workers')) || undefined, tune: tuneFromUrl() }
     worker.postMessage(req)
     return () => worker.terminate()
-  }, [file, sensitive, fast, sensitivity])
+  }, [file, sensitive, fast, selfie, sensitivity])
 
   useWakeLock(true)
   const pct = Math.min(99, Math.floor((progress.done / progress.total) * 100))

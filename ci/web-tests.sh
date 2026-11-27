@@ -29,6 +29,8 @@ case "${1:?shard}" in
     node tests/splitmask.cjs   # 2
     # Face detection's pure parts: YuNet's decoding, the fusion with RetinaFace (the app's rules), the pace (1280 / 960 / 640 px, the full rate down to 8 a second), which frames get a detection and what that really covered (any frame rate, timestamps, VFR, cuts; never weaker in frames than before), the low-confidence flag, fast detection's 5 a second, the sensitivity (0 the default exactly; a higher one never covers less) (pure, no browser).
     node tests/fusion.cjs   # 1
+    # Selfie detection's pure parts: BlazeFace's anchors, decoding, weighted NMS and letterbox against MediaPipe's own results (the Android app's BlazeFaceTest checks the same fixture), the sensitivity's threshold (0.5 at 0 exactly, 0.3 at 1), the choice of mode (pure, no browser).
+    node tests/blazeface.cjs   # 1
     ;;
   1) # about 187 s
     # Face detection with YuNet: RetinaFace + YuNet at 960 px (in the detector workers, and as one detector with YuNet in its own worker) finds no fewer faces than the old web detector (RetinaFace alone, 640 px) on the same frames of the stress clip and the classroom.
@@ -131,13 +133,18 @@ case "${1:?shard}" in
     # A template's translation (no model, a stubbed translator): the editor's switch and the video's four choices, the switch on the ready screen, translated in "save straight away" and in the editor it opens; a browser with none: a note, the subtitles kept.
     t tpltranslate.cjs "$U" $S/speech_two.mp4 $R/tpltranslate   # 22
     ;;
-  7) # about 160 s
+  7) # about 220 s
     # Which frames get a detection, measured in the browser: a clip re-timed to 20, 24, 25 (WebM), 30 and 31 fps at the full rate (15 a second or the app's cadence), no notice; a tune under the need measured short.
     t gate.cjs "$U" $S/walk.mp4 $R/gate   # ~70 (110 measured locally)
     # Fast detection and the sensitivity: the ready screen's modes, fast's warning and the slider; a fast run measured near 5 a second
     # (not reduced) with its notice kept in the editor (he; en on a phone) and "blur and save straight" stopping at the check screen;
     # a higher sensitivity finding extra detections and no fewer faces (classroom, pinned at 320 px).
     t fast.cjs "$U" $S/walk.mp4 $S/classroom.mp4 $R/fast   # ~90 (measured locally)
+    # Selfie detection (BlazeFace on every frame): the ready screen's four modes and selfie's warning; a face on (nearly) every frame of two
+    # talking-head clips (one stored sideways), the notice kept in the editor (he; en on a phone), faster than normal detection on the same
+    # clip; "blur and save straight" stopping at the check screen; the mode kept in a template (older versions read normal); a sensitivity
+    # finding extra detections and no fewer faces (classroom).
+    t selfie.cjs "$U" $S/headpose.mp4 $S/portrait_rot90.mp4 $S/classroom.mp4 $R/selfie   # ~60 (measured locally)
     ;;
   subs) # Whisper's model downloads from Hugging Face: its own job, only when subtitle code changes. The small one (whisper-base, 77 MB on the CPU) is forced: the phone path, and quick. The page is isolated here (threads), as on the site.
     t subs.cjs "http://localhost:4173/?backend=wasm&subsmodel=base" $S/speech_en.mp4 $R/subs   # 60

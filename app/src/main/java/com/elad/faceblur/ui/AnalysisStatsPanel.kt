@@ -96,6 +96,7 @@ private object StatsLayout {
         CellSize.BIG to listOf(Cell.DETECT, Cell.WAIT),
         CellSize.MID to listOf(Cell.FRAME, Cell.RESOLUTION, Cell.SAMPLING),
     )
+    val SelfieHidden = setOf(Cell.COARSE, Cell.GPU_CALL, Cell.YUNET, Cell.CROPS)
     val Details = listOf(
         CellSize.DETAIL to listOf(Cell.BACKEND, Cell.MODE),
         CellSize.DETAIL to listOf(Cell.WORKERS, Cell.FINE, Cell.COARSE),
@@ -152,7 +153,7 @@ private fun Cell.info(): String = when (this) {
     Cell.RESOLUTION -> t("גודל התמונה שגלאי הפנים בודק. יורד אוטומטית במכשיר איטי.")
     Cell.SAMPLING -> t("כל כמה פריימים מחפשים פנים. \"קל\": בדיקה מהירה יותר; המעקב משלים בין הבדיקות.")
     Cell.BACKEND -> t("איפה רץ זיהוי הפנים: במעבד הגרפי (GPU) או במעבד, ובאיזה דיוק. כשאין GPU, כתוב למה.")
-    Cell.MODE -> t("רגיל, מורחב (כל פריים) או מהיר (5 בשנייה), והרגישות שנבחרה.")
+    Cell.MODE -> t("רגיל, מורחב (כל פריים), מהיר (5 בשנייה) או סלפי, והרגישות שנבחרה.")
     Cell.WORKERS -> t("כמה גלאים עובדים במקביל, מתוך המקסימום.")
     Cell.FINE -> t("זמן המעבר המפורט בכל זיהוי.")
     Cell.COARSE -> t("זמן המעבר המהיר שמוצא פנים גדולות.")
@@ -209,6 +210,7 @@ private fun Cell.value(s: AnalysisStats, small: SpanStyle): AnnotatedString = bu
             append(
                 when (l.mode) {
                     "fast" -> t("מהיר")
+                    "selfie" -> t("סלפי")
                     "extended" -> t("מורחב")
                     else -> t("רגיל")
                 },
@@ -240,13 +242,16 @@ private const val PDI = "\u2069"
 /** A time or a count: whole from 10 up, else one decimal (always with a dot). */
 private fun fmt(v: Float): String = if (v >= 9.95f) v.roundToInt().toString() else String.format(Locale.US, "%.1f", v)
 
+/** Why not the GPU, for the panel: selfie mode's reason translated (the others are the detector's own words). */
+private fun whyNoGpu(why: String?): String? = why?.takeIf { it.isNotEmpty() }?.let { if (it == "selfie mode runs on the CPU") t("מצב סלפי רץ על המעבד") else it }
+
 /** "GPU · fp32 · 14 ms" or "CPU · fp16 · <why not the GPU>". */
 private fun backend(s: AnalysisStats): String {
     val l = s.latest
     return if (l.onGpu) {
         listOfNotNull(if (l.accelerator == "gpu") "GPU" else "GPU (checking)", l.precision, l.gpuMs.takeIf { it > 0f }?.let { fmt(it) + " ms" })
     } else {
-        listOfNotNull("CPU", l.precision, l.noGpu?.takeIf { it.isNotEmpty() })
+        listOfNotNull("CPU", l.precision, whyNoGpu(l.noGpu))
     }.joinToString(" · ")
 }
 
@@ -315,7 +320,10 @@ private fun StatsContent(stats: AnalysisStats, info: VideoInfo, percent: Int, el
         }
         AnimatedVisibility(more, enter = FoldIn, exit = FoldOut) {
             Column(verticalArrangement = Arrangement.spacedBy(StatsLayout.Gap)) {
-                StatsLayout.Details.forEach { (size, cells) -> CellRow(size, cells, stats) }
+                // Selfie mode has one detector and none of the rest (no coarse pass, no GPU, no YuNet, no crop re-check): those cells are left out.
+                StatsLayout.Details.map { (size, cells) -> size to (if (stats.latest.mode == "selfie") cells.filter { it !in StatsLayout.SelfieHidden } else cells) }
+                    .filter { (_, cells) -> cells.isNotEmpty() }
+                    .forEach { (size, cells) -> CellRow(size, cells, stats) }
             }
         }
     }
@@ -519,7 +527,7 @@ internal fun statsReport(context: Context, s: AnalysisStats, info: VideoInfo, el
     if (sides.isEmpty()) sides += l.side
     val gpu = when {
         l.onGpu -> if (l.gpuMs > 0f) fmt(l.gpuMs) + " ms" else "-"
-        else -> l.noGpu?.takeIf { it.isNotEmpty() } ?: "-"
+        else -> whyNoGpu(l.noGpu) ?: "-"
     }
     val gpuCall = if (l.onGpu) fmt(s.gpuCallMs) + (if (l.gpuQueueMs > 0f) " (queue ${fmt(l.gpuQueueMs)})" else "") else "-"
     val fps = String.format(Locale.US, "%.2f", info.fps).trimEnd('0').trimEnd('.')

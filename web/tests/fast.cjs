@@ -1,5 +1,5 @@
 // Fast detection and the sensitivity, in the browser:
-//  - the ready screen: three modes (fast's warning shows when it is picked), the sensitivity slider and the summary line;
+//  - the ready screen: four modes, selfie's the last (fast's warning shows when it is picked), the sensitivity slider and the summary line;
 //  - a fast run measured near 5 detections a second (not reduced), its notice kept in the editor (Hebrew; English on a
 //    phone as a pill over the video), and "blur and save straight" stopping at the check screen;
 //  - a higher sensitivity on a clip with distant faces (classroom, detection pinned at 320 px: many borderline faces): extra
@@ -49,7 +49,7 @@ const PILL_EN = 'Fast detection: small or distant faces may be missed for a mome
       return { tracks: Number(m[1]), reduced: m[2] === 'true', rate: Number(m[3]), mode: m[4], sensitivity: Number(m[5]), extra: Number(m[6]), line }
     }
 
-    // ---- the ready screen (Hebrew): three modes, fast's warning, the slider and the summary
+    // ---- the ready screen (Hebrew): the modes, fast's warning, the slider and the summary
     let p = await page('he-IL')
     await ready(p, video, 'normal', 0)
     let ui = await p.evaluate(() => ({
@@ -58,7 +58,7 @@ const PILL_EN = 'Fast detection: small or distant faces may be missed for a mome
       summary: document.querySelector('.fold-summary')?.textContent.trim(),
       overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
     }))
-    if (JSON.stringify(ui.modes) !== JSON.stringify([['מהיר', 'false'], ['רגיל', 'true'], ['מורחב', 'false']]) || ui.warning !== null || !ui.summary.endsWith('זיהוי רגיל')) fail('the ready screen, normal: ' + JSON.stringify(ui))
+    if (JSON.stringify(ui.modes) !== JSON.stringify([['מהיר', 'false'], ['רגיל', 'true'], ['מורחב', 'false'], ['סלפי', 'false']]) || ui.warning !== null || !ui.summary.endsWith('זיהוי רגיל')) fail('the ready screen, normal: ' + JSON.stringify(ui))
     await p.click('.detect-mode .mode-fast')
     await p.evaluate(() => { const r = document.querySelector('input.sensitivity'); r.value = '0.4'; r.dispatchEvent(new Event('input', { bubbles: true })) })
     ui = await p.evaluate(() => ({ warning: document.querySelector('.fast-warning')?.textContent.trim() ?? null, summary: document.querySelector('.fold-summary')?.textContent.trim(), value: document.querySelector('.sensitivity-value')?.textContent.trim() }))

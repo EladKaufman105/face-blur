@@ -362,6 +362,7 @@ internal fun EditorMessages(ctrl: EditorController, modifier: Modifier = Modifie
     ) {
         // Fast detection may have missed a face for a moment: said as long as the editor is open (as the web app's notice).
         if (ctrl.session.settings.fast && !ctrl.session.subtitlesOnly) FastPill()
+        if (ctrl.session.settings.selfie && !ctrl.session.subtitlesOnly) SelfiePill()
         if (ctrl.addMode) {
             Banner(t("הקש על הפנים שצריך לטשטש"), action = t("ביטול")) { ctrl.addMode = false }
         } else if (!ctrl.playing && ctrl.cutHere != null) {
@@ -431,6 +432,20 @@ private fun FastPill() {
     Surface(shape = RoundedCornerShape(Radius.Panel), color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f), modifier = Modifier.testTag(Tags.FAST_NOTICE)) {
         Text(
             t("זיהוי מהיר: פנים קטנות או רחוקות עלולות להתפספס לרגע. כדאי לצפות בתוצאה."),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onTertiaryContainer,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = Space.M, vertical = Space.XS),
+        )
+    }
+}
+
+/** The editor's lasting word after selfie detection (the full warning is on the ready and result screens). */
+@Composable
+private fun SelfiePill() {
+    Surface(shape = RoundedCornerShape(Radius.Panel), color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f), modifier = Modifier.testTag(Tags.SELFIE_NOTICE)) {
+        Text(
+            t("מצב סלפי: פנים קטנות או רחוקות ברקע עלולות לא להיטשטש. כדאי לצפות בתוצאה."),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onTertiaryContainer,
             textAlign = TextAlign.Center,

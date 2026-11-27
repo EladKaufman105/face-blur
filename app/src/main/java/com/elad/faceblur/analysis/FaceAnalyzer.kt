@@ -59,14 +59,14 @@ object OpenCv {
  */
 class FaceAnalyzer private constructor(
     context: Context,
-    /** Normal, extended (every frame, weaker evidence) or fast (5 a second): see [DetectMode]. */
+    /** Normal, extended (every frame, weaker evidence), fast (5 a second) or selfie (BlazeFace on every frame): see [DetectMode]. */
     private val mode: DetectMode,
     private val fps: Float,
     /** 0..1: above 0, lower thresholds add faces, never take any away (see [DetectTuning]). */
     private val sensitivity: Float,
-    // The whole face pack, each file checked (size and SHA-256) right before (see invoke()): face
-    // blur never runs on part of it, and never on a weaker detector instead. Held (it can't be
-    // deleted or switched) until close().
+    // The whole face pack (selfie mode: the selfie pack), each file checked (size and SHA-256)
+    // right before (see invoke()): face blur never runs on part of it, and never on a weaker
+    // detector instead. Held (it can't be deleted or switched) until close().
     private val faceFiles: Map<String, File>,
 ) : Closeable {
     private val appContext: Context = context.applicationContext
@@ -79,14 +79,19 @@ class FaceAnalyzer private constructor(
     /** Long side of the frames handed to [onFrame]: small/distant faces need the resolution. */
     val maxSide = 1280
 
+    // Selfie mode runs BlazeFace alone: none of the face pack's detectors, nor its GPU models.
+    private val selfie = mode == DetectMode.SELFIE
+    private val pack = if (selfie) com.elad.faceblur.models.PackId.SELFIE else com.elad.faceblur.models.PackId.FACES
+
     @Volatile private var packHeld = true
-    private val retinaPath = packFile(RetinaFaceDetector.MODEL)
-    private val yunetPath = packFile(FaceDetector.YUNET_MODEL)
+    private val retinaPath = if (selfie) "" else packFile(RetinaFaceDetector.MODEL)
+    private val yunetPath = if (selfie) "" else packFile(FaceDetector.YUNET_MODEL)
+    private val blazeFile = if (selfie) packFile(BlazeFaceDetector.MODEL) else ""
     // The big detection pass on the GPU, when the phone allows it (its models are in the pack).
-    private val gpu = GpuFaceNet.create(faceFiles)
+    private val gpu = if (selfie) null else GpuFaceNet.create(faceFiles)
 
     private fun packFile(name: String): String =
-        faceFiles[name]?.absolutePath ?: throw com.elad.faceblur.models.ModelMissing(com.elad.faceblur.models.PackId.FACES)
+        faceFiles[name]?.absolutePath ?: throw com.elad.faceblur.models.ModelMissing(pack)
     // The rest on the CPU in fp16 once it's shown to agree with fp32 here.
     private val half = HalfPrecision()
 
@@ -104,6 +109,9 @@ class FaceAnalyzer private constructor(
     // Detection workers: each thread keeps its own detector (OpenCV nets aren't shared).
     private val detectors = java.util.Collections.synchronizedList(ArrayList<FaceDetector>())
     private val workerDetector = ThreadLocal<FaceDetector>()
+    // Selfie mode's detectors, one per worker thread too.
+    private val blazes = java.util.Collections.synchronizedList(ArrayList<BlazeFaceDetector>())
+    private val workerBlaze = ThreadLocal<BlazeFaceDetector>()
     // At the default priority: below the screen's threads (the main thread runs at -2, so on a
     // slow tablet the progress and preview keep moving), but not "background", which on some
     // phones keeps a thread on the small cores (a Dimensity 9500 took 411 ms a detection at
@@ -217,10 +225,11 @@ class FaceAnalyzer private constructor(
                 else -> "gpu-checking"
             },
             // On the GPU: its precision and time per frame; on the CPU: why not the GPU.
-            precision = if (g != null) (if (g.precise) "fp32" else "fp16") else half.state,
+            precision = if (g != null) (if (g.precise) "fp32" else "fp16") else if (selfie) "fp32" else half.state,
             gpuMs = g?.inferMs ?: 0f,
             gpuQueueMs = g?.queueMs ?: 0f,
-            noGpu = if (g != null) null else (gpu?.why ?: GpuFaceNet.unavailable),
+            // (Selfie mode never uses the GPU or the fp16 passes: GpuFaceNet.unavailable is the last face-pack pass's.)
+            noGpu = if (g != null) null else if (selfie) "selfie mode runs on the CPU" else (gpu?.why ?: GpuFaceNet.unavailable),
             side = if (g != null) maxSide else cpuSide,
             every = detectEvery,
             lite = lite,
@@ -347,14 +356,27 @@ class FaceAnalyzer private constructor(
             waited = SystemClock.elapsedRealtime() - waitFrom
             blockedMs += waited
             waitMsTotal += waited
-            adapt(idx)
+            // Selfie mode's one light detector on every frame has nothing to adapt.
+            if (!selfie) adapt(idx)
             val known = followedBoxes()
             // On a GPU, every other detection may leave out the coarse pass (it's the CPU's
             // biggest cost there) unless a big face is in view.
             val maySkipCoarse = g != null && g.active && !bigFace && (idx / detectEvery) % 2 == 1
             pool.execute {
                 try {
-                    if (gen == generation) {
+                    if (gen == generation && selfie) {
+                        val d0 = SystemClock.elapsedRealtime()
+                        val det = blaze()
+                        val r = det.detect(frame, sensitivity > 0f)
+                        detectMsTotal.addAndGet(SystemClock.elapsedRealtime() - d0)
+                        detections.incrementAndGet()
+                        fineUsTotal.addAndGet(det.lastUs)
+                        if (gen == generation) {
+                            if (r.extras.isNotEmpty()) extraDets[idx] = r.extras
+                            dets[idx] = r.faces
+                            lastDets = r.faces
+                        }
+                    } else if (gen == generation) {
                         val d0 = SystemClock.elapsedRealtime()
                         val det = detector()
                         val found = det.detect(frame, lite, known, cpuSide, maySkipCoarse, sensitivity)
@@ -476,6 +498,11 @@ class FaceAnalyzer private constructor(
         blockedMs = 0L
     }
 
+    private fun blaze(): BlazeFaceDetector = workerBlaze.get() ?: BlazeFaceDetector(File(blazeFile)).also {
+        workerBlaze.set(it)
+        blazes += it
+    }
+
     private fun detector(): FaceDetector = workerDetector.get() ?: FaceDetector(retinaPath, yunetPath, gpu, half).also {
         workerDetector.set(it)
         detectors += it
@@ -509,8 +536,10 @@ class FaceAnalyzer private constructor(
             tracks = DetectTuning.widen(tracks, sensitivity, cancelled = { gen != generation || Thread.currentThread().isInterrupted }) { level ->
                 val thr = DetectTuning.thresholds(level)
                 val all = HashMap<Int, List<Det>>(dets)
+                // Selfie mode's extras come from BlazeFace's fixed pool: each step takes those over its own threshold.
+                val minScore = if (selfie) DetectTuning.selfieThreshold(level) else thr.cut
                 for ((i, extra) in extraDets) {
-                    val more = extra.filter { it.score >= thr.cut }
+                    val more = extra.filter { it.score >= minScore }
                     if (more.isNotEmpty()) all[i] = (all[i] ?: emptyList()) + more
                 }
                 OfflineTracker(measuredFps, aspect, sensitive, thr).run(n, all, motion, cutList)
@@ -542,8 +571,12 @@ class FaceAnalyzer private constructor(
             detectors.forEach { it.close() }
             detectors.clear()
         }
+        synchronized(blazes) {
+            blazes.forEach { it.close() }
+            blazes.clear()
+        }
         gpu?.close()
-        if (packHeld) com.elad.faceblur.models.ModelStore.get(appContext).release(com.elad.faceblur.models.PackId.FACES)
+        if (packHeld) com.elad.faceblur.models.ModelStore.get(appContext).release(pack)
         packHeld = false
         preview.release()
         frames?.close()
@@ -565,11 +598,12 @@ class FaceAnalyzer private constructor(
         /** As above, in [mode], at [sensitivity] (0..1, see [DetectTuning]). */
         operator fun invoke(context: Context, mode: DetectMode, fps: Float, sensitivity: Float): FaceAnalyzer {
             val store = com.elad.faceblur.models.ModelStore.get(context)
-            val files = store.acquire(com.elad.faceblur.models.PackId.FACES)
+            val pack = if (mode == DetectMode.SELFIE) com.elad.faceblur.models.PackId.SELFIE else com.elad.faceblur.models.PackId.FACES
+            val files = store.acquire(pack)
             try {
                 return FaceAnalyzer(context, mode, fps, DetectTuning.quantize(sensitivity), files)
             } catch (t: Throwable) {
-                store.release(com.elad.faceblur.models.PackId.FACES)
+                store.release(pack)
                 throw t
             }
         }
