@@ -1,5 +1,5 @@
 // "Open-source licences": the models, libraries and fonts ONIT is made of, each with its licence; a tap
-// opens its notice and, on request, the full text (served by this site, so it works offline). Reached from
+// opens its notice and, on request, the full text (served by this site itself). Reached from
 // the footer, as the app's Settings entry.
 import { useEffect, useState } from 'preact/hooks'
 import { addEnglish, t } from '../i18n'
@@ -8,7 +8,7 @@ import { BackIcon, CloseIcon } from './icons'
 
 addEnglish({
   'רישיונות קוד פתוח': 'Open-source licences',
-  'המודלים, הספריות והגופנים ש-ONIT בנוי מהם. נוסחי הרישיונות המלאים נשמרים באתר, ופתוחים גם בלי חיבור.': 'The models, libraries and fonts ONIT is made of. The full licence texts are kept on the site and open without a connection.',
+  'המודלים, הספריות והגופנים ש-ONIT בנוי מהם. נוסחי הרישיונות המלאים מוצגים כאן, והם חלק מהאתר.': 'The models, libraries and fonts ONIT is made of. The full licence texts are shown here and are part of the site.',
   'מודלים': 'Models',
   'ספריות': 'Libraries',
   'גופנים': 'Fonts',
@@ -90,7 +90,7 @@ export function Licences({ onClose }: { onClose: () => void }) {
         <div class="sheet-body">
           {open ? <Detail e={open} /> : (
             <>
-              <p class="small muted" style="margin:0">{t('המודלים, הספריות והגופנים ש-ONIT בנוי מהם. נוסחי הרישיונות המלאים נשמרים באתר, ופתוחים גם בלי חיבור.')}</p>
+              <p class="small muted" style="margin:0">{t('המודלים, הספריות והגופנים ש-ONIT בנוי מהם. נוסחי הרישיונות המלאים מוצגים כאן, והם חלק מהאתר.')}</p>
               {failed && <p class="small licence-missing">{t('לא הצלחתי לטעון את רשימת הרישיונות.')}</p>}
               <Section title={t('מודלים')} items={of('model')} onOpen={setOpen} />
               <Section title={t('ספריות')} items={of('library')} onOpen={setOpen} />

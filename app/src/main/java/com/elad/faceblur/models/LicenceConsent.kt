@@ -13,7 +13,8 @@ interface AcceptanceStorage {
 /**
  * The user's acceptance of a model's licence terms, for packs whose registry entry says
  * `requiresAcceptance` (terms with restrictions beyond MIT / Apache-2.0). It is stored per pack
- * and per [Pack.licenceVersion]: new terms (a bumped version) ask again, and deleting the pack
+ * and per [Pack.licenceVersion]: new terms (a bumped version) ask again at the next download or
+ * update (an installed pack is not interrupted: raising only the version doesn't touch it), and deleting the pack
  * ([ModelStore.delete]) clears it, so a later download asks again too. A pack that needs no
  * acceptance always counts as accepted. Nothing downloads before this says yes
  * ([ModelDownloads.request]).

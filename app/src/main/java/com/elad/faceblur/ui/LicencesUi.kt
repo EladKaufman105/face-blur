@@ -1,5 +1,6 @@
 package com.elad.faceblur.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -44,6 +45,7 @@ import com.elad.faceblur.models.LicenceEntry
 import com.elad.faceblur.models.LicenceInfo
 import com.elad.faceblur.models.LicenceText
 import com.elad.faceblur.models.ModelDownloads
+import com.elad.faceblur.models.NetDecision
 import com.elad.faceblur.models.Pack
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -132,7 +134,15 @@ internal fun LicenceConsentHost() {
             Text(if (packs.size == 1) t("רישיון מודל: %s").format(packName(packs[0].id)) else t("רישיונות מודלים"))
         },
         text = { ConsentBody(packs) },
-        confirmButton = { Button(onClick = d::acceptConsent, modifier = Modifier.testTag(Tags.LICENCE_ACCEPT)) { Text(t("אשר והורד")) } },
+        confirmButton = {
+            Button(
+                onClick = {
+                    // The tap goes on as it was: offline, it says the download starts when a network comes.
+                    if (d.acceptConsent() == NetDecision.WAIT_NETWORK) Toast.makeText(ctx, t("אין חיבור. ההורדה תתחיל כשתהיה רשת."), Toast.LENGTH_LONG).show()
+                },
+                modifier = Modifier.testTag(Tags.LICENCE_ACCEPT),
+            ) { Text(t("אשר והורד")) }
+        },
         dismissButton = { TextButton(onClick = d::declineConsent, modifier = Modifier.testTag(Tags.LICENCE_CANCEL)) { Text(t("ביטול")) } },
         modifier = Modifier.testTag(Tags.LICENCE_CONSENT),
     )

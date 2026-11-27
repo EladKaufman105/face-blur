@@ -172,7 +172,9 @@ class ModelDownloads private constructor(context: Context) {
         val withTranslation = translation && TranslationPacks.state != TranslationPacks.State.READY &&
             TranslationPacks.state != TranslationPacks.State.DOWNLOADING && TranslationPacks.state != TranslationPacks.State.WAITING_WIFI
         if (want.isEmpty() && !withTranslation) return NetDecision.START
-        // Terms that need accepting come first, for every pack of the tap in one question.
+        // Terms that need accepting come first, for every pack of the tap in one question. START is
+        // returned while the consent is pending (nothing is queued, so no "waits for a connection"
+        // toast); acceptConsent() asks again and returns the real decision.
         val unaccepted = store.consent.needed(want.map { store.registry[it] })
         if (unaccepted.isNotEmpty()) {
             consentAsk = ConsentAsk(unaccepted, want, withTranslation)
@@ -194,12 +196,16 @@ class ModelDownloads private constructor(context: Context) {
         return d
     }
 
-    /** "Accept & download": the terms are recorded, and the tap goes on as it was (the network rule still applies). */
-    fun acceptConsent() {
-        val a = consentAsk ?: return
+    /**
+     * "Accept & download": the terms are recorded, and the tap goes on as it was (the network rule
+     * still applies).
+     * @return what [request] decides now ([NetDecision.WAIT_NETWORK]: the screen says it starts when online).
+     */
+    fun acceptConsent(): NetDecision {
+        val a = consentAsk ?: return NetDecision.START
         consentAsk = null
         store.consent.accept(a.needed)
-        request(a.ids, a.translation)
+        return request(a.ids, a.translation)
     }
 
     /** The consent was cancelled: nothing is queued and nothing is recorded. */

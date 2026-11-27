@@ -73,7 +73,9 @@ data class ModelFile(
  * @param unpinned downloaded from a URL that isn't pinned and checked by size only, as before the
  *   registry (allowed for a speech model only, never for faces, people or speakers).
  * @param licenceVersion bumped when the terms of any file change: an acceptance of an older one
- *   no longer counts (see [LicenceConsent]).
+ *   no longer counts (see [LicenceConsent]). It asks again at the next download or update, not for a
+ *   pack that is already installed (raising only this version changes nothing there: bump [version]
+ *   too if installed packs must be updated).
  */
 data class Pack(
     val id: PackId,

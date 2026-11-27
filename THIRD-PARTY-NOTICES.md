@@ -79,9 +79,9 @@ ONIT's own licence is not covered here.
   - Not linked: the BlazeFace model and the decoding of its output follow MediaPipe's calculators.
   - Not fully verified: The holder is named from the project, not quoted from a notice; its LICENSE file is the bare licence text.
 - **whisper.cpp**: MIT. Copyright (c) 2023-2026 The ggml authors. Source: <https://github.com/ggml-org/whisper.cpp>.
-- **LAME**: LGPL-2.0. The LAME project. Source: <https://lame.sourceforge.io>.
-  - MP3 encoder (libmp3lame 3.100). Android: unmodified source in app/src/main/cpp/lame, built as a shared library. Web: a WebAssembly build inside @mediabunny/mp3-encoder.
-  - Not fully verified: The web build's WASM wrapper is Mediabunny's (MPL-2.0); LAME's licence is LGPL (the project's page says so); 'LGPL-2.0' is the COPYING file the app ships, the exact version clause of the web's build was not checked.
+- **LAME**: LGPL-2.0-or-later. The LAME project. Source: <https://lame.sourceforge.io>.
+  - MP3 encoder (libmp3lame 3.100). Android: unmodified LAME source in app/src/main/cpp/lame, compiled into libonit_mp3.so together with the app's mp3_jni.c (CMakeLists.txt). Web: a WebAssembly build inside @mediabunny/mp3-encoder.
+  - Not fully verified: The bundled text is the GNU Library GPL v2 (COPYING in app/src/main/cpp/lame); '-or-later' is LAME's own statement, not re-read from its source headers here. The web build's WASM wrapper is Mediabunny's (MPL-2.0).
 - **Media3 (ExoPlayer, Transformer)**: Apache-2.0. The Android Open Source Project. Source: <https://github.com/androidx/media>.
   - Not fully verified: The holder is named from the project, not quoted from a notice; its LICENSE file is the bare licence text.
 - **Jetpack Compose, AndroidX and Material icons**: Apache-2.0. The Android Open Source Project. Source: <https://developer.android.com/jetpack/androidx>.
