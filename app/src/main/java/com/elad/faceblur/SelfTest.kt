@@ -72,9 +72,13 @@ object SelfTest {
             line("video ${info.width}x${info.height} ${info.durationMs}ms")
             val settings = Settings(BlurMode.BLUR, 0.6f, 1.6f, false)
             val p = FaceBlurProcessor(context)
+            val analysisStart = System.nanoTime()
             val analysis = p.analyze(info, settings) {}
+            val analysisMs = (System.nanoTime() - analysisStart) / 1_000_000
             val dets = analysis.dets.values.sumOf { it.size }
             line("analysis: ${analysis.frameCount} frames, $dets faces, ${analysis.tracks.size} tracks")
+            // For information (docs/shared-code.md, 4.2): noisy on an emulator, never a pass or fail.
+            line("analysis_ms: $analysisMs")
             line("opencv: ${com.elad.faceblur.analysis.OpenCv.variant}")
             line("face detection on: ${FaceBlurProcessor.lastAccelerator}, cpu ${FaceBlurProcessor.lastPrecision}, ${FaceBlurProcessor.lastPace}")
             require(dets > 0) { "no faces found" }
@@ -94,8 +98,11 @@ object SelfTest {
             require("lraspp" in FaceBlurProcessor.lastSegModels) { "LR-ASPP not used" }
             val export = ExportOptions(subs = SubLang.ORIGINAL, saveSrt = false, aspect = ExportAspect.VERTICAL, watermark = Watermark(text = "@selftest"))
             val style = SubPresets.all.first { it.name == "טיקטוק" }.style
+            val renderStart = System.nanoTime()
             val out = p.render(info, settings, analysis, m, 0, export, style, AudioEdit(VoiceFx.ROBOT), Background(fill = BgFill.BLUR), masks) {}
+            val renderMs = (System.nanoTime() - renderStart) / 1_000_000
             line("render: ${out.uri}")
+            line("render_ms: $renderMs")
             masks.close()
             // Sound: a clip with speech if CI copied one in (the face video may be silent).
             val speech = File(d, "speech.mp4").takeIf { it.exists() }
