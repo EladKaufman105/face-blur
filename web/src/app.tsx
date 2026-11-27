@@ -22,6 +22,7 @@ import { BETA } from './lib/channel'
 import { BetaLogo, BetaName, BetaNote } from './ui/Beta'
 import { BatchQueue, BatchSetup } from './ui/Batch'
 import { TemplatesManager } from './ui/TemplateEditor'
+import { RememberedChoicesRow } from './ui/RememberedChoices'
 import { type TemplateSettings } from './lib/template'
 import { loadTemplates } from './lib/templatestore'
 import { current as batchNow, running as batchRunning, startBatch, version as batchVersion, doneCount } from './lib/batch'
@@ -331,6 +332,7 @@ function Settings({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
+          <RememberedChoicesRow />
           <TemplatesManager />
         </div>
       </div>

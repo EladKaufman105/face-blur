@@ -115,7 +115,7 @@ const lastOf = (t: Track) => t.first + t.boxes.length / 4 - 1
  * Mostly the same face: IoU over SAME_FACE_IOU on at least half the frames both have (both are contiguous). Tracks apart in
  * time are rejected at once, and the count stops as soon as the answer is known.
  */
-function sameFace(a: Track, b: Track): boolean {
+export function sameFace(a: Track, b: Track): boolean {
   const from = Math.max(a.first, b.first), to = Math.min(lastOf(a), lastOf(b))
   if (from > to) return false
   const shared = to - from + 1

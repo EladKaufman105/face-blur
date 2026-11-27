@@ -28,7 +28,7 @@ export function newTrack(id: number, i: number, box: Box): Track {
 function span(t: Track, a: number, b: number): Track {
   const out = new Float32Array((b - a + 1) * 4)
   for (let i = a; i <= b; i++) out.set(boxNear(t, i), (i - a) * 4)
-  return { ...t, first: a, boxes: out, best: Math.min(b, Math.max(a, t.best)) }
+  return { ...t, first: a, boxes: out, best: Math.min(b, Math.max(a, t.best)), edited: true }
 }
 
 /** [t] starting at frame [i] (shorter, or longer holding its first box). */
@@ -53,7 +53,7 @@ export function split(t: Track, i: number, newId: number): [Track, Track] | null
 export function shift(t: Track, dx: number, dy: number): Track {
   const b = Float32Array.from(t.boxes)
   for (let k = 0; k < b.length; k += 4) { b[k] += dx; b[k + 1] += dy }
-  return { ...t, boxes: b }
+  return { ...t, boxes: b, edited: true }
 }
 
 /**
@@ -61,7 +61,7 @@ export function shift(t: Track, dx: number, dy: number): Track {
  * -1 up to [from]. [res] covers [from] (and its boxes are without the user's size).
  */
 export function applyFollow(t: Track, from: number, res: { first: number; boxes: Float32Array }, dir: number): Track {
-  if (dir === 0) return { ...t, first: res.first, boxes: res.boxes, best: from }
+  if (dir === 0) return { ...t, first: res.first, boxes: res.boxes, best: from, edited: true }
   const r: Track = { ...t, first: res.first, boxes: res.boxes }
   const rLast = trackLast(r)
   const a = dir > 0 ? Math.min(t.first, from) : res.first
@@ -71,7 +71,7 @@ export function applyFollow(t: Track, from: number, res: { first: number; boxes:
     const fromResult = dir > 0 ? i >= from : i <= from
     out.set(boxNear(fromResult ? r : t, i), (i - a) * 4)
   }
-  return { ...t, first: a, boxes: out, best: from }
+  return { ...t, first: a, boxes: out, best: from, edited: true }
 }
 
 /** A blur's frames moved to new frame times (faces found after blurs were added by hand). */

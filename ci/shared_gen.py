@@ -193,7 +193,74 @@ def gen_safezones():
     return {"kotlin": {"SafeZones.kt": kt}, "ts": {"safezones.ts": ts}}
 
 
-GENERATORS = [gen_detect, gen_safezones]
+def kt_str(s):
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$") + '"'
+
+
+def ts_str(s):
+    return json.dumps(s, ensure_ascii=False)
+
+
+def gen_choices():
+    """The remembered-choices registry: every key's id and labels, and its allowed values with theirs,
+    as data (Kotlin `RememberedKeys.ALL`, TypeScript `CHOICES`). Labels are in both languages here, so
+    the screens need no string table for them."""
+    rel = "shared/prefs/choices.json"
+    d = load(rel)
+    keys_exactly(rel, d, ["about", "keys"])
+    if not isinstance(d["keys"], list) or not d["keys"]:
+        raise SpecError(f"{rel}: 'keys' must be a non-empty list")
+    id_re = re.compile(r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$")
+    val_re = re.compile(r"^[a-z][a-z0-9_]*$")
+    seen, keys = set(), []
+    for k in d["keys"]:
+        keys_exactly(rel + " key", k, ["id", "he", "en", "values"])
+        kid = k["id"]
+        if not isinstance(kid, str) or not id_re.match(kid) or kid in seen:
+            raise SpecError(f"{rel}: key id {kid!r} must be lowercase words joined by dots, and new")
+        seen.add(kid)
+        for f in ("he", "en"):
+            if not check_text(rel, f"{kid}'s {f}", k[f]).strip():
+                raise SpecError(f"{rel}: {kid}: {f} is empty")
+        if not isinstance(k["values"], list) or len(k["values"]) < 2:
+            raise SpecError(f"{rel}: {kid}: at least two values")
+        vals, vseen = [], set()
+        for v in k["values"]:
+            keys_exactly(rel + f" {kid} value", v, ["id", "he", "en"])
+            vid = v["id"]
+            if not isinstance(vid, str) or not val_re.match(vid) or vid in vseen:
+                raise SpecError(f"{rel}: {kid}: value id {vid!r} must be lowercase letters, digits and _, and new")
+            vseen.add(vid)
+            for f in ("he", "en"):
+                if not check_text(rel, f"{kid}.{vid}'s {f}", v[f]).strip():
+                    raise SpecError(f"{rel}: {kid}.{vid}: {f} is empty")
+            vals.append(v)
+        keys.append((k, vals))
+    about = check_text(rel, "about", d["about"])
+    kt = [header(rel), f"package {KT_PACKAGE}\n\n", kt_doc(about), "object RememberedKeys {\n",
+          "    class Value(val id: String, val he: String, val en: String)\n\n",
+          "    class Key(val id: String, val he: String, val en: String, val values: List<Value>)\n\n",
+          "    val ALL: List<Key> = listOf(\n"]
+    for k, vals in keys:
+        kt.append(f"        Key({kt_str(k['id'])}, {kt_str(k['he'])}, {kt_str(k['en'])}, listOf(\n")
+        for v in vals:
+            kt.append(f"            Value({kt_str(v['id'])}, {kt_str(v['he'])}, {kt_str(v['en'])}),\n")
+        kt.append("        )),\n")
+    kt.append("    )\n}\n")
+    ts = [header(rel), ts_doc(about), "\n",
+          "export type ChoiceValue = { readonly id: string; readonly he: string; readonly en: string }\n",
+          "export type ChoiceKey = { readonly id: string; readonly he: string; readonly en: string; readonly values: readonly ChoiceValue[] }\n\n",
+          "export const CHOICES: readonly ChoiceKey[] = [\n"]
+    for k, vals in keys:
+        ts.append(f"  {{ id: {ts_str(k['id'])}, he: {ts_str(k['he'])}, en: {ts_str(k['en'])}, values: [\n")
+        for v in vals:
+            ts.append(f"    {{ id: {ts_str(v['id'])}, he: {ts_str(v['he'])}, en: {ts_str(v['en'])} }},\n")
+        ts.append("  ] },\n")
+    ts.append("]\n")
+    return {"kotlin": {"RememberedKeys.kt": "".join(kt)}, "ts": {"choices.ts": "".join(ts)}}
+
+
+GENERATORS = [gen_detect, gen_safezones, gen_choices]
 
 
 def main():

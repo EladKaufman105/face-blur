@@ -24,6 +24,8 @@ export interface Track {
   manual?: boolean
   /** The blur's size relative to the face, set by the user (1 if not). */
   scale?: number
+  /** An automatic blur the user changed (its start or end, a split, moved or followed again): "Run detection again" with Replace keeps it (lib/rerun.ts). */
+  edited?: boolean
 }
 
 export interface Analysis {

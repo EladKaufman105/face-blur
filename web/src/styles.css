@@ -1058,3 +1058,31 @@ input[type='range'] { width: 100%; accent-color: var(--primary); height: 28px; }
 .detect-desc { margin: 0; }
 .fast-warning { margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-control); background: color-mix(in srgb, var(--amber) 22%, transparent); color: var(--text); font-weight: 600; }
 .fast-warning-folded { margin: 0 var(--space-4) var(--space-3); }
+
+/* Run detection again: its sheet, the question about the blurs there, the progress and the undo toast. */
+.rerun-sheet .sheet-body, .rerun-ask .sheet-body { gap: var(--space-3); }
+.rerun-sheet .actions, .rerun-ask .actions { justify-content: flex-end; flex-wrap: nowrap; }
+.rerun-sheet .actions .btn, .rerun-ask .actions .btn { flex: none; }
+.opts { display: grid; gap: var(--space-2); }
+.opt { display: flex; gap: var(--space-3); align-items: flex-start; border: 1px solid var(--outline); border-radius: var(--radius-card); padding: var(--space-3); background: transparent; width: 100%; text-align: start; color: var(--text); }
+.opt.on { border: 2px solid var(--primary); background: var(--primary-soft); color: var(--on-primary-soft); padding: calc(var(--space-3) - 1px); }
+.opt.on .muted { color: inherit; opacity: 0.8; }
+.opt .grow { display: grid; gap: 2px; }
+.opt .radio { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--outline); flex: none; margin-top: 2px; position: relative; }
+.opt.on .radio { border-color: var(--primary); }
+.opt.on .radio::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--primary); }
+.opt .rec { font-size: 11px; line-height: 16px; font-weight: 700; background: var(--primary); color: var(--on-primary); border-radius: 999px; padding: 0 8px; margin-inline-start: 6px; }
+.opt .fast-warning { margin-top: 6px; }
+.rerun-remember { display: flex; min-height: 44px; gap: var(--space-3); }
+.rerun-remember input { width: 20px; height: 20px; }
+.rerun-open { width: 100%; margin-top: var(--space-3); }
+.rerun-progress { position: absolute; inset-inline: 12px; bottom: 12px; z-index: 3; display: grid; gap: 8px; background: var(--surface); border: 1px solid var(--outline-soft); box-shadow: var(--shadow); border-radius: var(--radius-card); padding: 10px 14px; }
+.rerun-progress .row { display: flex; align-items: center; gap: var(--space-2); }
+.rerun-progress b { flex: 1; }
+.toast.with-action { display: flex; align-items: center; gap: var(--space-3); pointer-events: auto; padding-inline-end: 6px; }
+.toast.with-action button { border: 0; background: transparent; color: inherit; font-weight: 700; text-decoration: underline; min-height: 40px; padding: 0 12px; border-radius: 8px; }
+.remembered-row { display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 56px; border: 0; border-top: 1px solid var(--outline-soft); background: transparent; text-align: start; color: var(--text); padding: 0; }
+.remembered-row .grow { display: grid; }
+.remembered-item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--outline-soft); }
+.remembered-item .grow { display: grid; gap: 2px; }
+.remembered-value { color: var(--primary); font-weight: 600; }

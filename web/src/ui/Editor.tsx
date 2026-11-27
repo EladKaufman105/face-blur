@@ -41,11 +41,16 @@ import { loadSfx, makeBuffer, sfxName } from '../lib/sfx'
 import type { VoiceFx } from '../lib/voice'
 import type { AudioMessage, AudioRequest } from '../workers/audio.worker'
 import { exportOptionsOf, hasProcessing, savedLanguage, styleOf, type TemplateSettings } from '../lib/template'
-import { Aborted, findPauses, transcribe } from '../lib/templaterun'
+import { Aborted, findFaces, findPauses, transcribe } from '../lib/templaterun'
 import { translateCues, translateNote } from '../lib/translate'
 import { releaseSpeechForExport } from '../lib/speech'
 import { SaveTemplate } from './SaveTemplate'
 import { DetectionNotice } from './DetectionNotice'
+import { RerunAsk, RerunSheet } from './RerunSheet'
+import type { DetectChoice } from './DetectControls'
+import { modeOf } from '../lib/sensitivity'
+import { mergeFlags, mergeRerun, resample, RERUN_KEY, sameFrames, type RerunMode } from '../lib/rerun'
+import { getChoice, rememberChoice } from '../lib/choices'
 
 type Props = {
   file: File
@@ -114,6 +119,18 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const [cutStart, setCutStart] = useState<number | null>(null)
   const [cutBusy, setCutBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  // "Run detection again": its sheet, the question about the blurs there (with the detection chosen), the progress (0..1) and the toast with Undo.
+  const [rerunSheet, setRerunSheet] = useState(false)
+  const [rerunAsk, setRerunAsk] = useState<DetectChoice | null>(null)
+  const [rerunProgress, setRerunProgress] = useState<number | null>(null)
+  const [rerunToast, setRerunToast] = useState<{ text: string; step: number } | null>(null)
+  const rerunAbort = useRef<AbortController | null>(null)
+  useEffect(() => () => rerunAbort.current?.abort(), [])
+  useEffect(() => {
+    if (!rerunToast) return
+    const id = setTimeout(() => setRerunToast(null), 6000)
+    return () => clearTimeout(id)
+  }, [rerunToast])
   // The sound's cleanup: noise, a clearer voice, the networks' loudness (measured once).
   const [denoise, setDenoise] = useState(saved?.denoise ?? tpl?.denoise ?? 0)
   const [enhance, setEnhance] = useState(saved?.enhance ?? tpl?.enhance ?? false)
@@ -224,6 +241,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   const logo = useRef<HTMLImageElement | null>(null)
   const scheduler = useMemo(() => new SfxScheduler(), [])
   const orphans = useMemo(() => orphansOf(cues, bleeped), [cues, bleeped])
+  const anRef = useRef(an)
   const state = useRef({ off, look, mediaTime: 0, sfx, mark, cues, subStyle, words, bleeped, orphans, voiceBuf: null as AudioBuffer | null, tracks, selected, cuts, cutMap, fps: an.fps, times, steadied, crop, framePath, masks: null as PeopleMasks | null, background, safeOn: false, blurView: true })
   // (The drawing runs in callbacks made once: it reads the frame times from here, as they can
   // arrive later, from a search for faces or a first blur by hand.)
@@ -236,6 +254,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
   state.current.safeOn = safeOn && safeAvailable
   state.current.blurView = blurView
   state.current.tracks = tracks
+  anRef.current = an
   state.current.selected = selected
   state.current.cuts = cuts
   state.current.cutMap = cutMap
@@ -856,6 +875,74 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
     })
   }
 
+  /** The detection's mode and sensitivity as the video was detected (the sheet starts there). */
+  const detectedAs = (): DetectChoice => ({ mode: modeOf(!!an.sensitive, !!an.fast, !!an.selfie), sensitivity: an.sensitivity ?? 0 })
+  /** "Run" in the sheet: ask what to do with the blurs there (unless a remembered choice, or no blur, answers), then run. */
+  const rerunChosen = (choice: DetectChoice) => {
+    setRerunSheet(false)
+    if (state.current.tracks.length === 0) return void startRerun(choice, 'add')
+    const known = getChoice(RERUN_KEY)
+    if (known === 'add' || known === 'replace') void startRerun(choice, known)
+    else setRerunAsk(choice)
+  }
+  const stopRerun = () => rerunAbort.current?.abort()
+  /** Finds the faces again with the existing detection pipeline; Stop (or leaving) ends the worker and changes nothing. */
+  const startRerun = async (choice: DetectChoice, mode: RerunMode) => {
+    if (rerunAbort.current) return
+    video.current?.pause()
+    setSelected(null)
+    setAdding(false)
+    const ctl = new AbortController()
+    rerunAbort.current = ctl
+    setRerunToast(null)
+    setRerunProgress(0)
+    try {
+      const res = await findFaces(file, choice.mode === 'extended', setRerunProgress, ctl.signal, { fast: choice.mode === 'fast', selfie: choice.mode === 'selfie', sensitivity: choice.sensitivity })
+      if (ctl.signal.aborted) return
+      applyRerun(res, mode)
+    } catch (e) {
+      if (!(e instanceof Aborted)) setNotice(t('זיהוי הפנים נכשל'))
+    } finally {
+      if (rerunAbort.current === ctl) { rerunAbort.current = null; setRerunProgress(null) }
+    }
+  }
+  /**
+   * The found faces come in (one undo step). The blurs are read as they are now, so what was edited while it ran stays. The detection's
+   * flags (notices, the check) follow the run: the new run's for Replace, the stricter of the two for Add.
+   */
+  const applyRerun = (res: { analysis: Analysis; thumbs: (string | null)[]; ms: number; backend: string }, mode: RerunMode) => {
+    const old = anRef.current
+    const fresh = res.analysis
+    const same = sameFrames(old.times, fresh.times)
+    const cur = same ? state.current.tracks : state.current.tracks.map((tr) => resample(tr, old.times, fresh.times))
+    const m = mergeRerun(cur, state.current.off, fresh.tracks, mode)
+    const flags = mergeFlags(old, fresh, mode)
+    const nextAn: Analysis = same ? { ...old, ...flags } : { ...fresh, ...flags }
+    const info = t('זמן עיבוד: %s', duration(res.ms / 1000)) + ' · ' + t('הזיהוי רץ על %s', res.backend === 'webgpu' ? t('המעבד הגרפי') : t('המעבד'))
+    if (m.added.length === 0 && m.removed.length === 0) {
+      // Nothing changes in the blurs (no undo step); the flags still follow, so a weaker run never hides a notice.
+      if (!same) setTracks(cur)
+      setAn(nextAn)
+      setDetectInfo(info)
+      setNotice(t('לא נמצאו פנים נוספים'))
+      return
+    }
+    const thumbAt = new Map(fresh.tracks.map((tr, k): [number, string | null] => [tr.id, res.thumbs[k] ?? null]))
+    record(false)
+    setAn(nextAn)
+    setTracks(m.tracks)
+    setOff(m.off)
+    // (Pictures of blurs that went stay: an undo brings them back.)
+    setThumbOf((prev) => new Map([...prev, ...m.added.map((tr): [number, string | null] => [tr.id, thumbAt.get(m.from.get(tr.id)!) ?? null])]))
+    setSelected(null)
+    setDetectInfo(info)
+    const n = m.added.length
+    const text = mode === 'add'
+      ? (n === 1 ? t('נמצאו פנים נוספים: אחד') : t('נמצאו %d פנים נוספים', n))
+      : (n === 0 ? t('הוחלף: לא נמצאו פנים') : n === 1 ? t('הוחלף: פנים אחד') : t('הוחלף: %d פנים', n))
+    setRerunToast({ text, step: past.current.length })
+  }
+
   const updateSfx = (id: number, patch: Partial<SfxClip>) => setSfxH((list) => list.map((c) => (c.id === id ? { ...c, ...patch } : c)).sort((a, b) => a.at - b.at))
   const selectedClip = sfx.find((c) => c.id === selectedSfx) ?? null
 
@@ -1355,6 +1442,7 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
               </div>
             </>
           )}
+          {analyzed && <button class="btn tonal rerun-open" disabled={!!following || rerunProgress !== null} onClick={() => { video.current?.pause(); setSelected(null); setRerunSheet(true) }}>{t('זהה פנים שוב')}</button>}
         </section>}
 
         {S('look') && <section class="card">
@@ -1480,6 +1568,19 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
         }}
       />
     )}
+    {rerunSheet && <RerunSheet initial={detectedAs()} onRun={rerunChosen} onClose={() => setRerunSheet(false)} />}
+    {rerunAsk && (
+      <RerunAsk
+        count={tracks.length}
+        onCancel={() => setRerunAsk(null)}
+        onChoose={(m, remember) => {
+          const choice = rerunAsk
+          setRerunAsk(null)
+          if (remember) rememberChoice(RERUN_KEY, m)
+          void startRerun(choice, m)
+        }}
+      />
+    )}
     <main class={'editor' + (narrow && !detecting && !hidden ? ' narrow' : '') + (tablet && !detecting && !hidden ? ' tablet' : '') + (phone && panelOpen ? ' panel-open' : '') + (tablet && panelOpen ? ' panel-shown' : '')} style={detecting || hidden ? 'display:none' : ''}>
       {tablet && groupBar}
       <div class="player">
@@ -1513,6 +1614,18 @@ export function Editor({ file, analysis, thumbs: thumbs0, info, onExport, onClos
             </div>
           )}
           {notice && <div class="toast" role="status">{notice}</div>}
+          {rerunProgress !== null && (
+            <div class="rerun-progress" role="status" onPointerDown={(e) => e.stopPropagation()}>
+              <div class="row"><b>{t('מזהה פנים…')}</b><span class="small muted">{Math.min(99, Math.floor(rerunProgress * 100))}%</span><button class="btn ghost small-btn rerun-stop" onClick={stopRerun}>{t('עצור')}</button></div>
+              <div class="progress"><div style={{ width: `${Math.max(2, Math.min(99, Math.floor(rerunProgress * 100)))}%` }} /></div>
+            </div>
+          )}
+          {rerunToast && rerunProgress === null && past.current.length === rerunToast.step && future.current.length === 0 && (
+            <div class="toast with-action rerun-toast" role="status" onPointerDown={(e) => e.stopPropagation()}>
+              <span>{rerunToast.text}</span>
+              <button class="rerun-undo" onClick={() => { setRerunToast(null); undo() }}>{t('בטל')}</button>
+            </div>
+          )}
         </div>
         <div class="transport">
           <div class="step-group" dir="ltr">
