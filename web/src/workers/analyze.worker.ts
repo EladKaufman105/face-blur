@@ -2,7 +2,7 @@
 // on a regular subset of frames, then builds the face tracks and a thumbnail of each face.
 import { ALL_FORMATS, BlobSource, CanvasSink, Input, type InputVideoTrack } from 'mediabunny'
 import { CPU_SIDE, FaceDetector, GPU_SIDE, LOW_SIDE, type DetectStats } from '../lib/detector'
-import { DetectGate, FrameRate, Pacer, follow, fullRate, needRate, pace, runSide, type Timing } from '../lib/pace'
+import { DetectGate, FrameRate, Pacer, follow, fullRate, leaveGpuForSpeed, needRate, pace, runSide, type Timing } from '../lib/pace'
 import { CoverageMeter, type Coverage } from '../lib/coverage'
 import { YunetWorker } from '../lib/yunet-worker'
 import { SELFIE_NO_GPU, StatsHistory, summary, type AnalysisStats, type StatsSnapshot } from '../lib/analysis-stats'
@@ -115,18 +115,12 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
   const ynMake = async () => (ynWorker ??= yunet ? await YunetWorker.create(yunet) : null)
   // Workers to start if detection ends on the CPU (a software adapter, a GPU that failed): then this detector makes no CPU session or YuNet worker.
   let detector: FaceDetector | null = pool ? null : await FaceDetector.create(base + 'models/', backend, undefined, yunet, ynMake, fallbackPool > 1 && !poolTried).catch((e) => { ynWorker?.close(); throw e })
-  // The GPU-vs-CPU check compares the GPU with the detectors the CPU would run side by side, and starts them before the GPU is left.
+  // The GPU-vs-CPU check compares the GPU with the detectors the CPU would run side by side (speedGate decides).
   if (detector) {
     const gpuDet = detector
     probe = () => gpuDet.probePlacement()
     if (probeWanted) probe()
     detector.cpuLanes = fallbackPool
-    detector.preparePool = async () => {
-      if (spare || pool) return true
-      poolTried = true
-      spare = await startPool(detector!.fp32Bytes)
-      return spare !== null
-    }
   }
   // Why detection isn't on the GPU after it left it (the detector is gone once the workers took over).
   let leftGpu: string | null = null
@@ -157,6 +151,7 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
     detector.release()
     gpuDiag = detector.gpuDiag
     retired = { ...detector.stats }
+    probe = null // the retired detector can go
     pool = p
     ;(ynWorker as YunetWorker | null)?.close()
     ynWorker = null
@@ -274,6 +269,7 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
       if (detector) detector.side = LOW_SIDE
     }
     const w = pacer.add(tm)
+    if (w && !tune && detector?.backend === 'webgpu' && detector.speed) speedWin = { w, side: fineSide, rate }
     if (!tune && w) {
       const { recentMs: recent, rfMs } = w
       const gpuNow = backendNow() === 'webgpu'
@@ -281,11 +277,37 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
       const p = pace({ ...w, workers: pool?.size ?? 1, maxRate, side: fineSide, startSide: startNow, rate, gpu: gpuNow, frameSide, frameRate: frameRate.fps, nominal: nominalFps, sizeRate: fast ? FAST_RATE : undefined })
       rate = p.rate
       if (p.side !== fineSide) {
-        fineSide = Math.min(p.side, startNow, startSide)
+        // Fast detection on the CPU stays at its 640 (no step up to 960 that fastCpuSide takes back at once).
+        fineSide = Math.min(p.side, startNow, startSide, fastCpuSide() ? LOW_SIDE : Infinity)
         if (detector) detector.side = fineSide
       }
       if (p.reduced) reduce(`${recent.toFixed(0)} ms a detection (RetinaFace ${rfMs.toFixed(0)}): ${runSide(fineSide, frameSide)} px, ${rate.toFixed(1)}/s`)
     }
+  }
+  // The GPU-vs-CPU check's answer, taken once from the first window of the GPU's own detections after the check (warm, no shader
+  // compiling): a GPU that works is left only when the pace itself would have lowered detection on it (its frame size or its rate, for
+  // the rate this clip needs) and the CPU is faster at the same size. No window yet: it waits for one (never an extrapolated time).
+  let speedWin: { w: NonNullable<ReturnType<Pacer['add']>>; side: number; rate: number } | null = null
+  let speedDecided = false
+  const speedGate = async () => {
+    const d = detector
+    if (speedDecided || !d || d.backend !== 'webgpu' || !d.speed || !speedWin || tune) return
+    speedDecided = true
+    const { w, side, rate: r } = speedWin
+    speedWin = null
+    const paceIn = { ...w, workers: 1, maxRate, side, startSide: GPU_SIDE, rate: r, gpu: true, frameSide, frameRate: frameRate.fps, nominal: nominalFps, sizeRate: fast ? FAST_RATE : undefined }
+    let vs = { ...d.speed, lanes: fallbackPool }
+    if (!leaveGpuForSpeed(paceIn, vs)) return
+    // The workers start before the GPU is left for them; if they can't, the CPU is one detector (YuNet overlapping) or the GPU stays.
+    if (vs.lanes > 1 && !spare && !pool) {
+      poolTried = true
+      spare = await startPool(d.fp32Bytes)
+      if (!spare) {
+        vs = { ...vs, lanes: 1 }
+        if (!leaveGpuForSpeed(paceIn, vs)) return
+      }
+    }
+    d.leaveForSpeed(`the CPU is faster here (${(vs.cpuMs + vs.yunetMs).toFixed(0)} ms${vs.lanes > 1 ? ` x${vs.lanes} detectors` : ''} vs the GPU's ${vs.gpuMs.toFixed(0)} ms, which the pace lowered: ${w.recentMs.toFixed(0)} ms a detection)`)
   }
   // The detectors' counters (the workers', or the one detector's, with those of the one that ran before the workers took over).
   const allStats = (): DetectStats => {
@@ -353,6 +375,7 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
         const got = await detector!.detect(canvas)
         recordDets(i, got, { ms: performance.now() - td, ...detector!.last, checkMs: detector!.stats.check - checkBefore }, true, detector!.lastExtras)
         // The GPU was left (slower than the CPU, or failed) on a device with cores to spare: the workers take over from the next frame.
+        await speedGate()
         await toPool()
       }
     }
@@ -368,6 +391,7 @@ async function analyze({ file, sensitive, fast: fastAsked, selfie: selfieAsked, 
     if (pool) await pool.drain()
   } finally {
     pool?.close()
+    ;(spare as DetectorPool | null)?.close()
     ;(ynWorker as YunetWorker | null)?.close()
   }
   cover = meter.result(true)

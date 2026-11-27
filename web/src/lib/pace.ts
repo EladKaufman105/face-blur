@@ -28,6 +28,7 @@
 // was before YuNet.
 
 // The shared values: shared/detect/detect.json (generated). With the extension: tests/fusion.cjs runs this file in Node.
+import { cpuBeatsGpu, type GpuVsCpu } from './devicediag.ts'
 import { CPU_SIDE as MID_SIDE, GPU_SLOW_MS, LOW_SIDE, MIN_RATE, RATE } from '../gen/detect.ts'
 
 /** The smallest the fine pass gets (the app's LOW_SIDE), the size between, and the fewest detections per second (the app's MIN_RATE). */
@@ -303,4 +304,14 @@ export class Pacer {
     this.window = []
     return out
   }
+}
+
+/**
+ * Whether a GPU that works is left for the CPU's detectors. Only when the pace itself would have lowered detection on the GPU (the
+ * frame's size or the rate, from the GPU's own measured detections: [i] with the GPU's windows) and the CPU is faster at the same
+ * size. A GPU that keeps up with the rate the clip needs (fast 5 a second, normal min(15, fps), sensitive every frame) is never left:
+ * the CPU's frame is smaller (960, 640) and the video would be marked reduced for nothing.
+ */
+export function leaveGpuForSpeed(i: PaceIn, vs: GpuVsCpu): boolean {
+  return pace({ ...i, gpu: true, workers: 1 }).reduced && cpuBeatsGpu(vs)
 }

@@ -31,27 +31,45 @@ if (D.fallbackPoolSize(2, 2) !== 1 || D.fallbackPoolSize(3, 2) !== 1 || D.fallba
 if (!D.isSoftwareAdapter({ isFallbackAdapter: true }) || !D.isSoftwareAdapter({ info: { isFallbackAdapter: true } })) fail('a fallback adapter')
 if (!D.isSoftwareAdapter({ info: { architecture: 'swiftshader' } }) || !D.isSoftwareAdapter({ info: { description: 'llvmpipe (LLVM 15)' } })) fail('a named software renderer')
 if (D.isSoftwareAdapter({ isFallbackAdapter: false, info: { isFallbackAdapter: false } }) || D.isSoftwareAdapter({}) || D.isSoftwareAdapter(null)) fail('a real adapter is not software')
-for (const d of ['Microsoft Basic Render Driver', 'Microsoft WARP', 'VMware SVGA 3D', 'VirtualBox Graphics Adapter', 'Google SwiftShader'])
+for (const d of ['Microsoft Basic Render Driver', 'Microsoft WARP', 'Google SwiftShader'])
   if (!D.isSoftwareAdapter({ info: { description: d } })) fail('software by name: ' + d)
 for (const d of ['NVIDIA GeForce RTX 3060', 'Intel(R) UHD Graphics', 'Apple M2', 'Mali-G78', 'Adreno (TM) 740'])
   if (D.isSoftwareAdapter({ info: { vendor: 'x', description: d } })) fail('a real GPU read as software: ' + d)
 
-// ---- leaving a GPU that works (GPU ms and CPU ms are the check's per-frame means at the check's size)
+// ---- the CPU beats the GPU (the check's means per frame at the same size)
 {
-  const base = { gpuMs: 100, cpuMs: 300, yunetMs: 60, lanes: 6, gpuFineMs: 100, slowMs: 80 }
-  // The GPU holds the fine pass at its full size (under the slow limit): never left for speed, with any number of workers
-  for (const lanes of [1, 2, 4, 6, 12]) if (D.leaveGpuForSpeed({ ...base, lanes, gpuMs: 70, gpuFineMs: 70, cpuMs: 120, yunetMs: 20 })) fail('left a GPU that holds 1280 at full rate, lanes ' + lanes)
-  // The 6-worker case that dropped 1280 to 960: 70 ms on the GPU against 6 workers at 300 ms (+ YuNet 60) each
-  if (D.leaveGpuForSpeed({ ...base, gpuMs: 70, gpuFineMs: 70 })) fail('a fast GPU left for six slow workers')
-  // A GPU over the limit and slower than the workers is left
-  if (!D.leaveGpuForSpeed({ ...base, gpuMs: 335, gpuFineMs: 335 })) fail('a slow GPU not left')
-  // YuNet counts on the CPU's side: workers that look faster without it are not, with it
-  const edge = { gpuMs: 300, cpuMs: 700, yunetMs: 0, lanes: 4, gpuFineMs: 300, slowMs: 80 }
-  if (!D.leaveGpuForSpeed(edge)) fail('four workers at 700 ms beat a 300 ms GPU')
-  if (D.leaveGpuForSpeed({ ...edge, yunetMs: 150 })) fail('YuNet left out of the CPU comparison')
-  // One detector: YuNet overlaps (its own worker), the slower of the two counts
-  if (!D.leaveGpuForSpeed({ gpuMs: 300, cpuMs: 200, yunetMs: 100, lanes: 1, gpuFineMs: 300, slowMs: 80 })) fail('one overlapping detector faster than a slow GPU')
-  if (D.leaveGpuForSpeed({ gpuMs: 300, cpuMs: 290, yunetMs: 100, lanes: 1, gpuFineMs: 300, slowMs: 80 })) fail('a hair faster is not faster (90%)')
+  const edge = { gpuMs: 300, cpuMs: 700, yunetMs: 0, lanes: 4 }
+  if (!D.cpuBeatsGpu(edge)) fail('four workers at 700 ms beat a 300 ms GPU')
+  if (D.cpuBeatsGpu({ ...edge, yunetMs: 150 })) fail('YuNet left out of the CPU comparison')
+  if (!D.cpuBeatsGpu({ gpuMs: 300, cpuMs: 200, yunetMs: 100, lanes: 1 })) fail('one overlapping detector faster than a slow GPU')
+  if (D.cpuBeatsGpu({ gpuMs: 300, cpuMs: 290, yunetMs: 100, lanes: 1 })) fail('a hair faster is not faster (90%)')
+}
+for (const d of ['VMware SVGA 3D', 'VirtualBox Graphics Adapter'])
+  if (D.isSoftwareAdapter({ info: { description: d } }) || !D.isSoftwareAdapter({ info: { description: d, isFallbackAdapter: true } })) fail('a VM adapter is software only when the browser says so: ' + d)
+{
+  const g = { adapter: 'x', f16: true, software: false, nodesGpu: null, nodesCpu: null, model: 'fp16', firstRunMs: null, failed: 'GPU failed: x' }
+  const txt = D.diagLines({ threads: 1, simd: true, isolated: true, pool: 1, poolWanted: 1, cores: 2, memoryGB: 4, gpu: g }).join(' | ')
+  if (!txt.includes('ep_nodes: not available (GPU failed)')) fail('a failed GPU reads: ' + txt)
+}
+
+// ---- a GPU that works is left only when the pace itself would have lowered detection on it, and the CPU is faster
+{
+  // A window of the GPU's own warm detections: whole detection ms, RetinaFace's passes, the fine pass.
+  const win = (ms, rf) => ({ recentMs: ms, rfMs: rf, fineMs: rf * 0.8, extraMs: 0 })
+  const cpuFast = { gpuMs: 90, cpuMs: 60, yunetMs: 10, lanes: 6 } // the CPU would win if asked
+  const gpuIn = (o) => ({ workers: 1, maxRate: 15, side: 1280, startSide: 1280, rate: 15, gpu: true, frameSide: 1280, frameRate: 30, nominal: 30, ...o })
+  const leave = (o, vs = cpuFast) => P.leaveGpuForSpeed(gpuIn(o), vs)
+  // Iris-Xe-like: a 1280 pass about 60 ms, 75 ms a detection: keeps up with 15 a second, never left, whatever the CPU numbers
+  if (leave(win(75, 60))) fail('an iGPU that holds 1280 was left')
+  // Fast mode: 5 a second needed, a detection of 100 ms holds it
+  if (leave({ ...win(100, 80), maxRate: 5, sizeRate: 5, rate: 5 })) fail('fast mode at 100 ms was left')
+  // A 10 fps clip needs 10 a second: 90 ms a detection holds it
+  if (leave({ ...win(90, 70), maxRate: 15, nominal: 10, frameRate: 10 })) fail('a 10 fps clip at 90 ms was left')
+  // Sensitive (every frame at 30 fps): 25 ms a frame is needed; 60 ms can't, and the CPU workers are faster
+  if (!leave({ ...win(60, 50), maxRate: 30 }, { gpuMs: 60, cpuMs: 60, yunetMs: 10, lanes: 6 })) fail('a GPU that cannot keep up and loses to the CPU was kept')
+  // A slow GPU (335 ms) that the CPU beats is left; one the CPU doesn't beat stays
+  if (!leave(win(335, 320), { gpuMs: 335, cpuMs: 300, yunetMs: 60, lanes: 6 })) fail('a slow GPU beaten by the CPU was kept')
+  if (leave(win(335, 320), { gpuMs: 335, cpuMs: 900, yunetMs: 60, lanes: 2 })) fail('a slow GPU not beaten by the CPU was left')
 }
 
 // ---- a move for speed from 1280 is flagged: the pace's baseline stays the GPU's size

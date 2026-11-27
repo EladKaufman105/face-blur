@@ -80,7 +80,7 @@ here (273 vs 785 ms)", then one detector on 16 cores: "waves 1/16"). What was fo
 (`web/src/lib/devicediag.ts`, `detector.ts`, `workers/analyze.worker.ts`; the numbers are in the PR that made it):
 
 - A software WebGPU adapter (`adapter.info.isFallbackAdapter`, or one that names itself SwiftShader, llvmpipe, WARP / "Microsoft
-  Basic Render Driver", VMware or VirtualBox) is never used: it is WebGPU on the CPU, several times slower than the CPU's own
+  Basic Render Driver") is never used: it is WebGPU on the CPU, several times slower than the CPU's own
   WebAssembly with the workers. When the workers will take over, the detector builds no CPU session or YuNet worker of its own.
   A GPU whose session can't be created reads "GPU failed: ..." (not "no WebGPU adapter").
 - When detection leaves the GPU (software adapter, the check finding the CPU faster, a GPU that fails) on a device with 4 or
@@ -92,11 +92,15 @@ here (273 vs 785 ms)", then one detector on 16 cores: "waves 1/16"). What was fo
   needs no synchronising between threads.
 - The GPU-vs-CPU check compares the GPU with the CPU workers that would run side by side (each counted at 75%: 2 workers on 2
   cores measured 7.28/s against 4.74), YuNet's time included (it runs after RetinaFace in each worker), not with one core, and
-  only counts runs after the GPU has run that shape once. A GPU that holds the fine pass at 1280 px under the slow limit
-  (`GPU_SLOW_MS`, 80 ms) is never left for speed: the frame would drop from 1280 to 960 px for nothing. When a working GPU is left
-  because the CPU is faster, the pace keeps the GPU's size (1280) as its baseline, so the lower CPU size is flagged `reduced` (its
-  notice, the batch's flag) instead of looking like the CPU's normal. The workers start before the GPU is left; if they can't, the
-  comparison is against one detector (YuNet overlapping) or the GPU stays.
+  only counts runs after the GPU has run that shape once. The check's timings (GPU, CPU and YuNet at the same frame size, YuNet
+  timed with its worker idle and averaged over its own samples) never extrapolate a time from another size.
+- A GPU that works is left for speed only when the pace itself would have lowered detection on it (`leaveGpuForSpeed` in
+  `lib/pace.ts` runs `pace` on the GPU's own warm detections, after the check, for the rate this clip needs: fast 5 a second,
+  normal min(15, fps), sensitive every frame) and the CPU is faster at that size. A GPU that keeps up (an iGPU doing 1280 px in
+  60 ms, fast mode at 100 ms, a 10 fps clip at 90 ms) stays. Until a warm window exists the decision waits. When a working GPU is
+  left, the pace keeps the GPU's size (1280) as its baseline, so the lower CPU size is flagged `reduced` (its notice, the
+  batch's flag). Fast mode on the CPU stays at 640 (no step up to 960 that gets taken back). The workers start before the GPU is
+  left; if they can't, the comparison is against one detector (YuNet overlapping) or the GPU stays.
 - A detection that ran a shape on the GPU for the first time (shaders compile: seconds on a weak GPU) is left out of the pace
   (`Timing.cold`). Each size step of the pace is a new shape; its compile read as a slow device and shrank the frame again.
   Nothing becomes lighter because of this: a device that is slow in steady state is still paced down as before.
@@ -105,7 +109,7 @@ here (273 vs 785 ms)", then one detector on 16 cores: "waves 1/16"). What was fo
   nodes ONNX Runtime put on the GPU and on the CPU, the first run's time (shader compiling), the WebAssembly threads and
   SIMD, cross-origin isolation (the page's, through its service worker) and the detector pool (running, wanted, cores, memory).
   The node placement is measured only when the stats panel is opened (a verbose session in a worker of its own, so the runtime's
-  log stays out of the console), never in a normal analysis or during the GPU check.
+  log stays out of the console), never in a normal analysis. Asked while the GPU-vs-CPU check runs, it starts when the check ends, so its work doesn't disturb the check's timings.
 
 ## What was really detected
 
