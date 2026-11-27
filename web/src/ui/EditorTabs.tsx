@@ -532,7 +532,7 @@ export function SubtitlesTab({ srtCues, onLost, onAttention, onBusy, hidden, par
   const set = (patch: Partial<SubStyle>) => onStyle({ ...styleNow.current, ...patch })
   const edit = (id: number, patch: Partial<Cue>) => onCues(cues.map((c) => (c.id === id ? { ...c, ...patch } : c)))
   // The file has every word as typed: with bleeped words it asks first.
-  const [srtAsk, setSrtAsk] = useState(false)
+  const [srtAsk, setSrtAsk] = useState<false | 'edit' | 'shown'>(false)
   const saveSrt = (list: Cue[]) => {
     setSrtAsk(false)
     const a = document.createElement('a')
@@ -542,7 +542,9 @@ export function SubtitlesTab({ srtCues, onLost, onAttention, onBusy, hidden, par
     setTimeout(() => URL.revokeObjectURL(a.href), 5000)
   }
   /** The main action: the file as the export has it, the bleeped words hidden. */
-  const srtMasked = () => saveSrt(srtCues())
+  /** Hiding the bleeped words is off: the file shows them, so it asks first (as the app's srtShowsBleeps). */
+  const srtShowsBleeps = style.maskBleeped === false && bleeped.size > 0
+  const srtMasked = () => (srtShowsBleeps ? setSrtAsk('shown') : saveSrt(srtCues()))
   /** For editing: every word as typed (asks first when words are bleeped). */
   const srt = () => saveSrt(cues)
   const busy = run !== null && run.stage !== 'error'
@@ -598,14 +600,14 @@ export function SubtitlesTab({ srtCues, onLost, onAttention, onBusy, hidden, par
   const srtBlock = (
     <div class="srt-tools" style="display:grid;gap:8px">
       <div class="row wrap">
-        <button class="btn tonal small-btn srt-save" onClick={srtMasked} title={t('הקובץ כמו בייצוא: המילים המצופצפות מוסתרות')}>{t('שמור כתוביות (SRT)')}</button>
-        {bleeped.size > 0 && <button class="btn ghost small-btn srt-download" onClick={() => setSrtAsk(true)} title={t('הקובץ כולל את כל המילים, בלי הסתרה: לעריכה')}>{t('הורד SRT')} <span class="small muted">{t('(בלי הסתרה, לעריכה)')}</span></button>}
+        <button class="btn tonal small-btn srt-save" onClick={srtMasked} title={srtShowsBleeps ? t('ההסתרה כבויה: הקובץ יכלול את המילים המצופצפות כפי שהן') : t('הקובץ כמו בייצוא: המילים המצופצפות מוסתרות')}>{srtShowsBleeps ? t('שמור כתוביות (SRT, בלי הסתרה)') : t('שמור כתוביות (SRT)')}</button>
+        {bleeped.size > 0 && !srtShowsBleeps && <button class="btn ghost small-btn srt-download" onClick={() => setSrtAsk('edit')} title={t('הקובץ כולל את כל המילים, בלי הסתרה: לעריכה')}>{t('הורד SRT')} <span class="small muted">{t('(בלי הסתרה, לעריכה)')}</span></button>}
       </div>
     {srtAsk && (
       <div class="confirm srt-ask" role="alertdialog" aria-label={t('להוריד SRT בלי הסתרה?')}>
         <span class="small">{t('קובץ ה-SRT יכלול את המילים המצופצפות כפי שהן. אל תפרסם אותו.')}</span>
         <div class="row">
-          <button class="btn small-btn danger-btn srt-ask-yes" onClick={srt}>{t('הורד')}</button>
+          <button class="btn small-btn danger-btn srt-ask-yes" onClick={srtAsk === 'shown' ? () => saveSrt(srtCues()) : srt}>{t('הורד')}</button>
           <button class="btn ghost small-btn srt-ask-no" onClick={() => setSrtAsk(false)}>{t('ביטול')}</button>
         </div>
       </div>
