@@ -67,7 +67,7 @@ export const clamp = (s: unknown): number => (typeof s === 'number' && Number.is
 /** [s] on the setting's steps of 5%. */
 export const quantize = (s: unknown): number => Math.round(clamp(s) * STEPS) / STEPS
 /** [s] up to the next 5% step (a template's value between steps never ends up less sensitive), within 0..1. */
-export const roundUp = (s: unknown): number => Math.ceil(clamp(s) * STEPS - 1e-3) / STEPS
+export const roundUp = (s: unknown): number => Math.max(0, Math.ceil(clamp(s) * STEPS - 1e-3) / STEPS) || 0 // never -0
 /** The steps a sensitivity of [s] goes through: 5%, 10%, ... up to [s] (none at 0). */
 export const levels = (s: unknown): number[] => Array.from({ length: Math.round(clamp(s) * STEPS) }, (_, i) => (i + 1) / STEPS)
 

@@ -248,7 +248,8 @@ object DetectTuning {
     fun quantize(s: Float): Float = kotlin.math.round(clamp(s) * STEPS) / STEPS
 
     /** [s] up to the next 5% step (a template's value between steps never ends up less sensitive), within 0..1. */
-    fun roundUp(s: Float): Float = kotlin.math.ceil(clamp(s) * STEPS - 1e-3f) / STEPS
+    // ceil of a tiny negative is -0.0, which a data class's equals tells apart from 0: never return it.
+    fun roundUp(s: Float): Float = (kotlin.math.ceil(clamp(s) * STEPS - 1e-3f) / STEPS).let { if (it <= 0f) 0f else it }
 
     /** The steps a sensitivity of [s] goes through: 5%, 10%, ... up to [s] (none at 0). */
     fun levels(s: Float): List<Float> = (1..kotlin.math.round(clamp(s) * STEPS).toInt()).map { it / STEPS }

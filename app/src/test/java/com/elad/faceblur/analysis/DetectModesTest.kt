@@ -225,6 +225,8 @@ class DetectModesTest {
         assertEquals(0.35f, DetectTuning.roundUp(0.31f), 1e-6f)
         assertEquals(0.35f, DetectTuning.roundUp(0.35f), 1e-6f)
         assertEquals(0.05f, DetectTuning.roundUp(0.001f), 1e-6f)
+        // Not -0.0: a template saved at 0 must read back equal to the defaults.
+        assertEquals(0f.toBits(), DetectTuning.roundUp(0f).toBits())
         assertEquals(0f, DetectTuning.roundUp(0f), 0f)
         assertEquals(1f, DetectTuning.roundUp(9f), 0f)
         assertEquals(emptyList<Float>(), DetectTuning.levels(0f))
